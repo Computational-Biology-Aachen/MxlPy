@@ -11,6 +11,10 @@ from mxlpy import plot
 from mxlpy.simulator import Result, Simulator
 from mxlpy.types import unwrap
 
+if TYPE_CHECKING:
+    from mxlpy.model import Model
+    from mxlpy.types import ArrayLike
+
 __all__ = [
     "ProtocolComparison",
     "SteadyStateComparison",
@@ -19,10 +23,6 @@ __all__ = [
     "steady_states",
     "time_course",
 ]
-
-if TYPE_CHECKING:
-    from mxlpy.model import Model
-    from mxlpy.types import ArrayLike
 
 
 @dataclass
