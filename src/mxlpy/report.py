@@ -89,14 +89,28 @@ def markdown(
 
     """
     content: list[str] = [
-        f"# Report:  {datetime.now(UTC).strftime('%Y-%m-%d')}",
+        f"# Report:  {datetime.now(UTC).strftime('%Y-%m-%d')}\n",
     ]
 
     # Unused
     if unused := m2.get_unused_parameters():
-        content.append("## <span style='color: red'>Unused parameters</span>")
+        content.append("## <span style='color: red'>Unused parameters</span>\n")
         names = "\n".join(f"<li>{i}</li>\n" for i in sorted(unused))
         content.append(f"<ul>\n{names}\n</ul>\n")
+
+    # Model stats
+    content.extend(
+        [
+            "| Model component | Old | New |",
+            "| --- | --- | --- |",
+            f"| variables | {len(m1.variables)} | {len(m2.variables)}|",
+            f"| parameters | {len(m1.parameters)} | {len(m2.parameters)}|",
+            f"| derived parameters | {len(m1.derived_parameters)} | {len(m2.derived_parameters)}|",
+            f"| derived variables | {len(m1.derived_variables)} | {len(m2.derived_variables)}|",
+            f"| reactions | {len(m1.reactions)} | {len(m2.reactions)}|",
+            f"| surrogates | {len(m1._surrogates)} | {len(m2._surrogates)}|",  # noqa: SLF001
+        ]
+    )
 
     # Variables
     new_variables, removed_variables, changed_variables = _new_removed_changed(
@@ -117,7 +131,7 @@ def markdown(
     if len(variables) >= 1:
         content.extend(
             (
-                "## Variables\n",
+                "## Variables\n\n",
                 "| Name | Old Value | New Value |",
                 "| ---- | --------- | --------- |",
             )
@@ -143,7 +157,7 @@ def markdown(
     if len(pars) >= 1:
         content.extend(
             (
-                "## Parameters\n",
+                "## Parameters\n\n",
                 "| Name | Old Value | New Value |",
                 "| ---- | --------- | --------- |",
             )
@@ -170,7 +184,7 @@ def markdown(
     if len(derived) >= 1:
         content.extend(
             (
-                "## Derived\n",
+                "## Derived\n\n",
                 "| Name | Old Value | New Value |",
                 "| ---- | --------- | --------- |",
             )
@@ -198,7 +212,7 @@ def markdown(
     if len(reactions) >= 1:
         content.extend(
             (
-                "## Reactions\n",
+                "## Reactions\n\n",
                 "| Name | Old Value | New Value |",
                 "| ---- | --------- | --------- |",
             )
@@ -218,7 +232,7 @@ def markdown(
     if len(dependent) >= 1:
         content.extend(
             (
-                "## Numerical differences of dependent values\n",
+                "## Numerical differences of dependent values\n\n",
                 "| Name | Old Value | New Value | Relative Change | ",
                 "| ---- | --------- | --------- | --------------- | ",
             )
@@ -237,7 +251,7 @@ def markdown(
     if len(rhs) >= 1:
         content.extend(
             (
-                "## Numerical differences of right hand side values\n",
+                "## Numerical differences of right hand side values\n\n",
                 "| Name | Old Value | New Value | Relative Change | ",
                 "| ---- | --------- | --------- | --------------- | ",
             )
