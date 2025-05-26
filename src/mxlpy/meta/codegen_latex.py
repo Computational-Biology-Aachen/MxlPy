@@ -112,11 +112,16 @@ def _fn_to_latex(
     arg_names: list[str],
     long_name_cutoff: int,
 ) -> tuple[str, dict[str, str]]:
-    long_names = (k for k in arg_names if len(k) >= long_name_cutoff)
+    tex_names = [_mathrm(_name_to_latex(i)) for i in arg_names]
+    long_names = (
+        k
+        for k, k_orig in zip(tex_names, arg_names, strict=True)
+        if len(k_orig) >= long_name_cutoff
+    )
     replacements = {k: _name_to_latex(f"_x{i}") for i, k in enumerate(long_names)}
 
     expr = fn_to_sympy(
-        fn, _list_of_symbols([replacements.get(k, k) for k in arg_names])
+        fn, _list_of_symbols([replacements.get(k, k) for k in tex_names])
     )
     fn_str = _sympy_to_latex(expr)
     return fn_str, replacements
@@ -275,14 +280,14 @@ def _latex_list_as_bold(rows: list[tuple[str, str]]) -> str:
 
 
 def _replacements_in_align(replacements: dict[str, str]) -> str:
-    reps = "\n".join(rf"{v} &:: {k} \\" for k, v in replacements.items())
+    reps = "\n".join(rf"&\qquad {v} :: {k} \\" for k, v in replacements.items())
 
-    return rf"""\mathrm{{with}}&\\
+    return rf"""&\quad \mathrm{{with}}\\
 {reps}\\"""
 
 
 def _diff_eq(name: str) -> str:
-    return rf"\frac{{\mathrm{{d}}\ {name}}}{{\mathrm{{dt}}}}"
+    return rf"\frac{{d\left({name}\right)}}{{dt}}"
 
 
 def _optional_factor(k: str, v: float) -> str:
@@ -305,7 +310,11 @@ def _stoichs_to_latex(
 
         if isinstance(rxn_stoich, Derived):
             arg_names = [_mathrm(_name_to_latex(i)) for i in rxn_stoich.args]
-            long_names = (k for k in arg_names if len(k) >= long_name_cutoff)
+            long_names = (
+                k
+                for k, k_orig in zip(arg_names, rxn_stoich.args, strict=True)
+                if len(k_orig) >= long_name_cutoff
+            )
             replacements.update(
                 {
                     k: _name_to_latex(f"_x{i}")
@@ -578,7 +587,7 @@ class TexExport:
         for k, v in sorted(self.derived.items()):
             fn_str, repls = _fn_to_latex(
                 v.fn,
-                arg_names=[_mathrm(_name_to_latex(i)) for i in v.args],
+                arg_names=v.args,
                 long_name_cutoff=long_name_cutoff,
             )
             rows.append(f"{_mathrm(_name_to_latex(k))} &= {fn_str} \\\\")
@@ -609,7 +618,7 @@ class TexExport:
         for k, v in sorted(self.reactions.items()):
             fn_str, repls = _fn_to_latex(
                 v.fn,
-                arg_names=[_mathrm(_name_to_latex(i)) for i in v.args],
+                arg_names=v.args,
                 long_name_cutoff=long_name_cutoff,
             )
             rows.append(f"{_mathrm(_name_to_latex(k))} &= {fn_str} \\\\")
@@ -707,7 +716,7 @@ class TexExport:
                     ),
                 )
             )
-        return _latex_list_as_sections(sections, _subsubsection_)
+        return _latex_list_as_sections(sections, _subsection_)
 
     def export_document(
         self,
@@ -740,7 +749,7 @@ class TexExport:
 
         """
         content = self.export_all(long_name_cutoff=long_name_cutoff)
-        return rf"""\documentclass{{article}}
+        return rf"""\documentclass[fleqn]{{article}}
 \usepackage[english]{{babel}}
 \usepackage[a4paper,top=2cm,bottom=2cm,left=2cm,right=2cm,marginparwidth=1.75cm]{{geometry}}
 \usepackage{{amsmath, amssymb, array, booktabs,
@@ -748,6 +757,7 @@ class TexExport:
             ragged2e, tabularx, titlesec, titling}}
 \newcommand{{\sectionbreak}}{{\clearpage}}
 \setlength{{\parindent}}{{0pt}}
+\allowdisplaybreaks
 
 \title{{{title}}}
 \date{{}} % clear date
