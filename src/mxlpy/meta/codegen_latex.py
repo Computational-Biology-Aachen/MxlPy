@@ -646,7 +646,7 @@ class TexExport:
                 rows.append(_replacements(repls))
         return _latex_list(rows)
 
-    def export_all(self, long_name_cutoff: int) -> str:
+    def export_all(self, long_name_cutoff: int = 10) -> str:
         """Export all model parts as a complete LaTeX document section.
 
         Returns

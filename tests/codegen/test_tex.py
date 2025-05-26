@@ -34,7 +34,7 @@ def test_tex_export_diff() -> None:
         variables={"A": 10.0},
         derived={},
         reactions={},
-        stoichiometries={},
+        diff_eqs={},
     )
 
     export2 = TexExport(
@@ -42,7 +42,7 @@ def test_tex_export_diff() -> None:
         variables={"A": 10.0, "B": 5.0},
         derived={},
         reactions={},
-        stoichiometries={},
+        diff_eqs={},
     )
 
     diff = export2 - export1
@@ -61,7 +61,7 @@ def test_tex_export_rename_with_glossary() -> None:
         variables={"A": 10.0},
         derived={"d1": derived_val},
         reactions={"r1": TexReaction(fn=fns.add, args=["A", "k1"])},
-        stoichiometries={"r1": {"A": 1.0}},
+        diff_eqs={"r1": {"A": 1.0}},
     )
 
     gls = {"A": "substrate", "k1": "rate_constant"}
@@ -79,7 +79,7 @@ def test_export_methods() -> None:
         variables={"A": 10.0},
         derived={},
         reactions={},
-        stoichiometries={},
+        diff_eqs={},
     )
 
     # Test that these methods execute without errors
