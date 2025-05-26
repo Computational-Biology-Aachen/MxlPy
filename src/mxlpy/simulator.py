@@ -503,6 +503,35 @@ class Simulator:
         self._handle_simulation_results(time, results, skipfirst=True)
         return self
 
+    def simulate_over_protocol(
+        self,
+        protocol: pd.DataFrame,
+        time_points_per_step: int = 10,
+    ) -> Self:
+        """Simulate the model over a given protocol.
+
+        Examples:
+            >>> Simulator(model).simulate_over_protocol(
+            ...     protocol,
+            ...     time_points_per_step=10
+            ... )
+
+        Args:
+            protocol: DataFrame containing the protocol.
+            time_points_per_step: Number of time points per step.
+
+        Returns:
+            The Simulator instance with updated results.
+
+        """
+        for t_end, pars in protocol.iterrows():
+            t_end = cast(pd.Timedelta, t_end)
+            self.model.update_parameters(pars.to_dict())
+            self.simulate(t_end.total_seconds(), steps=time_points_per_step)
+            if self.variables is None:
+                break
+        return self
+
     def simulate_to_steady_state(
         self,
         tolerance: float = 1e-6,
@@ -536,35 +565,6 @@ class Simulator:
             [results] if results is not None else None,  # type: ignore
             skipfirst=False,
         )
-        return self
-
-    def simulate_over_protocol(
-        self,
-        protocol: pd.DataFrame,
-        time_points_per_step: int = 10,
-    ) -> Self:
-        """Simulate the model over a given protocol.
-
-        Examples:
-            >>> Simulator(model).simulate_over_protocol(
-            ...     protocol,
-            ...     time_points_per_step=10
-            ... )
-
-        Args:
-            protocol: DataFrame containing the protocol.
-            time_points_per_step: Number of time points per step.
-
-        Returns:
-            The Simulator instance with updated results.
-
-        """
-        for t_end, pars in protocol.iterrows():
-            t_end = cast(pd.Timedelta, t_end)
-            self.model.update_parameters(pars.to_dict())
-            self.simulate(t_end.total_seconds(), steps=time_points_per_step)
-            if self.variables is None:
-                break
         return self
 
     def get_result(self) -> Result | None:

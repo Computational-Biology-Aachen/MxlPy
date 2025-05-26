@@ -12,8 +12,10 @@ from mxlpy.simulator import Result, Simulator
 from mxlpy.types import unwrap
 
 __all__ = [
+    "ProtocolComparison",
     "SteadyStateComparison",
     "TimeCourseComparison",
+    "protocol_time_course",
     "steady_states",
     "time_course",
 ]
@@ -134,6 +136,73 @@ class TimeCourseComparison:
         return fig, axs
 
 
+@dataclass
+class ProtocolComparison:
+    """Compare two protocol time courses."""
+
+    res1: Result
+    res2: Result
+    protocol: pd.DataFrame
+
+    # @property
+    # def variables(self) -> pd.DataFrame:
+    #     """Compare the steady state variables."""
+    #     ss1 = self.res1.get_variables()
+    #     ss2 = self.res2.get_variables()
+    #     diff = ss2 - ss1
+    #     return pd.DataFrame(
+    #         {"m1": ss1, "m2": ss2, "diff": diff, "rel_diff": diff / ss1}
+    #     )
+
+    # @property
+    # def fluxes(self) -> pd.DataFrame:
+    #     """Compare the steady state fluxes."""
+    #     ss1 = self.res1.get_fluxes()
+    #     ss2 = self.res2.get_fluxes()
+    #     diff = ss2 - ss1
+    #     return pd.DataFrame(
+    #         {"m1": ss1, "m2": ss2, "diff": diff, "rel_diff": diff / ss1}
+    #     )
+
+    def plot_variables_relative_difference(
+        self,
+        shade_protocol_variable: str | None = None,
+    ) -> plot.FigAxs:
+        """Plot the relative difference of time course variables."""
+        c1 = self.res1.variables
+        c2 = self.res2.variables
+
+        rel_diff = ((c2.loc[:, cast(list[str], c1.columns)] - c1) / c1).fillna(0)
+        fig, axs = plot.line_autogrouped(rel_diff, ylabel="")
+        plot.grid_labels(axs, ylabel="Relative difference")
+        fig.suptitle("Variables")
+
+        if shade_protocol_variable is not None:
+            protocol = self.protocol[shade_protocol_variable]
+            for ax in axs:
+                plot.shade_protocol(protocol=protocol, ax=ax)
+        return fig, axs
+
+    def plot_fluxes_relative_difference(
+        self,
+        shade_protocol_variable: str | None = None,
+    ) -> plot.FigAxs:
+        """Plot the relative difference of time course fluxes."""
+        v1 = self.res1.fluxes
+        v2 = self.res2.fluxes
+
+        rel_diff = ((v2.loc[:, cast(list[str], v1.columns)] - v1) / v1).fillna(0)
+        fig, axs = plot.line_autogrouped(rel_diff, ylabel="")
+        plot.grid_labels(axs, ylabel="Relative difference")
+        fig.suptitle("Fluxes")
+
+        if shade_protocol_variable is not None:
+            protocol = self.protocol[shade_protocol_variable]
+            for ax in axs:
+                plot.shade_protocol(protocol=protocol, ax=ax)
+        return fig, axs
+
+
 def steady_states(m1: Model, m2: Model) -> SteadyStateComparison:
     """Compare the steady states of two models."""
     return SteadyStateComparison(
@@ -151,4 +220,21 @@ def time_course(m1: Model, m2: Model, time_points: ArrayLike) -> TimeCourseCompa
         res2=unwrap(
             Simulator(m2).simulate_time_course(time_points=time_points).get_result()
         ),
+    )
+
+
+def protocol_time_course(
+    m1: Model,
+    m2: Model,
+    protocol: pd.DataFrame,
+) -> ProtocolComparison:
+    """Compare the time courses of two models."""
+    return ProtocolComparison(
+        res1=unwrap(
+            Simulator(m1).simulate_over_protocol(protocol=protocol).get_result()
+        ),
+        res2=unwrap(
+            Simulator(m2).simulate_over_protocol(protocol=protocol).get_result()
+        ),
+        protocol=protocol,
     )
