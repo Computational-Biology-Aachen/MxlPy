@@ -93,8 +93,36 @@ def _escape_non_math(s: str) -> str:
     return s.replace("_", r"\_")
 
 
-def _fn_to_latex(fn: Callable, arg_names: list[str]) -> str:
-    return sympy.latex(fn_to_sympy(fn, _list_of_symbols(arg_names)))
+def _name_to_latex(s: str) -> str:
+    return _escape_non_math(_rename_latex(s))
+
+
+def _sympy_to_latex(expr: sympy.Expr) -> str:
+    return sympy.latex(
+        expr,
+        fold_frac_powers=True,
+        fold_func_brackets=True,
+        fold_short_frac=True,
+        mul_symbol="dot",
+    )
+
+
+def _fn_to_latex(
+    fn: Callable,
+    arg_names: list[str],
+    n_current: int,
+    long_name_cutoff: int = 10,
+) -> tuple[str, dict[str, str]]:
+    long_names = (k for k in arg_names if len(k) >= long_name_cutoff)
+    replacements = {
+        k: _name_to_latex(f"_x{i}") for i, k in enumerate(long_names, n_current)
+    }
+
+    expr = fn_to_sympy(
+        fn, _list_of_symbols([replacements.get(k, k) for k in arg_names])
+    )
+    fn_str = _sympy_to_latex(expr)
+    return fn_str, replacements
 
 
 def _table(
@@ -219,7 +247,7 @@ def _latex_list_as_sections(
         [
             "\n".join(
                 (
-                    sec_fn(_escape_non_math(name)),
+                    sec_fn(_name_to_latex(name)),
                     content,
                 )
             )
@@ -233,7 +261,7 @@ def _latex_list_as_bold(rows: list[tuple[str, str]]) -> str:
         [
             "\n".join(
                 (
-                    _bold(_escape_non_math(name)) + r"\\",
+                    _bold(_name_to_latex(name)) + r"\\",
                     content,
                     r"\vspace{20pt}",
                 )
@@ -243,33 +271,58 @@ def _latex_list_as_bold(rows: list[tuple[str, str]]) -> str:
     )
 
 
-def _stoichiometries_to_latex(stoich: Mapping[str, float | Derived]) -> str:
-    def optional_factor(k: str, v: float) -> str:
-        if v == 1:
-            return _mathrm(k)
-        if v == -1:
-            return f"-{_mathrm(k)}"
-        return f"{v} {cdot} {_mathrm(k)}"
+def _replacements(replacements: dict[str, str]) -> str:
+    reps = "\n".join(rf"{v} &= {k} \\" for k, v in replacements.items())
 
-    def latex_for_empty(s: str) -> str:
-        if len(s) == 0:
-            return empty_set
-        return s
+    return rf"""\begin{{align*}}
+        \mathrm{{with}}\ {reps}
+    \end{{align*}}
+    """
 
+
+def _diff_eq(name: str) -> str:
+    return rf"\frac{{\mathrm{{d}}\ {name}}}{{\mathrm{{dt}}}}"
+
+
+def _optional_factor(k: str, v: float) -> str:
+    if v == 1:
+        return k
+    if v == -1:
+        return f"-{k}"
+    return f"{v} {cdot} {k}"
+
+
+def _stoichs_to_latex(
+    stoichs: Mapping[str, float | Derived],
+) -> tuple[str, dict[str, str]]:
     line = []
-    for k, v in stoich.items():
-        if isinstance(v, int | float):
-            line.append(optional_factor(k, v))
-        else:
-            line.append(_fn_to_latex(v.fn, [_rename_latex(i) for i in v.args]))
 
+    n_current = 0
+    repls = {}
+    for rxn_name, stoich in stoichs.items():
+        rxn_name = _mathrm(_name_to_latex(rxn_name))  # noqa: PLW2901
+
+        if isinstance(stoich, int | float):
+            line.append(_optional_factor(rxn_name, stoich))
+        else:
+            fn_str, rep = _fn_to_latex(
+                stoich.fn,
+                [_mathrm(_name_to_latex(i)) for i in stoich.args],
+                n_current=n_current,
+            )
+            line.append(f"{fn_str} {cdot} {rxn_name}")
+            repls.update(rep)
+            n_current += len(rep)
+
+    # Avoid +- situation
     line_str = f"{line[0]}"
     for element in line[1:]:
         if element.startswith("-"):
             line_str += f" {element}"
         else:
             line_str += f" + {element}"
-    return _math_il(line_str)
+
+    return _math_il(line_str), repls
 
 
 @dataclass
@@ -332,7 +385,7 @@ class TexExport:
     variables: dict[str, float]
     derived: dict[str, Derived]
     reactions: dict[str, TexReaction]
-    stoichiometries: dict[str, Mapping[str, float | Derived]]
+    diff_eqs: dict[str, Mapping[str, float | Derived]]
 
     @staticmethod
     def _diff_parameters(
@@ -389,10 +442,8 @@ class TexExport:
             variables=self._diff_variables(self.variables, other.variables),
             derived=self._diff_derived(self.derived, other.derived),
             reactions=self._diff_reactions(self.reactions, other.reactions),
-            stoichiometries={
-                k: v
-                for k, v in other.stoichiometries.items()
-                if self.stoichiometries.get(k, {}) != v
+            diff_eqs={
+                k: v for k, v in other.diff_eqs.items() if self.diff_eqs.get(k, {}) != v
             },
         )
 
@@ -439,9 +490,9 @@ class TexExport:
                 )
                 for k, v in self.reactions.items()
             },
-            stoichiometries={
+            diff_eqs={
                 _add_gls_if_found(k): {gls.get(k2, k2): v2 for k2, v2 in v.items()}
-                for k, v in self.stoichiometries.items()
+                for k, v in self.diff_eqs.items()
             },
         )
 
@@ -465,7 +516,7 @@ class TexExport:
             headers=["Model name", "Initial concentration"],
             rows=[
                 [
-                    k,
+                    _name_to_latex(k),
                     f"{v:.2e}",
                 ]
                 for k, v in self.variables.items()
@@ -495,7 +546,7 @@ class TexExport:
         return _table(
             headers=["Parameter name", "Parameter value"],
             rows=[
-                [_math_il(_mathrm(_escape_non_math(_rename_latex(k)))), f"{v:.2e}"]
+                [_name_to_latex(k), f"{v:.2e}"]
                 for k, v in sorted(self.parameters.items())
             ],
             n_columns=2,
@@ -522,14 +573,18 @@ class TexExport:
         True
 
         """
-        return _latex_list(
-            rows=[
-                _dmath(
-                    f"{_rename_latex(k)} = {_fn_to_latex(v.fn, [_rename_latex(i) for i in v.args])}"
-                )
-                for k, v in sorted(self.derived.items())
-            ]
-        )
+        rows = []
+        for k, v in sorted(self.derived.items()):
+            fn_str, repls = _fn_to_latex(
+                v.fn,
+                [_mathrm(_name_to_latex(i)) for i in v.args],
+                n_current=0,
+            )
+            rows.append(_dmath(f"{_mathrm(_name_to_latex(k))} = {fn_str}"))
+            if repls:
+                rows.append(_replacements(repls))
+
+        return _latex_list(rows=rows)
 
     def export_reactions(self) -> str:
         """Export reactions as LaTeX equations.
@@ -549,16 +604,19 @@ class TexExport:
         True
 
         """
-        return _latex_list(
-            rows=[
-                _dmath(
-                    f"{_rename_latex(k)} = {_fn_to_latex(v.fn, [_rename_latex(i) for i in v.args])}"
-                )
-                for k, v in sorted(self.reactions.items())
-            ]
-        )
+        rows = []
+        for k, v in sorted(self.reactions.items()):
+            fn_str, repls = _fn_to_latex(
+                v.fn,
+                [_mathrm(_name_to_latex(i)) for i in v.args],
+                n_current=0,
+            )
+            rows.append(_dmath(f"{_mathrm(_name_to_latex(k))} = {fn_str}"))
+            if repls:
+                rows.append(_replacements(repls))
+        return _latex_list(rows=rows)
 
-    def export_stoichiometries(self) -> str:
+    def export_diff_eqs(self) -> str:
         """Export stoichiometries as LaTeX table.
 
         Returns
@@ -575,20 +633,15 @@ class TexExport:
         True
 
         """
-        return _table(
-            headers=["Rate name", "Stoichiometry"],
-            rows=[
-                [
-                    _escape_non_math(_rename_latex(k)),
-                    _stoichiometries_to_latex(v),
-                ]
-                for k, v in sorted(self.stoichiometries.items())
-            ],
-            n_columns=2,
-            label="model-stoichs",
-            short_desc="Model stoichiometries.",
-            long_desc="Model stoichiometries.",
-        )
+        rows = []
+        for var_name, stoich in sorted(self.diff_eqs.items()):
+            dxdt = _math_il(_diff_eq(_mathrm(_name_to_latex(var_name))))
+            stoich_str, repls = _stoichs_to_latex(stoich)
+
+            rows.append(f"{dxdt} = {stoich_str}")
+            if repls:
+                rows.append(_replacements(repls))
+        return _latex_list(rows)
 
     def export_all(self) -> str:
         """Export all model parts as a complete LaTeX document section.
@@ -637,8 +690,8 @@ class TexExport:
             )
             sections.append(
                 (
-                    "Stoichiometries",
-                    self.export_stoichiometries(),
+                    "Differential equations",
+                    self.export_diff_eqs(),
                 )
             )
         return _latex_list_as_sections(sections, _subsubsection_)
@@ -691,12 +744,17 @@ class TexExport:
 
 
 def _to_tex_export(self: Model) -> TexExport:
+    diff_eqs = {}
+    for rxn_name, rxn in self.reactions.items():
+        for var_name, factor in rxn.stoichiometry.items():
+            diff_eqs.setdefault(var_name, {})[rxn_name] = factor
+
     return TexExport(
         parameters=self.parameters,
         variables=self.get_initial_conditions(),  # FIXME: think about this later
         derived=self.derived,
         reactions={k: TexReaction(v.fn, v.args) for k, v in self.reactions.items()},
-        stoichiometries={k: v.stoichiometry for k, v in self.reactions.items()},
+        diff_eqs=diff_eqs,
     )
 
 
