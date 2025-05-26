@@ -237,6 +237,12 @@ def _latex_list(rows: list[str]) -> str:
     return "\n\n".join(rows)
 
 
+def _latex_align(items: list[str]) -> str:
+    return rf"""\begin{{align*}}
+{"\n".join(items)}
+\end{{align*}}"""
+
+
 def _latex_list_as_sections(
     rows: list[tuple[str, str]], sec_fn: Callable[[str], str]
 ) -> str:
@@ -268,13 +274,11 @@ def _latex_list_as_bold(rows: list[tuple[str, str]]) -> str:
     )
 
 
-def _replacements(replacements: dict[str, str]) -> str:
-    reps = "\n".join(rf"{v} &= {k} \\" for k, v in replacements.items())
+def _replacements_in_align(replacements: dict[str, str]) -> str:
+    reps = "\n".join(rf"{v} &:: {k} \\" for k, v in replacements.items())
 
-    return rf"""\begin{{align*}}
-        \mathrm{{with}}\ {reps}
-    \end{{align*}}
-    """
+    return rf"""\mathrm{{with}}&\\
+{reps}\\"""
 
 
 def _diff_eq(name: str) -> str:
@@ -577,11 +581,11 @@ class TexExport:
                 arg_names=[_mathrm(_name_to_latex(i)) for i in v.args],
                 long_name_cutoff=long_name_cutoff,
             )
-            rows.append(_dmath(f"{_mathrm(_name_to_latex(k))} = {fn_str}"))
+            rows.append(f"{_mathrm(_name_to_latex(k))} &= {fn_str} \\\\")
             if repls:
-                rows.append(_replacements(repls))
+                rows.append(_replacements_in_align(repls))
 
-        return _latex_list(rows=rows)
+        return _latex_align(rows)
 
     def export_reactions(self, long_name_cutoff: int) -> str:
         """Export reactions as LaTeX equations.
@@ -608,10 +612,10 @@ class TexExport:
                 arg_names=[_mathrm(_name_to_latex(i)) for i in v.args],
                 long_name_cutoff=long_name_cutoff,
             )
-            rows.append(_dmath(f"{_mathrm(_name_to_latex(k))} = {fn_str}"))
+            rows.append(f"{_mathrm(_name_to_latex(k))} &= {fn_str} \\\\")
             if repls:
-                rows.append(_replacements(repls))
-        return _latex_list(rows=rows)
+                rows.append(_replacements_in_align(repls))
+        return _latex_align(rows)
 
     def export_diff_eqs(
         self,
@@ -635,16 +639,16 @@ class TexExport:
         """
         rows = []
         for var_name, stoich in sorted(self.diff_eqs.items()):
-            dxdt = _math_il(_diff_eq(_mathrm(_name_to_latex(var_name))))
+            dxdt = _diff_eq(_mathrm(_name_to_latex(var_name)))
             stoich_str, repls = _stoichs_to_latex(
                 stoich,
                 long_name_cutoff=long_name_cutoff,
             )
 
-            rows.append(f"{dxdt} = {_math_il(stoich_str)}")
+            rows.append(f"{dxdt} &= {stoich_str} \\\\")
             if repls:
-                rows.append(_replacements(repls))
-        return _latex_list(rows)
+                rows.append(_replacements_in_align(repls))
+        return _latex_align(rows)
 
     def export_all(self, long_name_cutoff: int = 10) -> str:
         """Export all model parts as a complete LaTeX document section.
