@@ -688,6 +688,21 @@ class Model:
 
         return self
 
+    def get_unused_parameters(self) -> set[str]:
+        """Get parameters which aren't used in the model."""
+        args = set()
+        for variable in self._variables.values():
+            if isinstance(variable, Derived):
+                args.update(variable.args)
+        for derived in self._derived.values():
+            args.update(derived.args)
+        for reaction in self._reactions.values():
+            args.update(reaction.args)
+        for surrogate in self._surrogates.values():
+            args.update(surrogate.args)
+
+        return set(self._parameters).difference(args)
+
     ##########################################################################
     # Variables
     ##########################################################################

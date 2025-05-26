@@ -92,6 +92,12 @@ def markdown(
         f"# Report:  {datetime.now(UTC).strftime('%Y-%m-%d')}",
     ]
 
+    # Unused
+    if unused := m2.get_unused_parameters():
+        content.append("## <span style='color: red'>Unused parameters</span>")
+        names = "\n".join(f"<li>{i}</li>\n" for i in sorted(unused))
+        content.append(f"<ul>\n{names}\n</ul>\n")
+
     # Variables
     new_variables, removed_variables, changed_variables = _new_removed_changed(
         m1.variables, m2.variables
