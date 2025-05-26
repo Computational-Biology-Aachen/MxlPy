@@ -1,5 +1,7 @@
 """Example label models."""
 
+from __future__ import annotations
+
 from mxlpy import Model, fns
 
 __all__ = ["get_tpi_ald_model"]

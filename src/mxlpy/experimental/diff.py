@@ -1,12 +1,24 @@
 """Diffing utilities for comparing models."""
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from __future__ import annotations
 
-from mxlpy.model import Model
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
 from mxlpy.types import Derived
 
-__all__ = ["DerivedDiff", "ModelDiff", "ReactionDiff", "model_diff", "soft_eq"]
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from mxlpy.model import Model
+
+__all__ = [
+    "DerivedDiff",
+    "ModelDiff",
+    "ReactionDiff",
+    "model_diff",
+    "soft_eq",
+]
 
 
 @dataclass

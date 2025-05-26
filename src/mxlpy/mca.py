@@ -27,15 +27,15 @@ from mxlpy.parallel import parallelise
 from mxlpy.scan import _steady_state_worker
 from mxlpy.types import ResponseCoefficients
 
+if TYPE_CHECKING:
+    from mxlpy.model import Model
+    from mxlpy.types import IntegratorType
+
 __all__ = [
     "parameter_elasticities",
     "response_coefficients",
     "variable_elasticities",
 ]
-
-if TYPE_CHECKING:
-    from mxlpy.model import Model
-    from mxlpy.types import IntegratorType
 
 
 def _response_coefficient_worker(

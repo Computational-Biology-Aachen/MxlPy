@@ -10,6 +10,11 @@ import sympy
 from mxlpy.meta.source_tools import fn_to_sympy
 from mxlpy.types import Derived, RateFn
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from mxlpy import Model
+
 __all__ = [
     "TexExport",
     "TexReaction",
@@ -17,12 +22,6 @@ __all__ = [
     "generate_latex_code",
     "get_model_tex_diff",
 ]
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
-
-    from mxlpy import Model
-
 
 cdot = r"\cdot"
 empty_set = r"\emptyset"

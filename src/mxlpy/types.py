@@ -17,9 +17,13 @@ Classes:
 from __future__ import annotations
 
 from abc import abstractmethod
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar, cast
 
+import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 
 __all__ = [
     "AbstractEstimator",
@@ -44,12 +48,6 @@ __all__ = [
     "unwrap",
     "unwrap2",
 ]
-
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar, cast
-
-import numpy as np
-from numpy.typing import NDArray
 
 type RateFn = Callable[..., float]
 type Array = NDArray[np.floating[Any]]

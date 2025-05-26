@@ -1,16 +1,20 @@
 """Tools for working with python source files."""
 
+from __future__ import annotations
+
 import ast
 import inspect
 import textwrap
-from collections.abc import Callable
 from dataclasses import dataclass
-from types import ModuleType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import dill
 import sympy
 from sympy.printing.pycode import pycode
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import ModuleType
 
 __all__ = [
     "Context",
@@ -35,7 +39,7 @@ class Context:
         symbols: dict[str, sympy.Symbol | sympy.Expr] | None = None,
         caller: Callable | None = None,
         parent_module: ModuleType | None = None,
-    ) -> "Context":
+    ) -> Context:
         """Update the context with new values."""
         return Context(
             symbols=self.symbols if symbols is None else symbols,

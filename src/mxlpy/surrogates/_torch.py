@@ -1,17 +1,21 @@
+from __future__ import annotations
+
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import numpy as np
 import pandas as pd
 import torch
 from torch import nn
 from torch.optim.adam import Adam
-from torch.optim.optimizer import ParamsT
 
 from mxlpy.nn._torch import MLP, DefaultDevice
 from mxlpy.nn._torch import train as _train
 from mxlpy.types import AbstractSurrogate, Derived
+
+if TYPE_CHECKING:
+    from torch.optim.optimizer import ParamsT
 
 type LossFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 

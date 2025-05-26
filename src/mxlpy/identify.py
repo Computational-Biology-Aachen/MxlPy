@@ -1,6 +1,9 @@
 """Numerical parameter identification estimations."""
 
+from __future__ import annotations
+
 from functools import partial
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -8,11 +11,15 @@ from tqdm import tqdm
 
 from mxlpy import fit
 from mxlpy.distributions import LogNormal, sample
-from mxlpy.model import Model
 from mxlpy.parallel import parallelise
-from mxlpy.types import Array
 
-__all__ = ["profile_likelihood"]
+if TYPE_CHECKING:
+    from mxlpy.model import Model
+    from mxlpy.types import Array
+
+__all__ = [
+    "profile_likelihood",
+]
 
 
 def _mc_fit_time_course_worker(

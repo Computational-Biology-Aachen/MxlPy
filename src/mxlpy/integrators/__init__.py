@@ -6,9 +6,6 @@ It includes support for both Assimulo and Scipy integrators, with Assimulo being
 
 from __future__ import annotations
 
-__all__ = ["DefaultIntegrator"]
-
-
 from .int_scipy import Scipy
 
 try:
@@ -17,3 +14,7 @@ try:
     DefaultIntegrator = Assimulo
 except ImportError:
     DefaultIntegrator = Scipy
+
+__all__ = [
+    "DefaultIntegrator",
+]

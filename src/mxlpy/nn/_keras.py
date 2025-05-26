@@ -1,12 +1,19 @@
-from typing import cast
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
 
 import keras
 import pandas as pd
 from tqdm.keras import TqdmCallback
 
-from mxlpy.types import Array
+if TYPE_CHECKING:
+    from mxlpy.types import Array
 
-__all__ = ["LSTM", "MLP", "train"]
+__all__ = [
+    "LSTM",
+    "MLP",
+    "train",
+]
 
 
 def train(

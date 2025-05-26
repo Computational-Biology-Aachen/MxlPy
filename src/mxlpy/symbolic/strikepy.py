@@ -10,13 +10,15 @@ FIXME:
 - performance issues of generic_rank
 """
 
+from __future__ import annotations
+
 import textwrap
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from functools import partial
 from math import ceil, inf
 from time import time
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -27,7 +29,8 @@ import tqdm
 from sympy import Matrix
 from sympy.matrices import zeros
 
-from .symbolic_model import SymbolicModel
+if TYPE_CHECKING:
+    from .symbolic_model import SymbolicModel
 
 __all__ = [
     "Options",

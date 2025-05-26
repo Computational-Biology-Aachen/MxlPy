@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-__all__ = [
-    "Scipy",
-]
-
 import copy
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -18,6 +13,11 @@ from mxlpy.types import Array, ArrayLike
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+
+__all__ = [
+    "Scipy",
+]
 
 
 @dataclass

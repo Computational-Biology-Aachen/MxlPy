@@ -17,13 +17,13 @@ import numpy as np
 import pandas as pd
 
 from mxlpy import fns
-from mxlpy.types import (
-    AbstractSurrogate,
-    Array,
-    Derived,
-    Reaction,
-    Readout,
-)
+from mxlpy.types import AbstractSurrogate, Array, Derived, Reaction, Readout
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+    from inspect import FullArgSpec
+
+    from mxlpy.types import Callable, Param, RateFn, RetType
 
 __all__ = [
     "ArityMismatchError",
@@ -33,12 +33,6 @@ __all__ = [
     "Model",
     "ModelCache",
 ]
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
-    from inspect import FullArgSpec
-
-    from mxlpy.types import Callable, Param, RateFn, RetType
 
 
 @dataclass

@@ -1,12 +1,16 @@
-from collections.abc import Iterable
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
 from numpy import polynomial
 
 from mxlpy.types import AbstractSurrogate, ArrayLike, Derived
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 __all__ = [
     "PolynomialExpansion",

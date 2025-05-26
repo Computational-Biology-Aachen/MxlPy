@@ -1,5 +1,7 @@
 """Example models for phase plane analysis."""
 
+from __future__ import annotations
+
 from mxlpy import Model, fns
 
 __all__ = ["get_phase_plane", "v1"]

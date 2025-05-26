@@ -5,6 +5,8 @@ which is commonly used to model the spread of infectious diseases.
 
 """
 
+from __future__ import annotations
+
 from mxlpy import Model, fns
 
 __all__ = ["get_sir", "get_sird"]

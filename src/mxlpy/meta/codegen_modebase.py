@@ -13,7 +13,9 @@ from mxlpy.types import Derived
 if TYPE_CHECKING:
     from mxlpy.model import Model
 
-__all__ = ["generate_mxlpy_code"]
+__all__ = [
+    "generate_mxlpy_code",
+]
 
 
 def _list_of_symbols(args: list[str]) -> list[sympy.Symbol | sympy.Expr]:

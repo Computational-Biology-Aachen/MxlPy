@@ -24,10 +24,13 @@ from typing import TYPE_CHECKING, Any, cast
 import pebble
 from tqdm import tqdm
 
-__all__ = ["Cache", "parallelise"]
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Hashable
+
+__all__ = [
+    "Cache",
+    "parallelise",
+]
 
 
 def _pickle_name(k: Hashable) -> str:

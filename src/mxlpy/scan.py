@@ -15,7 +15,24 @@ Functions:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from functools import partial
+from typing import TYPE_CHECKING, Protocol, Self, cast
+
+import numpy as np
+import pandas as pd
+
 from mxlpy.integrators import DefaultIntegrator
+from mxlpy.parallel import Cache, parallelise
+from mxlpy.simulator import Result, Simulator
+from mxlpy.types import IntegratorType, ProtocolByPars, SteadyStates, TimeCourseByPars
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from mxlpy.model import Model
+    from mxlpy.types import Array
+
 
 __all__ = [
     "ProtocolWorker",
@@ -27,28 +44,6 @@ __all__ = [
     "time_course",
     "time_course_over_protocol",
 ]
-
-from dataclasses import dataclass
-from functools import partial
-from typing import TYPE_CHECKING, Protocol, Self, cast
-
-import numpy as np
-import pandas as pd
-
-from mxlpy.parallel import Cache, parallelise
-from mxlpy.simulator import Result, Simulator
-from mxlpy.types import (
-    IntegratorType,
-    ProtocolByPars,
-    SteadyStates,
-    TimeCourseByPars,
-)
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from mxlpy.model import Model
-    from mxlpy.types import Array
 
 
 def _update_parameters_and_initial_conditions[T](

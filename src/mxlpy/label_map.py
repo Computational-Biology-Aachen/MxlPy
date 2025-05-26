@@ -24,12 +24,14 @@ import numpy as np
 
 from mxlpy.model import Model
 
-__all__ = ["LabelMapper"]
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from mxlpy.types import Derived
+
+__all__ = [
+    "LabelMapper",
+]
 
 
 def _total_concentration(*args: float) -> float:

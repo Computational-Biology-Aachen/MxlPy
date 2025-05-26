@@ -1,5 +1,7 @@
 """Test nested function calls in MXLpy."""
 
+from __future__ import annotations
+
 from mxlpy import Model
 from mxlpy.fns import constant
 

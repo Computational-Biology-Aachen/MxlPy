@@ -16,12 +16,14 @@ from typing import TYPE_CHECKING
 
 from mxlpy.model import Derived, Model
 
-__all__ = ["LinearLabelMapper"]
-
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     import pandas as pd
+
+__all__ = [
+    "LinearLabelMapper",
+]
 
 
 def _generate_isotope_labels(base_name: str, num_labels: int) -> list[str]:

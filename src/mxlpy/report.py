@@ -1,5 +1,7 @@
 """Generate a report comparing two models."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +12,10 @@ import sympy
 from mxlpy.meta.source_tools import fn_to_sympy
 from mxlpy.model import Model
 
-__all__ = ["AnalysisFn", "markdown"]
+__all__ = [
+    "AnalysisFn",
+    "markdown",
+]
 
 type AnalysisFn = Callable[[Model, Model, Path], tuple[str, Path]]
 

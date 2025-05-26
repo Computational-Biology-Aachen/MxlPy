@@ -19,8 +19,36 @@ Functions:
 from __future__ import annotations
 
 import contextlib
+import itertools as it
+import math
+from typing import TYPE_CHECKING, Any, Literal, cast
 
+import numpy as np
+import pandas as pd
+import seaborn as sns
 from cycler import cycler
+from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.colors import (
+    LogNorm,
+    Normalize,
+    SymLogNorm,
+    colorConverter,  # type: ignore
+)
+from matplotlib.figure import Figure
+from mpl_toolkits.mplot3d import Axes3D
+
+from mxlpy.label_map import LabelMapper
+
+if TYPE_CHECKING:
+    from collections.abc import Generator, Iterable
+
+    from matplotlib.collections import QuadMesh
+
+    from mxlpy.linear_label_map import LinearLabelMapper
+    from mxlpy.model import Model
+    from mxlpy.types import Array, ArrayLike
+
 
 __all__ = [
     "Color",
@@ -52,35 +80,6 @@ __all__ = [
     "violins",
     "violins_from_2d_idx",
 ]
-
-import itertools as it
-import math
-from typing import TYPE_CHECKING, Any, Literal, cast
-
-import numpy as np
-import pandas as pd
-import seaborn as sns
-from matplotlib import pyplot as plt
-from matplotlib.axes import Axes
-from matplotlib.colors import (
-    LogNorm,
-    Normalize,
-    SymLogNorm,
-    colorConverter,  # type: ignore
-)
-from matplotlib.figure import Figure
-from mpl_toolkits.mplot3d import Axes3D
-
-from mxlpy.label_map import LabelMapper
-
-if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable
-
-    from matplotlib.collections import QuadMesh
-
-    from mxlpy.linear_label_map import LinearLabelMapper
-    from mxlpy.model import Model
-    from mxlpy.types import Array, ArrayLike
 
 type FigAx = tuple[Figure, Axes]
 type FigAxs = tuple[Figure, list[Axes]]

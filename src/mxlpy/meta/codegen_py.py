@@ -1,15 +1,23 @@
 """Module to export models as code."""
 
+from __future__ import annotations
+
 import warnings
-from collections.abc import Callable, Generator, Iterable, Iterator
+from typing import TYPE_CHECKING
 
 import sympy
 
 from mxlpy.meta.source_tools import fn_to_sympy, sympy_to_inline
-from mxlpy.model import Model
 from mxlpy.types import Derived
 
-__all__ = ["generate_model_code_py"]
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator, Iterable, Iterator
+
+    from mxlpy.model import Model
+
+__all__ = [
+    "generate_model_code_py",
+]
 
 
 def _conditional_join[T](

@@ -24,7 +24,13 @@ if TYPE_CHECKING:
 
     from mxlpy.types import Array
 
-__all__ = ["DefaultDevice", "LSTM", "LossFn", "MLP", "train"]
+__all__ = [
+    "DefaultDevice",
+    "LSTM",
+    "LossFn",
+    "MLP",
+    "train",
+]
 
 DefaultDevice = torch.device("cpu")
 

@@ -18,13 +18,12 @@ from scipy.optimize import minimize
 
 from mxlpy.integrators import DefaultIntegrator
 from mxlpy.simulator import Simulator
-from mxlpy.types import (
-    Array,
-    ArrayLike,
-    Callable,
-    IntegratorType,
-    cast,
-)
+from mxlpy.types import Array, ArrayLike, Callable, IntegratorType, cast
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+    from mxlpy.model import Model
 
 __all__ = [
     "InitialGuess",
@@ -40,10 +39,6 @@ __all__ = [
     "time_course_over_protocol",
 ]
 
-if TYPE_CHECKING:
-    import pandas as pd
-
-    from mxlpy.model import Model
 
 type InitialGuess = dict[str, float]
 type ResidualFn = Callable[[Array], float]

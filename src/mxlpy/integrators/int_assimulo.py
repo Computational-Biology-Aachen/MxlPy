@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-__all__ = [
-    "Assimulo",
-]
-
 import contextlib
 import os
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -23,6 +18,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from mxlpy.types import Array, ArrayLike
+
+
+__all__ = [
+    "Assimulo",
+]
 
 
 @dataclass

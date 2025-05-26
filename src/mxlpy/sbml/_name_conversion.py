@@ -3,7 +3,11 @@ from __future__ import annotations
 import keyword
 import re
 
-__all__ = ["RE_FROM_SBML", "RE_KWDS", "SBML_DOT"]
+__all__ = [
+    "RE_FROM_SBML",
+    "RE_KWDS",
+    "SBML_DOT",
+]
 
 RE_KWDS = re.compile("|".join(f"^{i}$" for i in keyword.kwlist))
 SBML_DOT = "__SBML_DOT__"

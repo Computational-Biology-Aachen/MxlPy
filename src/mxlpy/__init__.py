@@ -41,27 +41,13 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from . import (
-    distributions,
-    experimental,
-    fit,
-    fns,
-    mc,
-    mca,
-    plot,
-    report,
-    sbml,
-)
+from . import distributions, experimental, fit, fns, mc, mca, plot, report, sbml
 from .integrators import DefaultIntegrator, Scipy
 from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
 from .mc import Cache
 from .model import Model
-from .scan import (
-    steady_state,
-    time_course,
-    time_course_over_protocol,
-)
+from .scan import steady_state, time_course, time_course_over_protocol
 from .simulator import Simulator
 from .symbolic import SymbolicModel, to_symbolic_model
 from .types import Derived, IntegratorProtocol, unwrap
@@ -72,11 +58,7 @@ with contextlib.suppress(ImportError):
 if TYPE_CHECKING:
     from mxlpy.types import ArrayLike
 
-    from . import (
-        nn,
-        npe,
-        surrogates,
-    )
+    from . import nn, npe, surrogates
 else:
     from lazy_import import lazy_module
 

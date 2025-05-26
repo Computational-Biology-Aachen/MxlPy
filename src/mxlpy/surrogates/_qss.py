@@ -9,7 +9,10 @@ from mxlpy.types import AbstractSurrogate, Array
 if TYPE_CHECKING:
     import pandas as pd
 
-__all__ = ["QSSFn", "Surrogate"]
+__all__ = [
+    "QSSFn",
+    "Surrogate",
+]
 
 type QSSFn = Callable[..., Iterable[float] | Array]
 

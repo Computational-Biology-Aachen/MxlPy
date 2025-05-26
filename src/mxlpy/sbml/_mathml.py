@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
+from ._name_conversion import _name_to_py
+from ._unit_conversion import get_ast_types
+
+if TYPE_CHECKING:
+    from libsbml import ASTNode
+
 __all__ = [
     "AST_TYPES",
     "handle_ast_constant_e",
@@ -73,13 +81,6 @@ __all__ = [
     "parse_sbml_math",
 ]
 
-from typing import TYPE_CHECKING, Any
-
-from ._name_conversion import _name_to_py
-from ._unit_conversion import get_ast_types
-
-if TYPE_CHECKING:
-    from libsbml import ASTNode
 
 AST_TYPES = get_ast_types()
 

@@ -1,11 +1,19 @@
 """Module to parameterise models."""
 
-from pathlib import Path
+from __future__ import annotations
 
-import pandas as pd
+from typing import TYPE_CHECKING
+
 from parameteriser.brenda.v0 import Brenda
 
-__all__ = ["get_km_and_kcat_from_brenda"]
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pandas as pd
+
+__all__ = [
+    "get_km_and_kcat_from_brenda",
+]
 
 
 def get_km_and_kcat_from_brenda(

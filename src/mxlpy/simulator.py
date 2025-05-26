@@ -21,13 +21,16 @@ from sympy import lambdify
 from mxlpy.integrators import DefaultIntegrator
 from mxlpy.symbolic import to_symbolic_model
 
-__all__ = ["Result", "Simulator"]
-
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from mxlpy.model import Model
     from mxlpy.types import Array, ArrayLike, IntegratorProtocol, IntegratorType
+
+__all__ = [
+    "Result",
+    "Simulator",
+]
 
 
 def _normalise_split_results(

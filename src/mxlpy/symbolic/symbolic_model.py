@@ -1,15 +1,24 @@
 # ruff: noqa: D100, D101, D102, D103, D104, D105, D106, D107, D200, D203, D400, D401
 
 
-from collections.abc import Iterable
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import sympy
 
 from mxlpy.meta.source_tools import fn_to_sympy
-from mxlpy.model import Model
 
-__all__ = ["SymbolicModel", "to_symbolic_model"]
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from mxlpy.model import Model
+
+__all__ = [
+    "SymbolicModel",
+    "to_symbolic_model",
+]
 
 
 @dataclass
