@@ -13,6 +13,7 @@ nav:
       - Fitting: fitting.ipynb
       - Monte Carlo methods: monte-carlo.ipynb
       - Label models: label-models.ipynb
+      - Comparing models: comparisons.ipynb
       - Model parameterisation: parameterise.ipynb
       - Stability analysis: stability.ipynb
       - Identifiability: parameter_identifiability.ipynb

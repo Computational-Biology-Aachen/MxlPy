@@ -21,7 +21,8 @@ from __future__ import annotations
 import contextlib
 import itertools as it
 import math
-from typing import TYPE_CHECKING, Any, Literal, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 import numpy as np
 import pandas as pd
@@ -41,9 +42,10 @@ from mpl_toolkits.mplot3d import Axes3D
 from mxlpy.label_map import LabelMapper
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable
+    from collections.abc import Generator, Iterable, Iterator
 
     from matplotlib.collections import QuadMesh
+    from numpy.typing import NDArray
 
     from mxlpy.linear_label_map import LinearLabelMapper
     from mxlpy.model import Model
@@ -51,6 +53,7 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "Axs",
     "Color",
     "FigAx",
     "FigAxs",
@@ -59,7 +62,10 @@ __all__ = [
     "RGBA",
     "add_grid",
     "bars",
+    "bars_autogrouped",
+    "bars_grouped",
     "context",
+    "grid_labels",
     "grid_layout",
     "heatmap",
     "heatmap_from_2d_idx",
@@ -81,8 +87,45 @@ __all__ = [
     "violins_from_2d_idx",
 ]
 
+
+@dataclass
+class Axs:
+    """Convenience container  axes."""
+
+    axs: NDArray[np.object_]
+
+    def __iter__(self) -> Iterator[Axes]:
+        """Get flat axes."""
+        yield from cast(list[Axes], self.axs.flatten())
+
+    def __len__(self) -> int:
+        """Length of axes."""
+        return len(self.axs.flatten())
+
+    @overload
+    def __getitem__(self, row_col: int) -> Axes: ...
+
+    @overload
+    def __getitem__(self, row_col: slice) -> NDArray[np.object_]: ...
+
+    @overload
+    def __getitem__(self, row_col: tuple[int, int]) -> Axes: ...
+
+    @overload
+    def __getitem__(self, row_col: tuple[slice, int]) -> NDArray[np.object_]: ...
+
+    @overload
+    def __getitem__(self, row_col: tuple[int, slice]) -> NDArray[np.object_]: ...
+
+    def __getitem__(
+        self, row_col: int | slice | tuple[int | slice, int | slice]
+    ) -> Axes | NDArray[np.object_]:
+        """Get Axes or Array of Axes."""
+        return cast(Axes, self.axs[row_col])
+
+
 type FigAx = tuple[Figure, Axes]
-type FigAxs = tuple[Figure, list[Axes]]
+type FigAxs = tuple[Figure, Axs]
 
 type Linestyle = Literal[
     "solid",
@@ -95,6 +138,7 @@ type Linestyle = Literal[
 type RGB = tuple[float, float, float]
 type RGBA = tuple[float, float, float, float]
 type Color = str | RGB | RGBA
+
 
 ##########################################################################
 # Helpers
@@ -157,7 +201,12 @@ def _partition_by_order_of_magnitude(s: pd.Series) -> list[list[str]]:
     """Partition a series into groups based on the order of magnitude of the values."""
     return [
         i.to_list()
-        for i in np.floor(np.log10(s)).to_frame(name=0).groupby(0)[0].groups.values()  # type: ignore
+        for i in s.abs()
+        .apply(np.log10)
+        .apply(np.floor)
+        .to_frame(name=0)
+        .groupby(0)[0]
+        .groups.values()  # type: ignore
     ]
 
 
@@ -255,6 +304,18 @@ def add_grid(ax: Axes) -> Axes:
     ax.grid(visible=True)
     ax.set_axisbelow(b=True)
     return ax
+
+
+def grid_labels(
+    axs: Axs,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+) -> None:
+    """Apply labels to left and bottom axes."""
+    for ax in axs[-1, :]:
+        ax.set_xlabel(xlabel)
+    for ax in axs[:, 0]:
+        ax.set_ylabel(ylabel)
 
 
 def rotate_xlabels(
@@ -366,7 +427,6 @@ def _default_fig_ax(
 
 
 def _default_fig_axs(
-    axs: list[Axes] | None,
     *,
     ncols: int,
     nrows: int,
@@ -390,19 +450,16 @@ def _default_fig_axs(
         Figure and Axes objects for the plot.
 
     """
-    if axs is None or len(axs) == 0:
-        fig, axs_array = plt.subplots(
-            nrows=nrows,
-            ncols=ncols,
-            sharex=sharex,
-            sharey=sharey,
-            figsize=figsize,
-            squeeze=False,
-            layout="constrained",
-        )
-        axs = list(axs_array.flatten())
-    else:
-        fig = cast(Figure, axs[0].get_figure())
+    fig, axs_array = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        sharex=sharex,
+        sharey=sharey,
+        figsize=figsize,
+        squeeze=False,
+        layout="constrained",
+    )
+    axs = Axs(axs_array)
 
     if grid:
         for ax in axs:
@@ -432,7 +489,6 @@ def two_axes(
 ) -> FigAxs:
     """Create a figure with two axes."""
     return _default_fig_axs(
-        None,
         ncols=2,
         nrows=1,
         figsize=figsize,
@@ -447,18 +503,17 @@ def grid_layout(
     *,
     n_cols: int = 2,
     col_width: float = 3,
-    row_height: float = 4,
+    row_height: float = 2.5,
     sharex: bool = True,
     sharey: bool = False,
     grid: bool = True,
-) -> tuple[Figure, list[Axes]]:
+) -> FigAxs:
     """Create a grid layout for the given number of groups."""
     n_cols = min(n_groups, n_cols)
     n_rows = math.ceil(n_groups / n_cols)
     figsize = (n_cols * col_width, n_rows * row_height)
 
     return _default_fig_axs(
-        None,
         ncols=n_cols,
         nrows=n_rows,
         figsize=figsize,
@@ -474,17 +529,101 @@ def grid_layout(
 
 
 def bars(
-    x: pd.DataFrame,
+    x: pd.Series | pd.DataFrame,
     *,
     ax: Axes | None = None,
     grid: bool = True,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
 ) -> FigAx:
     """Plot multiple lines on the same axis."""
     fig, ax = _default_fig_ax(ax=ax, grid=grid)
-    sns.barplot(data=x, ax=ax)
-    _default_labels(ax, xlabel=x.index.name, ylabel=None)
-    ax.legend(x.columns)
+    sns.barplot(data=cast(pd.DataFrame, x), ax=ax)
+
+    if xlabel is None:
+        xlabel = x.index.name if x.index.name is not None else ""
+    _default_labels(ax, xlabel=xlabel, ylabel=ylabel)
+    if isinstance(x, pd.DataFrame):
+        ax.legend(x.columns)
     return fig, ax
+
+
+def bars_grouped(
+    groups: list[pd.DataFrame] | list[pd.Series],
+    *,
+    n_cols: int = 2,
+    col_width: float = 3,
+    row_height: float = 4,
+    sharey: bool = False,
+    grid: bool = True,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+) -> FigAxs:
+    """Plot multiple groups of lines on separate axes."""
+    fig, axs = grid_layout(
+        len(groups),
+        n_cols=n_cols,
+        col_width=col_width,
+        row_height=row_height,
+        sharex=False,
+        sharey=sharey,
+        grid=grid,
+    )
+
+    for group, ax in zip(
+        groups,
+        axs,
+        strict=False,
+    ):
+        bars(
+            group,
+            ax=ax,
+            grid=grid,
+            xlabel=xlabel,
+            ylabel=ylabel,
+        )
+
+    axsl = list(axs)
+    for i in range(len(groups), len(axs)):
+        axsl[i].set_visible(False)
+
+    return fig, axs
+
+
+def bars_autogrouped(
+    s: pd.Series | pd.DataFrame,
+    *,
+    n_cols: int = 2,
+    col_width: float = 4,
+    row_height: float = 3,
+    max_group_size: int = 6,
+    grid: bool = True,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+) -> FigAxs:
+    """Plot a series or dataframe with lines grouped by order of magnitude."""
+    group_names = _split_large_groups(
+        _partition_by_order_of_magnitude(s)
+        if isinstance(s, pd.Series)
+        else _partition_by_order_of_magnitude(s.max()),
+        max_size=max_group_size,
+    )
+
+    groups: list[pd.Series] | list[pd.DataFrame] = (
+        [s.loc[group] for group in group_names]
+        if isinstance(s, pd.Series)
+        else [s.loc[:, group] for group in group_names]
+    )
+
+    return bars_grouped(
+        groups,
+        n_cols=n_cols,
+        col_width=col_width,
+        row_height=row_height,
+        grid=grid,
+        xlabel=xlabel,
+        ylabel=ylabel,
+    )
 
 
 def lines(
@@ -497,6 +636,8 @@ def lines(
     legend: bool = True,
     linewidth: float | None = None,
     linestyle: Linestyle | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
 ) -> FigAx:
     """Plot multiple lines on the same axis."""
     fig, ax = _default_fig_ax(ax=ax, grid=grid)
@@ -508,7 +649,11 @@ def lines(
         linestyle=linestyle,
         color=color,
     )
-    _default_labels(ax, xlabel=x.index.name, ylabel=None)
+    _default_labels(
+        ax,
+        xlabel=x.index.name if xlabel is None else xlabel,
+        ylabel=ylabel,
+    )
     if legend:
         names = x.columns if isinstance(x, pd.DataFrame) else [str(x.name)]
         for line, name in zip(_lines, names, strict=True):
@@ -532,6 +677,8 @@ def lines_grouped(
     sharex: bool = True,
     sharey: bool = False,
     grid: bool = True,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
     color: Color | list[list[Color]] | None = None,
     linewidth: float | None = None,
     linestyle: Linestyle | None = None,
@@ -560,10 +707,13 @@ def lines_grouped(
             color=color_,
             linewidth=linewidth,
             linestyle=linestyle,
+            xlabel=xlabel,
+            ylabel=ylabel,
         )
 
+    axsl = list(axs)
     for i in range(len(groups), len(axs)):
-        axs[i].set_visible(False)
+        axsl[i].set_visible(False)
 
     return fig, axs
 
@@ -576,6 +726,8 @@ def line_autogrouped(
     row_height: float = 3,
     max_group_size: int = 6,
     grid: bool = True,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
     color: Color | list[list[Color]] | None = None,
     linewidth: float | None = None,
     linestyle: Linestyle | None = None,
@@ -603,6 +755,8 @@ def line_autogrouped(
         color=color,
         linestyle=linestyle,
         linewidth=linewidth,
+        xlabel=xlabel,
+        ylabel=ylabel,
     )
 
 
@@ -885,7 +1039,7 @@ def violins_from_2d_idx(
         grid=grid,
     )
 
-    for ax, col in zip(axs[: len(df.columns)], df.columns, strict=True):
+    for ax, col in zip(axs[: len(df.columns)].flatten(), df.columns, strict=True):
         ax.set_title(col)
         violins(df[col].unstack(), ax=ax)
 

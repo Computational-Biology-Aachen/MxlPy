@@ -41,7 +41,18 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
-from . import distributions, experimental, fit, fns, mc, mca, plot, report, sbml
+from . import (
+    compare,
+    distributions,
+    experimental,
+    fit,
+    fns,
+    mc,
+    mca,
+    plot,
+    report,
+    sbml,
+)
 from .integrators import DefaultIntegrator, Scipy
 from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
@@ -80,6 +91,7 @@ __all__ = [
     "Simulator",
     "SymbolicModel",
     "cartesian_product",
+    "compare",
     "distributions",
     "experimental",
     "fit",
