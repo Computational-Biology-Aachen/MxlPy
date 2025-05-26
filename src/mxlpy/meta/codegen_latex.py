@@ -110,13 +110,10 @@ def _sympy_to_latex(expr: sympy.Expr) -> str:
 def _fn_to_latex(
     fn: Callable,
     arg_names: list[str],
-    n_current: int,
-    long_name_cutoff: int = 10,
+    long_name_cutoff: int,
 ) -> tuple[str, dict[str, str]]:
     long_names = (k for k in arg_names if len(k) >= long_name_cutoff)
-    replacements = {
-        k: _name_to_latex(f"_x{i}") for i, k in enumerate(long_names, n_current)
-    }
+    replacements = {k: _name_to_latex(f"_x{i}") for i, k in enumerate(long_names)}
 
     expr = fn_to_sympy(
         fn, _list_of_symbols([replacements.get(k, k) for k in arg_names])
@@ -294,35 +291,32 @@ def _optional_factor(k: str, v: float) -> str:
 
 def _stoichs_to_latex(
     stoichs: Mapping[str, float | Derived],
+    long_name_cutoff: int,
 ) -> tuple[str, dict[str, str]]:
-    line = []
+    replacements = {}
+    expr = sympy.Integer(0)
 
-    n_current = 0
-    repls = {}
-    for rxn_name, stoich in stoichs.items():
-        rxn_name = _mathrm(_name_to_latex(rxn_name))  # noqa: PLW2901
+    for rxn_name, rxn_stoich in stoichs.items():
+        rxn_name = _name_to_latex(rxn_name)  # noqa: PLW2901
 
-        if isinstance(stoich, int | float):
-            line.append(_optional_factor(rxn_name, stoich))
-        else:
-            fn_str, rep = _fn_to_latex(
-                stoich.fn,
-                [_mathrm(_name_to_latex(i)) for i in stoich.args],
-                n_current=n_current,
+        if isinstance(rxn_stoich, Derived):
+            arg_names = [_mathrm(_name_to_latex(i)) for i in rxn_stoich.args]
+            long_names = (k for k in arg_names if len(k) >= long_name_cutoff)
+            replacements.update(
+                {
+                    k: _name_to_latex(f"_x{i}")
+                    for i, k in enumerate(long_names, len(replacements))
+                }
             )
-            line.append(f"{fn_str} {cdot} {rxn_name}")
-            repls.update(rep)
-            n_current += len(rep)
-
-    # Avoid +- situation
-    line_str = f"{line[0]}"
-    for element in line[1:]:
-        if element.startswith("-"):
-            line_str += f" {element}"
+            sympy_fn = fn_to_sympy(
+                rxn_stoich.fn,
+                _list_of_symbols([replacements.get(k, k) for k in arg_names]),
+            )
+            expr = expr + sympy_fn * sympy.Symbol(rxn_name)  # type: ignore
         else:
-            line_str += f" + {element}"
+            expr = expr + rxn_stoich * sympy.Symbol(rxn_name)  # type: ignore
 
-    return _math_il(line_str), repls
+    return _sympy_to_latex(expr.subs(1.0, 1).simplify()), replacements
 
 
 @dataclass
@@ -555,7 +549,10 @@ class TexExport:
             long_desc="Model parameters",
         )
 
-    def export_derived(self) -> str:
+    def export_derived(
+        self,
+        long_name_cutoff: int,
+    ) -> str:
         """Export derived quantities as LaTeX equations.
 
         Returns
@@ -577,8 +574,8 @@ class TexExport:
         for k, v in sorted(self.derived.items()):
             fn_str, repls = _fn_to_latex(
                 v.fn,
-                [_mathrm(_name_to_latex(i)) for i in v.args],
-                n_current=0,
+                arg_names=[_mathrm(_name_to_latex(i)) for i in v.args],
+                long_name_cutoff=long_name_cutoff,
             )
             rows.append(_dmath(f"{_mathrm(_name_to_latex(k))} = {fn_str}"))
             if repls:
@@ -586,7 +583,7 @@ class TexExport:
 
         return _latex_list(rows=rows)
 
-    def export_reactions(self) -> str:
+    def export_reactions(self, long_name_cutoff: int) -> str:
         """Export reactions as LaTeX equations.
 
         Returns
@@ -608,15 +605,18 @@ class TexExport:
         for k, v in sorted(self.reactions.items()):
             fn_str, repls = _fn_to_latex(
                 v.fn,
-                [_mathrm(_name_to_latex(i)) for i in v.args],
-                n_current=0,
+                arg_names=[_mathrm(_name_to_latex(i)) for i in v.args],
+                long_name_cutoff=long_name_cutoff,
             )
             rows.append(_dmath(f"{_mathrm(_name_to_latex(k))} = {fn_str}"))
             if repls:
                 rows.append(_replacements(repls))
         return _latex_list(rows=rows)
 
-    def export_diff_eqs(self) -> str:
+    def export_diff_eqs(
+        self,
+        long_name_cutoff: int,
+    ) -> str:
         """Export stoichiometries as LaTeX table.
 
         Returns
@@ -636,14 +636,17 @@ class TexExport:
         rows = []
         for var_name, stoich in sorted(self.diff_eqs.items()):
             dxdt = _math_il(_diff_eq(_mathrm(_name_to_latex(var_name))))
-            stoich_str, repls = _stoichs_to_latex(stoich)
+            stoich_str, repls = _stoichs_to_latex(
+                stoich,
+                long_name_cutoff=long_name_cutoff,
+            )
 
-            rows.append(f"{dxdt} = {stoich_str}")
+            rows.append(f"{dxdt} = {_math_il(stoich_str)}")
             if repls:
                 rows.append(_replacements(repls))
         return _latex_list(rows)
 
-    def export_all(self) -> str:
+    def export_all(self, long_name_cutoff: int) -> str:
         """Export all model parts as a complete LaTeX document section.
 
         Returns
@@ -678,20 +681,26 @@ class TexExport:
             sections.append(
                 (
                     "Derived",
-                    self.export_derived(),
+                    self.export_derived(
+                        long_name_cutoff=long_name_cutoff,
+                    ),
                 )
             )
         if len(self.reactions) > 0:
             sections.append(
                 (
                     "Reactions",
-                    self.export_reactions(),
+                    self.export_reactions(
+                        long_name_cutoff=long_name_cutoff,
+                    ),
                 )
             )
             sections.append(
                 (
                     "Differential equations",
-                    self.export_diff_eqs(),
+                    self.export_diff_eqs(
+                        long_name_cutoff=long_name_cutoff,
+                    ),
                 )
             )
         return _latex_list_as_sections(sections, _subsubsection_)
@@ -700,6 +709,7 @@ class TexExport:
         self,
         author: str = "mxlpy",
         title: str = "Model construction",
+        long_name_cutoff: int = 10,
     ) -> str:
         r"""Export complete LaTeX document with all model components.
 
@@ -709,6 +719,8 @@ class TexExport:
             Name of the author for the document
         title
             Title for the document
+        long_name_cutoff
+            length of function argument names before they are shortened
 
         Returns
         -------
@@ -723,7 +735,7 @@ class TexExport:
         True
 
         """
-        content = self.export_all()
+        content = self.export_all(long_name_cutoff=long_name_cutoff)
         return rf"""\documentclass{{article}}
 \usepackage[english]{{babel}}
 \usepackage[a4paper,top=2cm,bottom=2cm,left=2cm,right=2cm,marginparwidth=1.75cm]{{geometry}}
@@ -761,6 +773,7 @@ def _to_tex_export(self: Model) -> TexExport:
 def generate_latex_code(
     model: Model,
     gls: dict[str, str] | None = None,
+    long_name_cutoff: int = 10,
 ) -> str:
     """Export model as LaTeX document.
 
@@ -770,6 +783,8 @@ def generate_latex_code(
         The model to export
     gls
         Optional glossary mapping for renaming model components
+    long_name_cutoff
+        length of function argument names before they are shortened
 
     Returns
     -------
@@ -790,13 +805,18 @@ def generate_latex_code(
 
     """
     gls = default_init(gls)
-    return _to_tex_export(model).rename_with_glossary(gls).export_document()
+    return (
+        _to_tex_export(model)
+        .rename_with_glossary(gls)
+        .export_document(long_name_cutoff=long_name_cutoff)
+    )
 
 
 def get_model_tex_diff(
     m1: Model,
     m2: Model,
     gls: dict[str, str] | None = None,
+    long_name_cutoff: int = 10,
 ) -> str:
     """Create LaTeX diff showing changes between two models.
 
@@ -808,6 +828,8 @@ def get_model_tex_diff(
         Second model (compared against the base)
     gls
         Optional glossary mapping for renaming model components
+    long_name_cutoff
+        length of function argument names before they are shortened
 
     Returns
     -------
@@ -830,7 +852,7 @@ def get_model_tex_diff(
     return f"""{" start autogenerated ":%^60}
 {_clearpage()}
 {_subsubsection("Model changes")}{_label(section_label)}
-{((_to_tex_export(m1) - _to_tex_export(m2)).rename_with_glossary(gls).export_all())}
+{((_to_tex_export(m1) - _to_tex_export(m2)).rename_with_glossary(gls).export_all(long_name_cutoff=long_name_cutoff))}
 {_clearpage()}
 {" end autogenerated ":%^60}
 """
