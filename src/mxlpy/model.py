@@ -1124,7 +1124,7 @@ class Model:
         args = self.get_dependent(variables=variables, time=time)
 
         stoich = copy.deepcopy(cache.stoich_by_cpds[variable])
-        for rxn, derived in cache.dyn_stoich_by_cpds[variable].items():
+        for rxn, derived in cache.dyn_stoich_by_cpds.get(variable, {}).items():
             stoich[rxn] = float(derived.fn(*(args[i] for i in derived.args)))
         return stoich
 
