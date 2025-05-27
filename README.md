@@ -21,7 +21,7 @@
 
 You can install mxlpy using pip: `pip install mxlpy`.
 
-Due to their sizes, the machine learning are optional dependencies. You cann install them using
+Due to their sizes, the machine learning packages are optional dependencies. You can install them using
 
 ```shell
 # One of them respectively
