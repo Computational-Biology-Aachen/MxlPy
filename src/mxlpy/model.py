@@ -1128,6 +1128,25 @@ class Model:
             stoich[rxn] = float(derived.fn(*(args[i] for i in derived.args)))
         return stoich
 
+    def get_raw_stoichiometries_of_variable(
+        self, variable: str
+    ) -> dict[str, float | Derived]:
+        """Retrieve the raw stoichiometry of a specific variable.
+
+        Examples:
+            >>> model.get_stoichiometries_of_variable("x1")
+                {"v1": -1, "v2": Derived(...)}
+
+        Args:
+            variable: The name of the variable for which to retrieve the stoichiometry.
+
+        """
+        stoichs: dict[str, dict[str, float | Derived]] = {}
+        for rxn_name, rxn in self._reactions.items():
+            for cpd_name, factor in rxn.stoichiometry.items():
+                stoichs.setdefault(cpd_name, {})[rxn_name] = factor
+        return stoichs[variable]
+
     @_invalidate_cache
     def add_reaction(
         self,
