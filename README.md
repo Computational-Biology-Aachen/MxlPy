@@ -4,7 +4,7 @@
 
 
 
-# mxlpy
+# MxlPy
 
 [![pypi](https://img.shields.io/pypi/v/mxlpy.svg)](https://pypi.python.org/pypi/mxlpy)
 [![docs][docs-badge]][docs]
