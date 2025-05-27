@@ -19,9 +19,9 @@ __all__ = [
     "ProtocolComparison",
     "SteadyStateComparison",
     "TimeCourseComparison",
-    "protocol_time_course",
+    "protocol_time_courses",
     "steady_states",
-    "time_course",
+    "time_courses",
 ]
 
 
@@ -211,7 +211,7 @@ def steady_states(m1: Model, m2: Model) -> SteadyStateComparison:
     )
 
 
-def time_course(m1: Model, m2: Model, time_points: ArrayLike) -> TimeCourseComparison:
+def time_courses(m1: Model, m2: Model, time_points: ArrayLike) -> TimeCourseComparison:
     """Compare the time courses of two models."""
     return TimeCourseComparison(
         res1=unwrap(
@@ -223,7 +223,7 @@ def time_course(m1: Model, m2: Model, time_points: ArrayLike) -> TimeCourseCompa
     )
 
 
-def protocol_time_course(
+def protocol_time_courses(
     m1: Model,
     m2: Model,
     protocol: pd.DataFrame,
