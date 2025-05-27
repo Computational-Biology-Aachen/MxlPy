@@ -1,6 +1,8 @@
 <p align="center">
-    <img src="docs/assets/logo-diagram.png" width="600px" alt='mxlpy-logo'>
+    <img src="https://raw.githubusercontent.com/Computational-Biology-Aachen/MxlPy/refs/heads/main/docs/assets/logo-diagram.png" width="600px" alt='mxlpy-logo'>
 </p>
+
+
 
 # mxlpy
 
