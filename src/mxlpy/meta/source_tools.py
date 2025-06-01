@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import dill
 import sympy
+from sympy.printing import rust_code
 from sympy.printing.pycode import pycode
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ __all__ = [
     "get_fn_source",
     "sympy_to_fn",
     "sympy_to_inline",
+    "sympy_to_inline_rust",
 ]
 
 
@@ -133,6 +135,11 @@ def sympy_to_inline(expr: sympy.Expr) -> str:
 
     """
     return cast(str, pycode(expr, fully_qualified_modules=True))
+
+
+def sympy_to_inline_rust(expr: sympy.Expr) -> str:
+    """Create rust code from sympy expression."""
+    return cast(str, rust_code(expr))
 
 
 def sympy_to_fn(

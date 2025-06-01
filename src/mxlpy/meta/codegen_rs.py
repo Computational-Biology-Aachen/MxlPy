@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import sympy
 
-from mxlpy.meta.source_tools import fn_to_sympy, sympy_to_inline
+from mxlpy.meta.source_tools import fn_to_sympy, sympy_to_inline_rust
 from mxlpy.types import Derived
 
 if TYPE_CHECKING:
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from mxlpy.model import Model
 
 __all__ = [
-    "generate_model_code_py",
+    "generate_model_code_rs",
 ]
 
 
@@ -48,32 +48,35 @@ def _list_of_symbols(args: list[str]) -> list[sympy.Symbol | sympy.Expr]:
 
 
 # FIXME: generate from SymbolicModel, should be easier?
-def generate_model_code_py(model: Model) -> str:
+def generate_model_code_rs(model: Model) -> str:
     """Transform the model into a single function, inlining the function calls."""
+    n_variables = len(model.variables)
+
     source = [
-        "from collections.abc import Iterable\n",
-        "def model(time: float, variables: Iterable[float]) -> Iterable[float]:",
+        f"fn model(time: f64, variables: &[f64; {n_variables}]) -> [f64; {n_variables}] {{",
     ]
 
     # Variables
     variables = model.variables
     if len(variables) > 0:
-        source.append("    {} = variables".format(", ".join(variables)))
+        source.append("    let [{}] = *variables;".format(", ".join(variables)))
 
     # Parameters
     parameters = model.parameters
     if len(parameters) > 0:
-        source.append("\n".join(f"    {k} = {v}" for k, v in model.parameters.items()))
+        source.append(
+            "\n".join(f"    let {k}: f64 = {v};" for k, v in model.parameters.items())
+        )
 
     # Derived
     for name, derived in model.derived.items():
         expr = fn_to_sympy(derived.fn, model_args=_list_of_symbols(derived.args))
-        source.append(f"    {name} = {sympy_to_inline(expr)}")
+        source.append(f"    let {name}: f64 = {sympy_to_inline_rust(expr)};")
 
     # Reactions
     for name, rxn in model.reactions.items():
         expr = fn_to_sympy(rxn.fn, model_args=_list_of_symbols(rxn.args))
-        source.append(f"    {name} = {sympy_to_inline(expr)}")
+        source.append(f"    let {name}: f64 = {sympy_to_inline_rust(expr)};")
 
     # Stoichiometries; FIXME: do this with sympy instead as well?
     stoich_srcs = {}
@@ -81,7 +84,7 @@ def generate_model_code_py(model: Model) -> str:
         for i, (cpd_name, factor) in enumerate(rxn.stoichiometry.items()):
             if isinstance(factor, Derived):
                 expr = fn_to_sympy(factor.fn, model_args=_list_of_symbols(factor.args))
-                src = f"{sympy_to_inline(expr)} * {rxn_name}"
+                src = f"{sympy_to_inline_rust(expr)} * {rxn_name}"
             elif factor == 1:
                 src = rxn_name
             elif factor == -1:
@@ -91,7 +94,7 @@ def generate_model_code_py(model: Model) -> str:
             stoich_srcs.setdefault(cpd_name, []).append(src)
     for variable, stoich in stoich_srcs.items():
         source.append(
-            f"    d{variable}dt = {_conditional_join(stoich, lambda x: x.startswith('-'), ' ', ' + ')}"
+            f"    let d{variable}dt: f64 = {_conditional_join(stoich, lambda x: x.startswith('-'), ' ', ' + ')};"
         )
 
     # Surrogates
@@ -104,11 +107,12 @@ def generate_model_code_py(model: Model) -> str:
     # Return
     if len(variables) > 0:
         source.append(
-            "    return {}".format(
+            "    [{}]".format(
                 ", ".join(f"d{i}dt" for i in variables),
             ),
         )
     else:
-        source.append("    return ()")
+        source.append("[]")
+    source.append("}")
 
     return "\n".join(source)
