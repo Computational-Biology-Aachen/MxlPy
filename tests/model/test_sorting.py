@@ -16,7 +16,7 @@ def test_par_missing_parameter() -> None:
         .add_derived("x2", moiety_1, args=["x1", "xtot"])
     )
     with pytest.raises(MissingDependenciesError):
-        m.get_dependent()
+        m.get_args()
 
 
 def test_par_circular() -> None:
@@ -27,7 +27,7 @@ def test_par_circular() -> None:
         .add_derived("x2", moiety_1, args=["xtot", "x1"])
     )
     with pytest.raises(CircularDependencyError):
-        m.get_dependent()
+        m.get_args()
 
 
 def test_mod_missing_parameter() -> None:
@@ -37,7 +37,7 @@ def test_mod_missing_parameter() -> None:
         .add_derived("x2", moiety_1, args=["x1", "xtot"])
     )
     with pytest.raises(MissingDependenciesError):
-        m.get_dependent()
+        m.get_args()
 
 
 def test_mod_missing_compound() -> None:
@@ -47,7 +47,7 @@ def test_mod_missing_compound() -> None:
         .add_derived("x2", moiety_1, args=["x1", "xtot"])
     )
     with pytest.raises(MissingDependenciesError):
-        m.get_dependent()
+        m.get_args()
 
 
 def test_mod_circular() -> None:
@@ -58,4 +58,4 @@ def test_mod_circular() -> None:
         .add_derived("x2", moiety_1, args=["xtot", "x1"])
     )
     with pytest.raises(CircularDependencyError):
-        m.get_dependent()
+        m.get_args()

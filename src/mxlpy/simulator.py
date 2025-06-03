@@ -75,7 +75,7 @@ class Result:
     def variables(self) -> pd.DataFrame:
         """Simulation variables."""
         return self.get_variables(
-            include_derived=True,
+            include_derived_variables=True,
             include_readouts=True,
             concatenated=True,
             normalise=None,
@@ -90,11 +90,7 @@ class Result:
         """Iterate over the concentration and flux response coefficients."""
         return iter((self.variables, self.fluxes))
 
-    def _get_dependent(
-        self,
-        *,
-        include_readouts: bool = True,
-    ) -> list[pd.DataFrame]:
+    def _compute_args(self) -> list[pd.DataFrame]:
         # Already computed
         if len(self._dependent) > 0:
             return self._dependent
@@ -103,9 +99,15 @@ class Result:
         for res, p in zip(self._raw_variables, self._parameters, strict=True):
             self.model.update_parameters(p)
             self._dependent.append(
-                self.model.get_dependent_time_course(
+                self.model.get_args_time_course(
                     variables=res,
-                    include_readouts=include_readouts,
+                    include_variables=True,
+                    include_parameters=True,
+                    include_derived_parameters=True,
+                    include_derived_variables=True,
+                    include_reactions=True,
+                    include_surrogate_outputs=True,
+                    include_readouts=True,
                 )
             )
         return self._dependent
@@ -114,14 +116,23 @@ class Result:
         self,
         dependent: list[pd.DataFrame],
         *,
-        include_derived: bool,
-        include_readouts: bool,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
     ) -> list[pd.DataFrame]:
-        names = self.model.get_variable_names()
-        if include_derived:
-            names.extend(self.model.get_derived_variable_names())
-        if include_readouts:
-            names.extend(self.model.get_readout_names())
+        names = self.model.get_arg_names(
+            include_variables=include_variables,
+            include_parameters=include_parameters,
+            include_derived_parameters=include_derived_parameters,
+            include_derived_variables=include_derived_variables,
+            include_reactions=include_reactions,
+            include_surrogate_outputs=include_surrogate_outputs,
+            include_readouts=include_readouts,
+        )
         return [i.loc[:, names] for i in dependent]
 
     def _select_fluxes(
@@ -149,10 +160,92 @@ class Result:
         return data
 
     @overload
+    def get_args(  # type: ignore
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+        concatenated: Literal[False],
+        normalise: float | ArrayLike | None = None,
+    ) -> list[pd.DataFrame]: ...
+
+    @overload
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+        concatenated: Literal[True],
+        normalise: float | ArrayLike | None = None,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+        concatenated: bool = True,
+        normalise: float | ArrayLike | None = None,
+    ) -> pd.DataFrame: ...
+
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+        concatenated: bool = True,
+        normalise: float | ArrayLike | None = None,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        """Get the variables over time.
+
+        Examples:
+            >>> Result().get_variables()
+            Time            ATP      NADPH
+            0.000000   1.000000   1.000000
+            0.000100   0.999900   0.999900
+            0.000200   0.999800   0.999800
+
+        """
+        variables = self._select_variables(
+            self._compute_args(),
+            include_variables=include_variables,
+            include_parameters=include_parameters,
+            include_derived_parameters=include_derived_parameters,
+            include_derived_variables=include_derived_variables,
+            include_reactions=include_reactions,
+            include_surrogate_outputs=include_surrogate_outputs,
+            include_readouts=include_readouts,
+        )
+        return self._adjust_data(
+            variables, normalise=normalise, concatenated=concatenated
+        )
+
+    @overload
     def get_variables(  # type: ignore
         self,
         *,
-        include_derived: bool = True,
+        include_derived_variables: bool = True,
         include_readouts: bool = True,
         concatenated: Literal[False],
         normalise: float | ArrayLike | None = None,
@@ -162,7 +255,7 @@ class Result:
     def get_variables(
         self,
         *,
-        include_derived: bool = True,
+        include_derived_variables: bool = True,
         include_readouts: bool = True,
         concatenated: Literal[True],
         normalise: float | ArrayLike | None = None,
@@ -172,7 +265,7 @@ class Result:
     def get_variables(
         self,
         *,
-        include_derived: bool = True,
+        include_derived_variables: bool = True,
         include_readouts: bool = True,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
@@ -181,7 +274,7 @@ class Result:
     def get_variables(
         self,
         *,
-        include_derived: bool = True,
+        include_derived_variables: bool = True,
         include_readouts: bool = True,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
@@ -196,7 +289,7 @@ class Result:
             0.000200   0.999800   0.999800
 
         """
-        if not include_derived and not include_readouts:
+        if not include_derived_variables and not include_readouts:
             return self._adjust_data(
                 self._raw_variables,
                 normalise=normalise,
@@ -204,8 +297,8 @@ class Result:
             )
 
         variables = self._select_variables(
-            self._get_dependent(),
-            include_derived=include_derived,
+            self._compute_args(),
+            include_derived_variables=include_derived_variables,
             include_readouts=include_readouts,
         )
         return self._adjust_data(
@@ -260,7 +353,7 @@ class Result:
 
         """
         fluxes = self._select_fluxes(
-            self._get_dependent(),
+            self._compute_args(),
             include_surrogates=include_surrogates,
         )
         return self._adjust_data(
@@ -295,7 +388,7 @@ class Result:
         """
         return dict(
             self.get_variables(
-                include_derived=False,
+                include_derived_variables=False,
                 include_readouts=False,
             ).iloc[-1]
         )

@@ -177,27 +177,27 @@ class Derived:
     args: list[str]
     unit: sympy.Expr | None = None
 
-    def calculate(self, dependent: dict[str, Any]) -> float:
+    def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
 
         Args:
-            dependent: Dictionary of dependent variables.
+            args: Dictionary of args variables.
 
         Returns:
             The calculated derived value.
 
         """
-        return cast(float, self.fn(*(dependent[arg] for arg in self.args)))
+        return cast(float, self.fn(*(args[arg] for arg in self.args)))
 
-    def calculate_inpl(self, name: str, dependent: dict[str, Any]) -> None:
+    def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the derived value in place.
 
         Args:
             name: Name of the derived variable.
-            dependent: Dictionary of dependent variables.
+            args: Dictionary of args variables.
 
         """
-        dependent[name] = cast(float, self.fn(*(dependent[arg] for arg in self.args)))
+        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
 
 
 @dataclass(kw_only=True, slots=True)
@@ -208,27 +208,27 @@ class Readout:
     args: list[str]
     unit: sympy.Expr | None = None
 
-    def calculate(self, dependent: dict[str, Any]) -> float:
+    def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
 
         Args:
-            dependent: Dictionary of dependent variables.
+            args: Dictionary of args variables.
 
         Returns:
             The calculated derived value.
 
         """
-        return cast(float, self.fn(*(dependent[arg] for arg in self.args)))
+        return cast(float, self.fn(*(args[arg] for arg in self.args)))
 
-    def calculate_inpl(self, name: str, dependent: dict[str, Any]) -> None:
+    def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the reaction in place.
 
         Args:
             name: Name of the derived variable.
-            dependent: Dictionary of dependent variables.
+            args: Dictionary of args variables.
 
         """
-        dependent[name] = cast(float, self.fn(*(dependent[arg] for arg in self.args)))
+        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
 
 
 @dataclass(kw_only=True, slots=True)
@@ -247,27 +247,27 @@ class Reaction:
 
         return [k for k in self.args if k in include and k not in exclude]
 
-    def calculate(self, dependent: dict[str, Any]) -> float:
+    def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
 
         Args:
-            dependent: Dictionary of dependent variables.
+            args: Dictionary of args variables.
 
         Returns:
             The calculated derived value.
 
         """
-        return cast(float, self.fn(*(dependent[arg] for arg in self.args)))
+        return cast(float, self.fn(*(args[arg] for arg in self.args)))
 
-    def calculate_inpl(self, name: str, dependent: dict[str, Any]) -> None:
+    def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the reaction in place.
 
         Args:
             name: Name of the derived variable.
-            dependent: Dictionary of dependent variables.
+            args: Dictionary of args variables.
 
         """
-        dependent[name] = cast(float, self.fn(*(dependent[arg] for arg in self.args)))
+        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
 
 
 @dataclass(kw_only=True)

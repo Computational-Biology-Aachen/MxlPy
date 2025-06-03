@@ -156,7 +156,7 @@ def test_get_fluxes_time_course_with_surrogate() -> None:
         ),
     )
     concs = pd.DataFrame({"A": [1.0, 2.0], "B": [2.0, 3.0]}, index=[0.0, 1.0])
-    args_time_course = model.get_dependent_time_course(concs)
+    args_time_course = model.get_args_time_course(concs)
     fluxes_time_course = model.get_fluxes_time_course(args_time_course)
 
     assert fluxes_time_course["reaction1"].iloc[0] == 3.0

@@ -898,7 +898,7 @@ def test_get_args() -> None:
     model.add_derived("derived1", one_argument, args=["var1"])
     model.add_readout("readout1", one_argument, args=["var1"])
     concs = {"var1": 2.0}
-    args = model.get_dependent(concs)
+    args = model.get_args(concs)
     assert args["param1"] == 1.0
     assert args["var1"] == 2.0
     assert args["derived1"] == 2.0
@@ -913,7 +913,7 @@ def test_get_args_without_readouts() -> None:
     model.add_derived("derived1", one_argument, args=["var1"])
     model.add_readout("readout1", one_argument, args=["var1"])
     concs = {"var1": 2.0}
-    args = model.get_dependent(concs)
+    args = model.get_args(concs)
     assert args["param1"] == 1.0
     assert args["var1"] == 2.0
     assert args["derived1"] == 2.0
@@ -929,7 +929,7 @@ def test_get_args_with_multiple_concs() -> None:
     model.add_derived("derived1", two_arguments, args=["var1", "var2"])
     model.add_readout("readout1", two_arguments, args=["var1", "var2"])
     concs = {"var1": 2.0, "var2": 3.0}
-    args = model.get_dependent(concs)
+    args = model.get_args(concs)
     assert args["param1"] == 1.0
     assert args["var1"] == 2.0
     assert args["var2"] == 3.0
@@ -946,7 +946,7 @@ def test_get_args_with_empty_concs() -> None:
     model.add_readout("readout1", one_argument, args=["var1"])
 
     with pytest.raises(KeyError):
-        model.get_dependent({})
+        model.get_args({})
 
 
 def test_get_args_time_course() -> None:
@@ -957,7 +957,7 @@ def test_get_args_time_course() -> None:
     model.add_readout("readout1", one_argument, args=["var1"])
 
     concs = pd.DataFrame({"var1": [2.0, 3.0]}, index=[0.0, 1.0])
-    args_time_course = model.get_dependent_time_course(concs)
+    args_time_course = model.get_args_time_course(concs)
 
     assert args_time_course["param1"].iloc[0] == 1.0
     assert args_time_course["param1"].iloc[1] == 1.0
@@ -978,7 +978,7 @@ def test_get_args_time_course_with_readouts() -> None:
     model.add_readout("readout1", one_argument, args=["var1"])
 
     concs = pd.DataFrame({"var1": [2.0, 3.0]}, index=[0.0, 1.0])
-    args_time_course = model.get_dependent_time_course(concs, include_readouts=True)
+    args_time_course = model.get_args_time_course(concs, include_readouts=True)
 
     assert args_time_course["param1"].iloc[0] == 1.0
     assert args_time_course["param1"].iloc[1] == 1.0
@@ -1001,7 +1001,7 @@ def test_get_args_time_course_with_multiple_concs() -> None:
     model.add_readout("readout1", two_arguments, args=["var1", "var2"])
 
     concs = pd.DataFrame({"var1": [2.0, 3.0], "var2": [3.0, 4.0]}, index=[0.0, 1.0])
-    args_time_course = model.get_dependent_time_course(concs, include_readouts=True)
+    args_time_course = model.get_args_time_course(concs, include_readouts=True)
 
     assert args_time_course["param1"].iloc[0] == 1.0
     assert args_time_course["param1"].iloc[1] == 1.0
@@ -1025,7 +1025,7 @@ def test_get_args_time_course_with_empty_concs() -> None:
     model.add_readout("readout1", one_argument, args=["var1"])
 
     concs = pd.DataFrame({}, index=[])
-    dependent = model.get_dependent_time_course(concs)
+    dependent = model.get_args_time_course(concs)
     assert len(dependent) == 0
 
 
@@ -1037,7 +1037,7 @@ def test_get_full_args() -> None:
     model.add_readout("readout1", two_arguments, args=["var1", "var2"])
 
     concs = {"var1": 2.0, "var2": 3.0}
-    full_concs = model.get_args(concs, include_readouts=True)
+    full_concs = model.get_args_time_course(concs, include_readouts=True)
 
     assert full_concs["var1"] == 2.0
     assert full_concs["var2"] == 3.0
@@ -1053,7 +1053,7 @@ def test_get_full_args_without_readouts() -> None:
     model.add_readout("readout1", two_arguments, args=["var1", "var2"])
 
     concs = {"var1": 2.0, "var2": 3.0}
-    full_concs = model.get_args(concs, include_readouts=False)
+    full_concs = model.get_args_time_course(concs, include_readouts=False)
 
     assert full_concs["var1"] == 2.0
     assert full_concs["var2"] == 3.0
@@ -1069,7 +1069,7 @@ def test_get_full_args_with_empty_concs() -> None:
     model.add_readout("readout1", two_arguments, args=["var1", "var2"])
 
     with pytest.raises(KeyError):
-        model.get_args({})
+        model.get_args_time_course({})
 
 
 def test_get_fluxes() -> None:
@@ -1123,7 +1123,7 @@ def test_get_fluxes_time_course() -> None:
         args=["A", "B"],
     )
     concs = pd.DataFrame({"A": [1.0, 2.0], "B": [2.0, 3.0]}, index=[0.0, 1.0])
-    args_time_course = model.get_dependent_time_course(concs)
+    args_time_course = model.get_args_time_course(concs)
     fluxes_time_course = model.get_fluxes_time_course(args_time_course)
 
     assert fluxes_time_course["reaction1"].iloc[0] == 3.0
@@ -1133,7 +1133,7 @@ def test_get_fluxes_time_course() -> None:
 def test_get_fluxes_time_course_empty_reactions() -> None:
     model = Model()
     concs = pd.DataFrame({"A": [1.0, 2.0], "B": [2.0, 3.0]}, index=[0.0, 1.0])
-    args_time_course = model.get_dependent_time_course(concs)
+    args_time_course = model.get_args_time_course(concs)
     fluxes_time_course = model.get_fluxes_time_course(args_time_course)
 
     assert fluxes_time_course.empty

@@ -1279,7 +1279,7 @@ class Model:
         """
         if (cache := self._cache) is None:
             cache = self._create_cache()
-        args = self.get_dependent(variables=variables, time=time)
+        args = self.get_args(variables=variables, time=time)
 
         stoich_by_cpds = copy.deepcopy(cache.stoich_by_cpds)
         for cpd, stoich in cache.dyn_stoich_by_cpds.items():
@@ -1309,7 +1309,7 @@ class Model:
         """
         if (cache := self._cache) is None:
             cache = self._create_cache()
-        args = self.get_dependent(variables=variables, time=time)
+        args = self.get_args(variables=variables, time=time)
 
         stoich = copy.deepcopy(cache.stoich_by_cpds[variable])
         for rxn, derived in cache.dyn_stoich_by_cpds.get(variable, {}).items():
@@ -1635,6 +1635,13 @@ class Model:
         self._surrogates.pop(name)
         return self
 
+    def get_surrogate_output_names(self) -> list[str]:
+        """Return output names by surrogates."""
+        names = []
+        for i in self._surrogates.values():
+            names.extend(i.outputs)
+        return names
+
     def get_surrogate_reaction_names(self) -> list[str]:
         """Return reaction names by surrogates."""
         names = []
@@ -1671,7 +1678,36 @@ class Model:
     # - readouts
     ##########################################################################
 
-    def _get_dependent(
+    def get_arg_names(
+        self,
+        *,
+        include_variables: bool,
+        include_parameters: bool,
+        include_derived_parameters: bool,
+        include_derived_variables: bool,
+        include_reactions: bool,
+        include_surrogate_outputs: bool,
+        include_readouts: bool,
+    ) -> list[str]:
+        """Get names of all kinds of model components."""
+        names = []
+        if include_variables:
+            names.extend(self.get_variable_names())
+        if include_parameters:
+            names.extend(self.get_parameter_names())
+        if include_derived_variables:
+            names.extend(self.get_derived_variable_names())
+        if include_derived_parameters:
+            names.extend(self.get_derived_parameter_names())
+        if include_reactions:
+            names.extend(self.get_reaction_names())
+        if include_surrogate_outputs:
+            names.extend(self.get_surrogate_output_names())
+        if include_readouts:
+            names.extend(self.get_readout_names())
+        return names
+
+    def _get_args(
         self,
         variables: dict[str, float],
         time: float = 0.0,
@@ -1709,11 +1745,17 @@ class Model:
 
         return cast(dict[str, float], args)
 
-    def get_dependent(
+    def get_args(
         self,
         variables: dict[str, float] | None = None,
         time: float = 0.0,
         *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
         include_readouts: bool = False,
     ) -> pd.Series:
         """Generate a pandas Series of arguments for the model.
@@ -1733,8 +1775,14 @@ class Model:
 
         Args:
             variables: A dictionary where keys are the names of the concentrations and values are their respective float values.
-            time: The time point at which the arguments are generated (default is 0.0).
-            include_readouts: Whether to include readouts in the arguments (default is False).
+            time: The time point at which the arguments are generated.
+            include_variables: Whether to include variables
+            include_parameters: Whether to include parameters
+            include_derived_parameters: Whether to include derived parameters
+            include_derived_variables: Whether to include derived variables
+            include_reactions: Whether to include reactions
+            include_surrogate_outputs: Whether to include surrogate outputs
+            include_readouts: Whether to include readouts
 
         Returns:
             A pandas Series containing the generated arguments with float dtype.
@@ -1742,23 +1790,59 @@ class Model:
         """
         if (cache := self._cache) is None:
             cache = self._create_cache()
-
-        args = self._get_dependent(
+        raw = self._get_args(
             variables=self.get_initial_conditions() if variables is None else variables,
             time=time,
             cache=cache,
         )
-
         if include_readouts:
             for name, ro in self._readouts.items():  # FIXME: order?
-                ro.calculate_inpl(name, args)
+                ro.calculate_inpl(name, raw)
+        args = pd.Series(raw, dtype=float)
+        return args.loc[
+            self.get_arg_names(
+                include_variables=include_variables,
+                include_parameters=include_parameters,
+                include_derived_parameters=include_derived_parameters,
+                include_derived_variables=include_derived_variables,
+                include_reactions=include_reactions,
+                include_surrogate_outputs=include_surrogate_outputs,
+                include_readouts=include_readouts,
+            )
+        ]
 
-        return pd.Series(args, dtype=float)
+    def _get_args_time_course(
+        self,
+        *,
+        variables: pd.DataFrame,
+        include_readouts: bool,
+    ) -> dict[float, dict[str, float]]:
+        if (cache := self._cache) is None:
+            cache = self._create_cache()
 
-    def get_dependent_time_course(
+        args_by_time = {}
+        for time, values in variables.iterrows():
+            args = self._get_args(
+                variables=values.to_dict(),
+                time=cast(float, time),
+                cache=cache,
+            )
+            if include_readouts:
+                for name, ro in self._readouts.items():  # FIXME: order?
+                    ro.calculate_inpl(name, args)
+            args_by_time[time] = args
+        return args_by_time
+
+    def get_args_time_course(
         self,
         variables: pd.DataFrame,
         *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
         """Generate a DataFrame containing time course arguments for model evaluation.
@@ -1776,110 +1860,39 @@ class Model:
 
         Args:
             variables: A DataFrame containing concentration data with time as the index.
-            include_readouts: If True, include readout variables in the resulting DataFrame.
+            include_variables: Whether to include variables
+            include_parameters: Whether to include parameters
+            include_derived_parameters: Whether to include derived parameters
+            include_derived_variables: Whether to include derived variables
+            include_reactions: Whether to include reactions
+            include_surrogate_outputs: Whether to include surrogate outputs
+            include_readouts: Whether to include readouts
 
         Returns:
             A DataFrame containing the combined concentration data, parameter values,
             derived variables, and optionally readout variables, with time as an additional column.
 
         """
-        args = {
-            time: self.get_dependent(
-                variables=values.to_dict(),
-                time=cast(float, time),
+        args = pd.DataFrame(
+            self._get_args_time_course(
+                variables=variables,
                 include_readouts=include_readouts,
-            )
-            for time, values in variables.iterrows()
-        }
+            ),
+            dtype=float,
+        ).T
 
-        return pd.DataFrame(args, dtype=float).T
-
-    ##########################################################################
-    # Get args
-    ##########################################################################
-
-    def get_args(
-        self,
-        variables: dict[str, float] | None = None,
-        time: float = 0.0,
-        *,
-        include_derived: bool = True,
-        include_readouts: bool = False,
-    ) -> pd.Series:
-        """Generate a pandas Series of arguments for the model.
-
-        Examples:
-            # Using initial conditions
-            >>> model.get_args()
-                {"x1": 1.0, "x2": 2.0, "k1": 0.1, "time": 0.0}
-
-            # With custom concentrations
-            >>> model.get_args({"x1": 1.0, "x2": 2.0})
-                {"x1": 1.0, "x2": 2.0, "k1": 0.1, "time": 0.0}
-
-            # With custom concentrations and time
-            >>> model.get_args({"x1": 1.0, "x2": 2.0}, time=1.0)
-                {"x1": 1.0, "x2": 2.0, "k1": 0.1, "time": 1.0}
-
-        Args:
-            variables: A dictionary where keys are the names of the concentrations and values are their respective float values.
-            time: The time point at which the arguments are generated.
-            include_derived: Whether to include derived variables in the arguments.
-            include_readouts: Whether to include readouts in the arguments.
-
-        Returns:
-            A pandas Series containing the generated arguments with float dtype.
-
-        """
-        names = self.get_variable_names()
-        if include_derived:
-            names.extend(self.get_derived_variable_names())
-        if include_readouts:
-            names.extend(self._readouts)
-
-        args = self.get_dependent(
-            variables=variables, time=time, include_readouts=include_readouts
-        )
-        return args.loc[names]
-
-    def get_args_time_course(
-        self,
-        variables: pd.DataFrame,
-        *,
-        include_derived: bool = True,
-        include_readouts: bool = False,
-    ) -> pd.DataFrame:
-        """Generate a DataFrame containing time course arguments for model evaluation.
-
-        Examples:
-            >>> model.get_args_time_course(
-            ...     pd.DataFrame({"x1": [1.0, 2.0], "x2": [2.0, 3.0]}
-            ... )
-                pd.DataFrame({
-                    "x1": [1.0, 2.0],
-                    "x2": [2.0, 3.0],
-                    "k1": [0.1, 0.1],
-                    "time": [0.0, 1.0]},
-                )
-
-        Args:
-            variables: A DataFrame containing concentration data with time as the index.
-            include_derived: Whether to include derived variables in the arguments.
-            include_readouts: If True, include readout variables in the resulting DataFrame.
-
-        Returns:
-            A DataFrame containing the combined concentration data, parameter values,
-            derived variables, and optionally readout variables, with time as an additional column.
-
-        """
-        names = self.get_variable_names()
-        if include_derived:
-            names.extend(self.get_derived_variable_names())
-
-        args = self.get_dependent_time_course(
-            variables=variables, include_readouts=include_readouts
-        )
-        return args.loc[:, names]
+        return args.loc[
+            :,
+            self.get_arg_names(
+                include_variables=include_variables,
+                include_parameters=include_parameters,
+                include_derived_parameters=include_derived_parameters,
+                include_derived_variables=include_derived_variables,
+                include_reactions=include_reactions,
+                include_surrogate_outputs=include_surrogate_outputs,
+                include_readouts=include_readouts,
+            ),
+        ]
 
     ##########################################################################
     # Get fluxes
@@ -1914,10 +1927,9 @@ class Model:
 
         """
         names = self.get_reaction_names()
-        for surrogate in self._surrogates.values():
-            names.extend(surrogate.stoichiometries)
+        names.extend(self.get_surrogate_reaction_names())
 
-        args = self.get_dependent(
+        args = self.get_args(
             variables=variables,
             time=time,
             include_readouts=False,
@@ -1950,7 +1962,7 @@ class Model:
         for surrogate in self._surrogates.values():
             names.extend(surrogate.stoichiometries)
 
-        variables = self.get_dependent_time_course(
+        variables = self.get_args_time_course(
             variables=variables,
             include_readouts=False,
         )
@@ -1988,7 +2000,7 @@ class Model:
                 strict=True,
             )
         )
-        dependent: dict[str, float] = self._get_dependent(
+        dependent: dict[str, float] = self._get_args(
             variables=vars_d,
             time=time,
             cache=cache,
@@ -2036,7 +2048,7 @@ class Model:
         if (cache := self._cache) is None:
             cache = self._create_cache()
         var_names = self.get_variable_names()
-        dependent = self._get_dependent(
+        dependent = self._get_args(
             variables=self.get_initial_conditions() if variables is None else variables,
             time=time,
             cache=cache,

@@ -220,8 +220,8 @@ def markdown(
 
     # Now check for any numerical differences
     dependent = []
-    d1 = m1.get_dependent()
-    d2 = m2.get_dependent()
+    d1 = m1.get_args()
+    d2 = m2.get_args()
     rel_diff = ((d1 - d2) / d1).dropna()
     for k, v in rel_diff.loc[rel_diff.abs() >= rel_change].items():
         k = cast(str, k)

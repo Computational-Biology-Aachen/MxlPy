@@ -61,7 +61,7 @@ def add_constant_species_to_results(
         pd.DataFrame: The updated result DataFrame with the constant species added.
 
     """
-    args = model.get_dependent()
+    args = model.get_args()
     for name in expected.columns.difference(result.columns):
         species = args[name]
         species = pd.Series(
