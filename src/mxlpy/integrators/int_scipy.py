@@ -98,6 +98,9 @@ class Scipy:
             tuple[ArrayLike, ArrayLike]: Tuple containing the time points and the integrated values.
 
         """
+        if time_points[0] != self.t0:
+            time_points = np.insert(time_points, 0, self.t0)
+
         res = spi.solve_ivp(
             fun=self.rhs,
             y0=self.y0,

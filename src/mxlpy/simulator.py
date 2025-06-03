@@ -472,6 +472,13 @@ class Simulator:
         if self._time_shift is not None:
             t_end -= self._time_shift
 
+        prior_t_end: float = (
+            0.0 if (variables := self.variables) is None else variables[-1].index[-1]
+        )
+        if t_end <= prior_t_end:
+            msg = "End time point has to be larger than previous end time point"
+            raise ValueError(msg)
+
         time, results = self.integrator.integrate(t_end=t_end, steps=steps)
 
         self._handle_simulation_results(time, results, skipfirst=True)
@@ -495,9 +502,26 @@ class Simulator:
             Self: The Simulator instance with updated results.
 
         """
+        time_points = np.array(time_points, dtype=float)
+
         if self._time_shift is not None:
-            time_points = np.array(time_points, dtype=float)
             time_points -= self._time_shift
+
+        # Check if end is actually larger
+        prior_t_end: float = (
+            0.0 if (variables := self.variables) is None else variables[-1].index[-1]
+        )
+        if time_points[-1] <= prior_t_end:
+            msg = "End time point has to be larger than previous end time point"
+            raise ValueError(msg)
+
+        # Remove points which are smaller than previous t_end
+        if not (larger := time_points >= prior_t_end).all():
+            warnings.warn(
+                f"Overlapping time points. Removing: {time_points[~larger]}",
+                stacklevel=0,
+            )
+            time_points = time_points[larger]
 
         time, results = self.integrator.integrate_time_course(time_points=time_points)
         self._handle_simulation_results(time, results, skipfirst=True)
@@ -564,22 +588,22 @@ class Simulator:
         t_start = (
             0.0 if (variables := self.variables) is None else variables[-1].index[-1]
         )
+        if time_points[-1] <= t_start:
+            msg = "End time point has to be larger than previous end time point"
+            raise ValueError(msg)
 
-        full_time_points: pd.Index = (
-            protocol.index.join(
-                pd.to_timedelta(time_points, unit="s"),
-                how="outer",
-            ).total_seconds()
-            + t_start
-        )
+        protocol = protocol.copy()
+        protocol.index = (
+            cast(pd.TimedeltaIndex, protocol.index) + pd.Timedelta(t_start, unit="s")
+        ).total_seconds()
+        full_time_points = protocol.index.join(time_points, how="outer")
 
-        for t, pars in protocol.iterrows():
-            t_end = cast(pd.Timedelta, t).total_seconds() + t_start
+        for t_end, pars in protocol.iterrows():
             self.model.update_parameters(pars.to_dict())
 
             self.simulate_time_course(
                 time_points=full_time_points[
-                    (full_time_points >= t_start) & (full_time_points <= t_end)
+                    (full_time_points > t_start) & (full_time_points <= t_end)
                 ]
             )
             t_start = t_end
