@@ -20,20 +20,24 @@ if TYPE_CHECKING:
 
     from mxlpy.model import Model
 
-__all__ = ["generate_model_code_py", "generate_model_code_rs"]
+__all__ = [
+    "generate_model_code_py",
+    "generate_model_code_rs",
+]
 
 
 def _generate_model_code(
     model: Model,
     *,
-    imports: list[str] | None,
     sized: bool,
     model_fn: str,
     variables_template: str,
     assignment_template: str,
     sympy_inline_fn: Callable[[sympy.Expr], str],
     return_template: str,
-    end: str | None,
+    imports: list[str] | None = None,
+    end: str | None = None,
+    free_parameters: list[str] | None = None,
 ) -> str:
     source: list[str] = []
 
@@ -52,11 +56,13 @@ def _generate_model_code(
 
     # Parameters
     parameters = model.parameters
+    if free_parameters is not None:
+        for key in free_parameters:
+            parameters.pop(key)
     if len(parameters) > 0:
         source.append(
             "\n".join(
-                assignment_template.format(k=k, v=v)
-                for k, v in model.parameters.items()
+                assignment_template.format(k=k, v=v) for k, v in parameters.items()
             )
         )
 
@@ -100,33 +106,55 @@ def _generate_model_code(
     return "\n".join(source)
 
 
-def generate_model_code_py(model: Model) -> str:
+def generate_model_code_py(
+    model: Model,
+    free_parameters: list[str] | None = None,
+) -> str:
     """Transform the model into a python function, inlining the function calls."""
+    if free_parameters is None:
+        model_fn = (
+            "def model(time: float, variables: Iterable[float]) -> Iterable[float]:"
+        )
+    else:
+        args = ", ".join(f"{k}: float" for k in free_parameters)
+        model_fn = f"def model(time: float, variables: Iterable[float], {args}) -> Iterable[float]:"
+
     return _generate_model_code(
         model,
         imports=[
             "from collections.abc import Iterable\n",
         ],
         sized=False,
-        model_fn="def model(time: float, variables: Iterable[float]) -> Iterable[float]:",
+        model_fn=model_fn,
         variables_template="    {} = variables",
         assignment_template="    {k} = {v}",
         sympy_inline_fn=sympy_to_inline_py,
         return_template="    return {}",
         end=None,
+        free_parameters=free_parameters,
     )
 
 
-def generate_model_code_rs(model: Model) -> str:
+def generate_model_code_rs(
+    model: Model,
+    free_parameters: list[str] | None = None,
+) -> str:
     """Transform the model into a rust function, inlining the function calls."""
+    if free_parameters is None:
+        model_fn = "fn model(time: f64, variables: &[f64; {n}]) -> [f64; {n}] {{"
+    else:
+        args = ", ".join(f"{k}: f64" for k in free_parameters)
+        model_fn = f"fn model(time: f64, variables: &[f64; {{n}}], {args}) -> [f64; {{n}}] {{{{"
+
     return _generate_model_code(
         model,
         imports=None,
         sized=True,
-        model_fn="fn model(time: f64, variables: &[f64; {n}]) -> [f64; {n}] {{",
+        model_fn=model_fn,
         variables_template="    let [{}] = *variables;",
         assignment_template="    let {k}: f64 = {v};",
         sympy_inline_fn=sympy_to_inline_rust,
         return_template="    return [{}]",
         end="}",
+        free_parameters=free_parameters,
     )
