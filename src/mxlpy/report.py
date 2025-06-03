@@ -47,45 +47,43 @@ def _table_header(items: list[str]) -> str:
 def markdown(
     m1: Model,
     m2: Model,
+    *,
     analyses: list[AnalysisFn] | None = None,
     rel_change: float = 1e-2,
     img_path: Path = Path(),
+    m1_name: str = "model 1",
+    m2_name: str = "model 2",
+    include_rhs: bool = True,
 ) -> str:
     """Generate a markdown report comparing two models.
 
-    Parameters
-    ----------
-    m1
-        The first model to compare
-    m2
-        The second model to compare
-    analyses
-        A list of functions that analyze both models and return a report section with image
-    rel_change
-        The relative change threshold for numerical differences
-    img_path
-        The path to save images
+    Args:
+        m1: The first model to compare
+        m2: The second model to compare
+        analyses: A list of functions that analyze both models and return a report section with image
+        rel_change: The relative change threshold for numerical differences
+        img_path: The path to save images
+        m1_name: Name of the first model
+        m2_name: Name of the second model
+        include_rhs: Whether to include numerical differences in the right hand side
 
-    Returns
-    -------
-    str
-        Markdown formatted report comparing the two models
+    Returns:
+        str: Markdown formatted report comparing the two models
 
-    Examples
-    --------
-    >>> from mxlpy import Model
-    >>> m1 = Model().add_parameter("k1", 0.1).add_variable("S", 1.0)
-    >>> m2 = Model().add_parameter("k1", 0.2).add_variable("S", 1.0)
-    >>> report = markdown(m1, m2)
-    >>> "Parameters" in report and "k1" in report
-    True
+    Examples:
+        >>> from mxlpy import Model
+        >>> m1 = Model().add_parameter("k1", 0.1).add_variable("S", 1.0)
+        >>> m2 = Model().add_parameter("k1", 0.2).add_variable("S", 1.0)
+        >>> report = markdown(m1, m2)
+        >>> "Parameters" in report and "k1" in report
+        True
 
-    >>> # With custom analysis function
-    >>> def custom_analysis(m1, m2, path):
-    ...     return "## Custom analysis", path / "image.png"
-    >>> report = markdown(m1, m2, analyses=[custom_analysis])
-    >>> "Custom analysis" in report
-    True
+        >>> # With custom analysis function
+        >>> def custom_analysis(m1, m2, path):
+        ...     return "## Custom analysis", path / "image.png"
+        >>> report = markdown(m1, m2, analyses=[custom_analysis])
+        >>> "Custom analysis" in report
+        True
 
     """
     content: list[str] = [
@@ -101,7 +99,7 @@ def markdown(
     # Model stats
     content.extend(
         [
-            "| Model component | Old | New |",
+            f"| Model component | {m1_name} | {m2_name} |",
             "| --- | --- | --- |",
             f"| variables | {len(m1.variables)} | {len(m2.variables)}|",
             f"| parameters | {len(m1.parameters)} | {len(m2.parameters)}|",
@@ -132,7 +130,7 @@ def markdown(
         content.extend(
             (
                 "## Variables\n\n",
-                "| Name | Old Value | New Value |",
+                f"| Name | {m1_name} | {m2_name} |",
                 "| ---- | --------- | --------- |",
             )
         )
@@ -158,7 +156,7 @@ def markdown(
         content.extend(
             (
                 "## Parameters\n\n",
-                "| Name | Old Value | New Value |",
+                f"| Name | {m1_name} | {m2_name} |",
                 "| ---- | --------- | --------- |",
             )
         )
@@ -185,7 +183,7 @@ def markdown(
         content.extend(
             (
                 "## Derived\n\n",
-                "| Name | Old Value | New Value |",
+                f"| Name | {m1_name} | {m2_name} |",
                 "| ---- | --------- | --------- |",
             )
         )
@@ -213,7 +211,7 @@ def markdown(
         content.extend(
             (
                 "## Reactions\n\n",
-                "| Name | Old Value | New Value |",
+                f"| Name | {m1_name} | {m2_name} |",
                 "| ---- | --------- | --------- |",
             )
         )
@@ -233,30 +231,31 @@ def markdown(
         content.extend(
             (
                 "## Numerical differences of dependent values\n\n",
-                "| Name | Old Value | New Value | Relative Change | ",
+                f"| Name | {m1_name} | {m2_name} | Relative Change | ",
                 "| ---- | --------- | --------- | --------------- | ",
             )
         )
         content.append("\n".join(dependent))
 
-    rhs = []
-    r1 = m1.get_right_hand_side()
-    r2 = m2.get_right_hand_side()
-    rel_diff = ((r1 - r2) / r1).dropna()
-    for k, v in rel_diff.loc[rel_diff.abs() >= rel_change].items():
-        k = cast(str, k)
-        rhs.append(
-            f"| <span style='color:orange'>{k}</span> | {r1[k]:.2f} | {r2[k]:.2f} |  {v:.1%} |"
-        )
-    if len(rhs) >= 1:
-        content.extend(
-            (
-                "## Numerical differences of right hand side values\n\n",
-                "| Name | Old Value | New Value | Relative Change | ",
-                "| ---- | --------- | --------- | --------------- | ",
+    if include_rhs:
+        rhs = []
+        r1 = m1.get_right_hand_side()
+        r2 = m2.get_right_hand_side()
+        rel_diff = ((r1 - r2) / r1).dropna()
+        for k, v in rel_diff.loc[rel_diff.abs() >= rel_change].items():
+            k = cast(str, k)
+            rhs.append(
+                f"| <span style='color:orange'>{k}</span> | {r1[k]:.2f} | {r2[k]:.2f} |  {v:.1%} |"
             )
-        )
-        content.append("\n".join(rhs))
+        if len(rhs) >= 1:
+            content.extend(
+                (
+                    "## Numerical differences of right hand side values\n\n",
+                    f"| Name | {m1_name} | {m2_name} | Relative Change | ",
+                    "| ---- | --------- | --------- | --------------- | ",
+                )
+            )
+            content.append("\n".join(rhs))
 
     # Comparison functions
     if analyses is not None:
