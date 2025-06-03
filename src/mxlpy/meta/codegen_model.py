@@ -50,12 +50,12 @@ def _generate_model_code(
         source.append(model_fn.format(n=len(model.variables)))
 
     # Variables
-    variables = model.variables
+    variables = model.get_initial_conditions()
     if len(variables) > 0:
         source.append(variables_template.format(", ".join(variables)))
 
     # Parameters
-    parameters = model.parameters
+    parameters = model.get_parameter_values()
     if free_parameters is not None:
         for key in free_parameters:
             parameters.pop(key)
@@ -72,13 +72,13 @@ def _generate_model_code(
         source.append(assignment_template.format(k=name, v=sympy_inline_fn(expr)))
 
     # Reactions
-    for name, rxn in model.reactions.items():
+    for name, rxn in model.get_raw_reactions().items():
         expr = fn_to_sympy(rxn.fn, model_args=list_of_symbols(rxn.args))
         source.append(assignment_template.format(k=name, v=sympy_inline_fn(expr)))
 
     # Diff eqs
     diff_eqs = {}
-    for rxn_name, rxn in model.reactions.items():
+    for rxn_name, rxn in model.get_raw_reactions().items():
         for var_name, factor in rxn.stoichiometry.items():
             diff_eqs.setdefault(var_name, {})[rxn_name] = factor
 

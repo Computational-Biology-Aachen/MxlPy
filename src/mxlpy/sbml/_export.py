@@ -440,30 +440,32 @@ def _create_sbml_variables(
         sbml_model : libsbml.Model
 
     """
-    for name, value in model.variables.items():
+    for name, variable in model.get_raw_variables().items():
         cpd = sbml_model.createSpecies()
         cpd.setId(_convert_id_to_sbml(id_=name, prefix="CPD"))
 
         cpd.setConstant(False)
         cpd.setBoundaryCondition(False)
         cpd.setHasOnlySubstanceUnits(False)
-        if isinstance(value, Derived):
+        # cpd.setUnit() # FIXME: implement
+        if isinstance((init := variable.initial_value), Derived):
             ar = sbml_model.createInitialAssignment()
             ar.setId(_convert_id_to_sbml(id_=name, prefix="IA"))
             ar.setName(_convert_id_to_sbml(id_=name, prefix="IA"))
             ar.setVariable(_convert_id_to_sbml(id_=name, prefix="IA"))
-            ar.setMath(_sbmlify_fn(value.fn, value.args))
+            ar.setMath(_sbmlify_fn(init.fn, init.args))
         else:
-            cpd.setInitialAmount(float(value))
+            cpd.setInitialAmount(float(init))
 
 
 def _create_sbml_derived_variables(*, model: Model, sbml_model: libsbml.Model) -> None:
-    for name, dv in model.derived_variables.items():
+    for name, dv in model.get_derived_variables().items():
         sbml_ar = sbml_model.createAssignmentRule()
         sbml_ar.setId(_convert_id_to_sbml(id_=name, prefix="AR"))
         sbml_ar.setName(_convert_id_to_sbml(id_=name, prefix="AR"))
         sbml_ar.setVariable(_convert_id_to_sbml(id_=name, prefix="AR"))
         sbml_ar.setMath(_sbmlify_fn(dv.fn, dv.args))
+        # cpd.setUnit() # FIXME: implement
 
 
 def _create_derived_parameter(
@@ -477,6 +479,7 @@ def _create_derived_parameter(
     ar.setName(_convert_id_to_sbml(id_=name, prefix="AR"))
     ar.setVariable(_convert_id_to_sbml(id_=name, prefix="AR"))
     ar.setMath(_sbmlify_fn(dp.fn, dp.args))
+    # cpd.setUnit() # FIXME: implement
 
 
 def _create_sbml_parameters(
@@ -491,7 +494,7 @@ def _create_sbml_parameters(
         sbml_model : libsbml.Model
 
     """
-    for parameter_id, value in model.parameters.items():
+    for parameter_id, value in model.get_parameter_values().items():
         k = sbml_model.createParameter()
         k.setId(_convert_id_to_sbml(id_=parameter_id, prefix="PAR"))
         k.setConstant(True)
@@ -499,7 +502,7 @@ def _create_sbml_parameters(
 
 
 def _create_sbml_derived_parameters(*, model: Model, sbml_model: libsbml.Model) -> None:
-    for name, dp in model.derived_parameters.items():
+    for name, dp in model.get_derived_parameters().items():
         _create_derived_parameter(sbml_model, name, dp)
 
 
@@ -509,7 +512,7 @@ def _create_sbml_reactions(
     sbml_model: libsbml.Model,
 ) -> None:
     """Create the reactions for the sbml model."""
-    for name, rxn in model.reactions.items():
+    for name, rxn in model.get_raw_reactions().items():
         sbml_rxn = sbml_model.createReaction()
         sbml_rxn.setId(_convert_id_to_sbml(id_=name, prefix="RXN"))
         sbml_rxn.setName(name)

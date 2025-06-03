@@ -4,15 +4,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import sympy
 
-from mxlpy.meta.sympy_tools import fn_to_sympy
+from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from mxlpy.model import Model
 
 __all__ = [
@@ -36,29 +34,34 @@ class SymbolicModel:
         )
 
 
-def _list_of_symbols(args: Iterable[str]) -> list[sympy.Symbol]:
-    return [sympy.Symbol(arg) for arg in args]
-
-
 def to_symbolic_model(model: Model) -> SymbolicModel:
     cache = model._create_cache()  # noqa: SLF001
+    initial_conditions = model.get_initial_conditions()
 
     variables: dict[str, sympy.Symbol] = dict(
-        zip(model.variables, _list_of_symbols(model.variables), strict=True)
+        zip(
+            initial_conditions,
+            cast(list[sympy.Symbol], list_of_symbols(initial_conditions)),
+            strict=True,
+        )
     )
     parameters: dict[str, sympy.Symbol] = dict(
-        zip(model.parameters, _list_of_symbols(model.parameters), strict=True)
+        zip(
+            model.get_parameter_values(),
+            cast(list[sympy.Symbol], list_of_symbols(model.get_parameter_values())),
+            strict=True,
+        )
     )
     symbols: dict[str, sympy.Symbol | sympy.Expr] = variables | parameters  # type: ignore
 
     # Insert derived into symbols
-    for k, v in model.derived.items():
+    for k, v in model.get_raw_derived().items():
         symbols[k] = fn_to_sympy(v.fn, [symbols[i] for i in v.args])
 
     # Insert derived into reaction via args
     rxns = {
         k: fn_to_sympy(v.fn, [symbols[i] for i in v.args])
-        for k, v in model.reactions.items()
+        for k, v in model.get_raw_reactions().items()
     }
 
     eqs: dict[str, sympy.Expr] = {}
@@ -80,5 +83,5 @@ def to_symbolic_model(model: Model) -> SymbolicModel:
         parameters=parameters,
         eqs=[eqs[i] for i in cache.var_names],
         initial_conditions=model.get_initial_conditions(),
-        parameter_values=model.parameters,
+        parameter_values=model.get_parameter_values(),
     )

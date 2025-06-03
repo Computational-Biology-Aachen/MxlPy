@@ -767,15 +767,17 @@ class TexExport:
 def to_tex_export(model: Model) -> TexExport:
     """Create TexExport object from a model."""
     diff_eqs = {}
-    for rxn_name, rxn in model.reactions.items():
+    for rxn_name, rxn in model.get_raw_reactions().items():
         for var_name, factor in rxn.stoichiometry.items():
             diff_eqs.setdefault(var_name, {})[rxn_name] = factor
 
     return TexExport(
-        parameters=model.parameters,
+        parameters=model.get_parameter_values(),
         variables=model.get_initial_conditions(),  # FIXME: think about this later
-        derived=model.derived,
-        reactions={k: TexReaction(v.fn, v.args) for k, v in model.reactions.items()},
+        derived=model.get_raw_derived(),
+        reactions={
+            k: TexReaction(v.fn, v.args) for k, v in model.get_raw_reactions().items()
+        },
         diff_eqs=diff_eqs,
     )
 

@@ -208,12 +208,18 @@ def test_create_isotopomer_reactions() -> None:
         args=["A", "k1"],
     )
 
-    assert "v1__0" in test_model.reactions
-    assert "v1__1" in test_model.reactions
+    assert "v1__0" in test_model.get_raw_reactions()
+    assert "v1__1" in test_model.get_raw_reactions()
 
     # Check that stoichiometries are correctly assigned
-    assert test_model.reactions["v1__0"].stoichiometry == {"A__0": -1, "B__0": 1}
-    assert test_model.reactions["v1__1"].stoichiometry == {"A__1": -1, "B__1": 1}
+    assert test_model.get_raw_reactions()["v1__0"].stoichiometry == {
+        "A__0": -1,
+        "B__0": 1,
+    }
+    assert test_model.get_raw_reactions()["v1__1"].stoichiometry == {
+        "A__1": -1,
+        "B__1": 1,
+    }
 
     # Test error case when labelmap is too short
     with pytest.raises(ValueError, match="Labelmap 'missing'"):
@@ -343,15 +349,15 @@ def test_build_model(simple_model: Model) -> None:
     assert "C__1" in labeled_model.variables
 
     # Check derived variables for totals
-    assert "A__total" in labeled_model.derived_variables
-    assert "B__total" in labeled_model.derived_variables
-    assert "C__total" in labeled_model.derived_variables
+    assert "A__total" in labeled_model.get_derived_variables()
+    assert "B__total" in labeled_model.get_derived_variables()
+    assert "C__total" in labeled_model.get_derived_variables()
 
     # Check reactions
-    assert "v1__0" in labeled_model.reactions
-    assert "v1__1" in labeled_model.reactions
-    assert "v2__0" in labeled_model.reactions
-    assert "v2__1" in labeled_model.reactions
+    assert "v1__0" in labeled_model.get_raw_reactions()
+    assert "v1__1" in labeled_model.get_raw_reactions()
+    assert "v2__0" in labeled_model.get_raw_reactions()
+    assert "v2__1" in labeled_model.get_raw_reactions()
 
     # Build model with initial labels - position 0 is labeled (corresponding to A__1)
     labeled_model = mapper.build_model(initial_labels={"A": [0]})
@@ -377,8 +383,11 @@ def test_model_with_derived_variables(simple_model: Model) -> None:
     labeled_model = mapper.build_model()
 
     # Check that derived variables are properly mapped
-    assert "A_plus_B" in labeled_model.derived_variables
-    assert labeled_model.derived_variables["A_plus_B"].args == ["A__total", "B__total"]
+    assert "A_plus_B" in labeled_model.get_derived_variables()
+    assert labeled_model.get_derived_variables()["A_plus_B"].args == [
+        "A__total",
+        "B__total",
+    ]
 
 
 def test_build_model_with_list_initial_labels(simple_model: Model) -> None:

@@ -22,7 +22,7 @@ def _canonicalise(self: Model) -> Model:
 
         return dp
 
-    for name, rxn in self.reactions.items():
+    for name, rxn in self.get_raw_reactions().items():
         self.update_reaction(
             name,
             stoichiometry={

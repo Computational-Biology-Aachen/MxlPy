@@ -15,9 +15,23 @@ from typing import TYPE_CHECKING, Self, cast
 
 import numpy as np
 import pandas as pd
+import sympy
 
 from mxlpy import fns
-from mxlpy.types import AbstractSurrogate, Array, Derived, Reaction, Readout
+from mxlpy.meta.source_tools import fn_to_sympy
+from mxlpy.meta.sympy_tools import (
+    list_of_symbols,
+    stoichiometries_to_sympy,
+)
+from mxlpy.types import (
+    AbstractSurrogate,
+    Array,
+    Derived,
+    Parameter,
+    Reaction,
+    Readout,
+    Variable,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -275,8 +289,8 @@ class Model:
     """
 
     _ids: dict[str, str] = field(default_factory=dict)
-    _variables: dict[str, float | Derived] = field(default_factory=dict)
-    _parameters: dict[str, float] = field(default_factory=dict)
+    _variables: dict[str, Variable] = field(default_factory=dict)
+    _parameters: dict[str, Parameter] = field(default_factory=dict)
     _derived: dict[str, Derived] = field(default_factory=dict)
     _readouts: dict[str, Readout] = field(default_factory=dict)
     _reactions: dict[str, Reaction] = field(default_factory=dict)
@@ -300,7 +314,7 @@ class Model:
             ModelCache: An instance of ModelCache containing the initialized cache data.
 
         """
-        all_parameter_values: dict[str, float] = self._parameters.copy()
+        all_parameter_values: dict[str, float] = self.get_parameter_values()
         all_parameter_names: set[str] = set(all_parameter_values)
 
         # Sanity checks
@@ -337,7 +351,11 @@ class Model:
         dependent = (
             all_parameter_values
             | self._data
-            | {k: v for k, v in self._variables.items() if not isinstance(v, Derived)}
+            | {
+                k: init
+                for k, v in self._variables.items()
+                if not isinstance(init := v.initial_value, Derived)
+            }
             | {"time": 0.0}
         )
         for name in order:
@@ -393,7 +411,9 @@ class Model:
         dxdt = pd.Series(np.zeros(len(var_names), dtype=float), index=var_names)
 
         initial_conditions: dict[str, float] = {
-            k: v for k, v in self._variables.items() if not isinstance(v, Derived)
+            k: init
+            for k, v in self._variables.items()
+            if not isinstance(init := v.initial_value, Derived)
         }
         for name in static_order:
             if name in self._variables:
@@ -465,29 +485,86 @@ class Model:
         del self._ids[name]
 
     ##########################################################################
-    # Parameters
+    # Parameters - views
     ##########################################################################
 
+    @property
+    def parameters(self) -> pd.DataFrame:
+        """Return view of parameters."""
+        index = list(self._parameters.keys())
+        data = [
+            {
+                "value": el.value,
+                "unit": sympy.latex(unit) if (unit := el.unit) is not None else "",
+                # "source": ...,
+            }
+            for el in self._parameters.values()
+        ]
+        return pd.DataFrame(data, index=index)
+
+    def get_raw_parameters(self) -> dict[str, Parameter]:
+        """Returns the parameters of the model."""
+        return copy.deepcopy(self._parameters)
+
+    def get_parameter_values(self) -> dict[str, float]:
+        """Returns the parameters of the model.
+
+        Examples:
+            >>> model.parameters
+                {"k1": 0.1, "k2": 0.2}
+
+        Returns:
+            parameters: A dictionary where the keys are parameter names (as strings)
+                  and the values are parameter values (as floats).
+
+        """
+        return {k: v.value for k, v in self._parameters.items()}
+
+    def get_parameter_names(self) -> list[str]:
+        """Retrieve the names of the parameters.
+
+        Examples:
+            >>> model.get_parameter_names()
+                ['k1', 'k2']
+
+        Returns:
+            parametes: A list containing the names of the parameters.
+
+        """
+        return list(self._parameters)
+
+    #####################################
+    # Parameters - create
+    #####################################
+
     @_invalidate_cache
-    def add_parameter(self, name: str, value: float) -> Self:
+    def add_parameter(
+        self,
+        name: str,
+        value: float,
+        unit: sympy.Expr | None = None,
+        source: str | None = None,
+    ) -> Self:
         """Adds a parameter to the model.
 
         Examples:
             >>> model.add_parameter("k1", 0.1)
 
         Args:
-            name (str): The name of the parameter.
-            value (float): The value of the parameter.
+            name: The name of the parameter.
+            value: The value of the parameter.
+            unit: unit of the parameter
+            source: source of the information given
 
         Returns:
             Self: The instance of the model with the added parameter.
 
         """
         self._insert_id(name=name, ctx="parameter")
-        self._parameters[name] = value
+        self._parameters[name] = Parameter(value=value, unit=unit, source=source)
         return self
 
-    def add_parameters(self, parameters: dict[str, float]) -> Self:
+    def add_parameters(self, parameters: Mapping[str, float | Parameter]) -> Self:
         """Adds multiple parameters to the model.
 
         Examples:
@@ -502,36 +579,15 @@ class Model:
 
         """
         for k, v in parameters.items():
-            self.add_parameter(k, v)
+            if isinstance(v, Parameter):
+                self.add_parameter(k, v.value, unit=v.unit, source=v.source)
+            else:
+                self.add_parameter(k, v)
         return self
 
-    @property
-    def parameters(self) -> dict[str, float]:
-        """Returns the parameters of the model.
-
-        Examples:
-            >>> model.parameters
-                {"k1": 0.1, "k2": 0.2}
-
-        Returns:
-            parameters: A dictionary where the keys are parameter names (as strings)
-                  and the values are parameter values (as floats).
-
-        """
-        return self._parameters.copy()
-
-    def get_parameter_names(self) -> list[str]:
-        """Retrieve the names of the parameters.
-
-        Examples:
-            >>> model.get_parameter_names()
-                ['k1', 'k2']
-
-        Returns:
-            parametes: A list containing the names of the parameters.
-
-        """
-        return list(self._parameters)
+    #####################################
+    # Parameters - delete
+    #####################################
 
     @_invalidate_cache
     def remove_parameter(self, name: str) -> Self:
@@ -568,8 +624,19 @@ class Model:
             self.remove_parameter(name)
         return self
 
+    #####################################
+    # Parameters - update
+    #####################################
+
     @_invalidate_cache
-    def update_parameter(self, name: str, value: float) -> Self:
+    def update_parameter(
+        self,
+        name: str,
+        value: float | None = None,
+        *,
+        unit: sympy.Expr | None = None,
+        source: str | None = None,
+    ) -> Self:
         """Update the value of a parameter.
 
         Examples:
@@ -578,6 +645,8 @@ class Model:
         Args:
             name: The name of the parameter to update.
             value: The new value for the parameter.
+            unit: Unit of the parameter
+            source: Source of the information
 
         Returns:
             Self: The instance of the class with the updated parameter.
@@ -589,10 +658,17 @@ class Model:
         if name not in self._parameters:
             msg = f"'{name}' not found in parameters"
             raise KeyError(msg)
-        self._parameters[name] = value
+
+        parameter = self._parameters[name]
+        if value is not None:
+            parameter.value = value
+        if unit is not None:
+            parameter.unit = unit
+        if source is not None:
+            parameter.source = source
         return self
 
-    def update_parameters(self, parameters: dict[str, float]) -> Self:
+    def update_parameters(self, parameters: Mapping[str, float | Parameter]) -> Self:
         """Update multiple parameters of the model.
 
         Examples:
@@ -606,7 +682,10 @@ class Model:
 
         """
         for k, v in parameters.items():
-            self.update_parameter(k, v)
+            if isinstance(v, Parameter):
+                self.update_parameter(k, value=v.value, unit=v.unit, source=v.source)
+            else:
+                self.update_parameter(k, v)
         return self
 
     def scale_parameter(self, name: str, factor: float) -> Self:
@@ -623,7 +702,7 @@ class Model:
             Self: The instance of the class with the updated parameter.
 
         """
-        return self.update_parameter(name, self._parameters[name] * factor)
+        return self.update_parameter(name, self._parameters[name].value * factor)
 
     def scale_parameters(self, parameters: dict[str, float]) -> Self:
         """Scales the parameters of the model.
@@ -667,7 +746,7 @@ class Model:
             Self: The instance of the model with the parameter converted to a variable.
 
         """
-        value = self._parameters[name] if initial_value is None else initial_value
+        value = self._parameters[name].value if initial_value is None else initial_value
         self.remove_parameter(name)
         self.add_variable(name, value)
 
@@ -708,7 +787,7 @@ class Model:
     ##########################################################################
 
     @property
-    def variables(self) -> dict[str, float | Derived]:
+    def variables(self) -> pd.DataFrame:
         """Returns a copy of the variables dictionary.
 
         Examples:
@@ -722,10 +801,68 @@ class Model:
             dict[str, float]: A copy of the variables dictionary.
 
         """
-        return self._variables.copy()
+        index = list(self._variables.keys())
+        data = [
+            {
+                "value": sympy.latex(fn_to_sympy(init.fn, list_of_symbols(init.args)))
+                if isinstance(init := el.initial_value, Derived)
+                else init,
+                "unit": sympy.latex(unit) if (unit := el.unit) is not None else "",
+                # "source": ...,
+            }
+            for el in self._variables.values()
+        ]
+        return pd.DataFrame(data, index=index)
+
+    def get_raw_variables(self) -> dict[str, Variable]:
+        """Retrieve the initial conditions of the model.
+
+        Examples:
+            >>> model.get_initial_conditions()
+                {"x1": 1.0, "x2": 2.0}
+
+        Returns:
+            initial_conditions: A dictionary where the keys are variable names and the values are their initial conditions.
+
+        """
+        return copy.deepcopy(self._variables)
+
+    def get_initial_conditions(self) -> dict[str, float]:
+        """Retrieve the initial conditions of the model.
+
+        Examples:
+            >>> model.get_initial_conditions()
+                {"x1": 1.0, "x2": 2.0}
+
+        Returns:
+            initial_conditions: A dictionary where the keys are variable names and the values are their initial conditions.
+
+        """
+        if (cache := self._cache) is None:
+            cache = self._create_cache()
+        return cache.initial_conditions
+
+    def get_variable_names(self) -> list[str]:
+        """Retrieve the names of all variables.
+
+        Examples:
+            >>> model.get_variable_names()
+                ["x1", "x2"]
+
+        Returns:
+            variable_names: A list containing the names of all variables.
+
+        """
+        return list(self._variables)
 
     @_invalidate_cache
-    def add_variable(self, name: str, initial_condition: float | Derived) -> Self:
+    def add_variable(
+        self,
+        name: str,
+        initial_value: float | Derived,
+        unit: sympy.Expr | None = None,
+        source: str | None = None,
+    ) -> Self:
         """Adds a variable to the model with the given name and initial condition.
 
         Examples:
@@ -733,17 +870,23 @@ class Model:
 
         Args:
             name: The name of the variable to add.
-            initial_condition: The initial condition value for the variable.
+            initial_value: The initial condition value for the variable.
+            unit: unit of the variable
+            source: source of the information given
 
         Returns:
             Self: The instance of the model with the added variable.
 
         """
         self._insert_id(name=name, ctx="variable")
-        self._variables[name] = initial_condition
+        self._variables[name] = Variable(
+            initial_value=initial_value, unit=unit, source=source
+        )
         return self
 
-    def add_variables(self, variables: Mapping[str, float | Derived]) -> Self:
+    def add_variables(
+        self, variables: Mapping[str, float | Variable | Derived]
+    ) -> Self:
         """Adds multiple variables to the model with their initial conditions.
 
         Examples:
@@ -757,8 +900,16 @@ class Model:
             Self: The instance of the model with the added variables.
 
         """
-        for name, y0 in variables.items():
-            self.add_variable(name=name, initial_condition=y0)
+        for name, v in variables.items():
+            if isinstance(v, Variable):
+                self.add_variable(
+                    name=name,
+                    initial_value=v.initial_value,
+                    unit=v.unit,
+                    source=v.source,
+                )
+            else:
+                self.add_variable(name=name, initial_value=v)
         return self
 
     @_invalidate_cache
@@ -797,7 +948,13 @@ class Model:
         return self
 
     @_invalidate_cache
-    def update_variable(self, name: str, initial_condition: float | Derived) -> Self:
+    def update_variable(
+        self,
+        name: str,
+        initial_value: float | Derived,
+        unit: sympy.Expr | None = None,
+        source: str | None = None,
+    ) -> Self:
         """Updates the value of a variable in the model.
 
         Examples:
@@ -805,7 +962,9 @@ class Model:
 
         Args:
             name: The name of the variable to update.
-            initial_condition: The initial condition or value to set for the variable.
+            initial_value: The initial condition or value to set for the variable.
+            unit: Unit of the variable
+            source: Source of the information
 
         Returns:
             Self: The instance of the model with the updated variable.
@@ -814,10 +973,20 @@ class Model:
         if name not in self._variables:
             msg = f"'{name}' not found in variables"
             raise KeyError(msg)
-        self._variables[name] = initial_condition
+
+        variable = self._variables[name]
+
+        if initial_value is not None:
+            variable.initial_value = initial_value
+        if unit is not None:
+            variable.unit = unit
+        if source is not None:
+            variable.source = source
         return self
 
-    def update_variables(self, variables: Mapping[str, float | Derived]) -> Self:
+    def update_variables(
+        self, variables: Mapping[str, float | Derived | Variable]
+    ) -> Self:
         """Updates multiple variables in the model.
 
         Examples:
@@ -831,36 +1000,16 @@ class Model:
 
         """
         for k, v in variables.items():
-            self.update_variable(k, v)
+            if isinstance(v, Variable):
+                self.update_variable(
+                    k,
+                    initial_value=v.initial_value,
+                    unit=v.unit,
+                    source=v.source,
+                )
+            else:
+                self.update_variable(k, v)
         return self
-
-    def get_variable_names(self) -> list[str]:
-        """Retrieve the names of all variables.
-
-        Examples:
-            >>> model.get_variable_names()
-                ["x1", "x2"]
-
-        Returns:
-            variable_names: A list containing the names of all variables.
-
-        """
-        return list(self._variables)
-
-    def get_initial_conditions(self) -> dict[str, float]:
-        """Retrieve the initial conditions of the model.
-
-        Examples:
-            >>> model.get_initial_conditions()
-                {"x1": 1.0, "x2": 2.0}
-
-        Returns:
-            initial_conditions: A dictionary where the keys are variable names and the values are their initial conditions.
-
-        """
-        if (cache := self._cache) is None:
-            cache = self._create_cache()
-        return cache.initial_conditions
 
     def make_variable_static(self, name: str, value: float | None = None) -> Self:
         """Converts a variable to a static parameter.
@@ -881,8 +1030,12 @@ class Model:
             Self: The instance of the class for method chaining.
 
         """
-        value_or_derived = self._variables[name] if value is None else value
+        value_or_derived = (
+            self._variables[name].initial_value if value is None else value
+        )
         self.remove_variable(name)
+
+        # FIXME: better handling of unit
         if isinstance(value_or_derived, Derived):
             self.add_derived(name, value_or_derived.fn, args=value_or_derived.args)
         else:
@@ -901,12 +1054,12 @@ class Model:
         return self
 
     ##########################################################################
-    # Derived
+    # Derived - views
     ##########################################################################
 
     @property
-    def derived(self) -> dict[str, Derived]:
-        """Returns a copy of the derived quantities.
+    def derived(self) -> pd.DataFrame:
+        """Returns a view of the derived quantities.
 
         Examples:
             >>> model.derived
@@ -917,10 +1070,22 @@ class Model:
             dict[str, Derived]: A copy of the derived dictionary.
 
         """
-        return self._derived.copy()
+        index = list(self._derived.keys())
+        reactions = [
+            {
+                "fn": fn_to_sympy(el.fn, list_of_symbols(el.args)),
+                "unit": sympy.latex(unit) if (unit := el.unit) is not None else "",
+                # "source"
+            }
+            for el in self._derived.values()
+        ]
+        return pd.DataFrame(reactions, index=index)
 
-    @property
-    def derived_variables(self) -> dict[str, Derived]:
+    def get_raw_derived(self) -> dict[str, Derived]:
+        """Get copy of derived values."""
+        return copy.deepcopy(self._derived)
+
+    def get_derived_variables(self) -> dict[str, Derived]:
         """Returns a dictionary of derived variables.
 
         Examples:
@@ -940,8 +1105,7 @@ class Model:
 
         return {k: v for k, v in derived.items() if k not in cache.all_parameter_values}
 
-    @property
-    def derived_parameters(self) -> dict[str, Derived]:
+    def get_derived_parameters(self) -> dict[str, Derived]:
         """Returns a dictionary of derived parameters.
 
         Examples:
@@ -966,6 +1130,7 @@ class Model:
         fn: RateFn,
         *,
         args: list[str],
+        unit: sympy.Expr | None = None,
     ) -> Self:
         """Adds a derived attribute to the model.
 
@@ -976,13 +1141,14 @@ class Model:
             name: The name of the derived attribute.
             fn: The function used to compute the derived attribute.
             args: The list of arguments to be passed to the function.
+            unit: Unit of the derived value
 
         Returns:
             Self: The instance of the model with the added derived attribute.
 
         """
         self._insert_id(name=name, ctx="derived")
-        self._derived[name] = Derived(fn=fn, args=args)
+        self._derived[name] = Derived(fn=fn, args=args, unit=unit)
         return self
 
     def get_derived_parameter_names(self) -> list[str]:
@@ -996,7 +1162,7 @@ class Model:
             A list of names of the derived parameters.
 
         """
-        return list(self.derived_parameters)
+        return list(self.get_derived_parameters())
 
     def get_derived_variable_names(self) -> list[str]:
         """Retrieve the names of derived variables.
@@ -1009,7 +1175,7 @@ class Model:
             A list of names of derived variables.
 
         """
-        return list(self.derived_variables)
+        return list(self.get_derived_variables())
 
     @_invalidate_cache
     def update_derived(
@@ -1018,6 +1184,7 @@ class Model:
         fn: RateFn | None = None,
         *,
         args: list[str] | None = None,
+        unit: sympy.Expr | None = None,
     ) -> Self:
         """Updates the derived function and its arguments for a given name.
 
@@ -1026,16 +1193,21 @@ class Model:
 
         Args:
             name: The name of the derived function to update.
-            fn: The new derived function. If None, the existing function is retained. Defaults to None.
-            args: The new arguments for the derived function. If None, the existing arguments are retained. Defaults to None.
+            fn: The new derived function. If None, the existing function is retained.
+            args: The new arguments for the derived function. If None, the existing arguments are retained.
+            unit: Unit of the derived value
 
         Returns:
             Self: The instance of the class with the updated derived function and arguments.
 
         """
         der = self._derived[name]
-        der.fn = der.fn if fn is None else fn
-        der.args = der.args if args is None else args
+        if fn is not None:
+            der.fn = fn
+        if args is not None:
+            der.args = args
+        if unit is not None:
+            der.unit = unit
         return self
 
     @_invalidate_cache
@@ -1061,7 +1233,23 @@ class Model:
     ###########################################################################
 
     @property
-    def reactions(self) -> dict[str, Reaction]:
+    def reactions(self) -> pd.DataFrame:
+        """Get view of reactions."""
+        index = list(self._reactions.keys())
+
+        reactions = [
+            {
+                "fn": fn_to_sympy(rxn.fn, list_of_symbols(rxn.args)),
+                "stoichiometry": stoichiometries_to_sympy(rxn.stoichiometry),
+                "unit": sympy.latex(unit) if (unit := rxn.unit) is not None else "",
+                # "source"
+            }
+            for rxn in self._reactions.values()
+        ]
+
+        return pd.DataFrame(reactions, index=index)
+
+    def get_raw_reactions(self) -> dict[str, Reaction]:
         """Retrieve the reactions in the model.
 
         Examples:
@@ -1155,6 +1343,8 @@ class Model:
         *,
         args: list[str],
         stoichiometry: Mapping[str, float | str | Derived],
+        unit: sympy.Expr | None = None,
+        # source: str | None = None,
     ) -> Self:
         """Adds a reaction to the model.
 
@@ -1170,6 +1360,7 @@ class Model:
             fn: The function representing the reaction.
             args: A list of arguments for the reaction function.
             stoichiometry: The stoichiometry of the reaction, mapping species to their coefficients.
+            unit: Unit of the rate
 
         Returns:
             Self: The instance of the model with the added reaction.
@@ -1181,7 +1372,12 @@ class Model:
             k: Derived(fn=fns.constant, args=[v]) if isinstance(v, str) else v
             for k, v in stoichiometry.items()
         }
-        self._reactions[name] = Reaction(fn=fn, stoichiometry=stoich, args=args)
+        self._reactions[name] = Reaction(
+            fn=fn,
+            stoichiometry=stoich,
+            args=args,
+            unit=unit,
+        )
         return self
 
     def get_reaction_names(self) -> list[str]:
@@ -1205,6 +1401,7 @@ class Model:
         *,
         args: list[str] | None = None,
         stoichiometry: Mapping[str, float | Derived | str] | None = None,
+        unit: sympy.Expr | None = None,
     ) -> Self:
         """Updates the properties of an existing reaction in the model.
 
@@ -1220,6 +1417,7 @@ class Model:
             fn: The new function for the reaction. If None, the existing function is retained.
             args: The new arguments for the reaction. If None, the existing arguments are retained.
             stoichiometry: The new stoichiometry for the reaction. If None, the existing stoichiometry is retained.
+            unit: Unit of the reaction
 
         Returns:
             Self: The instance of the model with the updated reaction.
@@ -1235,6 +1433,7 @@ class Model:
             }
             rxn.stoichiometry = stoich
         rxn.args = rxn.args if args is None else args
+        rxn.unit = rxn.unit if unit is None else unit
         return self
 
     @_invalidate_cache
@@ -1285,7 +1484,14 @@ class Model:
     # Think of something like NADPH / (NADP + NADPH) as a proxy for energy state
     ##########################################################################
 
-    def add_readout(self, name: str, fn: RateFn, *, args: list[str]) -> Self:
+    def add_readout(
+        self,
+        name: str,
+        fn: RateFn,
+        *,
+        args: list[str],
+        unit: sympy.Expr | None = None,
+    ) -> Self:
         """Adds a readout to the model.
 
         Examples:
@@ -1298,13 +1504,14 @@ class Model:
             name: The name of the readout.
             fn: The function to be used for the readout.
             args: The list of arguments for the function.
+            unit: Unit of the readout
 
         Returns:
             Self: The instance of the model with the added readout.
 
         """
         self._insert_id(name=name, ctx="readout")
-        self._readouts[name] = Readout(fn=fn, args=args)
+        self._readouts[name] = Readout(fn=fn, args=args, unit=unit)
         return self
 
     def get_readout_names(self) -> list[str]:

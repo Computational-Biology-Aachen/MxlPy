@@ -154,8 +154,8 @@ def test_linear_label_mapper_build_model() -> None:
     assert "B__1" in label_model.variables
 
     # Check that the model has the expected reactions
-    assert "v1__0" in label_model.reactions
-    assert "v1__1" in label_model.reactions
+    assert "v1__0" in label_model.get_raw_reactions()
+    assert "v1__1" in label_model.get_raw_reactions()
 
 
 def test_linear_label_mapper_build_model_with_initial_labels() -> None:

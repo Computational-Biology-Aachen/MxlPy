@@ -22,7 +22,7 @@ def generate_mxlpy_code(model: Model) -> str:
 
     # Variables and parameters
     variables = model.variables
-    parameters = model.parameters
+    parameters = model.get_parameter_values()
 
     # Derived
     derived_source = []
@@ -44,7 +44,7 @@ def generate_mxlpy_code(model: Model) -> str:
 
     # Reactions
     reactions_source = []
-    for k, rxn in model.reactions.items():
+    for k, rxn in model.get_raw_reactions().items():
         fn = rxn.fn
         fn_name = fn.__name__
         functions[fn_name] = (

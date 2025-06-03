@@ -445,7 +445,7 @@ class Simulator:
 
         if self.simulation_parameters is None:
             self.simulation_parameters = []
-        self.simulation_parameters.append(self.model.parameters)
+        self.simulation_parameters.append(self.model.get_parameter_values())
 
     def simulate(
         self,

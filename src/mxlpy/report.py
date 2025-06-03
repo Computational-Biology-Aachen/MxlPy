@@ -102,17 +102,17 @@ def markdown(
             f"| Model component | {m1_name} | {m2_name} |",
             "| --- | --- | --- |",
             f"| variables | {len(m1.variables)} | {len(m2.variables)}|",
-            f"| parameters | {len(m1.parameters)} | {len(m2.parameters)}|",
-            f"| derived parameters | {len(m1.derived_parameters)} | {len(m2.derived_parameters)}|",
-            f"| derived variables | {len(m1.derived_variables)} | {len(m2.derived_variables)}|",
-            f"| reactions | {len(m1.reactions)} | {len(m2.reactions)}|",
+            f"| parameters | {len(m1.get_parameter_values())} | {len(m2.get_parameter_values())}|",
+            f"| derived parameters | {len(m1.get_derived_parameters())} | {len(m2.get_derived_parameters())}|",
+            f"| derived variables | {len(m1.get_derived_variables())} | {len(m2.get_derived_variables())}|",
+            f"| reactions | {len(m1.get_raw_reactions())} | {len(m2.get_raw_reactions())}|",
             f"| surrogates | {len(m1._surrogates)} | {len(m2._surrogates)}|",  # noqa: SLF001
         ]
     )
 
     # Variables
     new_variables, removed_variables, changed_variables = _new_removed_changed(
-        m1.variables, m2.variables
+        m1.get_initial_conditions(), m2.get_initial_conditions()
     )
     variables = []
     variables.extend(
@@ -138,7 +138,7 @@ def markdown(
 
     # Parameters
     new_parameters, removed_parameters, changed_parameters = _new_removed_changed(
-        m1.parameters, m2.parameters
+        m1.get_parameter_values(), m2.get_parameter_values()
     )
     pars = []
     pars.extend(
@@ -164,7 +164,8 @@ def markdown(
 
     # Derived
     new_derived, removed_derived, changed_derived = _new_removed_changed(
-        m1.derived, m2.derived
+        m1.get_raw_derived(),
+        m2.get_raw_derived(),
     )
     derived = []
     for k, v in new_derived.items():
@@ -191,7 +192,7 @@ def markdown(
 
     # Reactions
     new_reactions, removed_reactions, changed_reactions = _new_removed_changed(
-        m1.reactions, m2.reactions
+        m1.get_raw_reactions(), m2.get_raw_reactions()
     )
     reactions = []
     for k, v in new_reactions.items():

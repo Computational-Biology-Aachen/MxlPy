@@ -59,7 +59,10 @@ def profile_likelihood(
 
     """
     parameter_distributions = sample(
-        {k: LogNormal(np.log(v), sigma=1) for k, v in model.parameters.items()},
+        {
+            k: LogNormal(np.log(v), sigma=1)
+            for k, v in model.get_parameter_values().items()
+        },
         n=n_random,
     )
 

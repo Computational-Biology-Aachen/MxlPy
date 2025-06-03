@@ -12,7 +12,7 @@ from mxlpy.meta.source_tools import fn_to_sympy
 from mxlpy.types import Derived
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
 __all__ = [
     "list_of_symbols",
@@ -23,7 +23,7 @@ __all__ = [
 ]
 
 
-def list_of_symbols(args: list[str]) -> list[sympy.Symbol | sympy.Expr]:
+def list_of_symbols(args: Iterable[str]) -> list[sympy.Symbol | sympy.Expr]:
     """Convert list of strings to list of symbols."""
     return [sympy.Symbol(arg) for arg in args]
 

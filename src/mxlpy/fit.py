@@ -366,7 +366,7 @@ def steady_state(
     par_names = list(p0.keys())
 
     # Copy to restore
-    p_orig = model.parameters
+    p_orig = model.get_parameter_values()
 
     fn = cast(
         ResidualFn,
@@ -428,7 +428,7 @@ def time_course(
 
     """
     par_names = list(p0.keys())
-    p_orig = model.parameters
+    p_orig = model.get_parameter_values()
 
     fn = cast(
         ResidualFn,
@@ -495,7 +495,7 @@ def time_course_over_protocol(
 
     """
     par_names = list(p0.keys())
-    p_orig = model.parameters
+    p_orig = model.get_parameter_values()
 
     fn = cast(
         ResidualFn,
@@ -535,7 +535,7 @@ def _carousel_steady_state_worker(
     minimize_fn: MinimizeFn,
     residual_fn: SteadyStateResidualFn,
 ) -> FitResult | None:
-    model_pars = model.parameters
+    model_pars = model.get_parameter_values()
 
     return steady_state(
         model,
@@ -559,7 +559,7 @@ def _carousel_time_course_worker(
     minimize_fn: MinimizeFn,
     residual_fn: TimeSeriesResidualFn,
 ) -> FitResult | None:
-    model_pars = model.parameters
+    model_pars = model.get_parameter_values()
     return time_course(
         model,
         p0={k: v for k, v in p0.items() if k in model_pars},
@@ -583,7 +583,7 @@ def _carousel_protocol_worker(
     minimize_fn: MinimizeFn,
     residual_fn: ProtocolResidualFn,
 ) -> FitResult | None:
-    model_pars = model.parameters
+    model_pars = model.get_parameter_values()
     return time_course_over_protocol(
         model,
         p0={k: v for k, v in p0.items() if k in model_pars},

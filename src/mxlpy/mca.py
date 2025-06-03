@@ -71,7 +71,7 @@ def _response_coefficient_worker(
             - Series of flux response coefficients
 
     """
-    old = model.parameters[parameter]
+    old = model.get_parameter_values()[parameter]
     if y0 is not None:
         model.update_variables(y0)
 
@@ -205,7 +205,7 @@ def parameter_elasticities(
 
     variables = model.get_initial_conditions() if variables is None else variables
     for par in to_scan:
-        old = model.parameters[par]
+        old = model.get_parameter_values()[par]
 
         model.update_parameters({par: old * (1 + displacement)})
         upper = model.get_fluxes(variables=variables, time=time)

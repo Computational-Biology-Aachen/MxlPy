@@ -551,13 +551,13 @@ class LabelMapper:
 
         m = Model()
 
-        m.add_parameters(self.model.parameters)
+        m.add_parameters(self.model.get_parameter_values())
 
-        for name, dp in self.model.derived_parameters.items():
+        for name, dp in self.model.get_derived_parameters().items():
             m.add_derived(name, fn=dp.fn, args=dp.args)
 
         variables: dict[str, float | Derived] = {}
-        for k, v in self.model.variables.items():
+        for k, v in self.model.get_initial_conditions().items():
             if (isos := isotopomers.get(k)) is None:
                 variables[k] = v
             else:
@@ -585,14 +585,14 @@ class LabelMapper:
                 args=label_names,
             )
 
-        for name, dv in self.model.derived_variables.items():
+        for name, dv in self.model.get_derived_variables().items():
             m.add_derived(
                 name,
                 fn=dv.fn,
                 args=[f"{i}__total" if i in isotopomers else i for i in dv.args],
             )
 
-        for rxn_name, rxn in self.model.reactions.items():
+        for rxn_name, rxn in self.model.get_raw_reactions().items():
             if (label_map := self.label_maps.get(rxn_name)) is None:
                 m.add_reaction(
                     rxn_name,

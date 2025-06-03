@@ -85,7 +85,7 @@ def test_update_parameters_and(simple_model: Model) -> None:
     params = pd.Series({"k1": 2.0})
 
     def get_params(model: Model) -> dict[str, float]:
-        return model.parameters
+        return model.get_parameter_values()
 
     result = _update_parameters_and_initial_conditions(params, get_params, simple_model)
     assert result["k1"] == 2.0
@@ -105,7 +105,7 @@ def test_timepoint_with_data(simple_model: Model) -> None:
     result = Result(
         model=simple_model,
         _raw_variables=[pd.DataFrame({"S": [1.0, 2.0], "P": [3.0, 4.0]})],
-        _parameters=[simple_model.parameters],
+        _parameters=[simple_model.get_parameter_values()],
     )
 
     time_point = TimePoint.from_result(model=simple_model, result=result, idx=1)
@@ -133,7 +133,7 @@ def test_timepoint_results(simple_model: Model) -> None:
     result = Result(
         model=simple_model,
         _raw_variables=[pd.DataFrame({"S": [1.0], "P": [3.0]}, dtype=float)],
-        _parameters=[simple_model.parameters],
+        _parameters=[simple_model.get_parameter_values()],
     )
 
     time_point = TimePoint.from_result(model=simple_model, result=result, idx=0)
@@ -177,7 +177,7 @@ def test_timecourse_with_data(simple_model: Model) -> None:
                 columns=["S", "P"],
             )
         ],
-        _parameters=[simple_model.parameters],
+        _parameters=[simple_model.get_parameter_values()],
     )
 
     time_course = TimeCourse.from_scan(
@@ -216,7 +216,7 @@ def test_timecourse_results(simple_model: Model) -> None:
                 columns=["S", "P"],
             )
         ],
-        _parameters=[simple_model.parameters],
+        _parameters=[simple_model.get_parameter_values()],
     )
 
     time_course = TimeCourse.from_scan(

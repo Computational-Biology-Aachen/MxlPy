@@ -52,6 +52,7 @@ from . import (
     plot,
     report,
     sbml,
+    units,
 )
 from .integrators import DefaultIntegrator, Scipy
 from .label_map import LabelMapper
@@ -61,7 +62,7 @@ from .model import Model
 from .scan import steady_state, time_course, time_course_over_protocol
 from .simulator import Simulator
 from .symbolic import SymbolicModel, to_symbolic_model
-from .types import Derived, IntegratorProtocol, unwrap
+from .types import Derived, IntegratorProtocol, Parameter, Variable, unwrap
 
 with contextlib.suppress(ImportError):
     from .integrators import Assimulo
@@ -87,9 +88,11 @@ __all__ = [
     "LabelMapper",
     "LinearLabelMapper",
     "Model",
+    "Parameter",
     "Scipy",
     "Simulator",
     "SymbolicModel",
+    "Variable",
     "cartesian_product",
     "compare",
     "distributions",
@@ -110,6 +113,7 @@ __all__ = [
     "time_course",
     "time_course_over_protocol",
     "to_symbolic_model",
+    "units",
     "unwrap",
 ]
 

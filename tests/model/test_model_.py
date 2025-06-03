@@ -79,7 +79,7 @@ def test_parameters() -> None:
     model = Model()
     model.add_parameter("param1", 1.0)
     model.add_parameter("param2", 2.0)
-    parameters = model.parameters
+    parameters = model.get_parameter_values()
     assert "param1" in parameters
     assert parameters["param1"] == 1.0
     assert "param2" in parameters
@@ -88,7 +88,7 @@ def test_parameters() -> None:
 
 def test_parameters_empty() -> None:
     model = Model()
-    parameters = model.parameters
+    parameters = model.get_parameter_values()
     assert parameters == {}
 
 
@@ -432,7 +432,7 @@ def test_derived_variables() -> None:
     derived_fn = one_argument
     model.add_variable("x", 1.0)
     model.add_derived("derived1", derived_fn, args=["x"])
-    derived_vars = model.derived_variables
+    derived_vars = model.get_derived_variables()
     assert "derived1" in derived_vars
     assert derived_vars["derived1"].fn == derived_fn
     assert derived_vars["derived1"].args == ["x"]
@@ -440,7 +440,7 @@ def test_derived_variables() -> None:
 
 def test_derived_variables_empty() -> None:
     model = Model()
-    derived_vars = model.derived_variables
+    derived_vars = model.get_derived_variables()
     assert derived_vars == {}
 
 
@@ -449,7 +449,7 @@ def test_derived_parameters() -> None:
     derived_fn = one_argument
     model.add_parameter("param1", 1.0)
     model.add_derived("derived_param1", derived_fn, args=["param1"])
-    derived_params = model.derived_parameters
+    derived_params = model.get_derived_parameters()
     assert "derived_param1" in derived_params
     assert derived_params["derived_param1"].fn == derived_fn
     assert derived_params["derived_param1"].args == ["param1"]
@@ -457,7 +457,7 @@ def test_derived_parameters() -> None:
 
 def test_derived_parameters_empty() -> None:
     model = Model()
-    derived_params = model.derived_parameters
+    derived_params = model.get_derived_parameters()
     assert derived_params == {}
 
 
@@ -584,7 +584,7 @@ def test_reactions() -> None:
         stoichiometry=stoichiometry,
         args=["A", "B"],
     )
-    reactions = model.reactions
+    reactions = model.get_raw_reactions()
     assert "reaction1" in reactions
     assert reactions["reaction1"].fn == reaction_fn
     assert reactions["reaction1"].stoichiometry == stoichiometry
@@ -593,7 +593,7 @@ def test_reactions() -> None:
 
 def test_reactions_empty() -> None:
     model = Model()
-    reactions = model.reactions
+    reactions = model.get_raw_reactions()
     assert reactions == {}
 
 

@@ -36,6 +36,7 @@ __all__ = [
     "McSteadyStates",
     "MockSurrogate",
     "Param",
+    "Parameter",
     "ProtocolByPars",
     "RateFn",
     "Reaction",
@@ -45,6 +46,7 @@ __all__ = [
     "RetType",
     "SteadyStates",
     "TimeCourseByPars",
+    "Variable",
     "unwrap",
     "unwrap2",
 ]
@@ -59,6 +61,8 @@ RetType = TypeVar("RetType")
 
 
 if TYPE_CHECKING:
+    import sympy
+
     from mxlpy.model import Model
 
 
@@ -147,12 +151,31 @@ type IntegratorType = Callable[
 ]
 
 
+@dataclass
+class Parameter:
+    """Container for parameter meta information."""
+
+    value: float
+    unit: sympy.Expr | None = None
+    source: str | None = None
+
+
+@dataclass
+class Variable:
+    """Container for variable meta information."""
+
+    initial_value: float | Derived
+    unit: sympy.Expr | None = None
+    source: str | None = None
+
+
 @dataclass(kw_only=True, slots=True)
 class Derived:
     """Container for a derived value."""
 
     fn: RateFn
     args: list[str]
+    unit: sympy.Expr | None = None
 
     def calculate(self, dependent: dict[str, Any]) -> float:
         """Calculate the derived value.
@@ -183,6 +206,7 @@ class Readout:
 
     fn: RateFn
     args: list[str]
+    unit: sympy.Expr | None = None
 
     def calculate(self, dependent: dict[str, Any]) -> float:
         """Calculate the derived value.
@@ -214,6 +238,7 @@ class Reaction:
     fn: RateFn
     stoichiometry: Mapping[str, float | Derived]
     args: list[str]
+    unit: sympy.Expr | None = None
 
     def get_modifiers(self, model: Model) -> list[str]:
         """Get the modifiers of the reaction."""

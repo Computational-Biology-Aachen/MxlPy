@@ -105,8 +105,8 @@ def test_simulator_simulate_to_steady_state(simulator: Simulator) -> None:
     P_final = concs.iloc[-1]["P"]
 
     # Calculate derivatives at the steady state
-    k1 = simulator.model.parameters["k1"]
-    k2 = simulator.model.parameters["k2"]
+    k1 = simulator.model.get_parameter_values()["k1"]
+    k2 = simulator.model.get_parameter_values()["k2"]
 
     dS_dt = -k1 * S_final
     dP_dt = k1 * S_final - k2 * P_final
@@ -207,34 +207,34 @@ def test_get_full_concs(simulator: Simulator) -> None:
 def test_update_parameter(simulator: Simulator) -> None:
     """Test update_parameter method."""
     simulator.update_parameter("k1", 0.5)
-    assert simulator.model.parameters["k1"] == 0.5
+    assert simulator.model.get_parameter_values()["k1"] == 0.5
 
 
 def test_update_parameters(simulator: Simulator) -> None:
     """Test update_parameters method."""
     simulator.update_parameters({"k1": 0.5, "k2": 1.0})
-    assert simulator.model.parameters["k1"] == 0.5
-    assert simulator.model.parameters["k2"] == 1.0
+    assert simulator.model.get_parameter_values()["k1"] == 0.5
+    assert simulator.model.get_parameter_values()["k2"] == 1.0
 
 
 def test_scale_parameter(simulator: Simulator) -> None:
     """Test scale_parameter method."""
-    original_k1 = simulator.model.parameters["k1"]
+    original_k1 = simulator.model.get_parameter_values()["k1"]
 
     # Scale k1 by 0.5
     simulator.scale_parameter("k1", 0.5)
-    assert simulator.model.parameters["k1"] == original_k1 * 0.5
+    assert simulator.model.get_parameter_values()["k1"] == original_k1 * 0.5
 
 
 def test_scale_parameters(simulator: Simulator) -> None:
     """Test scale_parameters method."""
-    original_k1 = simulator.model.parameters["k1"]
-    original_k2 = simulator.model.parameters["k2"]
+    original_k1 = simulator.model.get_parameter_values()["k1"]
+    original_k2 = simulator.model.get_parameter_values()["k2"]
 
     # Scale multiple parameters
     simulator.scale_parameters({"k1": 0.5, "k2": 2.0})
-    assert simulator.model.parameters["k1"] == original_k1 * 0.5
-    assert simulator.model.parameters["k2"] == original_k2 * 2.0
+    assert simulator.model.get_parameter_values()["k1"] == original_k1 * 0.5
+    assert simulator.model.get_parameter_values()["k2"] == original_k2 * 2.0
 
 
 def test_empty_results_handling(simulator: Simulator) -> None:
