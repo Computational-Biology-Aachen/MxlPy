@@ -4,7 +4,7 @@ import sympy
 # Utility functions
 ##############################
 from mxlpy.fns import mass_action_1s
-from mxlpy.meta.source_tools import fn_to_sympy
+from mxlpy.meta.sympy_tools import fn_to_sympy
 
 
 def power(x: float) -> float:

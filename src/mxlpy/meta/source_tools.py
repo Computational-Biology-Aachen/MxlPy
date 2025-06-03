@@ -10,8 +10,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 import dill
 import sympy
-from sympy.printing import rust_code
-from sympy.printing.pycode import pycode
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -22,9 +20,6 @@ __all__ = [
     "fn_to_sympy",
     "get_fn_ast",
     "get_fn_source",
-    "sympy_to_fn",
-    "sympy_to_inline",
-    "sympy_to_inline_rust",
 ]
 
 
@@ -110,75 +105,6 @@ def get_fn_ast(fn: Callable) -> ast.FunctionDef:
         msg = "Not a function"
         raise TypeError(msg)
     return fn_def
-
-
-def sympy_to_inline(expr: sympy.Expr) -> str:
-    """Convert a sympy expression to inline Python code.
-
-    Parameters
-    ----------
-    expr
-        The sympy expression to convert
-
-    Returns
-    -------
-    str
-        Python code string for the expression
-
-    Examples
-    --------
-    >>> import sympy
-    >>> x = sympy.Symbol('x')
-    >>> expr = x**2 + 2*x + 1
-    >>> sympy_to_inline(expr)
-    'x**2 + 2*x + 1'
-
-    """
-    return cast(str, pycode(expr, fully_qualified_modules=True))
-
-
-def sympy_to_inline_rust(expr: sympy.Expr) -> str:
-    """Create rust code from sympy expression."""
-    return cast(str, rust_code(expr))
-
-
-def sympy_to_fn(
-    *,
-    fn_name: str,
-    args: list[str],
-    expr: sympy.Expr,
-) -> str:
-    """Convert a sympy expression to a python function.
-
-    Parameters
-    ----------
-    fn_name
-        Name of the function to generate
-    args
-        List of argument names for the function
-    expr
-        Sympy expression to convert to a function body
-
-    Returns
-    -------
-    str
-        String representation of the generated function
-
-    Examples
-    --------
-    >>> import sympy
-    >>> x, y = sympy.symbols('x y')
-    >>> expr = x**2 + y
-    >>> print(sympy_to_fn(fn_name="square_plus_y", args=["x", "y"], expr=expr))
-    def square_plus_y(x: float, y: float) -> float:
-        return x**2 + y
-
-    """
-    fn_args = ", ".join(f"{i}: float" for i in args)
-
-    return f"""def {fn_name}({fn_args}) -> float:
-    return {pycode(expr)}
-    """
 
 
 def fn_to_sympy(

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import sympy
 
-from mxlpy.meta.source_tools import fn_to_sympy
+from mxlpy.meta.sympy_tools import fn_to_sympy
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

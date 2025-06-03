@@ -5,9 +5,7 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING
 
-import sympy
-
-from mxlpy.meta.source_tools import fn_to_sympy, sympy_to_fn
+from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols, sympy_to_python_fn
 from mxlpy.types import Derived
 
 if TYPE_CHECKING:
@@ -16,10 +14,6 @@ if TYPE_CHECKING:
 __all__ = [
     "generate_mxlpy_code",
 ]
-
-
-def _list_of_symbols(args: list[str]) -> list[sympy.Symbol | sympy.Expr]:
-    return [sympy.Symbol(arg) for arg in args]
 
 
 def generate_mxlpy_code(model: Model) -> str:
@@ -36,7 +30,7 @@ def generate_mxlpy_code(model: Model) -> str:
         fn = der.fn
         fn_name = fn.__name__
         functions[fn_name] = (
-            fn_to_sympy(fn, model_args=_list_of_symbols(der.args)),
+            fn_to_sympy(fn, model_args=list_of_symbols(der.args)),
             der.args,
         )
 
@@ -54,14 +48,14 @@ def generate_mxlpy_code(model: Model) -> str:
         fn = rxn.fn
         fn_name = fn.__name__
         functions[fn_name] = (
-            fn_to_sympy(fn, model_args=_list_of_symbols(rxn.args)),
+            fn_to_sympy(fn, model_args=list_of_symbols(rxn.args)),
             rxn.args,
         )
         stoichiometry: list[str] = []
         for var, stoich in rxn.stoichiometry.items():
             if isinstance(stoich, Derived):
                 functions[fn_name] = (
-                    fn_to_sympy(fn, model_args=_list_of_symbols(stoich.args)),
+                    fn_to_sympy(fn, model_args=list_of_symbols(stoich.args)),
                     rxn.args,
                 )
                 args = ", ".join(f'"{k}"' for k in stoich.args)
@@ -88,7 +82,7 @@ def generate_mxlpy_code(model: Model) -> str:
 
     # Combine all the sources
     functions_source = "\n\n".join(
-        sympy_to_fn(fn_name=name, args=args, expr=expr)
+        sympy_to_python_fn(fn_name=name, args=args, expr=expr)
         for name, (expr, args) in functions.items()
     )
     source = [

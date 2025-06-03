@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import sympy
 
-from mxlpy.meta.source_tools import fn_to_sympy
+from mxlpy.meta.sympy_tools import fn_to_sympy
 from mxlpy.types import Derived, RateFn
 
 if TYPE_CHECKING:

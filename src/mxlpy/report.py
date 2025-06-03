@@ -9,7 +9,7 @@ from typing import cast
 
 import sympy
 
-from mxlpy.meta.source_tools import fn_to_sympy
+from mxlpy.meta.sympy_tools import fn_to_sympy
 from mxlpy.model import Model
 
 __all__ = [

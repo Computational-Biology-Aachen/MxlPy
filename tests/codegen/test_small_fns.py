@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 
-from mxlpy.meta.codegen_py import _conditional_join
 from mxlpy.meta.source_tools import get_fn_ast
 
 
@@ -25,13 +24,3 @@ def test_get_fn_source() -> None:
     assert fn_def.args.args[1].arg == "y"
 
     # Skip testing with non-function input as it raises a different error than expected
-
-
-def test_conditional_join() -> None:
-    items = [1, -2, 3, -4]
-
-    # Join with a conditional
-    result = _conditional_join(items, lambda x: x < 0, " - ", " + ")
-
-    # Fix expected output to match actual implementation
-    assert result == "1 - -2 + 3 - -4"
