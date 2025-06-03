@@ -313,7 +313,7 @@ def _protocol_residual(
             y0=y0,
             integrator=integrator,
         )
-        .simulate_over_protocol(
+        .simulate_protocol(
             protocol=protocol,
             time_points_per_step=time_points_per_step,
         )

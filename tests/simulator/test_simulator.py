@@ -123,7 +123,7 @@ def test_simulate_over_protocol(simulator: Simulator) -> None:
         index=pd.to_timedelta([1, 2, 3], unit="s"),
     )
 
-    simulator.simulate_over_protocol(protocol, time_points_per_step=5)
+    simulator.simulate_protocol(protocol, time_points_per_step=5)
 
     # Check that results are stored correctly
     assert simulator.variables is not None

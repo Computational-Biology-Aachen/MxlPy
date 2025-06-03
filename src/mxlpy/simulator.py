@@ -503,7 +503,7 @@ class Simulator:
         self._handle_simulation_results(time, results, skipfirst=True)
         return self
 
-    def simulate_over_protocol(
+    def simulate_protocol(
         self,
         protocol: pd.DataFrame,
         time_points_per_step: int = 10,
@@ -524,10 +524,65 @@ class Simulator:
             The Simulator instance with updated results.
 
         """
+        t_start = (
+            0.0 if (variables := self.variables) is None else variables[-1].index[-1]
+        )
+
         for t_end, pars in protocol.iterrows():
             t_end = cast(pd.Timedelta, t_end)
             self.model.update_parameters(pars.to_dict())
-            self.simulate(t_end.total_seconds(), steps=time_points_per_step)
+            self.simulate(t_start + t_end.total_seconds(), steps=time_points_per_step)
+            if self.variables is None:
+                break
+        return self
+
+    def simulate_protocol_time_course(
+        self,
+        protocol: pd.DataFrame,
+        time_points: ArrayLike,
+    ) -> Self:
+        """Simulate the model over a given protocol.
+
+        Examples:
+            >>> Simulator(model).simulate_over_protocol(
+            ...     protocol,
+            ...     time_points=np.array([1.0, 2.0, 3.0], dtype=float),
+            ... )
+
+        Args:
+            protocol: DataFrame containing the protocol.
+            time_points: Array of time points for which to return the simulation values.
+
+        Notes:
+            This function will return **both** the control points of the protocol as well
+            as the time points supplied in case they don't match.
+
+        Returns:
+            The Simulator instance with updated results.
+
+        """
+        t_start = (
+            0.0 if (variables := self.variables) is None else variables[-1].index[-1]
+        )
+
+        full_time_points: pd.Index = (
+            protocol.index.join(
+                pd.to_timedelta(time_points, unit="s"),
+                how="outer",
+            ).total_seconds()
+            + t_start
+        )
+
+        for t, pars in protocol.iterrows():
+            t_end = cast(pd.Timedelta, t).total_seconds() + t_start
+            self.model.update_parameters(pars.to_dict())
+
+            self.simulate_time_course(
+                time_points=full_time_points[
+                    (full_time_points >= t_start) & (full_time_points <= t_end)
+                ]
+            )
+            t_start = t_end
             if self.variables is None:
                 break
         return self

@@ -230,11 +230,7 @@ def protocol_time_courses(
 ) -> ProtocolComparison:
     """Compare the time courses of two models."""
     return ProtocolComparison(
-        res1=unwrap(
-            Simulator(m1).simulate_over_protocol(protocol=protocol).get_result()
-        ),
-        res2=unwrap(
-            Simulator(m2).simulate_over_protocol(protocol=protocol).get_result()
-        ),
+        res1=unwrap(Simulator(m1).simulate_protocol(protocol=protocol).get_result()),
+        res2=unwrap(Simulator(m2).simulate_protocol(protocol=protocol).get_result()),
         protocol=protocol,
     )

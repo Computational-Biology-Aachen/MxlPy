@@ -405,7 +405,7 @@ def _protocol_worker(
     try:
         res = (
             Simulator(model, integrator=integrator, y0=y0)
-            .simulate_over_protocol(
+            .simulate_protocol(
                 protocol=protocol,
                 time_points_per_step=time_points_per_step,
             )

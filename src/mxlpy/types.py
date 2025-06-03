@@ -51,7 +51,7 @@ __all__ = [
 
 type RateFn = Callable[..., float]
 type Array = NDArray[np.floating[Any]]
-type ArrayLike = NDArray[np.floating[Any]] | list[float]
+type ArrayLike = NDArray[np.floating[Any]] | pd.Index | list[float]
 
 
 Param = ParamSpec("Param")
