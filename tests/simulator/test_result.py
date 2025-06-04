@@ -7,14 +7,14 @@ from tests import models
 def create_result() -> Result:
     return Result(
         model=models.m_1v_1p_1d_1r(),
-        _raw_variables=[
+        raw_variables=[
             pd.DataFrame(
                 {"v1": [1, 2, 3]},
                 index=[0, 1, 2],
                 dtype=float,
             ),
         ],
-        _parameters=[
+        raw_parameters=[
             {"p1": 1.0},
         ],
     )

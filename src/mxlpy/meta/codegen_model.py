@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import warnings
+import logging
 from typing import TYPE_CHECKING
 
 from mxlpy.meta.sympy_tools import (
@@ -24,6 +24,8 @@ __all__ = [
     "generate_model_code_py",
     "generate_model_code_rs",
 ]
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _generate_model_code(
@@ -90,10 +92,8 @@ def _generate_model_code(
 
     # Surrogates
     if len(model._surrogates) > 0:  # noqa: SLF001
-        warnings.warn(
-            "Generating code for Surrogates not yet supported.",
-            stacklevel=1,
-        )
+        msg = "Generating code for Surrogates not yet supported."
+        _LOGGER.warning(msg)
 
     # Return
     ret = ", ".join(f"d{i}dt" for i in variables) if len(variables) > 0 else "()"

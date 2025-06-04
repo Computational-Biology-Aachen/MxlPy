@@ -104,8 +104,8 @@ def test_timepoint_from_scan(simple_model: Model) -> None:
 def test_timepoint_with_data(simple_model: Model) -> None:
     result = Result(
         model=simple_model,
-        _raw_variables=[pd.DataFrame({"S": [1.0, 2.0], "P": [3.0, 4.0]})],
-        _parameters=[simple_model.get_parameter_values()],
+        raw_variables=[pd.DataFrame({"S": [1.0, 2.0], "P": [3.0, 4.0]})],
+        raw_parameters=[simple_model.get_parameter_values()],
     )
 
     time_point = TimePoint.from_result(model=simple_model, result=result, idx=1)
@@ -132,8 +132,8 @@ def test_timepoint_with_data(simple_model: Model) -> None:
 def test_timepoint_results(simple_model: Model) -> None:
     result = Result(
         model=simple_model,
-        _raw_variables=[pd.DataFrame({"S": [1.0], "P": [3.0]}, dtype=float)],
-        _parameters=[simple_model.get_parameter_values()],
+        raw_variables=[pd.DataFrame({"S": [1.0], "P": [3.0]}, dtype=float)],
+        raw_parameters=[simple_model.get_parameter_values()],
     )
 
     time_point = TimePoint.from_result(model=simple_model, result=result, idx=0)
@@ -170,14 +170,14 @@ def test_timecourse_with_data(simple_model: Model) -> None:
     time_points = np.array([0.0, 1.0, 2.0], dtype=float)
     result = Result(
         model=simple_model,
-        _raw_variables=[
+        raw_variables=[
             pd.DataFrame(
                 [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
                 index=time_points,
                 columns=["S", "P"],
             )
         ],
-        _parameters=[simple_model.get_parameter_values()],
+        raw_parameters=[simple_model.get_parameter_values()],
     )
 
     time_course = TimeCourse.from_scan(
@@ -209,14 +209,14 @@ def test_timecourse_results(simple_model: Model) -> None:
 
     result = Result(
         model=simple_model,
-        _raw_variables=[
+        raw_variables=[
             pd.DataFrame(
                 [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
                 index=time_points,
                 columns=["S", "P"],
             )
         ],
-        _parameters=[simple_model.get_parameter_values()],
+        raw_parameters=[simple_model.get_parameter_values()],
     )
 
     time_course = TimeCourse.from_scan(

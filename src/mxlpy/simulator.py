@@ -10,7 +10,7 @@ Classes:
 
 from __future__ import annotations
 
-import warnings
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Self, cast, overload
 
@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 
     from mxlpy.model import Model
     from mxlpy.types import Array, ArrayLike, IntegratorProtocol, IntegratorType
+
+_LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "Result",
@@ -67,9 +69,9 @@ class Result:
     """Simulation results."""
 
     model: Model
-    _raw_variables: list[pd.DataFrame]
-    _parameters: list[dict[str, float]]
-    _args: list[pd.DataFrame] = field(default_factory=list)
+    raw_variables: list[pd.DataFrame]
+    raw_parameters: list[dict[str, float]]
+    raw_args: list[pd.DataFrame] = field(default_factory=list)
 
     @property
     def variables(self) -> pd.DataFrame:
@@ -92,13 +94,13 @@ class Result:
 
     def _compute_args(self) -> list[pd.DataFrame]:
         # Already computed
-        if len(self._args) > 0:
-            return self._args
+        if len(self.raw_args) > 0:
+            return self.raw_args
 
         # Compute new otherwise
-        for res, p in zip(self._raw_variables, self._parameters, strict=True):
+        for res, p in zip(self.raw_variables, self.raw_parameters, strict=True):
             self.model.update_parameters(p)
-            self._args.append(
+            self.raw_args.append(
                 self.model.get_args_time_course(
                     variables=res,
                     include_variables=True,
@@ -110,7 +112,7 @@ class Result:
                     include_readouts=True,
                 )
             )
-        return self._args
+        return self.raw_args
 
     def _select_data(
         self,
@@ -280,7 +282,7 @@ class Result:
         """
         if not include_derived_variables and not include_readouts:
             return self._adjust_data(
-                self._raw_variables,
+                self.raw_variables,
                 normalise=normalise,
                 concatenated=concatenated,
             )
@@ -470,7 +472,7 @@ class Simulator:
                 )
 
             except Exception as e:  # noqa: BLE001
-                warnings.warn(str(e), stacklevel=2)
+                _LOGGER.warning(str(e), stacklevel=2)
 
         y0 = self.y0
         self.integrator = self._integrator_type(
@@ -601,10 +603,8 @@ class Simulator:
 
         # Remove points which are smaller than previous t_end
         if not (larger := time_points >= prior_t_end).all():
-            warnings.warn(
-                f"Overlapping time points. Removing: {time_points[~larger]}",
-                stacklevel=0,
-            )
+            msg = f"Overlapping time points. Removing: {time_points[~larger]}"
+            _LOGGER.warning(msg)
             time_points = time_points[larger]
 
         time, results = self.integrator.integrate_time_course(time_points=time_points)
@@ -673,22 +673,30 @@ class Simulator:
             The Simulator instance with updated results.
 
         """
-        time_points = np.array(time_points, dtype=float)
-
         t_start = (
             0.0 if (variables := self.variables) is None else variables[-1].index[-1]
         )
-        if time_points_as_relative:
-            time_points += t_start
-
-        if time_points[-1] <= t_start:
-            msg = "End time point has to be larger than previous end time point"
-            raise ValueError(msg)
 
         protocol = protocol.copy()
         protocol.index = (
             cast(pd.TimedeltaIndex, protocol.index) + pd.Timedelta(t_start, unit="s")
         ).total_seconds()
+
+        time_points = np.array(time_points, dtype=float)
+        if time_points_as_relative:
+            time_points += t_start
+
+        # Error handling
+        if time_points[-1] <= t_start:
+            msg = "End time point has to be larger than previous end time point"
+            raise ValueError(msg)
+
+        larger = time_points > protocol.index[-1]
+        if any(larger):
+            msg = f"Ignoring time points outside of protocol range:\n {time_points[larger]}"
+            _LOGGER.warning(msg)
+
+        # Continue with logic
         full_time_points = protocol.index.join(time_points, how="outer")
 
         for t_end, pars in protocol.iterrows():
@@ -762,8 +770,8 @@ class Simulator:
             return None
         return Result(
             model=self.model,
-            _raw_variables=variables,
-            _parameters=parameters,
+            raw_variables=variables,
+            raw_parameters=parameters,
         )
 
     def update_parameter(self, parameter: str, value: float) -> Self:

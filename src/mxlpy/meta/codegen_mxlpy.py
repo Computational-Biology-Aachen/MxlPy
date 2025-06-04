@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import warnings
+import logging
 from typing import TYPE_CHECKING
 
 from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols, sympy_to_python_fn
@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 __all__ = [
     "generate_mxlpy_code",
 ]
+
+_LOGGER = logging.getLogger()
 
 
 def generate_mxlpy_code(model: Model) -> str:
@@ -75,10 +77,8 @@ def generate_mxlpy_code(model: Model) -> str:
 
     # Surrogates
     if len(model._surrogates) > 0:  # noqa: SLF001
-        warnings.warn(
-            "Generating code for Surrogates not yet supported.",
-            stacklevel=1,
-        )
+        msg = "Generating code for Surrogates not yet supported."
+        _LOGGER.warning(msg)
 
     # Combine all the sources
     functions_source = "\n\n".join(

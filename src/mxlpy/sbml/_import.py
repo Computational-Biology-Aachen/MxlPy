@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import logging
 import math  # noqa: F401  # models might need it
 import re
-import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,6 +31,8 @@ from mxlpy.types import unwrap
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+_LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "INDENT",
@@ -216,10 +218,8 @@ class Parser:
 
             node = assignment.getMath()
             if node is None:
-                warnings.warn(
-                    f"Unusable math for {name}",
-                    stacklevel=1,
-                )
+                msg = f"Unusable math for {name}"
+                _LOGGER.warning(msg)
                 continue
 
             body, args = parse_sbml_math(node)

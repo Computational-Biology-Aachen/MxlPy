@@ -417,6 +417,52 @@ def test_con_sim_ptc() -> None:
     )
 
 
+def test_con_sim_ptc_rel() -> None:
+    protocol = make_protocol(
+        [
+            (1, {"kf": 1}),  # for one second value of 1
+            (2, {"kf": 2}),  # for two seconds value of 2
+            (3, {"kf": 1}),  # for three seconds value of 1
+        ]
+    )
+    expected = pd.DataFrame(
+        {
+            "x1": {
+                0.0: 0.0,
+                1.0: 1.0,
+                2.0: 2.0,
+                3.0: 3.0,
+                4.0: 4.0,
+                5.0: 5.0,
+                6.0: 6.0,
+                7.0: 7.0,
+                8.0: 9.0,
+                9.0: 11.0,
+                10.0: 12.0,
+                11.0: 13.0,
+                12.0: 14.0,
+            }
+        },
+        dtype=float,
+    )
+    variables = unwrap(
+        Simulator(get_model())
+        .simulate(6, steps=6)
+        .simulate_protocol_time_course(
+            protocol,
+            time_points=np.linspace(0, 6, 7),
+            time_points_as_relative=True,
+        )
+        .get_result()
+    ).variables
+    pd.testing.assert_frame_equal(
+        variables,
+        expected,
+        atol=1e-6,
+        rtol=1e-6,
+    )
+
+
 def test_con_ptc_sim() -> None:
     protocol = make_protocol(
         [
@@ -518,7 +564,7 @@ def test_con_ptc_ptc() -> None:
 def test_fail_con_sim_sim_same_end() -> None:
     with pytest.raises(ValueError):
         _ = (
-            Simulator(get_model())  # int not important here
+            Simulator(get_model())  # fmt
             .simulate(3, steps=3)
             .simulate(3, steps=3)
         )
@@ -527,7 +573,7 @@ def test_fail_con_sim_sim_same_end() -> None:
 def test_fail_con_sim_tc_same_end() -> None:
     with pytest.raises(ValueError):
         _ = (
-            Simulator(get_model())  # int not important here
+            Simulator(get_model())  # fmt
             .simulate(3, steps=3)
             .simulate_time_course([3])
         )
@@ -536,7 +582,7 @@ def test_fail_con_sim_tc_same_end() -> None:
 def test_fail_con_tc_sim_same_end() -> None:
     with pytest.raises(ValueError):
         _ = (
-            Simulator(get_model())  # int not important here
+            Simulator(get_model())  # fmt
             .simulate_time_course([0, 1, 2, 3])
             .simulate(3)
         )
@@ -545,7 +591,7 @@ def test_fail_con_tc_sim_same_end() -> None:
 def test_fail_con_tc_tc_same_end() -> None:
     with pytest.raises(ValueError):
         _ = (
-            Simulator(get_model())  # int not important here
+            Simulator(get_model())  # fmt
             .simulate_time_course([0, 1, 2, 3])
             .simulate_time_course([0, 1, 2, 3])
         )
