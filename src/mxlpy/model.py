@@ -331,11 +331,19 @@ class Model:
             self._derived
             | self._reactions
             | self._surrogates
-            | {k: v for k, v in self._variables.items() if isinstance(v, Derived)}
+            | {
+                k: init
+                for k, v in self._variables.items()
+                if isinstance(init := v.initial_value, Derived)
+            }
         )
         order = _sort_dependencies(
             available=all_parameter_names
-            | {k for k, v in self._variables.items() if not isinstance(v, Derived)}
+            | {
+                k
+                for k, v in self._variables.items()
+                if not isinstance(v.initial_value, Derived)
+            }
             | set(self._data)
             | {"time"},
             elements=[
