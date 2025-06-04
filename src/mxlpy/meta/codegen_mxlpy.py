@@ -23,12 +23,12 @@ def generate_mxlpy_code(model: Model) -> str:
     functions = {}
 
     # Variables and parameters
-    variables = model.variables
+    variables = model.get_raw_variables()
     parameters = model.get_parameter_values()
 
     # Derived
     derived_source = []
-    for k, der in model.derived.items():
+    for k, der in model.get_raw_derived().items():
         fn = der.fn
         fn_name = fn.__name__
         functions[fn_name] = (

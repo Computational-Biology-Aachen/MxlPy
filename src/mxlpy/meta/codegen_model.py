@@ -42,6 +42,9 @@ def _generate_model_code(
     free_parameters: list[str] | None = None,
 ) -> str:
     source: list[str] = []
+    # Model components
+    variables = model.get_initial_conditions()
+    parameters = model.get_parameter_values()
 
     if imports is not None:
         source.extend(imports)
@@ -49,15 +52,12 @@ def _generate_model_code(
     if not sized:
         source.append(model_fn)
     else:
-        source.append(model_fn.format(n=len(model.variables)))
+        source.append(model_fn.format(n=len(variables)))
 
-    # Variables
-    variables = model.get_initial_conditions()
     if len(variables) > 0:
         source.append(variables_template.format(", ".join(variables)))
 
     # Parameters
-    parameters = model.get_parameter_values()
     if free_parameters is not None:
         for key in free_parameters:
             parameters.pop(key)
@@ -69,7 +69,7 @@ def _generate_model_code(
         )
 
     # Derived
-    for name, derived in model.derived.items():
+    for name, derived in model.get_raw_derived().items():
         expr = fn_to_sympy(derived.fn, model_args=list_of_symbols(derived.args))
         source.append(assignment_template.format(k=name, v=sympy_inline_fn(expr)))
 
@@ -96,7 +96,7 @@ def _generate_model_code(
         _LOGGER.warning(msg)
 
     # Return
-    ret = ", ".join(f"d{i}dt" for i in variables) if len(variables) > 0 else "()"
+    ret = ", ".join(f"d{i}dt" for i in diff_eqs) if len(diff_eqs) > 0 else "()"
     source.append(return_template.format(ret))
 
     if end is not None:
