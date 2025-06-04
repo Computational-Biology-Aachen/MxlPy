@@ -18,7 +18,9 @@ def test_add_surrogate() -> None:
             stoichiometries={"v1": {"x": -1.0, "y": 1.0}},
         ),
     )
-    assert "surrogate1" in model._surrogates
+
+    surrogates = model.get_raw_surrogates()
+    assert "surrogate1" in surrogates
     assert model._ids["surrogate1"] == "surrogate"
 
 
@@ -68,7 +70,9 @@ def test_update_surrogate() -> None:
         stoichiometries={"v1": {"x": 1.0}},
     )
     model.update_surrogate("surrogate1", new_surrogate)
-    assert model._surrogates["surrogate1"] == new_surrogate
+
+    surrogates = model.get_raw_surrogates()
+    assert surrogates["surrogate1"] == new_surrogate
 
 
 def test_update_surrogate_nonexistent() -> None:
@@ -97,7 +101,9 @@ def test_remove_surrogate() -> None:
         ),
     )
     model.remove_surrogate("surrogate1")
-    assert "surrogate1" not in model._surrogates
+
+    surrogates = model.get_raw_surrogates()
+    assert "surrogate1" not in surrogates
     assert "surrogate1" not in model._ids
 
 

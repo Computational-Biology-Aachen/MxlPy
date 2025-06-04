@@ -187,7 +187,7 @@ def model_diff(m1: Model, m2: Model) -> ModelDiff:
         if (v2 := m2._parameters.get(k)) is None:  # noqa: SLF001
             diff.missing_parameters.add(k)
         elif v1 != v2:
-            diff.different_parameters[k] = (v1, v2)
+            diff.different_parameters[k] = (v1, v2)  # type: ignore
 
     for k, v1 in m1._variables.items():  # noqa: SLF001
         if (v2 := m2._variables.get(k)) is None:  # noqa: SLF001

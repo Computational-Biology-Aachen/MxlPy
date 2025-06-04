@@ -1674,6 +1674,10 @@ class Model:
         self._surrogates.pop(name)
         return self
 
+    def get_raw_surrogates(self) -> dict[str, AbstractSurrogate]:
+        """Get direct copies of model surrogates."""
+        return copy.deepcopy(self._surrogates)
+
     def get_surrogate_output_names(self) -> list[str]:
         """Return output names by surrogates."""
         names = []
