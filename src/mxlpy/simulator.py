@@ -69,7 +69,7 @@ class Result:
     model: Model
     _raw_variables: list[pd.DataFrame]
     _parameters: list[dict[str, float]]
-    _dependent: list[pd.DataFrame] = field(default_factory=list)
+    _args: list[pd.DataFrame] = field(default_factory=list)
 
     @property
     def variables(self) -> pd.DataFrame:
@@ -92,13 +92,13 @@ class Result:
 
     def _compute_args(self) -> list[pd.DataFrame]:
         # Already computed
-        if len(self._dependent) > 0:
-            return self._dependent
+        if len(self._args) > 0:
+            return self._args
 
         # Compute new otherwise
         for res, p in zip(self._raw_variables, self._parameters, strict=True):
             self.model.update_parameters(p)
-            self._dependent.append(
+            self._args.append(
                 self.model.get_args_time_course(
                     variables=res,
                     include_variables=True,
@@ -110,17 +110,17 @@ class Result:
                     include_readouts=True,
                 )
             )
-        return self._dependent
+        return self._args
 
-    def _select_variables(
+    def _select_data(
         self,
         dependent: list[pd.DataFrame],
         *,
-        include_variables: bool = True,
+        include_variables: bool = False,
         include_parameters: bool = False,
         include_derived_parameters: bool = False,
-        include_derived_variables: bool = True,
-        include_reactions: bool = True,
+        include_derived_variables: bool = False,
+        include_reactions: bool = False,
         include_surrogate_outputs: bool = False,
         include_readouts: bool = False,
     ) -> list[pd.DataFrame]:
@@ -133,17 +133,6 @@ class Result:
             include_surrogate_outputs=include_surrogate_outputs,
             include_readouts=include_readouts,
         )
-        return [i.loc[:, names] for i in dependent]
-
-    def _select_fluxes(
-        self,
-        dependent: list[pd.DataFrame],
-        *,
-        include_surrogates: bool,
-    ) -> list[pd.DataFrame]:
-        names = self.model.get_reaction_names()
-        if include_surrogates:
-            names.extend(self.model.get_surrogate_reaction_names())
         return [i.loc[:, names] for i in dependent]
 
     def _adjust_data(
@@ -227,7 +216,7 @@ class Result:
             0.000200   0.999800   0.999800
 
         """
-        variables = self._select_variables(
+        variables = self._select_data(
             self._compute_args(),
             include_variables=include_variables,
             include_parameters=include_parameters,
@@ -296,8 +285,9 @@ class Result:
                 concatenated=concatenated,
             )
 
-        variables = self._select_variables(
+        variables = self._select_data(
             self._compute_args(),
+            include_variables=True,
             include_derived_variables=include_derived_variables,
             include_readouts=include_readouts,
         )
@@ -352,9 +342,10 @@ class Result:
             pd.DataFrame: DataFrame of fluxes.
 
         """
-        fluxes = self._select_fluxes(
+        fluxes = self._select_data(
             self._compute_args(),
-            include_surrogates=include_surrogates,
+            include_reactions=True,
+            include_surrogate_outputs=include_surrogates,
         )
         return self._adjust_data(
             fluxes,
@@ -623,6 +614,7 @@ class Simulator:
     def simulate_protocol(
         self,
         protocol: pd.DataFrame,
+        *,
         time_points_per_step: int = 10,
     ) -> Self:
         """Simulate the model over a given protocol.
@@ -657,6 +649,8 @@ class Simulator:
         self,
         protocol: pd.DataFrame,
         time_points: ArrayLike,
+        *,
+        time_points_as_relative: bool = False,
     ) -> Self:
         """Simulate the model over a given protocol.
 
@@ -669,6 +663,7 @@ class Simulator:
         Args:
             protocol: DataFrame containing the protocol.
             time_points: Array of time points for which to return the simulation values.
+            time_points_as_relative: Interpret time points as relative time
 
         Notes:
             This function will return **both** the control points of the protocol as well
@@ -678,9 +673,14 @@ class Simulator:
             The Simulator instance with updated results.
 
         """
+        time_points = np.array(time_points, dtype=float)
+
         t_start = (
             0.0 if (variables := self.variables) is None else variables[-1].index[-1]
         )
+        if time_points_as_relative:
+            time_points += t_start
+
         if time_points[-1] <= t_start:
             msg = "End time point has to be larger than previous end time point"
             raise ValueError(msg)

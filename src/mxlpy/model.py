@@ -1717,7 +1717,7 @@ class Model:
         """Generate a dictionary of model components dependent on other components.
 
         Examples:
-            >>> model._get_dependent({"x1": 1.0, "x2": 2.0}, time=0.0)
+            >>> model._get_args({"x1": 1.0, "x2": 2.0}, time=0.0)
                 {"x1": 1.0, "x2": 2.0, "k1": 0.1, "time": 0.0}
 
         Args:
@@ -1763,14 +1763,14 @@ class Model:
         Examples:
             # Using initial conditions
             >>> model.get_args()
-                {"x1": 1.get_dependent, "x2": 2.0, "k1": 0.1, "time": 0.0}
+                {"x1": 1.get_args, "x2": 2.0, "k1": 0.1, "time": 0.0}
 
             # With custom concentrations
-            >>> model.get_dependent({"x1": 1.0, "x2": 2.0})
+            >>> model.get_args({"x1": 1.0, "x2": 2.0})
                 {"x1": 1.0, "x2": 2.0, "k1": 0.1, "time": 0.0}
 
             # With custom concentrations and time
-            >>> model.get_dependent({"x1": 1.0, "x2": 2.0}, time=1.0)
+            >>> model.get_args({"x1": 1.0, "x2": 2.0}, time=1.0)
                 {"x1": 1.0, "x2": 2.0, "k1": 0.1, "time": 1.0}
 
         Args:
@@ -1848,7 +1848,7 @@ class Model:
         """Generate a DataFrame containing time course arguments for model evaluation.
 
         Examples:
-            >>> model.get_dependent_time_course(
+            >>> model.get_args_time_course(
             ...     pd.DataFrame({"x1": [1.0, 2.0], "x2": [2.0, 3.0]}
             ... )
                 pd.DataFrame({

@@ -493,7 +493,7 @@ def _codgen(name: str, sbml: Parser) -> Path:
             variables[k] = v.size
 
     # Ensure non-zero value for initial assignments
-    # EXPLAIN: we need to do this for the first round of get_dependent to work
+    # EXPLAIN: we need to do this for the first round of get_args to work
     # otherwise we run into a ton of DivisionByZero errors.
     # Since the values are overwritte afterwards, it doesn't really matter anyways
     for k in sbml.initial_assignment:
@@ -552,7 +552,7 @@ def get_model() -> Model:
     {variables_str}
     {derived_str}
     {rxn_str}
-    args = m.get_dependent()
+    args = m.get_args()
     {initial_assignment_source}
     return m
 """
