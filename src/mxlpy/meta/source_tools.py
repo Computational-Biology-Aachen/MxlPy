@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import logging
 import textwrap
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -15,12 +16,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
 
-__all__ = [
-    "Context",
-    "fn_to_sympy",
-    "get_fn_ast",
-    "get_fn_source",
-]
+__all__ = ["Context", "PARSE_ERROR", "fn_to_sympy", "get_fn_ast", "get_fn_source"]
+
+_LOGGER = logging.getLogger(__name__)
+PARSE_ERROR = sympy.Symbol("ERROR")
 
 
 @dataclass
@@ -30,6 +29,7 @@ class Context:
     symbols: dict[str, sympy.Symbol | sympy.Expr]
     caller: Callable
     parent_module: ModuleType | None
+    origin: str
 
     def updated(
         self,
@@ -44,6 +44,7 @@ class Context:
             parent_module=self.parent_module
             if parent_module is None
             else parent_module,
+            origin=self.origin,
         )
 
 
@@ -109,55 +110,61 @@ def get_fn_ast(fn: Callable) -> ast.FunctionDef:
 
 def fn_to_sympy(
     fn: Callable,
+    origin: str,
     model_args: list[sympy.Symbol | sympy.Expr] | None = None,
-) -> sympy.Expr:
+) -> sympy.Expr | None:
     """Convert a python function to a sympy expression.
 
-    Parameters
-    ----------
-    fn
-        The function to convert
-    model_args
-        Optional list of sympy symbols to substitute for function arguments
+    Args:
+        fn: The function to convert
+        origin: Name of the original caller. Used for error messages.
+        model_args: Optional list of sympy symbols to substitute for function arguments
 
-    Returns
-    -------
-    sympy.Expr
+    Returns:
         Sympy expression equivalent to the function
 
-    Examples
-    --------
-    >>> def square_fn(x):
-    ...     return x**2
-    >>> import sympy
-    >>> fn_to_sympy(square_fn)
-    x**2
-    >>> # With model_args
-    >>> y = sympy.Symbol('y')
-    >>> fn_to_sympy(square_fn, [y])
-    y**2
+    Examples:
+        >>> def square_fn(x):
+        ...     return x**2
+        >>> import sympy
+        >>> fn_to_sympy(square_fn)
+        x**2
+        >>> # With model_args
+        >>> y = sympy.Symbol('y')
+        >>> fn_to_sympy(square_fn, [y])
+        y**2
 
     """
-    fn_def = get_fn_ast(fn)
-    fn_args = [str(arg.arg) for arg in fn_def.args.args]
-    sympy_expr = _handle_fn_body(
-        fn_def.body,
-        ctx=Context(
-            symbols={name: sympy.Symbol(name) for name in fn_args},
-            caller=fn,
-            parent_module=inspect.getmodule(fn),
-        ),
-    )
-    if model_args is not None:
-        sympy_expr = sympy_expr.subs(dict(zip(fn_args, model_args, strict=True)))
-    return cast(sympy.Expr, sympy_expr)
+    try:
+        fn_def = get_fn_ast(fn)
+        fn_args = [str(arg.arg) for arg in fn_def.args.args]
+        sympy_expr = _handle_fn_body(
+            fn_def.body,
+            ctx=Context(
+                symbols={name: sympy.Symbol(name) for name in fn_args},
+                caller=fn,
+                parent_module=inspect.getmodule(fn),
+                origin=origin,
+            ),
+        )
+        if sympy_expr is None:
+            msg = f"Failed parsing function of {origin}"
+            _LOGGER.warning(msg)
+            return None
+        if model_args is not None:
+            sympy_expr = sympy_expr.subs(dict(zip(fn_args, model_args, strict=True)))
+        return cast(sympy.Expr, sympy_expr)
+    except (TypeError, NotImplementedError):
+        msg = f"Failed parsing function of {origin}"
+        _LOGGER.warning(msg)
+        return None
 
 
 def _handle_name(node: ast.Name, ctx: Context) -> sympy.Symbol | sympy.Expr:
     return ctx.symbols[node.id]
 
 
-def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr:
+def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
     if isinstance(node, ast.UnaryOp):
         return _handle_unaryop(node, ctx)
     if isinstance(node, ast.BinOp):
@@ -197,7 +204,7 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr:
             result = sympy.And(result, comp)
         return cast(sympy.Expr, result)
     if isinstance(node, ast.Call):
-        return _handle_call(node, ctx)
+        return _handle_call(node, ctx=ctx)
 
     # Handle conditional expressions (ternary operators)
     if isinstance(node, ast.IfExp):
@@ -210,7 +217,7 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr:
     raise NotImplementedError(msg)
 
 
-def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr:
+def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
     pieces = []
     remaining_body = list(body)
 
@@ -266,7 +273,10 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr:
                         target_elements, value_elements, strict=True
                     ):
                         if isinstance(target, ast.Name):
-                            ctx.symbols[target.id] = _handle_expr(value_expr, ctx)
+                            expr = _handle_expr(value_expr, ctx)
+                            if expr is None:
+                                return None
+                            ctx.symbols[target.id] = expr
                 else:
                     # Handle potential iterable unpacking
                     value = _handle_expr(node.value, ctx)
@@ -277,6 +287,8 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr:
                     raise TypeError(msg)
                 target_name = target.id
                 value = _handle_expr(node.value, ctx)
+                if value is None:
+                    return None
                 ctx.symbols[target_name] = value
 
     # If we have pieces to combine into a Piecewise
@@ -332,15 +344,22 @@ def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
     raise NotImplementedError(msg)
 
 
-def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr:
+def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
     # direct call, e.g. mass_action(x, k1)
     if isinstance(callee := node.func, ast.Name):
         fn_name = str(callee.id)
         fns = dict(inspect.getmembers(ctx.parent_module, predicate=callable))
 
+        model_args: list[sympy.Expr] = []
+        for i in node.args:
+            if (expr := _handle_expr(i, ctx)) is None:
+                return None
+            model_args.append(expr)
+
         return fn_to_sympy(
             fns[fn_name],
-            model_args=[_handle_expr(i, ctx) for i in node.args],
+            origin=ctx.origin,
+            model_args=[],
         )
 
     # search for fn in other namespace

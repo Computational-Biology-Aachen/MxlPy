@@ -50,7 +50,9 @@ __all__ = [
 ]
 
 
-def _latex_view(expr: sympy.Expr) -> str:
+def _latex_view(expr: sympy.Expr | None) -> str:
+    if expr is None:
+        return "PARSE-ERROR"
     return f"${sympy.latex(expr)}$"
 
 
@@ -837,16 +839,25 @@ class Model:
 
         """
         index = list(self._variables.keys())
-        data = [
-            {
-                "value": _latex_view(fn_to_sympy(init.fn, list_of_symbols(init.args)))
-                if isinstance(init := el.initial_value, Derived)
-                else init,
-                "unit": _latex_view(unit) if (unit := el.unit) is not None else "",
-                # "source": ...,
-            }
-            for el in self._variables.values()
-        ]
+        data = []
+        for name, el in self._variables.items():
+            if isinstance(init := el.initial_value, Derived):
+                value_str = _latex_view(
+                    fn_to_sympy(
+                        init.fn,
+                        origin=name,
+                        model_args=list_of_symbols(init.args),
+                    )
+                )
+            else:
+                value_str = str(init)
+            data.append(
+                {
+                    "value": value_str,
+                    "unit": _latex_view(unit) if (unit := el.unit) is not None else "",
+                    # "source"
+                }
+            )
         return TableView(data=pd.DataFrame(data, index=index))
 
     def get_raw_variables(self) -> dict[str, Variable]:
@@ -1108,12 +1119,18 @@ class Model:
         index = list(self._derived.keys())
         data = [
             {
-                "value": _latex_view(fn_to_sympy(el.fn, list_of_symbols(el.args))),
+                "value": _latex_view(
+                    fn_to_sympy(
+                        el.fn,
+                        origin=name,
+                        model_args=list_of_symbols(el.args),
+                    )
+                ),
                 "unit": _latex_view(unit) if (unit := el.unit) is not None else "",
-                # "source"
             }
-            for el in self._derived.values()
+            for name, el in self._derived.items()
         ]
+
         return TableView(data=pd.DataFrame(data, index=index))
 
     def get_raw_derived(self) -> dict[str, Derived]:
@@ -1271,17 +1288,21 @@ class Model:
     def reactions(self) -> TableView:
         """Get view of reactions."""
         index = list(self._reactions.keys())
-
         data = [
             {
-                "value": _latex_view(fn_to_sympy(rxn.fn, list_of_symbols(rxn.args))),
-                "stoichiometry": stoichiometries_to_sympy(rxn.stoichiometry),
+                "value": _latex_view(
+                    fn_to_sympy(
+                        rxn.fn,
+                        origin=name,
+                        model_args=list_of_symbols(rxn.args),
+                    )
+                ),
+                "stoichiometry": stoichiometries_to_sympy(name, rxn.stoichiometry),
                 "unit": _latex_view(unit) if (unit := rxn.unit) is not None else "",
                 # "source"
             }
-            for rxn in self._reactions.values()
+            for name, rxn in self._reactions.items()
         ]
-
         return TableView(data=pd.DataFrame(data, index=index))
 
     def get_raw_reactions(self) -> dict[str, Reaction]:
@@ -2008,7 +2029,7 @@ class Model:
                           the index of the input arguments.
 
         """
-        names = self.get_reaction_names()
+        names: list[str] = self.get_reaction_names()
         for surrogate in self._surrogates.values():
             names.extend(surrogate.stoichiometries)
 

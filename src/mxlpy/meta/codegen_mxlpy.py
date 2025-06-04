@@ -9,6 +9,8 @@ from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols, sympy_to_python
 from mxlpy.types import Derived
 
 if TYPE_CHECKING:
+    import sympy
+
     from mxlpy.model import Model
 
 __all__ = [
@@ -20,7 +22,7 @@ _LOGGER = logging.getLogger()
 
 def generate_mxlpy_code(model: Model) -> str:
     """Generate a mxlpy model from a model."""
-    functions = {}
+    functions: dict[str, tuple[sympy.Expr, list[str]]] = {}
 
     # Variables and parameters
     variables = model.get_raw_variables()
@@ -31,10 +33,13 @@ def generate_mxlpy_code(model: Model) -> str:
     for k, der in model.get_raw_derived().items():
         fn = der.fn
         fn_name = fn.__name__
-        functions[fn_name] = (
-            fn_to_sympy(fn, model_args=list_of_symbols(der.args)),
-            der.args,
-        )
+        if (
+            expr := fn_to_sympy(fn, origin=k, model_args=list_of_symbols(der.args))
+        ) is None:
+            msg = f"Unable to parse fn for derived value '{k}'"
+            raise ValueError(msg)
+
+        functions[fn_name] = (expr, der.args)
 
         derived_source.append(
             f"""        .add_derived(
@@ -49,17 +54,24 @@ def generate_mxlpy_code(model: Model) -> str:
     for k, rxn in model.get_raw_reactions().items():
         fn = rxn.fn
         fn_name = fn.__name__
-        functions[fn_name] = (
-            fn_to_sympy(fn, model_args=list_of_symbols(rxn.args)),
-            rxn.args,
-        )
+        if (
+            expr := fn_to_sympy(fn, origin=k, model_args=list_of_symbols(rxn.args))
+        ) is None:
+            msg = f"Unable to parse fn for reaction '{k}'"
+            raise ValueError(msg)
+
+        functions[fn_name] = (expr, rxn.args)
         stoichiometry: list[str] = []
         for var, stoich in rxn.stoichiometry.items():
             if isinstance(stoich, Derived):
-                functions[fn_name] = (
-                    fn_to_sympy(fn, model_args=list_of_symbols(stoich.args)),
-                    rxn.args,
-                )
+                if (
+                    expr := fn_to_sympy(
+                        fn, origin=var, model_args=list_of_symbols(stoich.args)
+                    )
+                ) is None:
+                    msg = f"Unable to parse fn for stoichiometry '{var}'"
+                    raise ValueError(msg)
+                functions[fn_name] = (expr, rxn.args)
                 args = ", ".join(f'"{k}"' for k in stoich.args)
                 stoich = (  # noqa: PLW2901
                     f"""Derived(fn={fn.__name__}, args=[{args}])"""

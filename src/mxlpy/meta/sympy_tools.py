@@ -98,6 +98,7 @@ def sympy_to_python_fn(
 
 
 def stoichiometries_to_sympy(
+    origin: str,
     stoichs: Mapping[str, float | Derived],
 ) -> sympy.Expr:
     """Convert mxlpy stoichiometries to single expression."""
@@ -107,7 +108,8 @@ def stoichiometries_to_sympy(
         if isinstance(rxn_stoich, Derived):
             sympy_fn = fn_to_sympy(
                 rxn_stoich.fn,
-                list_of_symbols(rxn_stoich.args),
+                origin=origin,
+                model_args=list_of_symbols(rxn_stoich.args),
             )
             expr = expr + sympy_fn * sympy.Symbol(rxn_name)  # type: ignore
         else:

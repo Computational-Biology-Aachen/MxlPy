@@ -56,13 +56,22 @@ def to_symbolic_model(model: Model) -> SymbolicModel:
 
     # Insert derived into symbols
     for k, v in model.get_raw_derived().items():
-        symbols[k] = fn_to_sympy(v.fn, [symbols[i] for i in v.args])
+        if (
+            expr := fn_to_sympy(v.fn, origin=k, model_args=[symbols[i] for i in v.args])
+        ) is None:
+            msg = f"Unable to parse derived value '{k}'"
+            raise ValueError(msg)
+        symbols[k] = expr
 
     # Insert derived into reaction via args
-    rxns = {
-        k: fn_to_sympy(v.fn, [symbols[i] for i in v.args])
-        for k, v in model.get_raw_reactions().items()
-    }
+    rxns: dict[str, sympy.Expr] = {}
+    for k, v in model.get_raw_reactions().items():
+        if (
+            expr := fn_to_sympy(v.fn, origin=k, model_args=[symbols[i] for i in v.args])
+        ) is None:
+            msg = f"Unable to parse reaction '{k}'"
+            raise ValueError(msg)
+        rxns[k] = expr
 
     eqs: dict[str, sympy.Expr] = {}
     for cpd, stoich in cache.stoich_by_cpds.items():

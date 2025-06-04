@@ -70,12 +70,26 @@ def _generate_model_code(
 
     # Derived
     for name, derived in model.get_raw_derived().items():
-        expr = fn_to_sympy(derived.fn, model_args=list_of_symbols(derived.args))
+        expr = fn_to_sympy(
+            derived.fn,
+            origin=name,
+            model_args=list_of_symbols(derived.args),
+        )
+        if expr is None:
+            msg = f"Unable to parse fn for derived value '{name}'"
+            raise ValueError(msg)
         source.append(assignment_template.format(k=name, v=sympy_inline_fn(expr)))
 
     # Reactions
     for name, rxn in model.get_raw_reactions().items():
-        expr = fn_to_sympy(rxn.fn, model_args=list_of_symbols(rxn.args))
+        expr = fn_to_sympy(
+            rxn.fn,
+            origin=name,
+            model_args=list_of_symbols(rxn.args),
+        )
+        if expr is None:
+            msg = f"Unable to parse fn for reaction value '{name}'"
+            raise ValueError(msg)
         source.append(assignment_template.format(k=name, v=sympy_inline_fn(expr)))
 
     # Diff eqs
@@ -85,7 +99,7 @@ def _generate_model_code(
             diff_eqs.setdefault(var_name, {})[rxn_name] = factor
 
     for variable, stoich in diff_eqs.items():
-        expr = stoichiometries_to_sympy(stoich)
+        expr = stoichiometries_to_sympy(origin=variable, stoichs=stoich)
         source.append(
             assignment_template.format(k=f"d{variable}dt", v=sympy_inline_fn(expr))
         )

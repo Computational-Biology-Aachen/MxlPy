@@ -3,25 +3,25 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
 import sympy
 
-from mxlpy.meta.sympy_tools import fn_to_sympy
+from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols
 from mxlpy.model import Model
 
-__all__ = [
-    "AnalysisFn",
-    "markdown",
-]
+__all__ = ["AnalysisFn", "MarkdownReport", "markdown"]
 
 type AnalysisFn = Callable[[Model, Model, Path], tuple[str, Path]]
 
 
-def _list_of_symbols(args: list[str]) -> list[sympy.Symbol | sympy.Expr]:
-    return [sympy.Symbol(arg) for arg in args]
+def _latex_view(expr: sympy.Expr | None) -> str:
+    if expr is None:
+        return "PARSE-ERROR"
+    return f"${sympy.latex(expr)}$"
 
 
 def _new_removed_changed[T](
@@ -44,6 +44,31 @@ def _table_header(items: list[str]) -> str:
     return f"{_table_row(items)}\n{_table_row(['---'] * len(items))}"
 
 
+@dataclass
+class MarkdownReport:
+    """Report of model comparison."""
+
+    data: str
+
+    def __str__(self) -> str:
+        """Markdown string representation."""
+        return self.data
+
+    def __repr__(self) -> str:
+        """Markdown string representation."""
+        return self.data
+
+    def _repr_markdown_(self) -> str:
+        return self.data
+
+    def write(self, path: Path) -> None:
+        """Write report to file."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with path.open("w+") as fp:
+            fp.write(self.data)
+
+
 def markdown(
     m1: Model,
     m2: Model,
@@ -54,7 +79,7 @@ def markdown(
     m1_name: str = "model 1",
     m2_name: str = "model 2",
     include_rhs: bool = True,
-) -> str:
+) -> MarkdownReport:
     """Generate a markdown report comparing two models.
 
     Args:
@@ -129,7 +154,7 @@ def markdown(
     if len(variables) >= 1:
         content.extend(
             (
-                "## Variables\n\n",
+                "\n## Variables\n",
                 f"| Name | {m1_name} | {m2_name} |",
                 "| ---- | --------- | --------- |",
             )
@@ -155,7 +180,7 @@ def markdown(
     if len(pars) >= 1:
         content.extend(
             (
-                "## Parameters\n\n",
+                "\n## Parameters\n",
                 f"| Name | {m1_name} | {m2_name} |",
                 "| ---- | --------- | --------- |",
             )
@@ -169,11 +194,30 @@ def markdown(
     )
     derived = []
     for k, v in new_derived.items():
-        expr = sympy.latex(fn_to_sympy(v.fn, _list_of_symbols(v.args)))
+        expr = _latex_view(
+            fn_to_sympy(
+                v.fn,
+                origin=k,
+                model_args=list_of_symbols(v.args),
+            )
+        )
         derived.append(f"| <span style='color:green'>{k}<span> | - | ${expr}$ |")
+
     for k, (v1, v2) in changed_derived.items():
-        expr1 = sympy.latex(fn_to_sympy(v1.fn, _list_of_symbols(v1.args)))
-        expr2 = sympy.latex(fn_to_sympy(v2.fn, _list_of_symbols(v2.args)))
+        expr1 = _latex_view(
+            fn_to_sympy(
+                v1.fn,
+                origin=k,
+                model_args=list_of_symbols(v1.args),
+            )
+        )
+        expr2 = _latex_view(
+            fn_to_sympy(
+                v2.fn,
+                origin=k,
+                model_args=list_of_symbols(v2.args),
+            )
+        )
         derived.append(
             f"| <span style='color: orange'>{k}</span> | ${expr1}$ | ${expr2}$ |"
         )
@@ -183,7 +227,7 @@ def markdown(
     if len(derived) >= 1:
         content.extend(
             (
-                "## Derived\n\n",
+                "\n## Derived\n",
                 f"| Name | {m1_name} | {m2_name} |",
                 "| ---- | --------- | --------- |",
             )
@@ -196,11 +240,30 @@ def markdown(
     )
     reactions = []
     for k, v in new_reactions.items():
-        expr = sympy.latex(fn_to_sympy(v.fn, _list_of_symbols(v.args)))
+        expr = _latex_view(
+            fn_to_sympy(
+                v.fn,
+                origin=k,
+                model_args=list_of_symbols(v.args),
+            )
+        )
         reactions.append(f"| <span style='color:green'>{k}<span> | - | ${expr}$ |")
+
     for k, (v1, v2) in changed_reactions.items():
-        expr1 = sympy.latex(fn_to_sympy(v1.fn, _list_of_symbols(v1.args)))
-        expr2 = sympy.latex(fn_to_sympy(v2.fn, _list_of_symbols(v2.args)))
+        expr1 = _latex_view(
+            fn_to_sympy(
+                v1.fn,
+                origin=k,
+                model_args=list_of_symbols(v1.args),
+            )
+        )
+        expr2 = _latex_view(
+            fn_to_sympy(
+                v2.fn,
+                origin=k,
+                model_args=list_of_symbols(v2.args),
+            )
+        )
         reactions.append(
             f"| <span style='color: orange'>{k}</span> | ${expr1}$ | ${expr2}$ |"
         )
@@ -211,7 +274,7 @@ def markdown(
     if len(reactions) >= 1:
         content.extend(
             (
-                "## Reactions\n\n",
+                "\n## Reactions\n",
                 f"| Name | {m1_name} | {m2_name} |",
                 "| ---- | --------- | --------- |",
             )
@@ -251,7 +314,7 @@ def markdown(
         if len(rhs) >= 1:
             content.extend(
                 (
-                    "## Numerical differences of right hand side values\n\n",
+                    "\n## Numerical differences of right hand side values\n",
                     f"| Name | {m1_name} | {m2_name} | Relative Change | ",
                     "| ---- | --------- | --------- | --------------- | ",
                 )
@@ -266,4 +329,4 @@ def markdown(
             # content.append(f"![{name}]({img_path})")
             content.append(f"<img src='{img_path}' alt='{name}' width='500'/>")
 
-    return "\n".join(content)
+    return MarkdownReport(data="\n".join(content))

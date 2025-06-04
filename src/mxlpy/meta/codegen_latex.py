@@ -106,6 +106,8 @@ def _sympy_to_latex(expr: sympy.Expr) -> str:
 
 def _fn_to_latex(
     fn: Callable,
+    *,
+    origin: str,
     arg_names: list[str],
     long_name_cutoff: int,
 ) -> tuple[str, dict[str, str]]:
@@ -117,9 +119,14 @@ def _fn_to_latex(
     )
     replacements = {k: _name_to_latex(f"_x{i}") for i, k in enumerate(long_names)}
 
-    expr = fn_to_sympy(fn, list_of_symbols([replacements.get(k, k) for k in tex_names]))
-    fn_str = _sympy_to_latex(expr)
-    return fn_str, replacements
+    expr = fn_to_sympy(
+        fn,
+        origin=origin,
+        model_args=list_of_symbols([replacements.get(k, k) for k in tex_names]),
+    )
+    if expr is None:
+        return rf"\textcolor{{red}}{origin.upper()}", replacements
+    return _sympy_to_latex(expr), replacements
 
 
 def _table(
@@ -318,7 +325,8 @@ def _stoichs_to_latex(
             )
             sympy_fn = fn_to_sympy(
                 rxn_stoich.fn,
-                list_of_symbols([replacements.get(k, k) for k in arg_names]),
+                origin=rxn_name,
+                model_args=list_of_symbols([replacements.get(k, k) for k in arg_names]),
             )
             expr = expr + sympy_fn * sympy.Symbol(rxn_name)  # type: ignore
         else:
@@ -582,6 +590,7 @@ class TexExport:
         for k, v in sorted(self.derived.items()):
             fn_str, repls = _fn_to_latex(
                 v.fn,
+                origin=k,
                 arg_names=v.args,
                 long_name_cutoff=long_name_cutoff,
             )
@@ -613,6 +622,7 @@ class TexExport:
         for k, v in sorted(self.reactions.items()):
             fn_str, repls = _fn_to_latex(
                 v.fn,
+                origin=k,
                 arg_names=v.args,
                 long_name_cutoff=long_name_cutoff,
             )
@@ -749,7 +759,7 @@ class TexExport:
 \usepackage[a4paper,top=2cm,bottom=2cm,left=2cm,right=2cm,marginparwidth=1.75cm]{{geometry}}
 \usepackage{{amsmath, amssymb, array, booktabs,
             breqn, caption, longtable, mathtools, placeins,
-            ragged2e, tabularx, titlesec, titling}}
+            ragged2e, tabularx, titlesec, titling, xcolor}}
 \newcommand{{\sectionbreak}}{{\clearpage}}
 \setlength{{\parindent}}{{0pt}}
 \allowdisplaybreaks
