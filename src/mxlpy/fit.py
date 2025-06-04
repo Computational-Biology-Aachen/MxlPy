@@ -46,10 +46,10 @@ __all__ = [
     "carousel_steady_state",
     "carousel_time_course",
     "carousel_time_course_over_protocol",
+    "protocol_time_course",
     "rmse",
     "steady_state",
     "time_course",
-    "time_course_over_protocol",
 ]
 
 
@@ -151,7 +151,6 @@ class ProtocolResidualFn(Protocol):
         integrator: IntegratorType,
         loss_fn: LossFn,
         protocol: pd.DataFrame,
-        time_points_per_step: int = 10,
     ) -> float:
         """Calculate residual error between model time course and experimental data."""
         ...
@@ -278,7 +277,7 @@ def _time_course_residual(
     )
 
 
-def _protocol_residual(
+def _protocol_time_course_residual(
     par_values: ArrayLike,
     # This will be filled out by partial
     par_names: list[str],
@@ -288,7 +287,6 @@ def _protocol_residual(
     integrator: IntegratorType,
     loss_fn: LossFn,
     protocol: pd.DataFrame,
-    time_points_per_step: int = 10,
 ) -> float:
     """Calculate residual error between model time course and experimental data.
 
@@ -313,9 +311,9 @@ def _protocol_residual(
             y0=y0,
             integrator=integrator,
         )
-        .simulate_protocol(
+        .simulate_protocol_time_course(
             protocol=protocol,
-            time_points_per_step=time_points_per_step,
+            time_points=data.index,
         )
         .get_result()
     )
@@ -456,7 +454,7 @@ def time_course(
     )
 
 
-def time_course_over_protocol(
+def protocol_time_course(
     model: Model,
     *,
     p0: dict[str, float],
@@ -464,7 +462,7 @@ def time_course_over_protocol(
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
     minimize_fn: MinimizeFn = _default_minimize_fn,
-    residual_fn: ProtocolResidualFn = _protocol_residual,
+    residual_fn: ProtocolResidualFn = _protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     time_points_per_step: int = 10,
@@ -584,7 +582,7 @@ def _carousel_protocol_worker(
     residual_fn: ProtocolResidualFn,
 ) -> FitResult | None:
     model_pars = model.get_parameter_values()
-    return time_course_over_protocol(
+    return protocol_time_course(
         model,
         p0={k: v for k, v in p0.items() if k in model_pars},
         y0=y0,
@@ -671,7 +669,7 @@ def carousel_time_course_over_protocol(
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
     minimize_fn: MinimizeFn = _default_minimize_fn,
-    residual_fn: ProtocolResidualFn = _protocol_residual,
+    residual_fn: ProtocolResidualFn = _protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
 ) -> CarouselFit:
