@@ -148,13 +148,11 @@ def fn_to_sympy(
             ),
         )
         if sympy_expr is None:
-            msg = f"Failed parsing function of {origin}"
-            _LOGGER.warning(msg)
             return None
         if model_args is not None:
             sympy_expr = sympy_expr.subs(dict(zip(fn_args, model_args, strict=True)))
         return cast(sympy.Expr, sympy_expr)
-    except (TypeError, NotImplementedError):
+    except (TypeError, ValueError, NotImplementedError):
         msg = f"Failed parsing function of {origin}"
         _LOGGER.warning(msg)
         return None

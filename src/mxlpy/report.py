@@ -20,7 +20,7 @@ type AnalysisFn = Callable[[Model, Model, Path], tuple[str, Path]]
 
 def _latex_view(expr: sympy.Expr | None) -> str:
     if expr is None:
-        return "PARSE-ERROR"
+        return "<span style='color:red'>PARSE ERROR<span>"
     return f"${sympy.latex(expr)}$"
 
 
@@ -201,7 +201,7 @@ def markdown(
                 model_args=list_of_symbols(v.args),
             )
         )
-        derived.append(f"| <span style='color:green'>{k}<span> | - | ${expr}$ |")
+        derived.append(f"| <span style='color:green'>{k}<span> | - | {expr} |")
 
     for k, (v1, v2) in changed_derived.items():
         expr1 = _latex_view(
@@ -219,7 +219,7 @@ def markdown(
             )
         )
         derived.append(
-            f"| <span style='color: orange'>{k}</span> | ${expr1}$ | ${expr2}$ |"
+            f"| <span style='color: orange'>{k}</span> | {expr1} | {expr2} |"
         )
     derived.extend(
         f"| <span style='color:red'>{k}</span> | - | - |" for k in removed_derived
@@ -247,7 +247,7 @@ def markdown(
                 model_args=list_of_symbols(v.args),
             )
         )
-        reactions.append(f"| <span style='color:green'>{k}<span> | - | ${expr}$ |")
+        reactions.append(f"| <span style='color:green'>{k}<span> | - | {expr} |")
 
     for k, (v1, v2) in changed_reactions.items():
         expr1 = _latex_view(
@@ -265,7 +265,7 @@ def markdown(
             )
         )
         reactions.append(
-            f"| <span style='color: orange'>{k}</span> | ${expr1}$ | ${expr2}$ |"
+            f"| <span style='color: orange'>{k}</span> | {expr1} | {expr2} |"
         )
     reactions.extend(
         f"| <span style='color:red'>{k}</span> | - | - |" for k in removed_reactions

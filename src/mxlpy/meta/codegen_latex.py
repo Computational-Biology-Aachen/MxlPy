@@ -125,7 +125,7 @@ def _fn_to_latex(
         model_args=list_of_symbols([replacements.get(k, k) for k in tex_names]),
     )
     if expr is None:
-        return rf"\textcolor{{red}}{origin.upper()}", replacements
+        return rf"\textcolor{{red}}{{{origin}}}", replacements
     return _sympy_to_latex(expr), replacements
 
 
