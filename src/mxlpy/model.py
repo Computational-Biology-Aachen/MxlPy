@@ -46,7 +46,34 @@ __all__ = [
     "MissingDependenciesError",
     "Model",
     "ModelCache",
+    "TableView",
 ]
+
+
+def _latex_view(expr: sympy.Expr) -> str:
+    return f"${sympy.latex(expr)}$"
+
+
+@dataclass(kw_only=True, slots=True)
+class TableView:
+    """Markdown view of pandas Dataframe.
+
+    Mostly used to get nice LaTeX rendering of sympy expressions.
+    """
+
+    data: pd.DataFrame
+
+    def __repr__(self) -> str:
+        """Normal Python shell output."""
+        return self.data.to_markdown()
+
+    def _repr_markdown_(self) -> str:
+        """Fancy IPython shell output.
+
+        Looks the same as __repr__, but is handled by IPython to output
+        `IPython.display.Markdown`, so looks nice
+        """
+        return self.data.to_markdown()
 
 
 @dataclass
@@ -497,18 +524,18 @@ class Model:
     ##########################################################################
 
     @property
-    def parameters(self) -> pd.DataFrame:
+    def parameters(self) -> TableView:
         """Return view of parameters."""
         index = list(self._parameters.keys())
         data = [
             {
                 "value": el.value,
-                "unit": sympy.latex(unit) if (unit := el.unit) is not None else "",
+                "unit": _latex_view(unit) if (unit := el.unit) is not None else "",
                 # "source": ...,
             }
             for el in self._parameters.values()
         ]
-        return pd.DataFrame(data, index=index)
+        return TableView(data=pd.DataFrame(data, index=index))
 
     def get_raw_parameters(self) -> dict[str, Parameter]:
         """Returns the parameters of the model."""
@@ -795,7 +822,7 @@ class Model:
     ##########################################################################
 
     @property
-    def variables(self) -> pd.DataFrame:
+    def variables(self) -> TableView:
         """Returns a copy of the variables dictionary.
 
         Examples:
@@ -812,15 +839,15 @@ class Model:
         index = list(self._variables.keys())
         data = [
             {
-                "value": sympy.latex(fn_to_sympy(init.fn, list_of_symbols(init.args)))
+                "value": _latex_view(fn_to_sympy(init.fn, list_of_symbols(init.args)))
                 if isinstance(init := el.initial_value, Derived)
                 else init,
-                "unit": sympy.latex(unit) if (unit := el.unit) is not None else "",
+                "unit": _latex_view(unit) if (unit := el.unit) is not None else "",
                 # "source": ...,
             }
             for el in self._variables.values()
         ]
-        return pd.DataFrame(data, index=index)
+        return TableView(data=pd.DataFrame(data, index=index))
 
     def get_raw_variables(self) -> dict[str, Variable]:
         """Retrieve the initial conditions of the model.
@@ -1066,7 +1093,7 @@ class Model:
     ##########################################################################
 
     @property
-    def derived(self) -> pd.DataFrame:
+    def derived(self) -> TableView:
         """Returns a view of the derived quantities.
 
         Examples:
@@ -1079,15 +1106,15 @@ class Model:
 
         """
         index = list(self._derived.keys())
-        reactions = [
+        data = [
             {
-                "fn": fn_to_sympy(el.fn, list_of_symbols(el.args)),
-                "unit": sympy.latex(unit) if (unit := el.unit) is not None else "",
+                "value": _latex_view(fn_to_sympy(el.fn, list_of_symbols(el.args))),
+                "unit": _latex_view(unit) if (unit := el.unit) is not None else "",
                 # "source"
             }
             for el in self._derived.values()
         ]
-        return pd.DataFrame(reactions, index=index)
+        return TableView(data=pd.DataFrame(data, index=index))
 
     def get_raw_derived(self) -> dict[str, Derived]:
         """Get copy of derived values."""
@@ -1241,21 +1268,21 @@ class Model:
     ###########################################################################
 
     @property
-    def reactions(self) -> pd.DataFrame:
+    def reactions(self) -> TableView:
         """Get view of reactions."""
         index = list(self._reactions.keys())
 
-        reactions = [
+        data = [
             {
-                "fn": fn_to_sympy(rxn.fn, list_of_symbols(rxn.args)),
+                "value": _latex_view(fn_to_sympy(rxn.fn, list_of_symbols(rxn.args))),
                 "stoichiometry": stoichiometries_to_sympy(rxn.stoichiometry),
-                "unit": sympy.latex(unit) if (unit := rxn.unit) is not None else "",
+                "unit": _latex_view(unit) if (unit := rxn.unit) is not None else "",
                 # "source"
             }
             for rxn in self._reactions.values()
         ]
 
-        return pd.DataFrame(reactions, index=index)
+        return TableView(data=pd.DataFrame(data, index=index))
 
     def get_raw_reactions(self) -> dict[str, Reaction]:
         """Retrieve the reactions in the model.

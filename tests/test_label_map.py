@@ -403,9 +403,6 @@ def test_build_model_with_list_initial_labels(simple_model: Model) -> None:
         label_maps={"v1": [0, 1], "v2": [0, 1]},
     )
 
-    # Initialize A with all concentration at A__11
-    simple_model.variables["A"] = 1.0
-
     # Test with list of initial labels
     labeled_model = mapper.build_model(initial_labels={"A": [0, 1]})
 

@@ -518,7 +518,7 @@ class Simulator:
         # model._get_rhs sorts the return array by model.get_variable_names()
         # Do NOT change this ordering
         results_df = pd.DataFrame(
-            results,
+            data=results,
             index=time,
             columns=self.model.get_variable_names(),
         )

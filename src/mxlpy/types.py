@@ -242,7 +242,7 @@ class Reaction:
 
     def get_modifiers(self, model: Model) -> list[str]:
         """Get the modifiers of the reaction."""
-        include = set(model.variables)
+        include = set(model.get_variable_names())
         exclude = set(self.stoichiometry)
 
         return [k for k in self.args if k in include and k not in exclude]

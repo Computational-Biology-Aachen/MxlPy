@@ -23,7 +23,7 @@ def filter_stoichiometry(
     """
     new: dict[str, float] = {}
     ids = model.ids
-    variables = model.variables
+    variables = set(model.get_variable_names())
     for k, v in stoichiometry.items():
         if k in variables:
             new[k] = v

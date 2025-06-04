@@ -101,7 +101,7 @@ def markdown(
         [
             f"| Model component | {m1_name} | {m2_name} |",
             "| --- | --- | --- |",
-            f"| variables | {len(m1.variables)} | {len(m2.variables)}|",
+            f"| variables | {len(m1.get_raw_parameters())} | {len(m2.get_raw_parameters())}|",
             f"| parameters | {len(m1.get_parameter_values())} | {len(m2.get_parameter_values())}|",
             f"| derived parameters | {len(m1.get_derived_parameters())} | {len(m2.get_derived_parameters())}|",
             f"| derived variables | {len(m1.get_derived_variables())} | {len(m2.get_derived_variables())}|",
