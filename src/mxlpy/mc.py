@@ -66,6 +66,7 @@ class ParameterScanWorker(Protocol):
         model: Model,
         *,
         parameters: pd.DataFrame,
+        y0: dict[str, float] | None,
         rel_norm: bool,
         integrator: IntegratorType,
     ) -> SteadyStates:
@@ -77,6 +78,7 @@ def _parameter_scan_worker(
     model: Model,
     *,
     parameters: pd.DataFrame,
+    y0: dict[str, float] | None,
     rel_norm: bool,
     integrator: IntegratorType,
 ) -> SteadyStates:
@@ -109,6 +111,7 @@ def _parameter_scan_worker(
         parallel=False,
         rel_norm=rel_norm,
         integrator=integrator,
+        y0=y0,
     )
 
 

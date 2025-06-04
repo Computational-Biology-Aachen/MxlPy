@@ -69,14 +69,16 @@ def profile_likelihood(
     res = {}
     for value in tqdm(parameter_values, desc=parameter_name):
         model.update_parameter(parameter_name, value)
-        res[value] = parallelise(
-            partial(
-                _mc_fit_time_course_worker, model=model, data=data, loss_fn=loss_fn
-            ),
-            inputs=list(
-                parameter_distributions.drop(columns=parameter_name).iterrows()
-            ),
-            disable_tqdm=True,
+        res[value] = dict(
+            parallelise(
+                partial(
+                    _mc_fit_time_course_worker, model=model, data=data, loss_fn=loss_fn
+                ),
+                inputs=list(
+                    parameter_distributions.drop(columns=parameter_name).iterrows()
+                ),
+                disable_tqdm=True,
+            )
         )
     errors = pd.DataFrame(res, dtype=float).T.abs().mean(axis=1)
     errors.index.name = "fitting error"
