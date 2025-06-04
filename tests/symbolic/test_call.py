@@ -22,20 +22,38 @@ def using_inner_l3(x: float, y: float) -> float:
 
 def test_call_level1() -> None:
     assert (
-        sympy.latex(fn_to_sympy(using_inner_l1, model_args=sympy.symbols("x y")))
+        sympy.latex(
+            fn_to_sympy(
+                using_inner_l1,
+                origin="test",
+                model_args=sympy.symbols("x y"),
+            )
+        )
         == "x y + y"
     )
 
 
 def test_call_level2() -> None:
     assert (
-        sympy.latex(fn_to_sympy(using_inner_l2, model_args=sympy.symbols("x y")))
+        sympy.latex(
+            fn_to_sympy(
+                using_inner_l2,
+                origin="test",
+                model_args=sympy.symbols("x y"),
+            )
+        )
         == "x y + y"
     )
 
 
 def test_call_level3() -> None:
     assert (
-        sympy.latex(fn_to_sympy(using_inner_l3, model_args=sympy.symbols("x y")))
+        sympy.latex(
+            fn_to_sympy(
+                using_inner_l3,
+                origin="test",
+                model_args=sympy.symbols("x y"),
+            )
+        )
         == "x y + y"
     )
