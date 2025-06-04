@@ -5,21 +5,109 @@ from __future__ import annotations
 import ast
 import inspect
 import logging
+import math
 import textwrap
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 import dill
+import numpy as np
 import sympy
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
 
-__all__ = ["Context", "PARSE_ERROR", "fn_to_sympy", "get_fn_ast", "get_fn_source"]
+__all__ = [
+    "Context",
+    "KNOWN_CONSTANTS",
+    "KNOWN_FNS",
+    "PARSE_ERROR",
+    "fn_to_sympy",
+    "get_fn_ast",
+    "get_fn_source",
+]
 
 _LOGGER = logging.getLogger(__name__)
 PARSE_ERROR = sympy.Symbol("ERROR")
+
+KNOWN_CONSTANTS = {
+    math.e: sympy.E,
+    math.pi: sympy.pi,
+}
+
+KNOWN_FNS: dict[Callable, sympy.Expr] = {
+    # built-ins
+    abs: sympy.Abs,  # type: ignore
+    min: sympy.Min,
+    max: sympy.Max,
+    # pow: sympy.
+    # round
+    # divmod
+    # math module
+    math.exp: sympy.exp,
+    # math.acos,
+    # math.acosh,
+    # math.asin,
+    # math.asinh,
+    # math.atan,
+    # math.atan2,
+    # math.atanh,
+    # math.cbrt,
+    # math.ceil,
+    # math.comb,
+    # math.copysign,
+    # math.cos,
+    # math.cosh,
+    # math.degrees,
+    # math.dist,
+    # math.erf,
+    # math.erfc,
+    # math.exp,
+    # math.exp2,
+    # math.expm1,
+    # math.fabs,
+    # math.factorial,
+    # math.floor,
+    # math.fmod,
+    # math.frexp,
+    # math.fsum,
+    # math.gamma,
+    # math.gcd,
+    # math.hypot,
+    # math.inf,
+    # math.isclose,
+    # math.isfinite,
+    # math.isinf,
+    # math.isnan,
+    # math.isqrt,
+    # math.lcm,
+    # math.ldexp,
+    # math.lgamma,
+    # math.log,
+    # math.log10,
+    # math.log1p,
+    # math.log2,
+    # math.modf,
+    # math.nan,
+    # math.nextafter,
+    # math.perm,
+    # math.pow,
+    # math.prod,
+    # math.radians,
+    # math.remainder,
+    # math.sin,
+    # math.sinh,
+    # math.sqrt,
+    # math.sumprod,
+    # math.tan,
+    # math.tanh,
+    # math.tau,
+    # math.trunc,
+    # math.ulp,
+    # numpy
+    np.exp: sympy.exp,
+}
 
 
 @dataclass
@@ -152,9 +240,11 @@ def fn_to_sympy(
         if model_args is not None:
             sympy_expr = sympy_expr.subs(dict(zip(fn_args, model_args, strict=True)))
         return cast(sympy.Expr, sympy_expr)
-    except (TypeError, ValueError, NotImplementedError):
+
+    except (TypeError, ValueError, NotImplementedError) as e:
         msg = f"Failed parsing function of {origin}"
         _LOGGER.warning(msg)
+        _LOGGER.debug("", exc_info=e)
         return None
 
 
@@ -171,6 +261,11 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
         return _handle_name(node, ctx)
     if isinstance(node, ast.Constant):
         return node.value
+    if isinstance(node, ast.Call):
+        return _handle_call(node, ctx=ctx)
+    if isinstance(node, ast.Attribute):
+        return _handle_attribute(node, ctx=ctx)
+
     if isinstance(node, ast.Compare):
         # Handle chained comparisons like 1 < a < 2
         left = cast(Any, _handle_expr(node.left, ctx))
@@ -201,8 +296,6 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
         for comp in comparisons[1:]:
             result = sympy.And(result, comp)
         return cast(sympy.Expr, result)
-    if isinstance(node, ast.Call):
-        return _handle_call(node, ctx=ctx)
 
     # Handle conditional expressions (ternary operators)
     if isinstance(node, ast.IfExp):
@@ -342,6 +435,17 @@ def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
     raise NotImplementedError(msg)
 
 
+def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
+    """Handle AST Attributes.
+
+    node.value (ast.Name.id) => "math"
+    node.attr => "e"
+
+    """
+    msg = "Attribute handling not yet implemented"
+    raise NotImplementedError(msg)
+
+
 def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
     # direct call, e.g. mass_action(x, k1)
     if isinstance(callee := node.func, ast.Name):
@@ -353,6 +457,10 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
             if (expr := _handle_expr(i, ctx)) is None:
                 return None
             model_args.append(expr)
+
+        # Check first if it can be found in functions table
+        if (fn := KNOWN_FNS.get(fns[fn_name], None)) is not None:
+            return fn
 
         return fn_to_sympy(
             fns[fn_name],
