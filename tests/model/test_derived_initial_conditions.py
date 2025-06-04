@@ -12,17 +12,21 @@ def test_derived_initial_from_variable() -> None:
         }
     )
 
-    assert m.get_initial_conditions() == {"x": 1.0, "y": 2.0}
+    assert m.get_initial_conditions() == {
+        "x": 1.0,
+        "y": 2.0,
+    }
 
     pd.testing.assert_series_equal(
         m.get_args(),
         pd.Series(
             {
+                "time": 0.0,
                 "x": 1.0,
                 "y": 2.0,
-                "time": 0.0,
             }
         ),
+        check_like=True,  # ignore index ordering
     )
 
 
@@ -46,12 +50,13 @@ def test_derived_initial_from_derived() -> None:
         m.get_args(),
         pd.Series(
             {
+                "time": 0.0,
                 "x": 1.0,
                 "y": 4.0,
-                "time": 0.0,
                 "d1": 2.0,
             }
         ),
+        check_like=True,  # ignore index ordering
     )
 
 
@@ -76,10 +81,11 @@ def test_derived_initial_from_rate() -> None:
         m.get_args(),
         pd.Series(
             {
+                "time": 0.0,
                 "x": 1.0,
                 "y": 4.0,
-                "time": 0.0,
                 "v1": 2.0,
             }
         ),
+        check_like=True,  # ignore index ordering
     )

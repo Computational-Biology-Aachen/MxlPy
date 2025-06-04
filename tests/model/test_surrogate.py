@@ -4,7 +4,7 @@ import pytest
 
 from mxlpy.model import Model
 from mxlpy.types import MockSurrogate
-from tests.model.test_model_ import two_arguments
+from tests.model.test_model import two_arguments
 
 
 def test_add_surrogate() -> None:

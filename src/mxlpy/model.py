@@ -1535,6 +1535,10 @@ class Model:
         """
         return list(self._readouts)
 
+    def get_raw_readouts(self) -> dict[str, Readout]:
+        """Get copy of readouts in the model."""
+        return copy.deepcopy(self._readouts)
+
     def remove_readout(self, name: str) -> Self:
         """Remove a readout by its name.
 
@@ -1689,6 +1693,7 @@ class Model:
     def get_arg_names(
         self,
         *,
+        include_time: bool,
         include_variables: bool,
         include_parameters: bool,
         include_derived_parameters: bool,
@@ -1699,6 +1704,8 @@ class Model:
     ) -> list[str]:
         """Get names of all kinds of model components."""
         names = []
+        if include_time:
+            names.append("time")
         if include_variables:
             names.extend(self.get_variable_names())
         if include_parameters:
@@ -1758,12 +1765,13 @@ class Model:
         variables: dict[str, float] | None = None,
         time: float = 0.0,
         *,
+        include_time: bool = True,
         include_variables: bool = True,
-        include_parameters: bool = False,
-        include_derived_parameters: bool = False,
+        include_parameters: bool = True,
+        include_derived_parameters: bool = True,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_outputs: bool = True,
         include_readouts: bool = False,
     ) -> pd.Series:
         """Generate a pandas Series of arguments for the model.
@@ -1784,6 +1792,7 @@ class Model:
         Args:
             variables: A dictionary where keys are the names of the concentrations and values are their respective float values.
             time: The time point at which the arguments are generated.
+            include_time: Whether to include the time as an argument
             include_variables: Whether to include variables
             include_parameters: Whether to include parameters
             include_derived_parameters: Whether to include derived parameters
@@ -1809,6 +1818,7 @@ class Model:
         args = pd.Series(raw, dtype=float)
         return args.loc[
             self.get_arg_names(
+                include_time=include_time,
                 include_variables=include_variables,
                 include_parameters=include_parameters,
                 include_derived_parameters=include_derived_parameters,
@@ -1846,11 +1856,11 @@ class Model:
         variables: pd.DataFrame,
         *,
         include_variables: bool = True,
-        include_parameters: bool = False,
-        include_derived_parameters: bool = False,
+        include_parameters: bool = True,
+        include_derived_parameters: bool = True,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_outputs: bool = True,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
         """Generate a DataFrame containing time course arguments for model evaluation.
@@ -1892,6 +1902,7 @@ class Model:
         return args.loc[
             :,
             self.get_arg_names(
+                include_time=False,
                 include_variables=include_variables,
                 include_parameters=include_parameters,
                 include_derived_parameters=include_derived_parameters,

@@ -272,8 +272,10 @@ class LinearLabelMapper:
         m = Model()
         m.add_variables(variables)
         m.add_parameters(concs.to_dict() | fluxes.to_dict() | {"EXT": external_label})
+
+        rxns = self.model.get_raw_reactions()
         for rxn_name, label_map in self.label_maps.items():
-            rxn = self.model.get_raw_reactions()[rxn_name]
+            rxn = rxns[rxn_name]
             subs, prods = _unpack_stoichiometries(rxn.stoichiometry)
 
             subs = _stoichiometry_to_duplicate_list(subs)

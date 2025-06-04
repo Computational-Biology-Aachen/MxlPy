@@ -148,21 +148,23 @@ def test_linear_label_mapper_build_model() -> None:
     label_model = mapper.build_model(concs, fluxes, external_label=1.0)
 
     # Check that the model has the expected variables
-    assert "A__0" in label_model.variables
-    assert "A__1" in label_model.variables
-    assert "B__0" in label_model.variables
-    assert "B__1" in label_model.variables
+    variables = label_model.get_raw_variables()
+    assert "A__0" in variables
+    assert "A__1" in variables
+    assert "B__0" in variables
+    assert "B__1" in variables
 
     # Check that the model has the expected reactions
-    assert "v1__0" in label_model.get_raw_reactions()
-    assert "v1__1" in label_model.get_raw_reactions()
+    reactions = label_model.get_raw_reactions()
+    assert "v1__0" in reactions
+    assert "v1__1" in reactions
 
 
 def test_linear_label_mapper_build_model_with_initial_labels() -> None:
     """Test LinearLabelMapper build_model with initial labels."""
     # Create a simple model
     model = Model()
-    model.add_variables({"A": 1.0, "B": 0.0})
+    model.add_variables({"A": 1.0, "B": 1.0})
     model.add_parameters({"k1": 0.1})  # Changed from v1 to k1
     model.add_reaction(
         name="v1",
@@ -176,26 +178,45 @@ def test_linear_label_mapper_build_model_with_initial_labels() -> None:
         model=model, label_variables={"A": 2, "B": 2}, label_maps={"v1": [0, 1]}
     )
 
-    # Create conc and flux series
-    concs = pd.Series({"A": 1.0, "B": 0.0})
-    fluxes = pd.Series({"v1": 0.1})
-
     # Build the label model with initial labels
     label_model = mapper.build_model(
-        concs, fluxes, external_label=1.0, initial_labels={"A": 0}
+        concs=pd.Series({"A": 1.0, "B": 1.0}),
+        fluxes=pd.Series({"v1": 0.1}),
+        external_label=1.0,
+        initial_labels={"A": 0},
     )
 
     # Check that the initial label is set
-    variables = label_model.get_raw_variables()
-    assert variables["A__0"] == 1.0
-    assert variables["A__1"] == 0.0
+    y0 = label_model.get_initial_conditions()
+    assert y0["A__0"] == 1.0
+    assert y0["A__1"] == 0.0
 
+
+def test_linear_label_mapper_build_model_with_multiple_initial_labels() -> None:
     # Test with multiple initial labels
+    model = Model()
+    model.add_variables({"A": 1.0, "B": 1.0})
+    model.add_parameters({"k1": 0.1})  # Changed from v1 to k1
+    model.add_reaction(
+        name="v1",
+        fn=lambda k1: k1,
+        stoichiometry={"A": -1, "B": 1},
+        args=["k1"],  # Changed parameter name to k1
+    )
+
+    # Create the mapper
+    mapper = LinearLabelMapper(
+        model=model, label_variables={"A": 2, "B": 2}, label_maps={"v1": [0, 1]}
+    )
+
     label_model = mapper.build_model(
-        concs, fluxes, external_label=1.0, initial_labels={"A": [0, 1]}
+        concs=pd.Series({"A": 1.0, "B": 1.0}),
+        fluxes=pd.Series({"v1": 0.1}),
+        external_label=1.0,
+        initial_labels={"A": [0, 1]},
     )
 
     # Check that the initial labels are set (should be 0.5 for each label)
-    variables = label_model.get_raw_variables()
-    assert variables["A__0"] == 0.5
-    assert variables["A__1"] == 0.5
+    y0 = label_model.get_initial_conditions()
+    assert y0["A__0"] == 0.5
+    assert y0["A__1"] == 0.5

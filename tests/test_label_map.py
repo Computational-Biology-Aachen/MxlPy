@@ -341,33 +341,36 @@ def test_build_model(simple_model: Model) -> None:
     labeled_model = mapper.build_model()
 
     # Check variables
-    assert "A__0" in labeled_model.variables
-    assert "A__1" in labeled_model.variables
-    assert "B__0" in labeled_model.variables
-    assert "B__1" in labeled_model.variables
-    assert "C__0" in labeled_model.variables
-    assert "C__1" in labeled_model.variables
+    variables = labeled_model.get_raw_variables()
+    assert "A__0" in variables
+    assert "A__1" in variables
+    assert "B__0" in variables
+    assert "B__1" in variables
+    assert "C__0" in variables
+    assert "C__1" in variables
 
     # Check derived variables for totals
-    assert "A__total" in labeled_model.get_derived_variables()
-    assert "B__total" in labeled_model.get_derived_variables()
-    assert "C__total" in labeled_model.get_derived_variables()
+    derived = labeled_model.get_raw_derived()
+    assert "A__total" in derived
+    assert "B__total" in derived
+    assert "C__total" in derived
 
     # Check reactions
-    assert "v1__0" in labeled_model.get_raw_reactions()
-    assert "v1__1" in labeled_model.get_raw_reactions()
-    assert "v2__0" in labeled_model.get_raw_reactions()
-    assert "v2__1" in labeled_model.get_raw_reactions()
+    reactions = labeled_model.get_raw_reactions()
+    assert "v1__0" in reactions
+    assert "v1__1" in reactions
+    assert "v2__0" in reactions
+    assert "v2__1" in reactions
 
     # Build model with initial labels - position 0 is labeled (corresponding to A__1)
     labeled_model = mapper.build_model(initial_labels={"A": [0]})
-    variables = labeled_model.get_raw_variables()
+    variables = labeled_model.get_initial_conditions()
     assert variables["A__1"] == 1.0  # Labeled at position 0 means A__1
     assert variables["A__0"] == 0.0  # Unlabeled isotopomer is 0
 
     # Test with index-based initial labels (providing the position of the label)
     labeled_model = mapper.build_model(initial_labels={"A": 0})
-    variables = labeled_model.get_raw_variables()
+    variables = labeled_model.get_initial_conditions()
     assert variables["A__1"] == 1.0  # Same as above, different syntax
     assert variables["A__0"] == 0.0
 
@@ -385,8 +388,9 @@ def test_model_with_derived_variables(simple_model: Model) -> None:
     labeled_model = mapper.build_model()
 
     # Check that derived variables are properly mapped
-    assert "A_plus_B" in labeled_model.get_derived_variables()
-    assert labeled_model.get_derived_variables()["A_plus_B"].args == [
+    derived = labeled_model.get_raw_derived()
+    assert "A_plus_B" in derived
+    assert derived["A_plus_B"].args == [
         "A__total",
         "B__total",
     ]
@@ -406,7 +410,7 @@ def test_build_model_with_list_initial_labels(simple_model: Model) -> None:
     labeled_model = mapper.build_model(initial_labels={"A": [0, 1]})
 
     # The isotopomer A__11 should have the full concentration
-    variables = labeled_model.get_raw_variables()
+    variables = labeled_model.get_initial_conditions()
     assert variables["A__11"] == 1.0
     assert variables["A__00"] == 0.0
     assert variables["A__10"] == 0.0
@@ -424,9 +428,10 @@ def test_build_model_without_labels(simple_model: Model) -> None:
     labeled_model = mapper.build_model()
 
     # Verify that C exists in the model but is not labeled
-    assert "C" in labeled_model.variables
-    assert "C__0" not in labeled_model.variables
-    assert "C__1" not in labeled_model.variables
+    variables = labeled_model.get_raw_variables()
+    assert "C" in variables
+    assert "C__0" not in variables
+    assert "C__1" not in variables
 
 
 def test_create_isotopomer_reactions_with_error() -> None:

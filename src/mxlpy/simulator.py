@@ -127,6 +127,7 @@ class Result:
         include_readouts: bool = False,
     ) -> list[pd.DataFrame]:
         names = self.model.get_arg_names(
+            include_time=False,
             include_variables=include_variables,
             include_parameters=include_parameters,
             include_derived_parameters=include_derived_parameters,

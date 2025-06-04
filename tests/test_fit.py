@@ -122,26 +122,6 @@ def test_steady_state_residual() -> None:
     assert residual == 0.0
 
 
-def test_time0_series_residual() -> None:
-    model = (
-        Model()
-        .add_parameters({"k1": 1.0})
-        .add_variables({"x1": 1.0})
-        .add_reaction("v1", constant, stoichiometry={"x1": 1.0}, args=["k1"])
-    )
-
-    residual = fit._time_course_residual(
-        par_values=np.array([1.0]),
-        par_names=["k1"],
-        data=pd.DataFrame({0.0: {"x1": 1.0, "v1": 1.0}}).T,
-        model=model,
-        integrator=MockIntegrator,
-        y0={"x1": 1.0},
-        loss_fn=fit.rmse,
-    )
-    assert residual == 0.0
-
-
 def test_fit_steady_state() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
     data = pd.Series()

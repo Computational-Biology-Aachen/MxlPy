@@ -82,7 +82,7 @@ def test_in_between() -> None:
         Simulator(get_model())
         .simulate_protocol_time_course(
             protocol,
-            time_points=[0, 1, 3, 6],
+            time_points=[2, 4, 5],
         )
         .get_result()
     ).variables

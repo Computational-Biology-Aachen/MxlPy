@@ -30,9 +30,9 @@ def two_arguments_v2(x: float, y: float) -> float:
 def test_add_parameter() -> None:
     model = Model()
     model.add_parameter("param1", 1.0)
-    assert "param1" in model._parameters
-    assert model._parameters["param1"] == 1.0
-    assert model._ids["param1"] == "parameter"
+
+    parameters = model.get_parameter_values()
+    assert parameters["param1"] == 1.0
 
 
 def test_add_parameter_existing_name() -> None:
@@ -50,39 +50,33 @@ def test_add_parameter_protected_name() -> None:
 
 def test_add_parameters() -> None:
     model = Model()
-    parameters = {"param1": 1.0, "param2": 2.0}
-    model.add_parameters(parameters)
-    assert "param1" in model._parameters
-    assert model._parameters["param1"] == 1.0
-    assert model._ids["param1"] == "parameter"
-    assert "param2" in model._parameters
-    assert model._parameters["param2"] == 2.0
-    assert model._ids["param2"] == "parameter"
+    model.add_parameters({"param1": 1.0, "param2": 2.0})
+
+    parameters = model.get_parameter_values()
+    assert parameters["param1"] == 1.0
+    assert parameters["param2"] == 2.0
 
 
 def test_add_parameters_existing_name() -> None:
     model = Model()
     model.add_parameter("param1", 1.0)
-    parameters = {"param1": 2.0, "param2": 2.0}
     with pytest.raises(NameError):
-        model.add_parameters(parameters)
+        model.add_parameters({"param1": 2.0, "param2": 2.0})
 
 
 def test_add_parameters_protected_name() -> None:
     model = Model()
-    parameters = {"time": 1.0, "param2": 2.0}
     with pytest.raises(KeyError):
-        model.add_parameters(parameters)
+        model.add_parameters({"time": 1.0, "param2": 2.0})
 
 
 def test_parameters() -> None:
     model = Model()
     model.add_parameter("param1", 1.0)
     model.add_parameter("param2", 2.0)
+
     parameters = model.get_parameter_values()
-    assert "param1" in parameters
     assert parameters["param1"] == 1.0
-    assert "param2" in parameters
     assert parameters["param2"] == 2.0
 
 
@@ -112,7 +106,9 @@ def test_remove_parameter() -> None:
     model = Model()
     model.add_parameter("param1", 1.0)
     model.remove_parameter("param1")
-    assert "param1" not in model._parameters
+
+    parameters = model.get_parameter_values()
+    assert "param1" not in parameters
     assert "param1" not in model._ids
 
 
@@ -127,8 +123,10 @@ def test_remove_parameters() -> None:
     model.add_parameter("param1", 1.0)
     model.add_parameter("param2", 2.0)
     model.remove_parameters(["param1", "param2"])
-    assert "param1" not in model._parameters
-    assert "param2" not in model._parameters
+
+    parameters = model.get_parameter_values()
+    assert "param1" not in parameters
+    assert "param2" not in parameters
     assert "param1" not in model._ids
     assert "param2" not in model._ids
 
@@ -139,10 +137,12 @@ def test_remove_parameters_partial() -> None:
     model.add_parameter("param2", 2.0)
     model.add_parameter("param3", 3.0)
     model.remove_parameters(["param1", "param3"])
-    assert "param1" not in model._parameters
-    assert "param3" not in model._parameters
-    assert "param2" in model._parameters
-    assert model._parameters["param2"] == 2.0
+
+    parameters = model.get_parameter_values()
+    assert "param1" not in parameters
+    assert "param3" not in parameters
+    assert "param2" in parameters
+    assert parameters["param2"] == 2.0
     assert "param1" not in model._ids
     assert "param3" not in model._ids
     assert "param2" in model._ids
@@ -159,7 +159,9 @@ def test_update_parameter() -> None:
     model = Model()
     model.add_parameter("param1", 1.0)
     model.update_parameter("param1", 2.0)
-    assert model._parameters["param1"] == 2.0
+
+    parameters = model.get_parameter_values()
+    assert parameters["param1"] == 2.0
 
 
 def test_update_parameter_nonexistent() -> None:
@@ -174,8 +176,10 @@ def test_update_parameters() -> None:
     model.add_parameter("param2", 2.0)
     update_params = {"param1": 1.5, "param2": 2.5}
     model.update_parameters(update_params)
-    assert model._parameters["param1"] == 1.5
-    assert model._parameters["param2"] == 2.5
+
+    parameters = model.get_parameter_values()
+    assert parameters["param1"] == 1.5
+    assert parameters["param2"] == 2.5
 
 
 def test_update_parameters_nonexistent() -> None:
@@ -190,7 +194,9 @@ def test_scale_parameter() -> None:
     model = Model()
     model.add_parameter("param1", 1.0)
     model.scale_parameter("param1", 2.0)
-    assert model._parameters["param1"] == 2.0
+
+    parameters = model.get_parameter_values()
+    assert parameters["param1"] == 2.0
 
 
 def test_scale_parameter_nonexistent() -> None:
@@ -205,8 +211,10 @@ def test_scale_parameters() -> None:
     model.add_parameter("param2", 2.0)
     scale_factors = {"param1": 2.0, "param2": 0.5}
     model.scale_parameters(scale_factors)
-    assert model._parameters["param1"] == 2.0
-    assert model._parameters["param2"] == 1.0
+
+    parameters = model.get_parameter_values()
+    assert parameters["param1"] == 2.0
+    assert parameters["param2"] == 1.0
 
 
 def test_scale_parameters_nonexistent() -> None:
@@ -221,9 +229,12 @@ def test_make_parameter_dynamic() -> None:
     model = Model()
     model.add_parameter("param1", 1.0)
     model.make_parameter_dynamic("param1")
-    assert "param1" not in model._parameters
-    assert "param1" in model._variables
-    assert model._variables["param1"] == 1.0
+
+    parameters = model.get_parameter_values()
+    variables = model.get_initial_conditions()
+    assert "param1" not in parameters
+    assert "param1" in variables
+    assert variables["param1"] == 1.0
     assert model._ids["param1"] == "variable"
 
 
@@ -231,9 +242,12 @@ def test_make_parameter_dynamic_with_initial_value() -> None:
     model = Model()
     model.add_parameter("param1", 1.0)
     model.make_parameter_dynamic("param1", initial_value=2.0)
-    assert "param1" not in model._parameters
-    assert "param1" in model._variables
-    assert model._variables["param1"] == 2.0
+
+    parameters = model.get_parameter_values()
+    variables = model.get_initial_conditions()
+    assert "param1" not in parameters
+    assert "param1" in variables
+    assert variables["param1"] == 2.0
     assert model._ids["param1"] == "variable"
 
 
@@ -247,7 +261,8 @@ def test_variables() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
-    variables = model.get_raw_variables()
+
+    variables = model.get_initial_conditions()
     assert "var1" in variables
     assert variables["var1"] == 1.0
     assert "var2" in variables
@@ -256,15 +271,17 @@ def test_variables() -> None:
 
 def test_variables_empty() -> None:
     model = Model()
-    variables = model.get_raw_variables()
+    variables = model.get_initial_conditions()
     assert variables == {}
 
 
 def test_add_variable() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
-    assert "var1" in model._variables
-    assert model._variables["var1"] == 1.0
+
+    variables = model.get_initial_conditions()
+    assert "var1" in variables
+    assert variables["var1"] == 1.0
     assert model._ids["var1"] == "variable"
 
 
@@ -283,36 +300,37 @@ def test_add_variable_protected_name() -> None:
 
 def test_add_variables() -> None:
     model = Model()
-    variables = {"var1": 1.0, "var2": 2.0}
-    model.add_variables(variables)
-    assert "var1" in model._variables
-    assert model._variables["var1"] == 1.0
+    model.add_variables({"var1": 1.0, "var2": 2.0})
+
+    variables = model.get_initial_conditions()
+    assert "var1" in variables
+    assert variables["var1"] == 1.0
     assert model._ids["var1"] == "variable"
-    assert "var2" in model._variables
-    assert model._variables["var2"] == 2.0
+    assert "var2" in variables
+    assert variables["var2"] == 2.0
     assert model._ids["var2"] == "variable"
 
 
 def test_add_variables_existing_name() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
-    variables = {"var1": 2.0, "var2": 2.0}
     with pytest.raises(NameError):
-        model.add_variables(variables)
+        model.add_variables({"var1": 2.0, "var2": 2.0})
 
 
 def test_add_variables_protected_name() -> None:
     model = Model()
-    variables = {"time": 1.0, "var2": 2.0}
     with pytest.raises(KeyError):
-        model.add_variables(variables)
+        model.add_variables({"time": 1.0, "var2": 2.0})
 
 
 def test_remove_variable() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
     model.remove_variable("var1")
-    assert "var1" not in model._variables
+
+    variables = model.get_initial_conditions()
+    assert "var1" not in variables
     assert "var1" not in model._ids
 
 
@@ -327,8 +345,10 @@ def test_remove_variables() -> None:
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
     model.remove_variables(["var1", "var2"])
-    assert "var1" not in model._variables
-    assert "var2" not in model._variables
+
+    variables = model.get_initial_conditions()
+    assert "var1" not in variables
+    assert "var2" not in variables
     assert "var1" not in model._ids
     assert "var2" not in model._ids
 
@@ -339,10 +359,12 @@ def test_remove_variables_partial() -> None:
     model.add_variable("var2", 2.0)
     model.add_variable("var3", 3.0)
     model.remove_variables(["var1", "var3"])
-    assert "var1" not in model._variables
-    assert "var3" not in model._variables
-    assert "var2" in model._variables
-    assert model._variables["var2"] == 2.0
+
+    variables = model.get_initial_conditions()
+    assert "var1" not in variables
+    assert "var3" not in variables
+    assert "var2" in variables
+    assert variables["var2"] == 2.0
     assert "var1" not in model._ids
     assert "var3" not in model._ids
     assert "var2" in model._ids
@@ -359,7 +381,9 @@ def test_update_variable() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
     model.update_variable("var1", 2.0)
-    assert model._variables["var1"] == 2.0
+
+    variables = model.get_initial_conditions()
+    assert variables["var1"] == 2.0
 
 
 def test_update_variable_nonexistent() -> None:
@@ -405,9 +429,12 @@ def test_make_variable_static() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
     model.make_variable_static("var1")
-    assert "var1" not in model._variables
-    assert "var1" in model._parameters
-    assert model._parameters["var1"] == 1.0
+
+    parameters = model.get_parameter_values()
+    variables = model.get_initial_conditions()
+    assert "var1" not in variables
+    assert "var1" in parameters
+    assert parameters["var1"] == 1.0
     assert model._ids["var1"] == "parameter"
 
 
@@ -415,9 +442,12 @@ def test_make_variable_static_with_value() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
     model.make_variable_static("var1", value=2.0)
-    assert "var1" not in model._variables
-    assert "var1" in model._parameters
-    assert model._parameters["var1"] == 2.0
+
+    parameters = model.get_parameter_values()
+    variables = model.get_initial_conditions()
+    assert "var1" not in variables
+    assert "var1" in parameters
+    assert parameters["var1"] == 2.0
     assert model._ids["var1"] == "parameter"
 
 
@@ -465,9 +495,11 @@ def test_add_derived() -> None:
     model = Model()
     derived_fn = one_argument
     model.add_derived("derived1", derived_fn, args=["x"])
-    assert "derived1" in model._derived
-    assert model._derived["derived1"].fn == derived_fn
-    assert model._derived["derived1"].args == ["x"]
+
+    derived = model.get_raw_derived()
+    assert "derived1" in derived
+    assert derived["derived1"].fn == derived_fn
+    assert derived["derived1"].args == ["x"]
     assert model._ids["derived1"] == "derived"
 
 
@@ -525,8 +557,10 @@ def test_update_derived_fn() -> None:
     model.add_variable("x", 1.0)
     model.add_derived("derived1", derived_fn, args=["x"])
     model.update_derived("derived1", fn=new_derived_fn)
-    assert model._derived["derived1"].fn == new_derived_fn
-    assert model._derived["derived1"].args == ["x"]
+
+    derived = model.get_raw_derived()
+    assert derived["derived1"].fn == new_derived_fn
+    assert derived["derived1"].args == ["x"]
 
 
 def test_update_derived_args() -> None:
@@ -536,8 +570,10 @@ def test_update_derived_args() -> None:
     model.add_variable("y", 2.0)
     model.add_derived("derived1", derived_fn, args=["x"])
     model.update_derived("derived1", args=["y"])
-    assert model._derived["derived1"].fn == derived_fn
-    assert model._derived["derived1"].args == ["y"]
+
+    derived = model.get_raw_derived()
+    assert derived["derived1"].fn == derived_fn
+    assert derived["derived1"].args == ["y"]
 
 
 def test_update_derived_fn_and_args() -> None:
@@ -548,8 +584,10 @@ def test_update_derived_fn_and_args() -> None:
     model.add_variable("y", 2.0)
     model.add_derived("derived1", derived_fn, args=["x"])
     model.update_derived("derived1", fn=new_derived_fn, args=["y"])
-    assert model._derived["derived1"].fn == new_derived_fn
-    assert model._derived["derived1"].args == ["y"]
+
+    derived = model.get_raw_derived()
+    assert derived["derived1"].fn == new_derived_fn
+    assert derived["derived1"].args == ["y"]
 
 
 def test_update_derived_nonexistent() -> None:
@@ -563,7 +601,9 @@ def test_remove_derived() -> None:
     derived_fn = one_argument
     model.add_derived("derived1", derived_fn, args=["x"])
     model.remove_derived("derived1")
-    assert "derived1" not in model._derived
+
+    derived = model.get_raw_derived()
+    assert "derived1" not in derived
     assert "derived1" not in model._ids
 
 
@@ -608,10 +648,12 @@ def test_add_reaction() -> None:
         stoichiometry=stoichiometry,
         args=["A", "B"],
     )
-    assert "reaction1" in model._reactions
-    assert model._reactions["reaction1"].fn == reaction_fn
-    assert model._reactions["reaction1"].stoichiometry == stoichiometry
-    assert model._reactions["reaction1"].args == ["A", "B"]
+
+    reactions = model.get_raw_reactions()
+    assert "reaction1" in reactions
+    assert reactions["reaction1"].fn == reaction_fn
+    assert reactions["reaction1"].stoichiometry == stoichiometry
+    assert reactions["reaction1"].args == ["A", "B"]
     assert model._ids["reaction1"] == "reaction"
 
 
@@ -684,9 +726,11 @@ def test_update_reaction_fn() -> None:
         args=["A", "B"],
     )
     model.update_reaction("reaction1", fn=new_reaction_fn)
-    assert model._reactions["reaction1"].fn == new_reaction_fn
-    assert model._reactions["reaction1"].stoichiometry == stoichiometry
-    assert model._reactions["reaction1"].args == ["A", "B"]
+
+    reactions = model.get_raw_reactions()
+    assert reactions["reaction1"].fn == new_reaction_fn
+    assert reactions["reaction1"].stoichiometry == stoichiometry
+    assert reactions["reaction1"].args == ["A", "B"]
 
 
 def test_update_reaction_stoichiometry() -> None:
@@ -702,9 +746,11 @@ def test_update_reaction_stoichiometry() -> None:
         args=["A", "B"],
     )
     model.update_reaction("reaction1", stoichiometry=new_stoichiometry)
-    assert model._reactions["reaction1"].fn == reaction_fn
-    assert model._reactions["reaction1"].stoichiometry == new_stoichiometry
-    assert model._reactions["reaction1"].args == ["A", "B"]
+
+    reactions = model.get_raw_reactions()
+    assert reactions["reaction1"].fn == reaction_fn
+    assert reactions["reaction1"].stoichiometry == new_stoichiometry
+    assert reactions["reaction1"].args == ["A", "B"]
 
 
 def test_update_reaction_args() -> None:
@@ -720,9 +766,11 @@ def test_update_reaction_args() -> None:
         args=["A", "B"],
     )
     model.update_reaction("reaction1", args=new_args)
-    assert model._reactions["reaction1"].fn == reaction_fn
-    assert model._reactions["reaction1"].stoichiometry == stoichiometry
-    assert model._reactions["reaction1"].args == new_args
+
+    reactions = model.get_raw_reactions()
+    assert reactions["reaction1"].fn == reaction_fn
+    assert reactions["reaction1"].stoichiometry == stoichiometry
+    assert reactions["reaction1"].args == new_args
 
 
 def test_update_reaction_fn_and_stoichiometry() -> None:
@@ -741,9 +789,11 @@ def test_update_reaction_fn_and_stoichiometry() -> None:
     model.update_reaction(
         "reaction1", fn=new_reaction_fn, stoichiometry=new_stoichiometry
     )
-    assert model._reactions["reaction1"].fn == new_reaction_fn
-    assert model._reactions["reaction1"].stoichiometry == new_stoichiometry
-    assert model._reactions["reaction1"].args == ["A", "B"]
+
+    reactions = model.get_raw_reactions()
+    assert reactions["reaction1"].fn == new_reaction_fn
+    assert reactions["reaction1"].stoichiometry == new_stoichiometry
+    assert reactions["reaction1"].args == ["A", "B"]
 
 
 def test_update_reaction_fn_and_args() -> None:
@@ -760,9 +810,11 @@ def test_update_reaction_fn_and_args() -> None:
         args=["A", "B"],
     )
     model.update_reaction("reaction1", fn=new_reaction_fn, args=new_args)
-    assert model._reactions["reaction1"].fn == new_reaction_fn
-    assert model._reactions["reaction1"].stoichiometry == stoichiometry
-    assert model._reactions["reaction1"].args == new_args
+
+    reactions = model.get_raw_reactions()
+    assert reactions["reaction1"].fn == new_reaction_fn
+    assert reactions["reaction1"].stoichiometry == stoichiometry
+    assert reactions["reaction1"].args == new_args
 
 
 def test_update_reaction_stoichiometry_and_args() -> None:
@@ -779,9 +831,11 @@ def test_update_reaction_stoichiometry_and_args() -> None:
         args=["A", "B"],
     )
     model.update_reaction("reaction1", stoichiometry=new_stoichiometry, args=new_args)
-    assert model._reactions["reaction1"].fn == reaction_fn
-    assert model._reactions["reaction1"].stoichiometry == new_stoichiometry
-    assert model._reactions["reaction1"].args == new_args
+
+    reactions = model.get_raw_reactions()
+    assert reactions["reaction1"].fn == reaction_fn
+    assert reactions["reaction1"].stoichiometry == new_stoichiometry
+    assert reactions["reaction1"].args == new_args
 
 
 def test_update_reaction_fn_stoichiometry_and_args() -> None:
@@ -801,9 +855,11 @@ def test_update_reaction_fn_stoichiometry_and_args() -> None:
     model.update_reaction(
         "reaction1", fn=new_reaction_fn, stoichiometry=new_stoichiometry, args=new_args
     )
-    assert model._reactions["reaction1"].fn == new_reaction_fn
-    assert model._reactions["reaction1"].stoichiometry == new_stoichiometry
-    assert model._reactions["reaction1"].args == new_args
+
+    reactions = model.get_raw_reactions()
+    assert reactions["reaction1"].fn == new_reaction_fn
+    assert reactions["reaction1"].stoichiometry == new_stoichiometry
+    assert reactions["reaction1"].args == new_args
 
 
 def test_update_reaction_nonexistent() -> None:
@@ -824,7 +880,9 @@ def test_remove_reaction() -> None:
         args=["A", "B"],
     )
     model.remove_reaction("reaction1")
-    assert "reaction1" not in model._reactions
+
+    reactions = model.get_raw_reactions()
+    assert "reaction1" not in reactions
     assert "reaction1" not in model._ids
 
 
@@ -838,9 +896,11 @@ def test_add_readout() -> None:
     model = Model()
     readout_fn = one_argument
     model.add_readout("readout1", readout_fn, args=["x"])
-    assert "readout1" in model._readouts
-    assert model._readouts["readout1"].fn == readout_fn
-    assert model._readouts["readout1"].args == ["x"]
+
+    readouts = model.get_raw_readouts()
+    assert "readout1" in readouts
+    assert readouts["readout1"].fn == readout_fn
+    assert readouts["readout1"].args == ["x"]
     assert model._ids["readout1"] == "readout"
 
 
@@ -864,6 +924,7 @@ def test_get_readout_names() -> None:
     readout_fn = one_argument
     model.add_readout("readout1", readout_fn, args=["x"])
     model.add_readout("readout2", readout_fn, args=["x"])
+
     readout_names = model.get_readout_names()
     assert "readout1" in readout_names
     assert "readout2" in readout_names
@@ -881,7 +942,9 @@ def test_remove_readout() -> None:
     readout_fn = one_argument
     model.add_readout("readout1", readout_fn, args=["x"])
     model.remove_readout("readout1")
-    assert "readout1" not in model._readouts
+
+    readouts = model.get_raw_readouts()
+    assert "readout1" not in readouts
     assert "readout1" not in model._ids
 
 
@@ -897,13 +960,15 @@ def test_get_args() -> None:
     model.add_variable("var1", 2.0)
     model.add_derived("derived1", one_argument, args=["var1"])
     model.add_readout("readout1", one_argument, args=["var1"])
-    concs = {"var1": 2.0}
-    args = model.get_args(concs)
-    assert args["param1"] == 1.0
+
+    args = model.get_args(
+        {"var1": 2.0},
+        include_parameters=False,
+        include_time=False,
+        include_readouts=False,
+    )
     assert args["var1"] == 2.0
     assert args["derived1"] == 2.0
-    assert "readout1" not in args
-    assert args["time"] == 0.0
 
 
 def test_get_args_without_readouts() -> None:
@@ -912,13 +977,12 @@ def test_get_args_without_readouts() -> None:
     model.add_variable("var1", 2.0)
     model.add_derived("derived1", one_argument, args=["var1"])
     model.add_readout("readout1", one_argument, args=["var1"])
-    concs = {"var1": 2.0}
-    args = model.get_args(concs)
+
+    args = model.get_args({"var1": 2.0})
     assert args["param1"] == 1.0
     assert args["var1"] == 2.0
     assert args["derived1"] == 2.0
     assert "readout1" not in args
-    assert args["time"] == 0.0
 
 
 def test_get_args_with_multiple_concs() -> None:
@@ -928,8 +992,8 @@ def test_get_args_with_multiple_concs() -> None:
     model.add_variable("var2", 3.0)
     model.add_derived("derived1", two_arguments, args=["var1", "var2"])
     model.add_readout("readout1", two_arguments, args=["var1", "var2"])
-    concs = {"var1": 2.0, "var2": 3.0}
-    args = model.get_args(concs)
+
+    args = model.get_args({"var1": 2.0, "var2": 3.0})
     assert args["param1"] == 1.0
     assert args["var1"] == 2.0
     assert args["var2"] == 3.0
@@ -956,9 +1020,12 @@ def test_get_args_time_course() -> None:
     model.add_derived("derived1", one_argument, args=["var1"])
     model.add_readout("readout1", one_argument, args=["var1"])
 
-    concs = pd.DataFrame({"var1": [2.0, 3.0]}, index=[0.0, 1.0])
-    args_time_course = model.get_args_time_course(concs)
-
+    args_time_course = model.get_args_time_course(
+        pd.DataFrame(
+            {"var1": [2.0, 3.0]},
+            index=[0.0, 1.0],
+        )
+    )
     assert args_time_course["param1"].iloc[0] == 1.0
     assert args_time_course["param1"].iloc[1] == 1.0
     assert args_time_course["var1"].iloc[0] == 2.0
@@ -966,8 +1033,6 @@ def test_get_args_time_course() -> None:
     assert args_time_course["derived1"].iloc[0] == 2.0
     assert args_time_course["derived1"].iloc[1] == 3.0
     assert "readout1" not in args_time_course.columns
-    assert args_time_course["time"].iloc[0] == 0.0
-    assert args_time_course["time"].iloc[1] == 1.0
 
 
 def test_get_args_time_course_with_readouts() -> None:
@@ -977,8 +1042,13 @@ def test_get_args_time_course_with_readouts() -> None:
     model.add_derived("derived1", one_argument, args=["var1"])
     model.add_readout("readout1", one_argument, args=["var1"])
 
-    concs = pd.DataFrame({"var1": [2.0, 3.0]}, index=[0.0, 1.0])
-    args_time_course = model.get_args_time_course(concs, include_readouts=True)
+    args_time_course = model.get_args_time_course(
+        pd.DataFrame(
+            {"var1": [2.0, 3.0]},
+            index=[0.0, 1.0],
+        ),
+        include_readouts=True,
+    )
 
     assert args_time_course["param1"].iloc[0] == 1.0
     assert args_time_course["param1"].iloc[1] == 1.0
@@ -988,8 +1058,6 @@ def test_get_args_time_course_with_readouts() -> None:
     assert args_time_course["derived1"].iloc[1] == 3.0
     assert args_time_course["readout1"].iloc[0] == 2.0
     assert args_time_course["readout1"].iloc[1] == 3.0
-    assert args_time_course["time"].iloc[0] == 0.0
-    assert args_time_course["time"].iloc[1] == 1.0
 
 
 def test_get_args_time_course_with_multiple_concs() -> None:
@@ -1013,8 +1081,6 @@ def test_get_args_time_course_with_multiple_concs() -> None:
     assert args_time_course["derived1"].iloc[1] == 7.0
     assert args_time_course["readout1"].iloc[0] == 5.0
     assert args_time_course["readout1"].iloc[1] == 7.0
-    assert args_time_course["time"].iloc[0] == 0.0
-    assert args_time_course["time"].iloc[1] == 1.0
 
 
 def test_get_args_time_course_with_empty_concs() -> None:
@@ -1024,9 +1090,8 @@ def test_get_args_time_course_with_empty_concs() -> None:
     model.add_derived("derived1", one_argument, args=["var1"])
     model.add_readout("readout1", one_argument, args=["var1"])
 
-    concs = pd.DataFrame({}, index=[])
-    dependent = model.get_args_time_course(concs)
-    assert len(dependent) == 0
+    with pytest.raises(KeyError):
+        model.get_args_time_course(pd.DataFrame({}, index=[]))
 
 
 def test_get_full_args() -> None:
