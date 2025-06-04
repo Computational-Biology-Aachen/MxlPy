@@ -361,13 +361,15 @@ def test_build_model(simple_model: Model) -> None:
 
     # Build model with initial labels - position 0 is labeled (corresponding to A__1)
     labeled_model = mapper.build_model(initial_labels={"A": [0]})
-    assert labeled_model.variables["A__1"] == 1.0  # Labeled at position 0 means A__1
-    assert labeled_model.variables["A__0"] == 0.0  # Unlabeled isotopomer is 0
+    variables = labeled_model.get_raw_variables()
+    assert variables["A__1"] == 1.0  # Labeled at position 0 means A__1
+    assert variables["A__0"] == 0.0  # Unlabeled isotopomer is 0
 
     # Test with index-based initial labels (providing the position of the label)
     labeled_model = mapper.build_model(initial_labels={"A": 0})
-    assert labeled_model.variables["A__1"] == 1.0  # Same as above, different syntax
-    assert labeled_model.variables["A__0"] == 0.0
+    variables = labeled_model.get_raw_variables()
+    assert variables["A__1"] == 1.0  # Same as above, different syntax
+    assert variables["A__0"] == 0.0
 
 
 def test_model_with_derived_variables(simple_model: Model) -> None:
@@ -404,10 +406,11 @@ def test_build_model_with_list_initial_labels(simple_model: Model) -> None:
     labeled_model = mapper.build_model(initial_labels={"A": [0, 1]})
 
     # The isotopomer A__11 should have the full concentration
-    assert labeled_model.variables["A__11"] == 1.0
-    assert labeled_model.variables["A__00"] == 0.0
-    assert labeled_model.variables["A__10"] == 0.0
-    assert labeled_model.variables["A__01"] == 0.0
+    variables = labeled_model.get_raw_variables()
+    assert variables["A__11"] == 1.0
+    assert variables["A__00"] == 0.0
+    assert variables["A__10"] == 0.0
+    assert variables["A__01"] == 0.0
 
 
 def test_build_model_without_labels(simple_model: Model) -> None:

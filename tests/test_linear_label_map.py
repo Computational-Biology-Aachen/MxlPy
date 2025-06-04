@@ -186,8 +186,9 @@ def test_linear_label_mapper_build_model_with_initial_labels() -> None:
     )
 
     # Check that the initial label is set
-    assert label_model.variables["A__0"] == 1.0
-    assert label_model.variables["A__1"] == 0.0
+    variables = label_model.get_raw_variables()
+    assert variables["A__0"] == 1.0
+    assert variables["A__1"] == 0.0
 
     # Test with multiple initial labels
     label_model = mapper.build_model(
@@ -195,5 +196,6 @@ def test_linear_label_mapper_build_model_with_initial_labels() -> None:
     )
 
     # Check that the initial labels are set (should be 0.5 for each label)
-    assert label_model.variables["A__0"] == 0.5
-    assert label_model.variables["A__1"] == 0.5
+    variables = label_model.get_raw_variables()
+    assert variables["A__0"] == 0.5
+    assert variables["A__1"] == 0.5

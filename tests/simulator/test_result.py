@@ -56,13 +56,13 @@ def test_variables() -> None:
 def test_get_variables() -> None:
     res = create_result()
     pd.testing.assert_frame_equal(
-        res.get_variables(include_derived=True, include_readouts=True),
+        res.get_variables(include_derived_variables=True, include_readouts=True),
         pd.DataFrame(
             {"v1": {0: 1, 1: 2, 2: 3}, "d1": {0: 2.0, 1: 3.0, 2: 4.0}}, dtype=float
         ),
     )
     pd.testing.assert_frame_equal(
-        res.get_variables(include_derived=False, include_readouts=False),
+        res.get_variables(include_derived_variables=False, include_readouts=False),
         pd.DataFrame({"v1": {0: 1, 1: 2, 2: 3}}, dtype=float),
     )
 

@@ -247,7 +247,7 @@ def test_variables() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
-    variables = model.variables
+    variables = model.get_raw_variables()
     assert "var1" in variables
     assert variables["var1"] == 1.0
     assert "var2" in variables
@@ -256,7 +256,7 @@ def test_variables() -> None:
 
 def test_variables_empty() -> None:
     model = Model()
-    variables = model.variables
+    variables = model.get_raw_variables()
     assert variables == {}
 
 
@@ -1037,7 +1037,7 @@ def test_get_full_args() -> None:
     model.add_readout("readout1", two_arguments, args=["var1", "var2"])
 
     concs = {"var1": 2.0, "var2": 3.0}
-    full_concs = model.get_args_time_course(concs, include_readouts=True)
+    full_concs = model.get_args(concs, include_readouts=True)
 
     assert full_concs["var1"] == 2.0
     assert full_concs["var2"] == 3.0
@@ -1053,7 +1053,7 @@ def test_get_full_args_without_readouts() -> None:
     model.add_readout("readout1", two_arguments, args=["var1", "var2"])
 
     concs = {"var1": 2.0, "var2": 3.0}
-    full_concs = model.get_args_time_course(concs, include_readouts=False)
+    full_concs = model.get_args(concs, include_readouts=False)
 
     assert full_concs["var1"] == 2.0
     assert full_concs["var2"] == 3.0
@@ -1069,7 +1069,7 @@ def test_get_full_args_with_empty_concs() -> None:
     model.add_readout("readout1", two_arguments, args=["var1", "var2"])
 
     with pytest.raises(KeyError):
-        model.get_args_time_course({})
+        model.get_args({})
 
 
 def test_get_fluxes() -> None:

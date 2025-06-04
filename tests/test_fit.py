@@ -5,7 +5,7 @@ import pandas as pd
 
 from example_models import get_linear_chain_2v
 from mxlpy import fit
-from mxlpy.fit import MinResult, ResidualFn
+from mxlpy.fit import Bounds, MinResult, ResidualFn
 from mxlpy.fns import constant
 from mxlpy.model import Model
 from mxlpy.types import Array, ArrayLike, IntegratorType, unwrap
@@ -14,6 +14,7 @@ from mxlpy.types import Array, ArrayLike, IntegratorType, unwrap
 def mock_minimize_fn(
     residual_fn: ResidualFn,  # noqa: ARG001
     p0: dict[str, float],
+    bounds: Bounds | None,  # noqa: ARG001
 ) -> MinResult | None:
     return MinResult(parameters=p0, residual=0.0)
 
@@ -95,6 +96,7 @@ def test_default_minimize_fn() -> None:
     p_fit = fit._default_minimize_fn(
         mock_residual_fn_filled_in,
         p_true,
+        bounds={},
     )
     assert p_fit is not None
     assert np.allclose(pd.Series(p_fit.parameters), pd.Series(p_true), rtol=0.1)
