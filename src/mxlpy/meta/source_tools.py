@@ -54,7 +54,6 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     # round: sympy
     # divmod
     # math module
-    math.exp: sympy.exp,
     math.acos: sympy.acos,
     math.acosh: sympy.acosh,
     math.asin: sympy.asin,
