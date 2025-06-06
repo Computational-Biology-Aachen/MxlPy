@@ -539,9 +539,11 @@ class Model:
         ]
         return TableView(data=pd.DataFrame(data, index=index))
 
-    def get_raw_parameters(self) -> dict[str, Parameter]:
+    def get_raw_parameters(self, *, as_copy: bool = True) -> dict[str, Parameter]:
         """Returns the parameters of the model."""
-        return copy.deepcopy(self._parameters)
+        if as_copy:
+            return copy.deepcopy(self._parameters)
+        return self._parameters
 
     def get_parameter_values(self) -> dict[str, float]:
         """Returns the parameters of the model.
@@ -860,7 +862,7 @@ class Model:
             )
         return TableView(data=pd.DataFrame(data, index=index))
 
-    def get_raw_variables(self) -> dict[str, Variable]:
+    def get_raw_variables(self, *, as_copy: bool = True) -> dict[str, Variable]:
         """Retrieve the initial conditions of the model.
 
         Examples:
@@ -871,7 +873,9 @@ class Model:
             initial_conditions: A dictionary where the keys are variable names and the values are their initial conditions.
 
         """
-        return copy.deepcopy(self._variables)
+        if as_copy:
+            return copy.deepcopy(self._variables)
+        return self._variables
 
     def get_initial_conditions(self) -> dict[str, float]:
         """Retrieve the initial conditions of the model.
@@ -1133,9 +1137,11 @@ class Model:
 
         return TableView(data=pd.DataFrame(data, index=index))
 
-    def get_raw_derived(self) -> dict[str, Derived]:
+    def get_raw_derived(self, *, as_copy: bool = True) -> dict[str, Derived]:
         """Get copy of derived values."""
-        return copy.deepcopy(self._derived)
+        if as_copy:
+            return copy.deepcopy(self._derived)
+        return self._derived
 
     def get_derived_variables(self) -> dict[str, Derived]:
         """Returns a dictionary of derived variables.
@@ -1305,7 +1311,7 @@ class Model:
         ]
         return TableView(data=pd.DataFrame(data, index=index))
 
-    def get_raw_reactions(self) -> dict[str, Reaction]:
+    def get_raw_reactions(self, *, as_copy: bool = True) -> dict[str, Reaction]:
         """Retrieve the reactions in the model.
 
         Examples:
@@ -1316,7 +1322,9 @@ class Model:
             dict[str, Reaction]: A deep copy of the reactions dictionary.
 
         """
-        return copy.deepcopy(self._reactions)
+        if as_copy:
+            return copy.deepcopy(self._reactions)
+        return self._reactions
 
     def get_stoichiometries(
         self, variables: dict[str, float] | None = None, time: float = 0.0
@@ -1583,9 +1591,11 @@ class Model:
         """
         return list(self._readouts)
 
-    def get_raw_readouts(self) -> dict[str, Readout]:
+    def get_raw_readouts(self, *, as_copy: bool = True) -> dict[str, Readout]:
         """Get copy of readouts in the model."""
-        return copy.deepcopy(self._readouts)
+        if as_copy:
+            return copy.deepcopy(self._readouts)
+        return self._readouts
 
     def remove_readout(self, name: str) -> Self:
         """Remove a readout by its name.
@@ -1695,9 +1705,13 @@ class Model:
         self._surrogates.pop(name)
         return self
 
-    def get_raw_surrogates(self) -> dict[str, AbstractSurrogate]:
+    def get_raw_surrogates(
+        self, *, as_copy: bool = True
+    ) -> dict[str, AbstractSurrogate]:
         """Get direct copies of model surrogates."""
-        return copy.deepcopy(self._surrogates)
+        if as_copy:
+            return copy.deepcopy(self._surrogates)
+        return self._surrogates
 
     def get_surrogate_output_names(self) -> list[str]:
         """Return output names by surrogates."""
