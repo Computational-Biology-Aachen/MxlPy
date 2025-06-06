@@ -567,7 +567,7 @@ class TexExport:
 
     def export_derived(
         self,
-        long_name_cutoff: int,
+        long_name_cutoff: int = 10,
     ) -> str:
         """Export derived quantities as LaTeX equations.
 
@@ -600,7 +600,10 @@ class TexExport:
 
         return _latex_align(rows)
 
-    def export_reactions(self, long_name_cutoff: int) -> str:
+    def export_reactions(
+        self,
+        long_name_cutoff: int = 10,
+    ) -> str:
         """Export reactions as LaTeX equations.
 
         Returns
@@ -633,7 +636,7 @@ class TexExport:
 
     def export_diff_eqs(
         self,
-        long_name_cutoff: int,
+        long_name_cutoff: int = 10,
     ) -> str:
         """Export stoichiometries as LaTeX table.
 
@@ -664,7 +667,10 @@ class TexExport:
                 rows.append(_replacements_in_align(repls))
         return _latex_align(rows)
 
-    def export_all(self, long_name_cutoff: int = 10) -> str:
+    def export_all(
+        self,
+        long_name_cutoff: int = 10,
+    ) -> str:
         """Export all model parts as a complete LaTeX document section.
 
         Returns
