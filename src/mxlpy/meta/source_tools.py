@@ -510,14 +510,14 @@ def _handle_unaryop(node: ast.UnaryOp, ctx: Context) -> sympy.Expr:
     left = _handle_expr(node.operand, ctx)
     left = cast(Any, left)  # stupid sympy types don't allow ops on symbols
 
-    if isinstance(node.op, ast.UAdd):
-        return +left
-
-    if isinstance(node.op, ast.USub):
-        return -left
-
-    msg = f"Operation {type(node.op).__name__} not implemented"
-    raise NotImplementedError(msg)
+    match node.op:
+        case ast.UAdd():
+            return +left
+        case ast.USub():
+            return -left
+        case _:
+            msg = f"Operation {type(node.op).__name__} not implemented"
+            raise NotImplementedError(msg)
 
 
 def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
@@ -527,23 +527,24 @@ def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
     right = _handle_expr(node.right, ctx)
     right = cast(Any, right)  # stupid sympy types don't allow ops on symbols
 
-    if isinstance(node.op, ast.Add):
-        return left + right
-    if isinstance(node.op, ast.Sub):
-        return left - right
-    if isinstance(node.op, ast.Mult):
-        return left * right
-    if isinstance(node.op, ast.Div):
-        return left / right
-    if isinstance(node.op, ast.Pow):
-        return left**right
-    if isinstance(node.op, ast.Mod):
-        return left % right
-    if isinstance(node.op, ast.FloorDiv):
-        return left // right
-
-    msg = f"Operation {type(node.op).__name__} not implemented"
-    raise NotImplementedError(msg)
+    match node.op:
+        case ast.Add():
+            return left + right
+        case ast.Sub():
+            return left - right
+        case ast.Mult():
+            return left * right
+        case ast.Div():
+            return left / right
+        case ast.Pow():
+            return left**right
+        case ast.Mod():
+            return left % right
+        case ast.FloorDiv():
+            return left // right
+        case _:
+            msg = f"Operation {type(node.op).__name__} not implemented"
+            raise NotImplementedError(msg)
 
 
 # FIXME: check if target isn't an object or class
