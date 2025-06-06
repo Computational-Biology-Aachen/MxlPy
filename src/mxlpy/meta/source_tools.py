@@ -310,6 +310,7 @@ def fn_to_sympy(
         )
         if sympy_expr is None:
             return None
+        # FIXME: we shouldn't end up here, where does this come from?
         if isinstance(sympy_expr, float):
             return sympy.Float(sympy_expr)
         if model_args is not None:
@@ -511,6 +512,7 @@ def _handle_unaryop(node: ast.UnaryOp, ctx: Context) -> sympy.Expr:
 
     if isinstance(node.op, ast.UAdd):
         return +left
+
     if isinstance(node.op, ast.USub):
         return -left
 
@@ -603,7 +605,10 @@ def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
             module,
             predicate=lambda x: isinstance(x, float),
         )
-    )[name]
+    ).get(name)
+
+    if element is None:
+        return None
 
     if (value := KNOWN_CONSTANTS.get(element)) is not None:
         return value
@@ -636,7 +641,9 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
                 dict(inspect.getmembers(ctx.parent_module, predicate=callable))
                 | ctx.fns
             )
-            py_fn = fns[fn_name]
+            py_fn = fns.get(fn_name)
+
+        # FIXME: use _handle_attribute for this
         case ast.Attribute(attr=fn_name):
             module: ModuleType | None = None
             modules = (
@@ -659,9 +666,12 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
                 module = importlib.import_module(module_name)
 
             fns = dict(inspect.getmembers(module, predicate=callable))
-            py_fn = fns[fn_name]
+            py_fn = fns.get(fn_name)
         case _:
             raise NotImplementedError
+
+    if py_fn is None:
+        return None
 
     if (fn := KNOWN_FNS.get(py_fn)) is not None:
         return fn
