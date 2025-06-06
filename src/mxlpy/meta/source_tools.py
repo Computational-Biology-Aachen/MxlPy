@@ -32,7 +32,7 @@ __all__ = [
 _LOGGER = logging.getLogger(__name__)
 PARSE_ERROR = sympy.Symbol("ERROR")
 
-KNOWN_CONSTANTS = {
+KNOWN_CONSTANTS: dict[float, sympy.Float] = {
     math.e: sympy.E,
     math.pi: sympy.pi,
     math.nan: sympy.nan,
@@ -174,6 +174,7 @@ class Context:
     parent_module: ModuleType | None
     origin: str
     modules: dict[str, ModuleType]
+    fns: dict[str, Callable]
 
     def updated(
         self,
@@ -190,7 +191,19 @@ class Context:
             else parent_module,
             origin=self.origin,
             modules=self.modules,
+            fns=self.fns,
         )
+
+
+def _find_root(value: ast.Attribute | ast.Name, levels: list) -> list[str]:
+    if isinstance(value, ast.Attribute):
+        return _find_root(
+            cast(ast.Attribute, value.value),
+            [value.attr, *levels],
+        )
+
+    root = str(value.id)
+    return [root, *levels]
 
 
 def get_fn_source(fn: Callable) -> str:
@@ -292,10 +305,13 @@ def fn_to_sympy(
                 parent_module=inspect.getmodule(fn),
                 origin=origin,
                 modules={},
+                fns={},
             ),
         )
         if sympy_expr is None:
             return None
+        if isinstance(sympy_expr, float):
+            return sympy.Float(sympy_expr)
         if model_args is not None:
             sympy_expr = sympy_expr.subs(dict(zip(fn_args, model_args, strict=True)))
         return cast(sympy.Expr, sympy_expr)
@@ -466,8 +482,12 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
                 el = contents[name]
                 if isinstance(el, float):
                     ctx.symbols[name] = sympy.Float(el)
+                elif callable(el):
+                    ctx.fns[name] = el
                 elif isinstance(el, ModuleType):
                     ctx.modules[name] = el
+                else:
+                    _LOGGER.debug("Skipping import %s", node)
         else:
             _LOGGER.debug("Skipping node of type %s", type(node))
 
@@ -524,6 +544,7 @@ def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
     raise NotImplementedError(msg)
 
 
+# FIXME: check if target isn't an object or class
 def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
     """Handle an attribute.
 
@@ -552,18 +573,6 @@ def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
     b.c.attr
     a.b.c.attr
     """
-
-    # FIXME: check if target isn't an object or class
-    def _find_root(value: ast.Attribute | ast.Name, levels: list) -> list[str]:
-        if isinstance(value, ast.Attribute):
-            return _find_root(
-                cast(ast.Attribute, value.value),
-                [value.attr, *levels],
-            )
-
-        root = str(value.id)
-        return [root, *levels]
-
     name = str(node.attr)
     module: ModuleType | None = None
     modules = (
@@ -574,20 +583,18 @@ def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
         case ast.Name(l1):
             module_name = l1
             module = modules.get(module_name)
-
         case ast.Attribute():
             levels = _find_root(node.value, [])
             module_name = ".".join(levels)
-
             for level in levels[:-1]:
                 modules.update(
                     dict(inspect.getmembers(modules[level], predicate=inspect.ismodule))
                 )
             module = modules.get(levels[-1])
-
         case _:
             raise NotImplementedError
 
+    # Fall-back to absolute import
     if module is None:
         module = importlib.import_module(module_name)
 
@@ -600,9 +607,10 @@ def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
 
     if (value := KNOWN_CONSTANTS.get(element)) is not None:
         return value
-    return _handle_expr(element, ctx=ctx)
+    return sympy.Float(element)
 
 
+# FIXME: check if target isn't an object or class
 def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
     """Handle call expression.
 
@@ -615,56 +623,51 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
         - object.call
         - Class.call
     """
-    # direct call, e.g. mass_action(x, k1)
-    if isinstance(callee := node.func, ast.Name):
-        fn_name = str(callee.id)
-        fns = dict(inspect.getmembers(ctx.parent_module, predicate=callable))
+    model_args: list[sympy.Expr] = []
+    for i in node.args:
+        if (expr := _handle_expr(i, ctx)) is None:
+            return None
+        model_args.append(expr)
 
-        model_args: list[sympy.Expr] = []
-        for i in node.args:
-            if (expr := _handle_expr(i, ctx)) is None:
-                return None
-            model_args.append(expr)
-
-        # Check first if it can be found in functions table
-        if (fn := KNOWN_FNS.get(fns[fn_name], None)) is not None:
-            return fn
-
-        return fn_to_sympy(
-            fns[fn_name],
-            origin=ctx.origin,
-            model_args=[],
-        )
-
-    # search for fn in other namespace
-    if isinstance(attr := node.func, ast.Attribute):
-        imports = dict(
-            inspect.getmembers(ctx.parent_module, predicate=inspect.ismodule)
-        )
-
-        # Single level, e.g. fns.mass_action(x, k1)
-        if isinstance(module_name := attr.value, ast.Name):
-            return _handle_call(
-                ast.Call(func=ast.Name(attr.attr), args=node.args, keywords=[]),
-                ctx=ctx.updated(parent_module=imports[module_name.id]),
+    match node.func:
+        case ast.Name(id):
+            fn_name = str(id)
+            fns = (
+                dict(inspect.getmembers(ctx.parent_module, predicate=callable))
+                | ctx.fns
+            )
+            py_fn = fns[fn_name]
+        case ast.Attribute(attr=fn_name):
+            module: ModuleType | None = None
+            modules = (
+                dict(inspect.getmembers(ctx.parent_module, predicate=inspect.ismodule))
+                | ctx.modules
             )
 
-        # Multiple levels, e.g. mxlpy.fns.mass_action(x, k1)
-        if isinstance(inner_attr := attr.value, ast.Attribute):
-            if not isinstance(module_name := inner_attr.value, ast.Name):
-                msg = f"Unknown target kind {module_name}"
-                raise NotImplementedError(msg)
-            return _handle_call(
-                ast.Call(
-                    func=ast.Attribute(
-                        value=ast.Name(inner_attr.attr),
-                        attr=attr.attr,
-                    ),
-                    args=node.args,
-                    keywords=[],
-                ),
-                ctx=ctx.updated(parent_module=imports[module_name.id]),
-            )
+            levels = _find_root(node.func, [])
+            module_name = ".".join(levels[:-1])
 
-    msg = f"Unsupported function type {node.func}"
-    raise NotImplementedError(msg)
+            _LOGGER.debug("Searching for module %s", module_name)
+            for level in levels[:-1]:
+                modules.update(
+                    dict(inspect.getmembers(modules[level], predicate=inspect.ismodule))
+                )
+            module = modules.get(levels[-2])
+
+            # Fall-back to absolute import
+            if module is None:
+                module = importlib.import_module(module_name)
+
+            fns = dict(inspect.getmembers(module, predicate=callable))
+            py_fn = fns[fn_name]
+        case _:
+            raise NotImplementedError
+
+    if (fn := KNOWN_FNS.get(py_fn)) is not None:
+        return fn
+
+    return fn_to_sympy(
+        py_fn,
+        origin=ctx.origin,
+        model_args=model_args,
+    )
