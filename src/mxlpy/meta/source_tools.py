@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import inspect
 import logging
 import math
 import textwrap
 from dataclasses import dataclass
+from types import ModuleType
 from typing import TYPE_CHECKING, Any, cast
 
 import dill
@@ -16,7 +18,6 @@ import sympy
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from types import ModuleType
 
 __all__ = [
     "Context",
@@ -34,6 +35,14 @@ PARSE_ERROR = sympy.Symbol("ERROR")
 KNOWN_CONSTANTS = {
     math.e: sympy.E,
     math.pi: sympy.pi,
+    math.nan: sympy.nan,
+    math.tau: sympy.pi * 2,
+    math.inf: sympy.oo,
+    # numpy
+    np.e: sympy.E,
+    np.pi: sympy.pi,
+    np.nan: sympy.nan,
+    np.inf: sympy.oo,
 }
 
 KNOWN_FNS: dict[Callable, sympy.Expr] = {
@@ -41,72 +50,118 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     abs: sympy.Abs,  # type: ignore
     min: sympy.Min,
     max: sympy.Max,
-    # pow: sympy.
-    # round
+    pow: sympy.Pow,
+    # round: sympy
     # divmod
     # math module
     math.exp: sympy.exp,
-    # math.acos,
-    # math.acosh,
-    # math.asin,
-    # math.asinh,
-    # math.atan,
-    # math.atan2,
-    # math.atanh,
-    # math.cbrt,
-    # math.ceil,
-    # math.comb,
-    # math.copysign,
-    # math.cos,
-    # math.cosh,
-    # math.degrees,
-    # math.dist,
-    # math.erf,
-    # math.erfc,
-    # math.exp,
-    # math.exp2,
-    # math.expm1,
-    # math.fabs,
-    # math.factorial,
-    # math.floor,
-    # math.fmod,
-    # math.frexp,
-    # math.fsum,
-    # math.gamma,
-    # math.gcd,
-    # math.hypot,
-    # math.inf,
-    # math.isclose,
-    # math.isfinite,
-    # math.isinf,
-    # math.isnan,
-    # math.isqrt,
-    # math.lcm,
-    # math.ldexp,
-    # math.lgamma,
-    # math.log,
-    # math.log10,
-    # math.log1p,
-    # math.log2,
-    # math.modf,
-    # math.nan,
-    # math.nextafter,
-    # math.perm,
-    # math.pow,
-    # math.prod,
-    # math.radians,
-    # math.remainder,
-    # math.sin,
-    # math.sinh,
-    # math.sqrt,
-    # math.sumprod,
-    # math.tan,
-    # math.tanh,
-    # math.tau,
-    # math.trunc,
-    # math.ulp,
+    math.acos: sympy.acos,
+    math.acosh: sympy.acosh,
+    math.asin: sympy.asin,
+    math.asinh: sympy.asinh,
+    math.atan: sympy.atan,
+    math.atan2: sympy.atan2,
+    math.atanh: sympy.atanh,
+    math.cbrt: sympy.cbrt,
+    math.ceil: sympy.ceiling,
+    # math.comb: sympy.comb,
+    # math.copysign: sympy.copysign,
+    math.cos: sympy.cos,
+    math.cosh: sympy.cosh,
+    # math.degrees: sympy.degrees,
+    # math.dist: sympy.dist,
+    math.erf: sympy.erf,
+    math.erfc: sympy.erfc,
+    math.exp: sympy.exp,
+    # math.exp2: sympy.exp2,
+    # math.expm1: sympy.expm1,
+    # math.fabs: sympy.fabs,
+    math.factorial: sympy.factorial,
+    math.floor: sympy.floor,
+    # math.fmod: sympy.fmod,
+    # math.frexp: sympy.frexp,
+    # math.fsum: sympy.fsum,
+    math.gamma: sympy.gamma,
+    math.gcd: sympy.gcd,
+    # math.hypot: sympy.hypot,
+    # math.isclose: sympy.isclose,
+    # math.isfinite: sympy.isfinite,
+    # math.isinf: sympy.isinf,
+    # math.isnan: sympy.isnan,
+    # math.isqrt: sympy.isqrt,
+    math.lcm: sympy.lcm,
+    # math.ldexp: sympy.ldexp,
+    # math.lgamma: sympy.lgamma,
+    math.log: sympy.log,
+    # math.log10: sympy.log10,
+    # math.log1p: sympy.log1p,
+    # math.log2: sympy.log2,
+    # math.modf: sympy.modf,
+    # math.nextafter: sympy.nextafter,
+    # math.perm: sympy.perm,
+    math.pow: sympy.Pow,
+    math.prod: sympy.prod,
+    math.radians: sympy.rad,
+    math.remainder: sympy.rem,
+    math.sin: sympy.sin,
+    math.sinh: sympy.sinh,
+    math.sqrt: sympy.sqrt,
+    # math.sumprod: sympy.sumprod,
+    math.tan: sympy.tan,
+    math.tanh: sympy.tanh,
+    math.trunc: sympy.trunc,
+    # math.ulp: sympy.ulp,
     # numpy
     np.exp: sympy.exp,
+    np.abs: sympy.Abs,
+    np.acos: sympy.acos,
+    np.acosh: sympy.acosh,
+    np.asin: sympy.asin,
+    np.asinh: sympy.asinh,
+    np.atan: sympy.atan,
+    np.atanh: sympy.atanh,
+    np.atan2: sympy.atan2,
+    np.pow: sympy.Pow,
+    np.absolute: sympy.Abs,
+    np.add: sympy.Add,
+    np.arccos: sympy.acos,
+    np.arccosh: sympy.acosh,
+    np.arcsin: sympy.asin,
+    np.arcsinh: sympy.asinh,
+    np.arctan2: sympy.atan2,
+    np.arctan: sympy.atan,
+    np.arctanh: sympy.atanh,
+    np.cbrt: sympy.cbrt,
+    np.ceil: sympy.ceiling,
+    np.conjugate: sympy.conjugate,
+    np.cos: sympy.cos,
+    np.cosh: sympy.cosh,
+    np.exp: sympy.exp,
+    np.floor: sympy.floor,
+    np.gcd: sympy.gcd,
+    np.greater: sympy.GreaterThan,
+    np.greater_equal: sympy.Ge,
+    np.invert: sympy.invert,
+    np.lcm: sympy.lcm,
+    np.less: sympy.LessThan,
+    np.less_equal: sympy.Le,
+    np.log: sympy.log,
+    np.maximum: sympy.maximum,
+    np.minimum: sympy.minimum,
+    np.mod: sympy.Mod,
+    np.positive: sympy.Abs,
+    np.power: sympy.Pow,
+    np.sign: sympy.sign,
+    np.sin: sympy.sin,
+    np.sinh: sympy.sinh,
+    np.sqrt: sympy.sqrt,
+    # np.square: sympy.square,
+    # np.subtract: sympy., # Add(x, -1 * y)
+    np.tan: sympy.tan,
+    np.tanh: sympy.tanh,
+    # np.true_divide: sympy.true_divide,
+    np.trunc: sympy.trunc,
+    # np.vecdot: sympy.vecdot,
 }
 
 
@@ -118,6 +173,7 @@ class Context:
     caller: Callable
     parent_module: ModuleType | None
     origin: str
+    modules: dict[str, ModuleType]
 
     def updated(
         self,
@@ -133,6 +189,7 @@ class Context:
             if parent_module is None
             else parent_module,
             origin=self.origin,
+            modules=self.modules,
         )
 
 
@@ -226,6 +283,7 @@ def fn_to_sympy(
     try:
         fn_def = get_fn_ast(fn)
         fn_args = [str(arg.arg) for arg in fn_def.args.args]
+
         sympy_expr = _handle_fn_body(
             fn_def.body,
             ctx=Context(
@@ -233,6 +291,7 @@ def fn_to_sympy(
                 caller=fn,
                 parent_module=inspect.getmodule(fn),
                 origin=origin,
+                modules={},
             ),
         )
         if sympy_expr is None:
@@ -249,10 +308,21 @@ def fn_to_sympy(
 
 
 def _handle_name(node: ast.Name, ctx: Context) -> sympy.Symbol | sympy.Expr:
-    return ctx.symbols[node.id]
+    value = ctx.symbols.get(node.id)
+    if value is None:
+        global_variables = dict(
+            inspect.getmembers(
+                ctx.parent_module,
+                predicate=lambda x: isinstance(x, float),
+            )
+        )
+        value = sympy.Float(global_variables[node.id])
+    return value
 
 
 def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
+    if isinstance(node, float):
+        return sympy.Float(node)
     if isinstance(node, ast.UnaryOp):
         return _handle_unaryop(node, ctx)
     if isinstance(node, ast.BinOp):
@@ -382,6 +452,25 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
                     return None
                 ctx.symbols[target_name] = value
 
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                name = alias.name
+                ctx.modules[name] = importlib.import_module(name)
+
+        elif isinstance(node, ast.ImportFrom):
+            package = cast(str, node.module)
+            module = importlib.import_module(package)
+            contents = dict(inspect.getmembers(module))
+            for alias in node.names:
+                name = alias.name
+                el = contents[name]
+                if isinstance(el, float):
+                    ctx.symbols[name] = sympy.Float(el)
+                elif isinstance(el, ModuleType):
+                    ctx.modules[name] = el
+        else:
+            _LOGGER.debug("Skipping node of type %s", type(node))
+
     # If we have pieces to combine into a Piecewise
     if pieces:
         return sympy.Piecewise(*pieces)
@@ -436,17 +525,96 @@ def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
 
 
 def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
-    """Handle AST Attributes.
+    """Handle an attribute.
 
-    node.value (ast.Name.id) => "math"
-    node.attr => "e"
+    Structures to expect:
+        Attribute(Name(id), attr)             | direct
+        Attribute(Attribute(Name(id)), attr)  | single layer of nesting
+        Attribute(Attribute(...), attr)       | arbitrary nesting
 
+    Targets to expect:
+        - modules (both absolute and relative import)
+            - import a; a.attr
+            - import a; a.b.attr
+            - from a import b; b.attr
+        - objects, e.g. Parameters().a
+        - classes, e.g. Parameters.a
+
+    Watch out for relative imports and the different ways they can be called
+    import a
+    from a import b
+    from a.b import c
+
+    a.attr
+    b.attr
+    c.attr
+    a.b.attr
+    b.c.attr
+    a.b.c.attr
     """
-    msg = "Attribute handling not yet implemented"
-    raise NotImplementedError(msg)
+
+    # FIXME: check if target isn't an object or class
+    def _find_root(value: ast.Attribute | ast.Name, levels: list) -> list[str]:
+        if isinstance(value, ast.Attribute):
+            return _find_root(
+                cast(ast.Attribute, value.value),
+                [value.attr, *levels],
+            )
+
+        root = str(value.id)
+        return [root, *levels]
+
+    name = str(node.attr)
+    module: ModuleType | None = None
+    modules = (
+        dict(inspect.getmembers(ctx.parent_module, predicate=inspect.ismodule))
+        | ctx.modules
+    )
+    match node.value:
+        case ast.Name(l1):
+            module_name = l1
+            module = modules.get(module_name)
+
+        case ast.Attribute():
+            levels = _find_root(node.value, [])
+            module_name = ".".join(levels)
+
+            for level in levels[:-1]:
+                modules.update(
+                    dict(inspect.getmembers(modules[level], predicate=inspect.ismodule))
+                )
+            module = modules.get(levels[-1])
+
+        case _:
+            raise NotImplementedError
+
+    if module is None:
+        module = importlib.import_module(module_name)
+
+    element = dict(
+        inspect.getmembers(
+            module,
+            predicate=lambda x: isinstance(x, float),
+        )
+    )[name]
+
+    if (value := KNOWN_CONSTANTS.get(element)) is not None:
+        return value
+    return _handle_expr(element, ctx=ctx)
 
 
 def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
+    """Handle call expression.
+
+    Variants
+        - mass_action(x, k1)
+        - fns.mass_action(x, k1)
+        - mxlpy.fns.mass_action(x, k1)
+
+    In future think about?
+        - object.call
+        - Class.call
+    """
     # direct call, e.g. mass_action(x, k1)
     if isinstance(callee := node.func, ast.Name):
         fn_name = str(callee.id)
@@ -470,7 +638,9 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
 
     # search for fn in other namespace
     if isinstance(attr := node.func, ast.Attribute):
-        imports = dict(inspect.getmembers(ctx.parent_module, inspect.ismodule))
+        imports = dict(
+            inspect.getmembers(ctx.parent_module, predicate=inspect.ismodule)
+        )
 
         # Single level, e.g. fns.mass_action(x, k1)
         if isinstance(module_name := attr.value, ast.Name):
