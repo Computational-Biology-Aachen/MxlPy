@@ -159,6 +159,11 @@ ignore = [
   "SLF",
   "PD901",   # "df" name
 ]
+"tmp/*" = [
+  "I001", # unsorted imports
+  "S101", # assert
+  "D",    # all of documentation
+]
 
 [tool.tomlsort]
 spaces_before_inline_comment = 2
