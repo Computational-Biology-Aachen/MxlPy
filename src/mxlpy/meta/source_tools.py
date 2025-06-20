@@ -111,7 +111,6 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     math.trunc: sympy.trunc,
     # math.ulp: sympy.ulp,
     # numpy
-    np.exp: sympy.exp,
     np.abs: sympy.Abs,
     np.acos: sympy.acos,
     np.acosh: sympy.acosh,
@@ -312,7 +311,7 @@ def fn_to_sympy(
         # FIXME: we shouldn't end up here, where does this come from?
         if isinstance(sympy_expr, float):
             return sympy.Float(sympy_expr)
-        if model_args is not None:
+        if model_args is not None and len(model_args):
             sympy_expr = sympy_expr.subs(dict(zip(fn_args, model_args, strict=True)))
         return cast(sympy.Expr, sympy_expr)
 
@@ -633,6 +632,7 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
         if (expr := _handle_expr(i, ctx)) is None:
             return None
         model_args.append(expr)
+    _LOGGER.debug("Fn args: %s", model_args)
 
     match node.func:
         case ast.Name(id):
@@ -674,7 +674,7 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
         return None
 
     if (fn := KNOWN_FNS.get(py_fn)) is not None:
-        return fn
+        return fn(*model_args)  # type: ignore
 
     return fn_to_sympy(
         py_fn,
