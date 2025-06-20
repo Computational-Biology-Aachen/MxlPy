@@ -17,9 +17,18 @@ Classes:
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    ParamSpec,
+    Protocol,
+    TypeVar,
+    cast,
+    overload,
+)
 
 import numpy as np
 import pandas as pd
@@ -37,15 +46,16 @@ __all__ = [
     "MockSurrogate",
     "Param",
     "Parameter",
-    "ProtocolByPars",
+    "ProtocolScan",
     "RateFn",
     "Reaction",
     "Readout",
     "ResponseCoefficients",
     "ResponseCoefficientsByPars",
+    "Result",
     "RetType",
-    "SteadyStates",
-    "TimeCourseByPars",
+    "SteadyStateScan",
+    "TimeCourseScan",
     "Variable",
     "unwrap",
     "unwrap2",
@@ -160,15 +170,6 @@ class Parameter:
     source: str | None = None
 
 
-@dataclass
-class Variable:
-    """Container for variable meta information."""
-
-    initial_value: float | Derived
-    unit: sympy.Expr | None = None
-    source: str | None = None
-
-
 @dataclass(kw_only=True, slots=True)
 class Derived:
     """Container for a derived value."""
@@ -198,6 +199,15 @@ class Derived:
 
         """
         args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
+
+
+@dataclass
+class Variable:
+    """Container for variable meta information."""
+
+    initial_value: float | Derived
+    unit: sympy.Expr | None = None
+    source: str | None = None
 
 
 @dataclass(kw_only=True, slots=True)
@@ -322,6 +332,393 @@ class MockSurrogate(AbstractSurrogate):
         )  # type: ignore
 
 
+@dataclass(kw_only=True)
+class AbstractEstimator:
+    """Abstract class for parameter estimation using neural networks."""
+
+    parameter_names: list[str]
+
+    @abstractmethod
+    def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
+        """Predict the target values for the given features."""
+
+
+###############################################################################
+# Simulation results
+###############################################################################
+
+
+def _normalise_split_results(
+    results: list[pd.DataFrame],
+    normalise: float | ArrayLike,
+) -> list[pd.DataFrame]:
+    """Normalize split results by a given factor or array.
+
+    Args:
+        results: List of DataFrames containing the results to normalize.
+        normalise: Normalization factor or array.
+
+    Returns:
+        list[pd.DataFrame]: List of normalized DataFrames.
+
+    """
+    if isinstance(normalise, int | float):
+        return [i / normalise for i in results]
+    if len(normalise) == len(results):
+        return [(i.T / j).T for i, j in zip(results, normalise, strict=True)]
+
+    results = []
+    start = 0
+    end = 0
+    for i in results:
+        end += len(i)
+        results.append(i / np.reshape(normalise[start:end], (len(i), 1)))  # type: ignore
+        start += end
+    return results
+
+
+@dataclass(kw_only=True, slots=True)
+class Result:
+    """Simulation results."""
+
+    model: Model
+    raw_variables: list[pd.DataFrame]
+    raw_parameters: list[dict[str, float]]
+    raw_args: list[pd.DataFrame] = field(default_factory=list)
+
+    @classmethod
+    def default(cls, model: Model, time_points: Array) -> Result:
+        """Get result filled with NaNs."""
+        return Result(
+            model=model,
+            raw_variables=[
+                pd.DataFrame(
+                    data=np.full(
+                        shape=(len(time_points), len(model.get_variable_names())),
+                        fill_value=np.nan,
+                    ),
+                    index=time_points,
+                    columns=model.get_variable_names(),
+                )
+            ],
+            raw_parameters=[model.get_parameter_values()],
+        )
+
+    @property
+    def variables(self) -> pd.DataFrame:
+        """Simulation variables."""
+        return self.get_variables(
+            include_derived_variables=True,
+            include_readouts=True,
+            concatenated=True,
+            normalise=None,
+        )
+
+    @property
+    def fluxes(self) -> pd.DataFrame:
+        """Simulation fluxes."""
+        return self.get_fluxes()
+
+    def _compute_args(self) -> list[pd.DataFrame]:
+        # Already computed
+        if len(self.raw_args) > 0:
+            return self.raw_args
+
+        # Compute new otherwise
+        for res, p in zip(self.raw_variables, self.raw_parameters, strict=True):
+            self.model.update_parameters(p)
+            self.raw_args.append(
+                self.model.get_args_time_course(
+                    variables=res,
+                    include_variables=True,
+                    include_parameters=True,
+                    include_derived_parameters=True,
+                    include_derived_variables=True,
+                    include_reactions=True,
+                    include_surrogate_outputs=True,
+                    include_readouts=True,
+                )
+            )
+        return self.raw_args
+
+    def _select_data(
+        self,
+        dependent: list[pd.DataFrame],
+        *,
+        include_variables: bool = False,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = False,
+        include_reactions: bool = False,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+    ) -> list[pd.DataFrame]:
+        names = self.model.get_arg_names(
+            include_time=False,
+            include_variables=include_variables,
+            include_parameters=include_parameters,
+            include_derived_parameters=include_derived_parameters,
+            include_derived_variables=include_derived_variables,
+            include_reactions=include_reactions,
+            include_surrogate_outputs=include_surrogate_outputs,
+            include_readouts=include_readouts,
+        )
+        return [i.loc[:, names] for i in dependent]
+
+    def _adjust_data(
+        self,
+        data: list[pd.DataFrame],
+        normalise: float | ArrayLike | None = None,
+        *,
+        concatenated: bool = True,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        if normalise is not None:
+            data = _normalise_split_results(data, normalise=normalise)
+        if concatenated:
+            return pd.concat(data, axis=0)
+        return data
+
+    @overload
+    def get_args(  # type: ignore
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+        concatenated: Literal[False],
+        normalise: float | ArrayLike | None = None,
+    ) -> list[pd.DataFrame]: ...
+
+    @overload
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+        concatenated: Literal[True],
+        normalise: float | ArrayLike | None = None,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+        concatenated: bool = True,
+        normalise: float | ArrayLike | None = None,
+    ) -> pd.DataFrame: ...
+
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+        concatenated: bool = True,
+        normalise: float | ArrayLike | None = None,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        """Get the variables over time.
+
+        Examples:
+            >>> Result().get_variables()
+            Time            ATP      NADPH
+            0.000000   1.000000   1.000000
+            0.000100   0.999900   0.999900
+            0.000200   0.999800   0.999800
+
+        """
+        variables = self._select_data(
+            self._compute_args(),
+            include_variables=include_variables,
+            include_parameters=include_parameters,
+            include_derived_parameters=include_derived_parameters,
+            include_derived_variables=include_derived_variables,
+            include_reactions=include_reactions,
+            include_surrogate_outputs=include_surrogate_outputs,
+            include_readouts=include_readouts,
+        )
+        return self._adjust_data(
+            variables, normalise=normalise, concatenated=concatenated
+        )
+
+    @overload
+    def get_variables(  # type: ignore
+        self,
+        *,
+        include_derived_variables: bool = True,
+        include_readouts: bool = True,
+        concatenated: Literal[False],
+        normalise: float | ArrayLike | None = None,
+    ) -> list[pd.DataFrame]: ...
+
+    @overload
+    def get_variables(
+        self,
+        *,
+        include_derived_variables: bool = True,
+        include_readouts: bool = True,
+        concatenated: Literal[True],
+        normalise: float | ArrayLike | None = None,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def get_variables(
+        self,
+        *,
+        include_derived_variables: bool = True,
+        include_readouts: bool = True,
+        concatenated: bool = True,
+        normalise: float | ArrayLike | None = None,
+    ) -> pd.DataFrame: ...
+
+    def get_variables(
+        self,
+        *,
+        include_derived_variables: bool = True,
+        include_readouts: bool = True,
+        concatenated: bool = True,
+        normalise: float | ArrayLike | None = None,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        """Get the variables over time.
+
+        Examples:
+            >>> Result().get_variables()
+            Time            ATP      NADPH
+            0.000000   1.000000   1.000000
+            0.000100   0.999900   0.999900
+            0.000200   0.999800   0.999800
+
+        """
+        if not include_derived_variables and not include_readouts:
+            return self._adjust_data(
+                self.raw_variables,
+                normalise=normalise,
+                concatenated=concatenated,
+            )
+
+        variables = self._select_data(
+            self._compute_args(),
+            include_variables=True,
+            include_derived_variables=include_derived_variables,
+            include_readouts=include_readouts,
+        )
+        return self._adjust_data(
+            variables, normalise=normalise, concatenated=concatenated
+        )
+
+    @overload
+    def get_fluxes(  # type: ignore
+        self,
+        *,
+        include_surrogates: bool = True,
+        normalise: float | ArrayLike | None = None,
+        concatenated: Literal[False],
+    ) -> list[pd.DataFrame]: ...
+
+    @overload
+    def get_fluxes(
+        self,
+        *,
+        include_surrogates: bool = True,
+        normalise: float | ArrayLike | None = None,
+        concatenated: Literal[True],
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def get_fluxes(
+        self,
+        *,
+        include_surrogates: bool = True,
+        normalise: float | ArrayLike | None = None,
+        concatenated: bool = True,
+    ) -> pd.DataFrame: ...
+
+    def get_fluxes(
+        self,
+        *,
+        include_surrogates: bool = True,
+        normalise: float | ArrayLike | None = None,
+        concatenated: bool = True,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        """Get the flux results.
+
+        Examples:
+            >>> Result.get_fluxes()
+            Time             v1         v2
+            0.000000   1.000000   10.00000
+            0.000100   0.999900   9.999000
+            0.000200   0.999800   9.998000
+
+        Returns:
+            pd.DataFrame: DataFrame of fluxes.
+
+        """
+        fluxes = self._select_data(
+            self._compute_args(),
+            include_reactions=True,
+            include_surrogate_outputs=include_surrogates,
+        )
+        return self._adjust_data(
+            fluxes,
+            normalise=normalise,
+            concatenated=concatenated,
+        )
+
+    def get_combined(self) -> pd.DataFrame:
+        """Get the variables and fluxes as a single pandas.DataFrame.
+
+        Examples:
+            >>> Result.get_combined()
+            Time            ATP      NADPH         v1         v2
+            0.000000   1.000000   1.000000   1.000000   10.00000
+            0.000100   0.999900   0.999900   0.999900   9.999000
+            0.000200   0.999800   0.999800   0.999800   9.998000
+
+        Returns:
+            pd.DataFrame: DataFrame of fluxes.
+
+        """
+        return pd.concat((self.variables, self.fluxes), axis=1)
+
+    def get_new_y0(self) -> dict[str, float]:
+        """Get the new initial conditions after the simulation.
+
+        Examples:
+            >>> Simulator(model).simulate_to_steady_state().get_new_y0()
+            {"ATP": 1.0, "NADPH": 1.0}
+
+        """
+        return dict(
+            self.get_variables(
+                include_derived_variables=False,
+                include_readouts=False,
+            ).iloc[-1]
+        )
+
+    def __iter__(self) -> Iterator[pd.DataFrame]:
+        """Iterate over the concentration and flux response coefficients."""
+        return iter((self.variables, self.fluxes))
+
+
 @dataclass(kw_only=True, slots=True)
 class ResponseCoefficients:
     """Container for response coefficients."""
@@ -329,14 +726,14 @@ class ResponseCoefficients:
     variables: pd.DataFrame
     fluxes: pd.DataFrame
 
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return the response coefficients as a DataFrame."""
+        return pd.concat((self.variables, self.fluxes), axis=1)
+
     def __iter__(self) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux response coefficients."""
         return iter((self.variables, self.fluxes))
-
-    @property
-    def results(self) -> pd.DataFrame:
-        """Return the response coefficients as a DataFrame."""
-        return pd.concat((self.variables, self.fluxes), axis=1)
 
 
 @dataclass(kw_only=True, slots=True)
@@ -347,32 +744,225 @@ class ResponseCoefficientsByPars:
     fluxes: pd.DataFrame
     parameters: pd.DataFrame
 
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return the response coefficients as a DataFrame."""
+        return pd.concat((self.variables, self.fluxes), axis=1)
+
     def __iter__(self) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux response coefficients."""
         return iter((self.variables, self.fluxes))
 
-    @property
-    def results(self) -> pd.DataFrame:
-        """Return the response coefficients as a DataFrame."""
-        return pd.concat((self.variables, self.fluxes), axis=1)
-
 
 @dataclass(kw_only=True, slots=True)
-class SteadyStates:
-    """Container for steady states."""
+class SteadyStateScan:
+    """Container for steady states by scanned values."""
 
-    variables: pd.DataFrame
-    fluxes: pd.DataFrame
-    parameters: pd.DataFrame
+    to_scan: pd.DataFrame
+    raw_index: pd.Index | pd.MultiIndex
+    raw_results: list[Result]
+
+    @property
+    def variables(self) -> pd.DataFrame:
+        """Return steady-state variables by scan."""
+        return pd.DataFrame(
+            [i.variables.iloc[-1].T for i in self.raw_results], index=self.raw_index
+        )
+
+    @property
+    def fluxes(self) -> pd.DataFrame:
+        """Return steady-state fluxes by scan."""
+        return pd.DataFrame(
+            [i.fluxes.iloc[-1].T for i in self.raw_results], index=self.raw_index
+        )
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return steady-state args by scan."""
+        return self.get_args()
+
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+    ) -> pd.DataFrame:
+        """Return steady-state args by scan."""
+        return pd.DataFrame(
+            [
+                i.get_args(
+                    include_variables=include_variables,
+                    include_parameters=include_parameters,
+                    include_derived_parameters=include_derived_parameters,
+                    include_derived_variables=include_derived_variables,
+                    include_reactions=include_reactions,
+                    include_surrogate_outputs=include_surrogate_outputs,
+                    include_readouts=include_readouts,
+                )
+                .iloc[-1]
+                .T
+                for i in self.raw_results
+            ],
+            index=self.raw_index,
+        )
 
     def __iter__(self) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux steady states."""
         return iter((self.variables, self.fluxes))
 
+
+@dataclass(kw_only=True, slots=True)
+class TimeCourseScan:
+    """Container for time courses by scanned values."""
+
+    to_scan: pd.DataFrame
+    raw_results: dict[Hashable, Result]
+
     @property
-    def results(self) -> pd.DataFrame:
-        """Return the steady states as a DataFrame."""
-        return pd.concat((self.variables, self.fluxes), axis=1)
+    def variables(self) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {k: i.variables for k, i in self.raw_results.items()}, names=["n", "time"]
+        )
+
+    @property
+    def fluxes(self) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {k: i.fluxes for k, i in self.raw_results.items()}, names=["n", "time"]
+        )
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return the time courses as a DataFrame."""
+        return self.get_args()
+
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+    ) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {
+                k: i.get_args(
+                    include_variables=include_variables,
+                    include_parameters=include_parameters,
+                    include_derived_parameters=include_derived_parameters,
+                    include_derived_variables=include_derived_variables,
+                    include_reactions=include_reactions,
+                    include_surrogate_outputs=include_surrogate_outputs,
+                    include_readouts=include_readouts,
+                )
+                for k, i in self.raw_results.items()
+            },
+            names=["n", "time"],
+        )
+
+    def get_by_name(self, name: str) -> pd.DataFrame:
+        """Get time courses by name."""
+        return self.combined[name].unstack().T
+
+    def get_agg_per_time(self, agg: str | Callable) -> pd.DataFrame:
+        """Get aggregated time courses."""
+        mean = cast(pd.DataFrame, self.combined.unstack(level=1).agg(agg, axis=0))
+        return cast(pd.DataFrame, mean.unstack().T)
+
+    def get_agg_per_run(self, agg: str | Callable) -> pd.DataFrame:
+        """Get aggregated time courses."""
+        mean = cast(pd.DataFrame, self.combined.unstack(level=0).agg(agg, axis=0))
+        return cast(pd.DataFrame, mean.unstack().T)
+
+    def __iter__(self) -> Iterator[pd.DataFrame]:
+        """Iterate over the concentration and flux time courses."""
+        return iter((self.variables, self.fluxes))
+
+
+@dataclass(kw_only=True, slots=True)
+class ProtocolScan:
+    """Container for protocols by scanned values."""
+
+    to_scan: pd.DataFrame
+    protocol: pd.DataFrame
+    raw_results: dict[Hashable, Result]
+
+    @property
+    def variables(self) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {k: i.variables for k, i in self.raw_results.items()},
+            names=["n", "time"],
+        )
+
+    @property
+    def fluxes(self) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {k: i.fluxes for k, i in self.raw_results.items()},
+            names=["n", "time"],
+        )
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return the time courses as a DataFrame."""
+        return self.get_args()
+
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_outputs: bool = False,
+        include_readouts: bool = False,
+    ) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {
+                k: i.get_args(
+                    include_variables=include_variables,
+                    include_parameters=include_parameters,
+                    include_derived_parameters=include_derived_parameters,
+                    include_derived_variables=include_derived_variables,
+                    include_reactions=include_reactions,
+                    include_surrogate_outputs=include_surrogate_outputs,
+                    include_readouts=include_readouts,
+                )
+                for k, i in self.raw_results.items()
+            },
+            names=["n", "time"],
+        )
+
+    def get_by_name(self, name: str) -> pd.DataFrame:
+        """Get concentration or flux by name."""
+        return self.combined[name].unstack().T
+
+    def get_agg_per_time(self, agg: str | Callable) -> pd.DataFrame:
+        """Get aggregated concentration or flux."""
+        mean = cast(pd.DataFrame, self.combined.unstack(level=1).agg(agg, axis=0))
+        return cast(pd.DataFrame, mean.unstack().T)
+
+    def get_agg_per_run(self, agg: str | Callable) -> pd.DataFrame:
+        """Get aggregated concentration or flux."""
+        mean = cast(pd.DataFrame, self.combined.unstack(level=0).agg(agg, axis=0))
+        return cast(pd.DataFrame, mean.unstack().T)
+
+    def __iter__(self) -> Iterator[pd.DataFrame]:
+        """Iterate over the concentration and flux protocols."""
+        return iter((self.variables, self.fluxes))
 
 
 @dataclass(kw_only=True, slots=True)
@@ -384,87 +974,11 @@ class McSteadyStates:
     parameters: pd.DataFrame
     mc_to_scan: pd.DataFrame
 
-    def __iter__(self) -> Iterator[pd.DataFrame]:
-        """Iterate over the concentration and flux steady states."""
-        return iter((self.variables, self.fluxes))
-
     @property
-    def results(self) -> pd.DataFrame:
+    def combined(self) -> pd.DataFrame:
         """Return the steady states as a DataFrame."""
         return pd.concat((self.variables, self.fluxes), axis=1)
 
-
-@dataclass(kw_only=True, slots=True)
-class TimeCourseByPars:
-    """Container for time courses by parameter."""
-
-    variables: pd.DataFrame
-    fluxes: pd.DataFrame
-    parameters: pd.DataFrame
-
     def __iter__(self) -> Iterator[pd.DataFrame]:
-        """Iterate over the concentration and flux time courses."""
+        """Iterate over the concentration and flux steady states."""
         return iter((self.variables, self.fluxes))
-
-    @property
-    def results(self) -> pd.DataFrame:
-        """Return the time courses as a DataFrame."""
-        return pd.concat((self.variables, self.fluxes), axis=1)
-
-    def get_by_name(self, name: str) -> pd.DataFrame:
-        """Get time courses by name."""
-        return self.results[name].unstack().T
-
-    def get_agg_per_time(self, agg: str | Callable) -> pd.DataFrame:
-        """Get aggregated time courses."""
-        mean = cast(pd.DataFrame, self.results.unstack(level=1).agg(agg, axis=0))
-        return cast(pd.DataFrame, mean.unstack().T)
-
-    def get_agg_per_run(self, agg: str | Callable) -> pd.DataFrame:
-        """Get aggregated time courses."""
-        mean = cast(pd.DataFrame, self.results.unstack(level=0).agg(agg, axis=0))
-        return cast(pd.DataFrame, mean.unstack().T)
-
-
-@dataclass(kw_only=True, slots=True)
-class ProtocolByPars:
-    """Container for protocols by parameter."""
-
-    variables: pd.DataFrame
-    fluxes: pd.DataFrame
-    parameters: pd.DataFrame
-    protocol: pd.DataFrame
-
-    def __iter__(self) -> Iterator[pd.DataFrame]:
-        """Iterate over the concentration and flux protocols."""
-        return iter((self.variables, self.fluxes))
-
-    @property
-    def results(self) -> pd.DataFrame:
-        """Return the protocols as a DataFrame."""
-        return pd.concat((self.variables, self.fluxes), axis=1)
-
-    def get_by_name(self, name: str) -> pd.DataFrame:
-        """Get concentration or flux by name."""
-        return self.results[name].unstack().T
-
-    def get_agg_per_time(self, agg: str | Callable) -> pd.DataFrame:
-        """Get aggregated concentration or flux."""
-        mean = cast(pd.DataFrame, self.results.unstack(level=1).agg(agg, axis=0))
-        return cast(pd.DataFrame, mean.unstack().T)
-
-    def get_agg_per_run(self, agg: str | Callable) -> pd.DataFrame:
-        """Get aggregated concentration or flux."""
-        mean = cast(pd.DataFrame, self.results.unstack(level=0).agg(agg, axis=0))
-        return cast(pd.DataFrame, mean.unstack().T)
-
-
-@dataclass(kw_only=True)
-class AbstractEstimator:
-    """Abstract class for parameter estimation using neural networks."""
-
-    parameter_names: list[str]
-
-    @abstractmethod
-    def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
-        """Predict the target values for the given features."""

@@ -35,10 +35,10 @@ from mxlpy.scan import (
 from mxlpy.types import (
     IntegratorType,
     McSteadyStates,
-    ProtocolByPars,
+    ProtocolScan,
     ResponseCoefficientsByPars,
-    SteadyStates,
-    TimeCourseByPars,
+    SteadyStateScan,
+    TimeCourseScan,
 )
 
 if TYPE_CHECKING:
@@ -69,7 +69,7 @@ class ParameterScanWorker(Protocol):
         y0: dict[str, float] | None,
         rel_norm: bool,
         integrator: IntegratorType,
-    ) -> SteadyStates:
+    ) -> SteadyStateScan:
         """Call the worker function."""
         ...
 
@@ -81,7 +81,7 @@ def _parameter_scan_worker(
     y0: dict[str, float] | None,
     rel_norm: bool,
     integrator: IntegratorType,
-) -> SteadyStates:
+) -> SteadyStateScan:
     """Worker function for parallel steady state scanning across parameter sets.
 
     This function executes a parameter scan for steady state solutions for a
@@ -125,7 +125,7 @@ def steady_state(
     rel_norm: bool = False,
     worker: SteadyStateWorker = _steady_state_worker,
     integrator: IntegratorType | None = None,
-) -> SteadyStates:
+) -> SteadyStateScan:
     """Monte-carlo scan of steady states.
 
     Examples:
@@ -163,10 +163,14 @@ def steady_state(
         max_workers=max_workers,
         cache=cache,
     )
-    return SteadyStates(
-        variables=pd.concat({k: v.variables for k, v in res}, axis=1).T,
-        fluxes=pd.concat({k: v.fluxes for k, v in res}, axis=1).T,
-        parameters=mc_to_scan,
+    return SteadyStateScan(
+        raw_index=(
+            pd.Index(mc_to_scan.iloc[:, 0])
+            if mc_to_scan.shape[1] == 1
+            else pd.MultiIndex.from_frame(mc_to_scan)
+        ),
+        raw_results=[i[1] for i in res],
+        to_scan=mc_to_scan,
     )
 
 
@@ -180,7 +184,7 @@ def time_course(
     cache: Cache | None = None,
     worker: TimeCourseWorker = _time_course_worker,
     integrator: IntegratorType | None = None,
-) -> TimeCourseByPars:
+) -> TimeCourseScan:
     """MC time course.
 
     Examples:
@@ -219,10 +223,9 @@ def time_course(
         cache=cache,
     )
 
-    return TimeCourseByPars(
-        parameters=mc_to_scan,
-        variables=pd.concat({k: v.variables.T for k, v in res}, axis=1).T,
-        fluxes=pd.concat({k: v.fluxes.T for k, v in res}, axis=1).T,
+    return TimeCourseScan(
+        to_scan=mc_to_scan,
+        raw_results=dict(res),
     )
 
 
@@ -237,7 +240,7 @@ def time_course_over_protocol(
     cache: Cache | None = None,
     worker: ProtocolWorker = _protocol_worker,
     integrator: IntegratorType | None = None,
-) -> ProtocolByPars:
+) -> ProtocolScan:
     """MC time course.
 
     Examples:
@@ -277,13 +280,10 @@ def time_course_over_protocol(
         max_workers=max_workers,
         cache=cache,
     )
-    concs = {k: v.variables.T for k, v in res}
-    fluxes = {k: v.fluxes.T for k, v in res}
-    return ProtocolByPars(
-        variables=pd.concat(concs, axis=1).T,
-        fluxes=pd.concat(fluxes, axis=1).T,
-        parameters=mc_to_scan,
+    return ProtocolScan(
+        to_scan=mc_to_scan,
         protocol=protocol,
+        raw_results=dict(res),
     )
 
 
