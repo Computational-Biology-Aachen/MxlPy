@@ -322,77 +322,6 @@ def fn_to_sympy(
         return None
 
 
-def _handle_name(node: ast.Name, ctx: Context) -> sympy.Symbol | sympy.Expr:
-    value = ctx.symbols.get(node.id)
-    if value is None:
-        global_variables = dict(
-            inspect.getmembers(
-                ctx.parent_module,
-                predicate=lambda x: isinstance(x, float),
-            )
-        )
-        value = sympy.Float(global_variables[node.id])
-    return value
-
-
-def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
-    if isinstance(node, float):
-        return sympy.Float(node)
-    if isinstance(node, ast.UnaryOp):
-        return _handle_unaryop(node, ctx)
-    if isinstance(node, ast.BinOp):
-        return _handle_binop(node, ctx)
-    if isinstance(node, ast.Name):
-        return _handle_name(node, ctx)
-    if isinstance(node, ast.Constant):
-        return node.value
-    if isinstance(node, ast.Call):
-        return _handle_call(node, ctx=ctx)
-    if isinstance(node, ast.Attribute):
-        return _handle_attribute(node, ctx=ctx)
-
-    if isinstance(node, ast.Compare):
-        # Handle chained comparisons like 1 < a < 2
-        left = cast(Any, _handle_expr(node.left, ctx))
-        comparisons = []
-
-        # Build all individual comparisons from the chain
-        prev_value = left
-        for op, comparator in zip(node.ops, node.comparators, strict=True):
-            right = cast(Any, _handle_expr(comparator, ctx))
-
-            if isinstance(op, ast.Gt):
-                comparisons.append(prev_value > right)
-            elif isinstance(op, ast.GtE):
-                comparisons.append(prev_value >= right)
-            elif isinstance(op, ast.Lt):
-                comparisons.append(prev_value < right)
-            elif isinstance(op, ast.LtE):
-                comparisons.append(prev_value <= right)
-            elif isinstance(op, ast.Eq):
-                comparisons.append(prev_value == right)
-            elif isinstance(op, ast.NotEq):
-                comparisons.append(prev_value != right)
-
-            prev_value = right
-
-        # Combine all comparisons with logical AND
-        result = comparisons[0]
-        for comp in comparisons[1:]:
-            result = sympy.And(result, comp)
-        return cast(sympy.Expr, result)
-
-    # Handle conditional expressions (ternary operators)
-    if isinstance(node, ast.IfExp):
-        condition = _handle_expr(node.test, ctx)
-        if_true = _handle_expr(node.body, ctx)
-        if_false = _handle_expr(node.orelse, ctx)
-        return sympy.Piecewise((if_true, condition), (if_false, True))
-
-    msg = f"Expression type {type(node).__name__} not implemented"
-    raise NotImplementedError(msg)
-
-
 def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
     pieces = []
     remaining_body = list(body)
@@ -502,6 +431,78 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
 
     msg = "No return value found in function body"
     raise ValueError(msg)
+
+
+def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
+    """Key dispatch function."""
+    if isinstance(node, float):
+        return sympy.Float(node)
+    if isinstance(node, ast.UnaryOp):
+        return _handle_unaryop(node, ctx)
+    if isinstance(node, ast.BinOp):
+        return _handle_binop(node, ctx)
+    if isinstance(node, ast.Name):
+        return _handle_name(node, ctx)
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Call):
+        return _handle_call(node, ctx=ctx)
+    if isinstance(node, ast.Attribute):
+        return _handle_attribute(node, ctx=ctx)
+
+    if isinstance(node, ast.Compare):
+        # Handle chained comparisons like 1 < a < 2
+        left = cast(Any, _handle_expr(node.left, ctx))
+        comparisons = []
+
+        # Build all individual comparisons from the chain
+        prev_value = left
+        for op, comparator in zip(node.ops, node.comparators, strict=True):
+            right = cast(Any, _handle_expr(comparator, ctx))
+
+            if isinstance(op, ast.Gt):
+                comparisons.append(prev_value > right)
+            elif isinstance(op, ast.GtE):
+                comparisons.append(prev_value >= right)
+            elif isinstance(op, ast.Lt):
+                comparisons.append(prev_value < right)
+            elif isinstance(op, ast.LtE):
+                comparisons.append(prev_value <= right)
+            elif isinstance(op, ast.Eq):
+                comparisons.append(prev_value == right)
+            elif isinstance(op, ast.NotEq):
+                comparisons.append(prev_value != right)
+
+            prev_value = right
+
+        # Combine all comparisons with logical AND
+        result = comparisons[0]
+        for comp in comparisons[1:]:
+            result = sympy.And(result, comp)
+        return cast(sympy.Expr, result)
+
+    # Handle conditional expressions (ternary operators)
+    if isinstance(node, ast.IfExp):
+        condition = _handle_expr(node.test, ctx)
+        if_true = _handle_expr(node.body, ctx)
+        if_false = _handle_expr(node.orelse, ctx)
+        return sympy.Piecewise((if_true, condition), (if_false, True))
+
+    msg = f"Expression type {type(node).__name__} not implemented"
+    raise NotImplementedError(msg)
+
+
+def _handle_name(node: ast.Name, ctx: Context) -> sympy.Symbol | sympy.Expr:
+    value = ctx.symbols.get(node.id)
+    if value is None:
+        global_variables = dict(
+            inspect.getmembers(
+                ctx.parent_module,
+                predicate=lambda x: isinstance(x, float),
+            )
+        )
+        value = sympy.Float(global_variables[node.id])
+    return value
 
 
 def _handle_unaryop(node: ast.UnaryOp, ctx: Context) -> sympy.Expr:
