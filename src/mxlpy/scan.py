@@ -15,16 +15,21 @@ Functions:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Protocol, Self, cast
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 import pandas as pd
 
 from mxlpy.parallel import Cache, parallelise
-from mxlpy.simulator import Result, Simulator
-from mxlpy.types import IntegratorType, ProtocolByPars, SteadyStates, TimeCourseByPars
+from mxlpy.simulator import Simulator
+from mxlpy.types import (
+    IntegratorType,
+    ProtocolScan,
+    Result,
+    SteadyStateScan,
+    TimeCourseScan,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -36,9 +41,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ProtocolWorker",
     "SteadyStateWorker",
-    "TimeCourse",
     "TimeCourseWorker",
-    "TimePoint",
     "steady_state",
     "time_course",
     "time_course_over_protocol",
@@ -67,204 +70,9 @@ def _update_parameters_and_initial_conditions[T](
     return fn(model)
 
 
-def _empty_conc_series(model: Model) -> pd.Series:
-    """Create an empty concentration series for the model.
-
-    Args:
-        model: Model instance to generate the series for.
-
-    Returns:
-        pd.Series: Series with NaN values for each model variable.
-
-    """
-    return pd.Series(
-        data=np.full(shape=len(model.get_variable_names()), fill_value=np.nan),
-        index=model.get_variable_names(),
-    )
-
-
-def _empty_flux_series(model: Model) -> pd.Series:
-    """Create an empty flux series for the model.
-
-    Args:
-        model: Model instance to generate the series for.
-
-    Returns:
-        pd.Series: Series with NaN values for each model reaction.
-
-    """
-    return pd.Series(
-        data=np.full(shape=len(model.get_reaction_names()), fill_value=np.nan),
-        index=model.get_reaction_names(),
-    )
-
-
-def _empty_conc_df(model: Model, time_points: Array) -> pd.DataFrame:
-    """Create an empty concentration DataFrame for the model over given time points.
-
-    Args:
-        model: Model instance to generate the DataFrame for.
-        time_points: Array of time points.
-
-    Returns:
-        pd.DataFrame: DataFrame with NaN values for each model variable at each time point.
-
-    """
-    return pd.DataFrame(
-        data=np.full(
-            shape=(len(time_points), len(model.get_variable_names())),
-            fill_value=np.nan,
-        ),
-        index=time_points,
-        columns=model.get_variable_names(),
-    )
-
-
-def _empty_flux_df(model: Model, time_points: Array) -> pd.DataFrame:
-    """Create an empty concentration DataFrame for the model over given time points.
-
-    Args:
-        model: Model instance to generate the DataFrame for.
-        time_points: Array of time points.
-
-    Returns:
-        pd.DataFrame: DataFrame with NaN values for each model variable at each time point.
-
-    """
-    return pd.DataFrame(
-        data=np.full(
-            shape=(len(time_points), len(model.get_reaction_names())),
-            fill_value=np.nan,
-        ),
-        index=time_points,
-        columns=model.get_reaction_names(),
-    )
-
-
 ###############################################################################
 # Single returns
 ###############################################################################
-
-
-@dataclass(slots=True)
-class TimePoint:
-    """Represents a single time point in a simulation.
-
-    Attributes:
-        concs: Series of concentrations at the time point.
-        fluxes: Series of fluxes at the time point.
-
-    Args:
-        model: Model instance to generate the time point for.
-        concs: DataFrame of concentrations (default: None).
-        fluxes: DataFrame of fluxes (default: None).
-        idx: Index of the time point in the DataFrame (default: -1).
-
-    """
-
-    variables: pd.Series
-    fluxes: pd.Series
-
-    @classmethod
-    def from_result(
-        cls,
-        *,
-        model: Model,
-        result: Result | None,
-        idx: int = -1,
-    ) -> Self:
-        """Initialize the Scan object.
-
-        Args:
-            model: The model object.
-            result: Result of the simulation
-            idx: Index to select specific row from concs and fluxes DataFrames.
-
-        """
-        if result is None:
-            return cls(
-                variables=_empty_conc_series(model),
-                fluxes=_empty_flux_series(model),
-            )
-
-        return cls(
-            variables=result.variables.iloc[idx],
-            fluxes=result.fluxes.iloc[idx],
-        )
-
-    @property
-    def results(self) -> pd.Series:
-        """Get the combined results of concentrations and fluxes.
-
-        Example:
-            >>> time_point.results
-            x1    1.0
-            x2    0.5
-            v1    0.1
-            v2    0.2
-
-        Returns:
-            pd.Series: Combined series of concentrations and fluxes.
-
-        """
-        return pd.concat((self.variables, self.fluxes), axis=0)
-
-
-@dataclass(slots=True)
-class TimeCourse:
-    """Represents a time course in a simulation.
-
-    Attributes:
-        variables: DataFrame of concentrations over time.
-        fluxes: DataFrame of fluxes over time.
-
-    """
-
-    variables: pd.DataFrame
-    fluxes: pd.DataFrame
-
-    @classmethod
-    def from_scan(
-        cls,
-        *,
-        model: Model,
-        time_points: Array,
-        result: Result | None,
-    ) -> Self:
-        """Initialize the Scan object.
-
-        Args:
-            model (Model): The model object.
-            time_points (Array): Array of time points.
-            result: Result of the simulation
-
-        """
-        if result is None:
-            return cls(
-                _empty_conc_df(model, time_points),
-                _empty_flux_df(model, time_points),
-            )
-        return cls(
-            result.variables,
-            result.fluxes,
-        )
-
-    @property
-    def results(self) -> pd.DataFrame:
-        """Get the combined results of concentrations and fluxes over time.
-
-        Examples:
-            >>> time_course.results
-            Time   x1     x2     v1     v2
-            0.0   1.0   1.00   1.00   1.00
-            0.1   0.9   0.99   0.99   0.99
-            0.2   0.8   0.99   0.99   0.99
-
-        Returns:
-            pd.DataFrame: Combined DataFrame of concentrations and fluxes.
-
-        """
-        return pd.concat((self.variables, self.fluxes), axis=1)
 
 
 ###############################################################################
@@ -282,7 +90,7 @@ class SteadyStateWorker(Protocol):
         rel_norm: bool,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
-    ) -> TimePoint:
+    ) -> Result:
         """Call the worker function."""
         ...
 
@@ -297,7 +105,7 @@ class TimeCourseWorker(Protocol):
         *,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
-    ) -> TimeCourse:
+    ) -> Result:
         """Call the worker function."""
         ...
 
@@ -313,7 +121,7 @@ class ProtocolWorker(Protocol):
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
         time_points_per_step: int = 10,
-    ) -> TimeCourse:
+    ) -> Result:
         """Call the worker function."""
         ...
 
@@ -324,7 +132,7 @@ def _steady_state_worker(
     rel_norm: bool,
     integrator: IntegratorType | None,
     y0: dict[str, float] | None,
-) -> TimePoint:
+) -> Result:
     """Simulate the model to steady state and return concentrations and fluxes.
 
     Args:
@@ -345,7 +153,9 @@ def _steady_state_worker(
         )
     except ZeroDivisionError:
         res = None
-    return TimePoint.from_result(model=model, result=res)
+    return (
+        Result.default(model=model, time_points=np.array([0.0])) if res is None else res
+    )
 
 
 def _time_course_worker(
@@ -353,7 +163,7 @@ def _time_course_worker(
     time_points: Array,
     y0: dict[str, float] | None,
     integrator: IntegratorType | None,
-) -> TimeCourse:
+) -> Result:
     """Simulate the model to steady state and return concentrations and fluxes.
 
     Args:
@@ -374,11 +184,7 @@ def _time_course_worker(
         )
     except ZeroDivisionError:
         res = None
-    return TimeCourse.from_scan(
-        model=model,
-        time_points=time_points,
-        result=res,
-    )
+    return Result.default(model=model, time_points=time_points) if res is None else res
 
 
 def _protocol_worker(
@@ -388,7 +194,7 @@ def _protocol_worker(
     integrator: IntegratorType | None,
     y0: dict[str, float] | None,
     time_points_per_step: int = 10,
-) -> TimeCourse:
+) -> Result:
     """Simulate the model over a protocol and return concentrations and fluxes.
 
     Args:
@@ -419,11 +225,7 @@ def _protocol_worker(
         protocol.index[-1].total_seconds(),
         len(protocol) * time_points_per_step,
     )
-    return TimeCourse.from_scan(
-        model=model,
-        time_points=time_points,
-        result=res,
-    )
+    return Result.default(model=model, time_points=time_points) if res is None else res
 
 
 def steady_state(
@@ -436,7 +238,7 @@ def steady_state(
     cache: Cache | None = None,
     worker: SteadyStateWorker = _steady_state_worker,
     integrator: IntegratorType | None = None,
-) -> SteadyStates:
+) -> SteadyStateScan:
     """Get steady-state results over supplied values.
 
     Args:
@@ -492,16 +294,16 @@ def steady_state(
         cache=cache,
         parallel=parallel,
     )
-    concs = pd.DataFrame({k: v.variables.T for k, v in res}).T
-    fluxes = pd.DataFrame({k: v.fluxes.T for k, v in res}).T
-    idx = (
-        pd.Index(to_scan.iloc[:, 0])
-        if to_scan.shape[1] == 1
-        else pd.MultiIndex.from_frame(to_scan)
+
+    return SteadyStateScan(
+        raw_index=(
+            pd.Index(to_scan.iloc[:, 0])
+            if to_scan.shape[1] == 1
+            else pd.MultiIndex.from_frame(to_scan)
+        ),
+        raw_results=[i[1] for i in res],
+        to_scan=to_scan,
     )
-    concs.index = idx
-    fluxes.index = idx
-    return SteadyStates(variables=concs, fluxes=fluxes, parameters=to_scan)
 
 
 def time_course(
@@ -514,7 +316,7 @@ def time_course(
     cache: Cache | None = None,
     integrator: IntegratorType | None = None,
     worker: TimeCourseWorker = _time_course_worker,
-) -> TimeCourseByPars:
+) -> TimeCourseScan:
     """Get time course for each supplied parameter.
 
     Examples:
@@ -585,12 +387,9 @@ def time_course(
         cache=cache,
         parallel=parallel,
     )
-    concs = cast(dict, {k: v.variables for k, v in res})
-    fluxes = cast(dict, {k: v.fluxes for k, v in res})
-    return TimeCourseByPars(
-        parameters=to_scan,
-        variables=pd.concat(concs, names=["n", "time"]),
-        fluxes=pd.concat(fluxes, names=["n", "time"]),
+    return TimeCourseScan(
+        to_scan=to_scan,
+        raw_results=dict(res),
     )
 
 
@@ -605,7 +404,7 @@ def time_course_over_protocol(
     cache: Cache | None = None,
     worker: ProtocolWorker = _protocol_worker,
     integrator: IntegratorType | None = None,
-) -> ProtocolByPars:
+) -> ProtocolScan:
     """Get protocol series for each supplied parameter.
 
     Examples:
@@ -656,11 +455,8 @@ def time_course_over_protocol(
         cache=cache,
         parallel=parallel,
     )
-    concs = cast(dict, {k: v.variables for k, v in res})
-    fluxes = cast(dict, {k: v.fluxes for k, v in res})
-    return ProtocolByPars(
-        parameters=to_scan,
+    return ProtocolScan(
+        to_scan=to_scan,
         protocol=protocol,
-        variables=pd.concat(concs, names=["n", "time"]),
-        fluxes=pd.concat(fluxes, names=["n", "time"]),
+        raw_results=dict(res),
     )

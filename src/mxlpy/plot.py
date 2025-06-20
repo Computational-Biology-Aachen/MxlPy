@@ -541,7 +541,7 @@ def bars(
     sns.barplot(data=cast(pd.DataFrame, x), ax=ax)
 
     if xlabel is None:
-        xlabel = x.index.name if x.index.name is not None else ""
+        xlabel = x.index.name if x.index.name is not None else ""  # type: ignore
     _default_labels(ax, xlabel=xlabel, ylabel=ylabel)
     if isinstance(x, pd.DataFrame):
         ax.legend(x.columns)
@@ -651,7 +651,7 @@ def lines(
     )
     _default_labels(
         ax,
-        xlabel=x.index.name if xlabel is None else xlabel,
+        xlabel=x.index.name if xlabel is None else xlabel,  # type: ignore
         ylabel=ylabel,
     )
     if legend:
@@ -792,7 +792,11 @@ def line_mean_std(
         color=color,
         alpha=alpha,
     )
-    _default_labels(ax, xlabel=df.index.name, ylabel=None)
+    _default_labels(
+        ax,
+        xlabel=df.index.name,  # type: ignore
+        ylabel=None,
+    )
     return fig, ax
 
 
@@ -906,8 +910,8 @@ def heatmap(
         ax=ax,
         df=df,
         title=title,
-        xlabel=df.index.name,
-        ylabel=df.columns.name,
+        xlabel=df.index.name,  # type: ignore
+        ylabel=df.columns.name,  # type: ignore
         xticklabels=cast(list, df.columns),
         yticklabels=cast(list, df.index),
         annotate=annotate,
@@ -943,8 +947,8 @@ def heatmap_from_2d_idx(
 
     return _create_heatmap(
         df=df2d,
-        xlabel=df2d.index.name,
-        ylabel=df2d.columns.name,
+        xlabel=df2d.index.name,  # type: ignore
+        ylabel=df2d.columns.name,  # type: ignore
         xticklabels=[f"{i:.2f}" for i in df2d.columns],
         yticklabels=[f"{i:.2f}" for i in df2d.index],
         ax=ax,

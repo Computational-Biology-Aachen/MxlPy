@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from mxlpy import Model
-    from mxlpy.types import Array, IntegratorType, RateFn
+    from mxlpy.types import Array, IntegratorType, RateFn, Result
 
 
 @dataclass
@@ -35,11 +35,13 @@ class CarouselSteadyState:
     """Time course of a carousel simulation."""
 
     carousel: list[Model]
-    results: list[scan.TimePoint]
+    results: list[Result]
 
     def get_variables_by_model(self) -> pd.DataFrame:
         """Get the variables of the time course results, indexed by model."""
-        return pd.DataFrame({i: r.variables for i, r in enumerate(self.results)}).T
+        return pd.DataFrame(
+            {i: r.variables.iloc[-1] for i, r in enumerate(self.results)}
+        ).T
 
 
 @dataclass
@@ -47,7 +49,7 @@ class CarouselTimeCourse:
     """Time course of a carousel simulation."""
 
     carousel: list[Model]
-    results: list[scan.TimeCourse]
+    results: list[Result]
 
     def get_variables_by_model(self) -> pd.DataFrame:
         """Get the variables of the time course results, indexed by model."""

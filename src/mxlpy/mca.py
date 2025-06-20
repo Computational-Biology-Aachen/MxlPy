@@ -91,8 +91,12 @@ def _response_coefficient_worker(
         y0=None,
     )
 
-    conc_resp = (upper.variables - lower.variables) / (2 * displacement * old)
-    flux_resp = (upper.fluxes - lower.fluxes) / (2 * displacement * old)
+    conc_resp = (upper.variables.iloc[-1] - lower.variables.iloc[-1]) / (
+        2 * displacement * old
+    )
+    flux_resp = (upper.fluxes.iloc[-1] - lower.fluxes.iloc[-1]) / (
+        2 * displacement * old
+    )
     # Reset
     model.update_parameters({parameter: old})
     if normalized:
@@ -102,8 +106,8 @@ def _response_coefficient_worker(
             integrator=integrator,
             y0=None,
         )
-        conc_resp *= old / norm.variables
-        flux_resp *= old / norm.fluxes
+        conc_resp *= old / norm.variables.iloc[-1]
+        flux_resp *= old / norm.fluxes.iloc[-1]
     return conc_resp, flux_resp
 
 

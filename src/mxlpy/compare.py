@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, cast
 import pandas as pd
 
 from mxlpy import plot
-from mxlpy.simulator import Result, Simulator
-from mxlpy.types import unwrap
+from mxlpy.simulator import Simulator
+from mxlpy.types import Result, unwrap
 
 if TYPE_CHECKING:
     from mxlpy.model import Model
