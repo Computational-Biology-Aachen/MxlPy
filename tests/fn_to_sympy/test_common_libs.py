@@ -31,8 +31,8 @@ def test_math_import_attr_l1() -> None:
 
 
 def test_math_import_fn_l0() -> None:
-    assert source_tools.fn_to_sympy(exp_direct, "test") == sympy.exp
+    assert source_tools.fn_to_sympy(exp_direct, "test") == 1.0
 
 
 def test_math_import_fn_l1() -> None:
-    assert source_tools.fn_to_sympy(exp_library_call, "test") == sympy.exp
+    assert source_tools.fn_to_sympy(exp_library_call, "test") == 1.0

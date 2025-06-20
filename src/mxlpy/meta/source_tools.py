@@ -308,7 +308,7 @@ def fn_to_sympy(
         )
         if sympy_expr is None:
             return None
-        # FIXME: we shouldn't end up here, where does this come from?
+        # Evaluated fns and floats from attributes
         if isinstance(sympy_expr, float):
             return sympy.Float(sympy_expr)
         if model_args is not None and len(model_args):
@@ -674,7 +674,7 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
         return None
 
     if (fn := KNOWN_FNS.get(py_fn)) is not None:
-        return fn(*model_args)  # type: ignore
+        return sympy.Float(fn(*model_args))  # type: ignore
 
     return fn_to_sympy(
         py_fn,
