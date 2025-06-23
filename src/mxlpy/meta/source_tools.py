@@ -546,6 +546,27 @@ def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
             raise NotImplementedError(msg)
 
 
+def _get_inner_object(obj: object, levels: list[str]) -> sympy.Float | None:
+    # Check if object is instantiated, otherwise instantiate first
+    if isinstance(obj, type):
+        obj = obj()
+
+    for level in levels:
+        _LOGGER.debug("obj %s, level %s", obj, level)
+        obj = getattr(obj, level, None)
+
+    if obj is None:
+        return None
+
+    if isinstance(obj, float):
+        if (value := KNOWN_CONSTANTS.get(obj)) is not None:
+            return value
+        return sympy.Float(obj)
+
+    _LOGGER.debug("Inner object not float: %s", obj)
+    return None
+
+
 # FIXME: check if target isn't an object or class
 def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
     """Handle an attribute.
@@ -581,17 +602,36 @@ def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
         dict(inspect.getmembers(ctx.parent_module, predicate=inspect.ismodule))
         | ctx.modules
     )
+    variables = vars(ctx.parent_module)
+
     match node.value:
         case ast.Name(l1):
             module_name = l1
             module = modules.get(module_name)
+            if module is None and (var := variables.get(l1)) is not None:
+                return _get_inner_object(var, [node.attr])
         case ast.Attribute():
-            levels = _find_root(node.value, [])
+            levels = _find_root(node.value, levels=[])
+            _LOGGER.debug("Attribute levels %s", levels)
             module_name = ".".join(levels)
-            for level in levels[:-1]:
-                modules.update(
-                    dict(inspect.getmembers(modules[level], predicate=inspect.ismodule))
-                )
+
+            for idx, level in enumerate(levels[:-1]):
+                if (module := modules.get(level)) is not None:
+                    modules.update(
+                        dict(
+                            inspect.getmembers(
+                                module,
+                                predicate=inspect.ismodule,
+                            )
+                        )
+                    )
+                elif (var := variables.get(level)) is not None:
+                    _LOGGER.debug("var %s", var)
+                    return _get_inner_object(var, levels[(idx + 1) :] + [node.attr])
+
+                else:
+                    _LOGGER.debug("No target found")
+
             module = modules.get(levels[-1])
         case _:
             raise NotImplementedError
