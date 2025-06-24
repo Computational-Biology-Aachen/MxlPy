@@ -37,6 +37,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from inspect import FullArgSpec
 
+    from sympy.physics.units.quantities import Quantity
+
     from mxlpy.types import Callable, Param, RateFn, RetType
 
 __all__ = [
@@ -54,6 +56,70 @@ def _latex_view(expr: sympy.Expr | None) -> str:
     if expr is None:
         return "PARSE-ERROR"
     return f"${sympy.latex(expr)}$"
+
+
+def unit_of(expr: sympy.Expr) -> sympy.Expr:
+    return expr.as_coeff_Mul()[1]
+
+
+@dataclass
+class Failure:
+    expected: sympy.Expr
+    obtained: sympy.Expr
+
+    @property
+    def difference(self) -> sympy.Expr:
+        return self.expected / self.obtained  # type: ignore
+
+
+@dataclass
+class MdText:
+    content: list[str]
+
+    def _repr_markdown_(self) -> str:
+        return "\n".join(self.content)
+
+
+@dataclass
+class UnitCheck:
+    per_variable: dict[str, dict[str, bool | Failure | None]]
+
+    @staticmethod
+    def _fmt_success(s: str) -> str:
+        return f"<span style='color: green'>{s}</span>"
+
+    @staticmethod
+    def _fmt_failed(s: str) -> str:
+        return f"<span style='color: red'>{s}</span>"
+
+    def correct_diff_eqs(self) -> dict[str, bool]:
+        return {
+            var: all(isinstance(i, bool) for i in checks.values())
+            for var, checks in self.per_variable.items()
+        }
+
+    def report(self) -> MdText:
+        report = ["## Type check"]
+        for diff_eq, res in self.correct_diff_eqs().items():
+            txt = self._fmt_success("Correct") if res else self._fmt_failed("Failed")
+            report.append(f"\n### d{diff_eq}dt: {txt}")
+
+            if res:
+                continue
+            for k, v in self.per_variable[diff_eq].items():
+                match v:
+                    case bool():
+                        continue
+                    case None:
+                        report.append(f"\n- {k}")
+                        report.append("  - Failed to parse")
+                    case Failure(expected, obtained):
+                        report.append(f"\n- {k}")
+                        report.append(f"  - expected: {_latex_view(expected)}")
+                        report.append(f"  - obtained: {_latex_view(obtained)}")
+                        report.append(f"  - difference: {_latex_view(v.difference)}")
+
+        return MdText(report)
 
 
 @dataclass(kw_only=True, slots=True)
@@ -2182,3 +2248,52 @@ class Model:
                 n = dv.fn(*(dependent[i] for i in dv.args))
                 dxdt[k] += n * dependent[flux]
         return dxdt
+
+    ##########################################################################
+    # Check units
+    ##########################################################################
+
+    def check_units(self, time_unit: Quantity) -> UnitCheck:
+        """Check unit consistency per differential equation and reaction."""
+        units_per_fn = {}
+        for name, rxn in self._reactions.items():
+            unit_per_arg = {}
+            for arg in rxn.args:
+                if (par := self._parameters.get(arg)) is not None:
+                    unit_per_arg[sympy.Symbol(arg)] = par.unit
+                elif (var := self._variables.get(arg)) is not None:
+                    unit_per_arg[sympy.Symbol(arg)] = var.unit
+                else:
+                    raise NotImplementedError
+
+            symbolic_fn = fn_to_sympy(
+                rxn.fn,
+                origin="unit-checking",
+                model_args=list_of_symbols(rxn.args),
+            )
+            units_per_fn[name] = None
+            if symbolic_fn is None:
+                continue
+            if any(i is None for i in unit_per_arg.values()):
+                continue
+            units_per_fn[name] = symbolic_fn.subs(unit_per_arg)
+
+        check_per_variable = {}
+        for name, var in self._variables.items():
+            check_per_rxn = {}
+
+            if (var_unit := var.unit) is None:
+                break
+
+            for rxn in self.get_stoichiometries_of_variable(name):
+                if (rxn_unit := units_per_fn.get(rxn)) is None:
+                    check_per_rxn[rxn] = None
+                elif unit_of(rxn_unit) == var_unit / time_unit:  # type: ignore
+                    check_per_rxn[rxn] = True
+                else:
+                    check_per_rxn[rxn] = Failure(
+                        expected=unit_of(rxn_unit),
+                        obtained=var_unit / time_unit,  # type: ignore
+                    )
+            check_per_variable[name] = check_per_rxn
+        return UnitCheck(check_per_variable)
