@@ -36,6 +36,7 @@ from sympy.physics.units import (
     watt,
     weber,
 )
+from sympy.physics.units.quantities import Quantity
 
 __all__ = [
     "ampere",
@@ -126,3 +127,7 @@ sievert = joule / kilogram  # type: ignore
 lumen = candela * steradian  # type: ignore
 dimensionless = None
 item = 1  # pseudounit for one thing
+
+# Plant units
+mol_chl = Quantity("mol_chl", abbrev="mol_chl")
+mmol_mol_chl = mmol / mol_chl
