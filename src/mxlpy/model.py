@@ -45,10 +45,14 @@ __all__ = [
     "ArityMismatchError",
     "CircularDependencyError",
     "Dependency",
+    "Failure",
+    "MdText",
     "MissingDependenciesError",
     "Model",
     "ModelCache",
     "TableView",
+    "UnitCheck",
+    "unit_of",
 ]
 
 
@@ -59,21 +63,27 @@ def _latex_view(expr: sympy.Expr | None) -> str:
 
 
 def unit_of(expr: sympy.Expr) -> sympy.Expr:
+    """Get unit of sympy expr."""
     return expr.as_coeff_Mul()[1]
 
 
 @dataclass
 class Failure:
+    """Unit test failure."""
+
     expected: sympy.Expr
     obtained: sympy.Expr
 
     @property
     def difference(self) -> sympy.Expr:
+        """Difference between expected and obtained unit."""
         return self.expected / self.obtained  # type: ignore
 
 
 @dataclass
 class MdText:
+    """Generic markdown text."""
+
     content: list[str]
 
     def _repr_markdown_(self) -> str:
@@ -82,6 +92,8 @@ class MdText:
 
 @dataclass
 class UnitCheck:
+    """Container for unit check."""
+
     per_variable: dict[str, dict[str, bool | Failure | None]]
 
     @staticmethod
@@ -93,12 +105,14 @@ class UnitCheck:
         return f"<span style='color: red'>{s}</span>"
 
     def correct_diff_eqs(self) -> dict[str, bool]:
+        """Get all correctly annotated reactions by variable."""
         return {
             var: all(isinstance(i, bool) for i in checks.values())
             for var, checks in self.per_variable.items()
         }
 
     def report(self) -> MdText:
+        """Export check as markdown report."""
         report = ["## Type check"]
         for diff_eq, res in self.correct_diff_eqs().items():
             txt = self._fmt_success("Correct") if res else self._fmt_failed("Failed")
