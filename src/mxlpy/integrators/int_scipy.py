@@ -14,6 +14,8 @@ from mxlpy.types import Array, ArrayLike
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from mxlpy.types import Rhs
+
 
 __all__ = [
     "Scipy",
@@ -40,13 +42,13 @@ class Scipy:
 
     """
 
-    rhs: Callable
-    y0: ArrayLike
+    rhs: Rhs
+    y0: tuple[float, ...]
     jacobian: Callable | None = None
     atol: float = 1e-8
     rtol: float = 1e-8
     t0: float = 0.0
-    _y0_orig: ArrayLike = field(default_factory=list)
+    _y0_orig: tuple[float, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         """Create copy of initial state.
@@ -55,12 +57,12 @@ class Scipy:
         This is useful for preserving the original initial state for future reference or reset operations.
 
         """
-        self._y0_orig = self.y0.copy()
+        self._y0_orig = self.y0
 
     def reset(self) -> None:
         """Reset the integrator."""
         self.t0 = 0
-        self.y0 = self._y0_orig.copy()
+        self.y0 = self._y0_orig
 
     def integrate(
         self,

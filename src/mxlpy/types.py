@@ -54,6 +54,7 @@ __all__ = [
     "ResponseCoefficientsByPars",
     "Result",
     "RetType",
+    "Rhs",
     "SteadyStateScan",
     "TimeCourseScan",
     "Variable",
@@ -64,7 +65,13 @@ __all__ = [
 type RateFn = Callable[..., float]
 type Array = NDArray[np.floating[Any]]
 type ArrayLike = NDArray[np.floating[Any]] | pd.Index | list[float]
-
+type Rhs = Callable[
+    [
+        float,  # t
+        Iterable[float],  # y
+    ],
+    tuple[float, ...],
+]
 
 Param = ParamSpec("Param")
 RetType = TypeVar("RetType")
@@ -120,8 +127,8 @@ class IntegratorProtocol(Protocol):
 
     def __init__(
         self,
-        rhs: Callable,
-        y0: ArrayLike,
+        rhs: Rhs,
+        y0: tuple[float, ...],
         jacobian: Callable | None = None,
     ) -> None:
         """Initialise the integrator."""
@@ -157,7 +164,12 @@ class IntegratorProtocol(Protocol):
 
 
 type IntegratorType = Callable[
-    [Callable, ArrayLike, Callable | None], IntegratorProtocol
+    [
+        Rhs,  # model
+        tuple[float, ...],  # y0
+        Callable | None,  # jacobian
+    ],
+    IntegratorProtocol,
 ]
 
 

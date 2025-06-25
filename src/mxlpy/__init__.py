@@ -54,7 +54,7 @@ from . import (
     sbml,
     units,
 )
-from .integrators import DefaultIntegrator, Scipy
+from .integrators import DefaultIntegrator, Diffrax, Scipy
 from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
 from .mc import Cache
@@ -84,6 +84,7 @@ __all__ = [
     "Cache",
     "DefaultIntegrator",
     "Derived",
+    "Diffrax",
     "IntegratorProtocol",
     "LabelMapper",
     "LinearLabelMapper",
