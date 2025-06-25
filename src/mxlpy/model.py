@@ -2137,7 +2137,7 @@ class Model:
     # Get rhs
     ##########################################################################
 
-    def __call__(self, /, time: float, variables: Array) -> Array:
+    def __call__(self, /, time: float, variables: Array) -> tuple[float, ...]:
         """Simulation version of get_right_hand_side.
 
         Examples:
@@ -2145,7 +2145,7 @@ class Model:
                 np.array([0.1, 0.2])
 
         Warning: Swaps t and y!
-        This can't get kw-only args, as the integrators call it with pos-only
+        This can't get kw args, as the integrators call it with pos-only
 
         Args:
             time: The current time point.
@@ -2171,8 +2171,7 @@ class Model:
             cache=cache,
         )
 
-        dxdt = cache.dxdt
-        dxdt[:] = 0
+        dxdt = dict.fromkeys(cache.stoich_by_cpds, 0.0)
         for k, stoc in cache.stoich_by_cpds.items():
             for flux, n in stoc.items():
                 dxdt[k] += n * dependent[flux]
@@ -2180,7 +2179,7 @@ class Model:
             for flux, dv in sd.items():
                 n = dv.calculate(dependent)
                 dxdt[k] += n * dependent[flux]
-        return cast(Array, dxdt.to_numpy())
+        return tuple(dxdt[i] for i in cache.stoich_by_cpds)
 
     def get_right_hand_side(
         self,
