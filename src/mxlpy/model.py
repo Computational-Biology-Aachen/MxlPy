@@ -27,7 +27,6 @@ from mxlpy.meta.sympy_tools import (
 )
 from mxlpy.types import (
     AbstractSurrogate,
-    Array,
     Derived,
     InitialAssignment,
     Parameter,
@@ -2211,7 +2210,7 @@ class Model:
     # Get rhs
     ##########################################################################
 
-    def __call__(self, /, time: float, variables: Array) -> tuple[float, ...]:
+    def __call__(self, /, time: float, variables: Iterable[float]) -> tuple[float, ...]:
         """Simulation version of get_right_hand_side.
 
         Examples:

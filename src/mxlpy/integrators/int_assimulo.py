@@ -17,7 +17,7 @@ with contextlib.redirect_stderr(open(os.devnull, "w")):  # noqa: PTH123
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mxlpy.types import Array, ArrayLike
+    from mxlpy.types import Array, ArrayLike, Rhs
 
 
 __all__ = [
@@ -43,8 +43,8 @@ class Assimulo:
 
     """
 
-    rhs: Callable
-    y0: ArrayLike
+    rhs: Rhs
+    y0: tuple[float, ...]
     jacobian: Callable | None = None
     atol: float = 1e-8
     rtol: float = 1e-8

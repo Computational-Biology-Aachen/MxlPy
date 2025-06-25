@@ -123,7 +123,7 @@ class Simulator:
         y0 = self.y0
         self.integrator = self._integrator_type(
             self.model,
-            [y0[k] for k in self.model.get_variable_names()],
+            tuple(y0[k] for k in self.model.get_variable_names()),
             jac_fn,
         )
 
