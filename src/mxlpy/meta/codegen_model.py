@@ -110,7 +110,8 @@ def _generate_model_code(
         _LOGGER.warning(msg)
 
     # Return
-    ret = ", ".join(f"d{i}dt" for i in diff_eqs) if len(diff_eqs) > 0 else "()"
+    ret_order = [i for i in variables if i in diff_eqs]
+    ret = ", ".join(f"d{i}dt" for i in ret_order) if len(diff_eqs) > 0 else "()"
     source.append(return_template.format(ret))
 
     if end is not None:
