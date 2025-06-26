@@ -444,7 +444,10 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
     if isinstance(node, ast.Name):
         return _handle_name(node, ctx)
     if isinstance(node, ast.Constant):
-        return node.value
+        if isinstance(val := node.value, (float, int)):
+            return sympy.Float(val)
+        msg = "Can only use float values"
+        raise NotImplementedError(msg)
     if isinstance(node, ast.Call):
         return _handle_call(node, ctx=ctx)
     if isinstance(node, ast.Attribute):
