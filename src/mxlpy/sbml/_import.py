@@ -406,25 +406,6 @@ class Parser:
                 reaction.body = function_body
 
 
-def _handle_fn(name: str, body: str, args: list[str]) -> Callable[..., float]:
-    func_args = ", ".join(args)
-    func_str = "\n".join(
-        [
-            f"def {name}({func_args}):",
-            f"{INDENT}return {body}",
-            "",
-        ]
-    )
-    try:
-        exec(func_str, globals(), None)  # noqa: S102
-    except SyntaxError as e:
-        msg = f"Invalid function definition: {func_str}"
-        raise SyntaxError(msg) from e
-    python_func = globals()[name]
-    python_func.__source__ = func_str
-    return python_func  # type: ignore
-
-
 def _codegen_fn(name: str, body: str, args: list[str]) -> str:
     func_args = ", ".join(args)
     return "\n".join(
