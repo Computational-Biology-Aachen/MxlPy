@@ -141,8 +141,8 @@ def test_condition() -> None:
 
     a = sympy.Symbol("a")
     assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
-        (a, a > 1),  # type: ignore
-        (a**2, True),
+        (a, a > 1.0),  # type: ignore
+        (a**2.0, True),
     )
 
 
@@ -155,8 +155,8 @@ def test_condition_2() -> None:
 
     a = sympy.Symbol("a")
     assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
-        (a, a > 1),  # type: ignore
-        (a**2, True),
+        (a, a > 1.0),  # type: ignore
+        (a**2.0, True),
     )
 
 
@@ -170,8 +170,8 @@ def test_condition_assignment_single_return() -> None:
 
     a = sympy.Symbol("a")
     assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
-        (a, a > 1),  # type: ignore
-        (a**2, True),
+        (a, a > 1.0),  # type: ignore
+        (a**2.0, True),
     )
 
 
@@ -186,9 +186,9 @@ def test_condition_elif() -> None:
 
     a = sympy.Symbol("a")
     assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
-        (a, (a > 1) & (a < 2)),  # type: ignore
-        (a / 2, a > 2),  # type: ignore
-        (a**2, True),
+        (a, (a > 1.0) & (a < 2.0)),  # type: ignore
+        (a / 2.0, a > 2.0),  # type: ignore
+        (a**2.0, True),
     )
 
 
@@ -202,9 +202,9 @@ def test_condition_multiple() -> None:
 
     a = sympy.Symbol("a")
     assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
-        (a, (a > 1) & (a < 2)),  # type: ignore
-        (a / 2, a > 2),  # type: ignore
-        (a**2, True),
+        (a, (a > 1.0) & (a < 2.0)),  # type: ignore
+        (a / 2.0, a > 2.0),  # type: ignore
+        (a**2.0, True),
     )
 
 
@@ -219,8 +219,8 @@ def test_condition_assignment() -> None:
 
     a = sympy.Symbol("a")
     assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
-        (a, a > 1),  # type: ignore
-        (a**2, True),
+        (a, a > 1.0),  # type: ignore
+        (a**2.0, True),
     )
 
 
@@ -233,8 +233,8 @@ def test_condition_as_later() -> None:
 
     a = sympy.Symbol("a")
     assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
-        (a, a > 1),  # type: ignore
-        (a**2, True),
+        (a, a > 1.0),  # type: ignore
+        (a**2.0, True),
     )
 
 
@@ -244,8 +244,8 @@ def test_conditional_expression() -> None:
 
     a = sympy.Symbol("a")
     assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
-        (a, a > 1),  # type: ignore
-        (a**2, True),
+        (a, a > 1.0),  # type: ignore
+        (a**2.0, True),
     )
 
 
@@ -254,7 +254,7 @@ def test_fn_call_power() -> None:
         return power(a) * 2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == a**2 * 2  # type: ignore
+    assert fn_to_sympy(fn, origin="test", model_args=[a]) == a**2.0 * 2.0  # type: ignore
 
 
 def test_fn_call_times() -> None:
@@ -262,7 +262,7 @@ def test_fn_call_times() -> None:
         return times(a) * 2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == a * 2 * 2  # type: ignore
+    assert fn_to_sympy(fn, origin="test", model_args=[a]) == a * 2.0 * 2.0  # type: ignore
 
 
 def test_fn_call_add() -> None:
@@ -270,7 +270,7 @@ def test_fn_call_add() -> None:
         return add(a) * 2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == (a + 2) * 2  # type: ignore
+    assert fn_to_sympy(fn, origin="test", model_args=[a]) == (a + 2.0) * 2.0  # type: ignore
 
 
 def test_fn_call_sub() -> None:
@@ -278,7 +278,7 @@ def test_fn_call_sub() -> None:
         return sub(a) * 2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == (a - 2) * 2  # type: ignore
+    assert fn_to_sympy(fn, origin="test", model_args=[a]) == (a - 2.0) * 2.0  # type: ignore
 
 
 def test_fn_call_outside_file() -> None:
