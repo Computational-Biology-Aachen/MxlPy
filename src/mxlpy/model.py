@@ -1713,11 +1713,28 @@ class Model:
             return copy.deepcopy(self._surrogates)
         return self._surrogates
 
-    def get_surrogate_output_names(self) -> list[str]:
-        """Return output names by surrogates."""
+    def get_surrogate_output_names(
+        self,
+        *,
+        include_fluxes: bool = True,
+    ) -> list[str]:
+        """Return output names by surrogates.
+
+        Optionally filter out the names of which surrogate outfluxes are actually
+        fluxes / reactions rather than variables.
+
+        Args:
+            include_fluxes: whether to also include outputs which are reaction
+                            names
+
+        """
         names = []
-        for i in self._surrogates.values():
-            names.extend(i.outputs)
+        if include_fluxes:
+            for i in self._surrogates.values():
+                names.extend(i.outputs)
+        else:
+            for i in self._surrogates.values():
+                names.extend(x for x in i.outputs if x not in i.stoichiometries)
         return names
 
     def get_surrogate_reaction_names(self) -> list[str]:
@@ -1765,7 +1782,8 @@ class Model:
         include_derived_parameters: bool,
         include_derived_variables: bool,
         include_reactions: bool,
-        include_surrogate_outputs: bool,
+        include_surrogate_variables: bool,
+        include_surrogate_fluxes: bool,
         include_readouts: bool,
     ) -> list[str]:
         """Get names of all kinds of model components."""
@@ -1782,8 +1800,10 @@ class Model:
             names.extend(self.get_derived_parameter_names())
         if include_reactions:
             names.extend(self.get_reaction_names())
-        if include_surrogate_outputs:
-            names.extend(self.get_surrogate_output_names())
+        if include_surrogate_variables:
+            names.extend(self.get_surrogate_output_names(include_fluxes=False))
+        if include_surrogate_fluxes:
+            names.extend(self.get_surrogate_reaction_names())
         if include_readouts:
             names.extend(self.get_readout_names())
         return names
@@ -1837,7 +1857,8 @@ class Model:
         include_derived_parameters: bool = True,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = True,
+        include_surrogate_variables: bool = True,
+        include_surrogate_fluxes: bool = True,
         include_readouts: bool = False,
     ) -> pd.Series:
         """Generate a pandas Series of arguments for the model.
@@ -1864,7 +1885,8 @@ class Model:
             include_derived_parameters: Whether to include derived parameters
             include_derived_variables: Whether to include derived variables
             include_reactions: Whether to include reactions
-            include_surrogate_outputs: Whether to include surrogate outputs
+            include_surrogate_variables: Whether to include derive variables obtained from surrogate
+            include_surrogate_fluxes: Whether to include surrogate fluxes
             include_readouts: Whether to include readouts
 
         Returns:
@@ -1890,7 +1912,8 @@ class Model:
                 include_derived_parameters=include_derived_parameters,
                 include_derived_variables=include_derived_variables,
                 include_reactions=include_reactions,
-                include_surrogate_outputs=include_surrogate_outputs,
+                include_surrogate_variables=include_surrogate_variables,
+                include_surrogate_fluxes=include_surrogate_fluxes,
                 include_readouts=include_readouts,
             )
         ]
@@ -1926,7 +1949,8 @@ class Model:
         include_derived_parameters: bool = True,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = True,
+        include_surrogate_variables: bool = True,
+        include_surrogate_fluxes: bool = True,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
         """Generate a DataFrame containing time course arguments for model evaluation.
@@ -1949,7 +1973,8 @@ class Model:
             include_derived_parameters: Whether to include derived parameters
             include_derived_variables: Whether to include derived variables
             include_reactions: Whether to include reactions
-            include_surrogate_outputs: Whether to include surrogate outputs
+            include_surrogate_variables: Whether to include variables derived from surrogates
+            include_surrogate_fluxes: Whether to include surrogate fluxes
             include_readouts: Whether to include readouts
 
         Returns:
@@ -1974,7 +1999,8 @@ class Model:
                 include_derived_parameters=include_derived_parameters,
                 include_derived_variables=include_derived_variables,
                 include_reactions=include_reactions,
-                include_surrogate_outputs=include_surrogate_outputs,
+                include_surrogate_variables=include_surrogate_variables,
+                include_surrogate_fluxes=include_surrogate_fluxes,
                 include_readouts=include_readouts,
             ),
         ]
@@ -2011,15 +2037,19 @@ class Model:
             Fluxes: A pandas Series containing the fluxes for each reaction.
 
         """
-        names = self.get_reaction_names()
-        names.extend(self.get_surrogate_reaction_names())
-
-        args = self.get_args(
+        return self.get_args(
             variables=variables,
             time=time,
+            include_time=False,
+            include_variables=False,
+            include_parameters=False,
+            include_derived_parameters=False,
+            include_derived_variables=False,
+            include_reactions=True,
+            include_surrogate_variables=False,
+            include_surrogate_fluxes=True,
             include_readouts=False,
         )
-        return args.loc[names]
 
     def get_fluxes_time_course(self, variables: pd.DataFrame) -> pd.DataFrame:
         """Generate a time course of fluxes for the given reactions and surrogates.
@@ -2029,7 +2059,9 @@ class Model:
                 pd.DataFrame({"v1": [0.1, 0.2], "v2": [0.2, 0.3]})
 
         This method calculates the fluxes for each reaction in the model using the provided
-        arguments and combines them with the outputs from the surrogates to create a complete
+        arguments and combines them wit      names: list[str] = self.get_reaction_names()
+        for surrogate in self._surrogates.values():
+            names.extend(surrogate.stoichiometries)h the outputs from the surrogates to create a complete
         time course of fluxes.
 
         Args:
@@ -2043,15 +2075,17 @@ class Model:
                           the index of the input arguments.
 
         """
-        names: list[str] = self.get_reaction_names()
-        for surrogate in self._surrogates.values():
-            names.extend(surrogate.stoichiometries)
-
-        variables = self.get_args_time_course(
+        return self.get_args_time_course(
             variables=variables,
+            include_variables=False,
+            include_parameters=False,
+            include_derived_parameters=False,
+            include_derived_variables=False,
+            include_reactions=True,
+            include_surrogate_variables=False,
+            include_surrogate_fluxes=True,
             include_readouts=False,
         )
-        return variables.loc[:, names]
 
     ##########################################################################
     # Get rhs
