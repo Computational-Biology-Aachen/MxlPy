@@ -53,7 +53,7 @@ class MockIntegrator:
     def __init__(
         self,
         rhs: Callable,  # noqa: ARG002
-        y0: ArrayLike,
+        y0: tuple[float, ...],
         jacobian: Callable | None = None,  # noqa: ARG002
     ) -> None:
         self.y0 = y0
