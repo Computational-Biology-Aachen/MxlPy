@@ -467,7 +467,8 @@ class Result:
                     include_derived_parameters=True,
                     include_derived_variables=True,
                     include_reactions=True,
-                    include_surrogate_outputs=True,
+                    include_surrogate_variables=True,
+                    include_surrogate_fluxes=True,
                     include_readouts=True,
                 )
             )
@@ -482,7 +483,8 @@ class Result:
         include_derived_parameters: bool = False,
         include_derived_variables: bool = False,
         include_reactions: bool = False,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
     ) -> list[pd.DataFrame]:
         names = self.model.get_arg_names(
@@ -492,7 +494,8 @@ class Result:
             include_derived_parameters=include_derived_parameters,
             include_derived_variables=include_derived_variables,
             include_reactions=include_reactions,
-            include_surrogate_outputs=include_surrogate_outputs,
+            include_surrogate_variables=include_surrogate_variables,
+            include_surrogate_fluxes=include_surrogate_fluxes,
             include_readouts=include_readouts,
         )
         return [i.loc[:, names] for i in dependent]
@@ -519,7 +522,8 @@ class Result:
         include_derived_parameters: bool = False,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
         concatenated: Literal[False],
         normalise: float | ArrayLike | None = None,
@@ -534,7 +538,8 @@ class Result:
         include_derived_parameters: bool = False,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
         concatenated: Literal[True],
         normalise: float | ArrayLike | None = None,
@@ -549,7 +554,8 @@ class Result:
         include_derived_parameters: bool = False,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
@@ -563,7 +569,8 @@ class Result:
         include_derived_parameters: bool = False,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
@@ -585,7 +592,8 @@ class Result:
             include_derived_parameters=include_derived_parameters,
             include_derived_variables=include_derived_variables,
             include_reactions=include_reactions,
-            include_surrogate_outputs=include_surrogate_outputs,
+            include_surrogate_variables=include_surrogate_variables,
+            include_surrogate_fluxes=include_surrogate_fluxes,
             include_readouts=include_readouts,
         )
         return self._adjust_data(
@@ -707,7 +715,7 @@ class Result:
         fluxes = self._select_data(
             self._compute_args(),
             include_reactions=True,
-            include_surrogate_outputs=include_surrogates,
+            include_surrogate_fluxes=include_surrogates,
         )
         return self._adjust_data(
             fluxes,
@@ -821,7 +829,8 @@ class SteadyStateScan:
         include_derived_parameters: bool = False,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
         """Return steady-state args by scan."""
@@ -833,7 +842,8 @@ class SteadyStateScan:
                     include_derived_parameters=include_derived_parameters,
                     include_derived_variables=include_derived_variables,
                     include_reactions=include_reactions,
-                    include_surrogate_outputs=include_surrogate_outputs,
+                    include_surrogate_variables=include_surrogate_variables,
+                    include_surrogate_fluxes=include_surrogate_fluxes,
                     include_readouts=include_readouts,
                 )
                 .iloc[-1]
@@ -882,7 +892,8 @@ class TimeCourseScan:
         include_derived_parameters: bool = False,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
         """Return all args of the time courses."""
@@ -894,7 +905,8 @@ class TimeCourseScan:
                     include_derived_parameters=include_derived_parameters,
                     include_derived_variables=include_derived_variables,
                     include_reactions=include_reactions,
-                    include_surrogate_outputs=include_surrogate_outputs,
+                    include_surrogate_variables=include_surrogate_variables,
+                    include_surrogate_fluxes=include_surrogate_fluxes,
                     include_readouts=include_readouts,
                 )
                 for k, i in self.raw_results.items()
@@ -958,7 +970,8 @@ class ProtocolScan:
         include_derived_parameters: bool = False,
         include_derived_variables: bool = True,
         include_reactions: bool = True,
-        include_surrogate_outputs: bool = False,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
         """Return all args of the time courses."""
@@ -970,7 +983,8 @@ class ProtocolScan:
                     include_derived_parameters=include_derived_parameters,
                     include_derived_variables=include_derived_variables,
                     include_reactions=include_reactions,
-                    include_surrogate_outputs=include_surrogate_outputs,
+                    include_surrogate_variables=include_surrogate_variables,
+                    include_surrogate_fluxes=include_surrogate_fluxes,
                     include_readouts=include_readouts,
                 )
                 for k, i in self.raw_results.items()
