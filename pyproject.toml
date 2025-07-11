@@ -41,6 +41,7 @@ dependencies = [
   "pandas>=2.2.3",
   "parameteriser>=0.1.0",
   "pebble>=5.0.7",
+  "pysbml>=0.2.0",
   "python-libsbml>=5.20.4",
   "salib>=1.5.1",
   "scipy>=1.14.1",
@@ -51,6 +52,7 @@ dependencies = [
   "toml>=0.10.2",
   "tqdm>=4.66.6",
   "typing-extensions>=4.12.2",
+  "wadler-lindig>=0.1.7",
 ]
 [project.optional-dependencies]
 torch = [
@@ -66,7 +68,7 @@ keras = [
 [dependency-groups]
 dev = [
   "toml-sort>=0.23.1,<0.24",
-  "ruff>=0.7.1",
+  "ruff>=0.12.2",
   "coverage>=7.6.4",
   "jupyter>=1.1.1",
   "pytest>=8.3.3",
@@ -76,7 +78,7 @@ dev = [
   "mkdocs-jupyter>=0.25.1",
   "mkdocs-material>=9.5.42",
   "pre-commit>=4.0.1",
-  "pyright>=1.1.387",
+  "pyright>=1.1.403",
   "ssort>=0.13.0",
 ]
 
@@ -163,6 +165,7 @@ ignore = [
   "I001", # unsorted imports
   "S101", # assert
   "D",    # all of documentation
+  "N",    # all of naming
 ]
 
 [tool.tomlsort]

@@ -1,6 +1,6 @@
 import pandas as pd
 
-from mxlpy import Derived, Model, fns
+from mxlpy import InitialAssignment, Model, fns
 
 
 def test_derived_initial_from_variable() -> None:
@@ -8,7 +8,7 @@ def test_derived_initial_from_variable() -> None:
     m.add_variables(
         {
             "x": 1.0,
-            "y": Derived(fn=fns.twice, args=["x"]),
+            "y": InitialAssignment(fn=fns.twice, args=["x"]),
         }
     )
 
@@ -35,7 +35,7 @@ def test_derived_initial_from_derived() -> None:
     m.add_variables(
         {
             "x": 1.0,
-            "y": Derived(fn=fns.twice, args=["d1"]),
+            "y": InitialAssignment(fn=fns.twice, args=["d1"]),
         }
     )
     m.add_derived(
@@ -65,7 +65,7 @@ def test_derived_initial_from_rate() -> None:
     m.add_variables(
         {
             "x": 1.0,
-            "y": Derived(fn=fns.twice, args=["v1"]),
+            "y": InitialAssignment(fn=fns.twice, args=["v1"]),
         }
     )
     m.add_reaction(

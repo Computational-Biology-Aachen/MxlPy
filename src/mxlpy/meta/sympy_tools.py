@@ -50,12 +50,12 @@ def sympy_to_inline_py(expr: sympy.Expr) -> str:
     'x**2 + 2*x + 1'
 
     """
-    return cast(str, pycode(expr, fully_qualified_modules=True))
+    return cast(str, pycode(expr, fully_qualified_modules=True, full_prec=False))
 
 
 def sympy_to_inline_rust(expr: sympy.Expr) -> str:
     """Create rust code from sympy expression."""
-    return cast(str, rust_code(expr))
+    return cast(str, rust_code(expr, full_prec=False))
 
 
 def sympy_to_python_fn(
@@ -93,8 +93,8 @@ def sympy_to_python_fn(
     fn_args = ", ".join(f"{i}: float" for i in args)
 
     return f"""def {fn_name}({fn_args}) -> float:
-    return {pycode(expr)}
-    """
+    return {pycode(expr, fully_qualified_modules=True, full_prec=False)}
+    """.replace("math.factorial", "scipy.special.factorial")
 
 
 def stoichiometries_to_sympy(
@@ -114,4 +114,4 @@ def stoichiometries_to_sympy(
             expr = expr + sympy_fn * sympy.Symbol(rxn_name)  # type: ignore
         else:
             expr = expr + rxn_stoich * sympy.Symbol(rxn_name)  # type: ignore
-    return expr
+    return expr.subs(1.0, 1)  # type: ignore

@@ -10,7 +10,7 @@ import numpy as np
 
 from mxlpy.meta.source_tools import get_fn_ast
 from mxlpy.sbml._data import AtomicUnit, Compartment
-from mxlpy.types import Derived
+from mxlpy.types import Derived, InitialAssignment
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -448,7 +448,7 @@ def _create_sbml_variables(
         cpd.setBoundaryCondition(False)
         cpd.setHasOnlySubstanceUnits(False)
         # cpd.setUnit() # FIXME: implement
-        if isinstance((init := variable.initial_value), Derived):
+        if isinstance((init := variable.initial_value), InitialAssignment):
             ar = sbml_model.createInitialAssignment()
             ar.setId(_convert_id_to_sbml(id_=name, prefix="IA"))
             ar.setName(_convert_id_to_sbml(id_=name, prefix="IA"))
@@ -494,11 +494,19 @@ def _create_sbml_parameters(
         sbml_model : libsbml.Model
 
     """
-    for parameter_id, value in model.get_parameter_values().items():
+    for name, value in model.get_raw_parameters().items():
         k = sbml_model.createParameter()
-        k.setId(_convert_id_to_sbml(id_=parameter_id, prefix="PAR"))
+        k.setId(_convert_id_to_sbml(id_=name, prefix="PAR"))
         k.setConstant(True)
-        k.setValue(float(value))
+
+        if isinstance((init := value.value), InitialAssignment):
+            ar = sbml_model.createInitialAssignment()
+            ar.setId(_convert_id_to_sbml(id_=name, prefix="IA"))
+            ar.setName(_convert_id_to_sbml(id_=name, prefix="IA"))
+            ar.setVariable(_convert_id_to_sbml(id_=name, prefix="IA"))
+            ar.setMath(_sbmlify_fn(init.fn, init.args))
+        else:
+            k.setValue(float(init))
 
 
 def _create_sbml_derived_parameters(*, model: Model, sbml_model: libsbml.Model) -> None:

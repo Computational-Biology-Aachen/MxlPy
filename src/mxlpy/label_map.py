@@ -27,7 +27,6 @@ from mxlpy.model import Model
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from mxlpy.types import Derived
 
 __all__ = [
     "LabelMapper",
@@ -556,7 +555,7 @@ class LabelMapper:
         for name, dp in self.model.get_derived_parameters().items():
             m.add_derived(name, fn=dp.fn, args=dp.args)
 
-        variables: dict[str, float | Derived] = {}
+        variables: dict[str, float] = {}
         for k, v in self.model.get_initial_conditions().items():
             if (isos := isotopomers.get(k)) is None:
                 variables[k] = v

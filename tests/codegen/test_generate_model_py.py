@@ -66,7 +66,7 @@ def test_generate_model_code_py_m_1v_1p_1d_1r() -> None:
         "    p1 = 1.0",
         "    d1 = p1 + v1",
         "    r1 = d1*v1",
-        "    dv1dt = -1.0*r1",
+        "    dv1dt = -r1",
         "    return dv1dt",
     ]
 
@@ -80,8 +80,8 @@ def test_generate_model_code_py_m_2v_1p_1d_1r() -> None:
         "    p1 = 1.0",
         "    d1 = v1 + v2",
         "    r1 = p1*v1",
-        "    dv1dt = -1.0*r1",
-        "    dv2dt = 1.0*r1",
+        "    dv1dt = -r1",
+        "    dv2dt = r1",
         "    return dv1dt, dv2dt",
     ]
 
@@ -96,8 +96,8 @@ def test_generate_model_code_py_m_2v_2p_1d_1r() -> None:
         "    p2 = 2.0",
         "    d1 = v1 + v2",
         "    r1 = p1*v1",
-        "    dv1dt = -1.0*r1",
-        "    dv2dt = 1.0*r1",
+        "    dv1dt = -r1",
+        "    dv2dt = r1",
         "    return dv1dt, dv2dt",
     ]
 
@@ -113,8 +113,8 @@ def test_generate_model_code_py_m_2v_2p_2d_1r() -> None:
         "    d1 = v1 + v2",
         "    d2 = v1*v2",
         "    r1 = p1*v1",
-        "    dv1dt = -1.0*r1",
-        "    dv2dt = 1.0*r1",
+        "    dv1dt = -r1",
+        "    dv2dt = r1",
         "    return dv1dt, dv2dt",
     ]
 
@@ -131,8 +131,8 @@ def test_generate_model_code_py_m_2v_2p_2d_2r() -> None:
         "    d2 = p2*v2",
         "    r1 = d1*v1",
         "    r2 = d2*v2",
-        "    dv1dt = -1.0*r1 + 1.0*r2",
-        "    dv2dt = 1.0*r1 - 1.0*r2",
+        "    dv1dt = -r1 + r2",
+        "    dv2dt = r1 - r2",
         "    return dv1dt, dv2dt",
     ]
 
@@ -156,6 +156,6 @@ def test_generate_model_code_py_m_derived_stoichiometry() -> None:
         "def model(time: float, variables: Iterable[float]) -> Iterable[float]:",
         "    v1 = variables",
         "    r1 = v1",
-        "    dv1dt = 1.0*r1/v1",
+        "    dv1dt = r1/v1",
         "    return dv1dt",
     ]

@@ -40,6 +40,7 @@ __all__ = [
     "Array",
     "ArrayLike",
     "Derived",
+    "InitialAssignment",
     "IntegratorProtocol",
     "IntegratorType",
     "McSteadyStates",
@@ -162,10 +163,19 @@ type IntegratorType = Callable[
 
 
 @dataclass
+class Variable:
+    """Container for variable meta information."""
+
+    initial_value: float | InitialAssignment
+    unit: sympy.Expr | None = None
+    source: str | None = None
+
+
+@dataclass
 class Parameter:
     """Container for parameter meta information."""
 
-    value: float
+    value: float | InitialAssignment
     unit: sympy.Expr | None = None
     source: str | None = None
 
@@ -201,13 +211,35 @@ class Derived:
         args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
 
 
-@dataclass
-class Variable:
-    """Container for variable meta information."""
+@dataclass(kw_only=True, slots=True)
+class InitialAssignment:
+    """Container for a derived value."""
 
-    initial_value: float | Derived
+    fn: RateFn
+    args: list[str]
     unit: sympy.Expr | None = None
-    source: str | None = None
+
+    def calculate(self, args: dict[str, Any]) -> float:
+        """Calculate the derived value.
+
+        Args:
+            args: Dictionary of args variables.
+
+        Returns:
+            The calculated derived value.
+
+        """
+        return cast(float, self.fn(*(args[arg] for arg in self.args)))
+
+    def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
+        """Calculate the derived value in place.
+
+        Args:
+            name: Name of the derived variable.
+            args: Dictionary of args variables.
+
+        """
+        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
 
 
 @dataclass(kw_only=True, slots=True)

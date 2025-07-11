@@ -10,7 +10,9 @@ from __future__ import annotations
 import copy
 import inspect
 import itertools as it
+import logging
 from dataclasses import dataclass, field
+from queue import Empty, SimpleQueue
 from typing import TYPE_CHECKING, Self, cast
 
 import numpy as np
@@ -27,6 +29,7 @@ from mxlpy.types import (
     AbstractSurrogate,
     Array,
     Derived,
+    InitialAssignment,
     Parameter,
     Reaction,
     Readout,
@@ -41,11 +44,14 @@ if TYPE_CHECKING:
 
     from mxlpy.types import Callable, Param, RateFn, RetType
 
+LOGGER = logging.getLogger(__name__)
+
 __all__ = [
     "ArityMismatchError",
     "CircularDependencyError",
     "Dependency",
     "Failure",
+    "LOGGER",
     "MdText",
     "MissingDependenciesError",
     "Model",
@@ -308,8 +314,6 @@ def _sort_dependencies(
         SortError: If circular dependencies are detected
 
     """
-    from queue import Empty, SimpleQueue
-
     _check_if_is_sortable(available, elements)
 
     order = []
@@ -371,8 +375,10 @@ class ModelCache:
 
     """
 
+    order: list[str]  # mostly for debug purposes
     var_names: list[str]
     dyn_order: list[str]
+    base_parameter_values: dict[str, float]
     all_parameter_values: dict[str, float]
     stoich_by_cpds: dict[str, dict[str, float]]
     dyn_stoich_by_cpds: dict[str, dict[str, Derived]]
@@ -397,7 +403,7 @@ class Model:
 
     """
 
-    _ids: dict[str, str] = field(default_factory=dict)
+    _ids: dict[str, str] = field(default_factory=dict, repr=False)
     _variables: dict[str, Variable] = field(default_factory=dict)
     _parameters: dict[str, Parameter] = field(default_factory=dict)
     _derived: dict[str, Derived] = field(default_factory=dict)
@@ -423,11 +429,32 @@ class Model:
             ModelCache: An instance of ModelCache containing the initialized cache data.
 
         """
-        all_parameter_values: dict[str, float] = self.get_parameter_values()
-        all_parameter_names: set[str] = set(all_parameter_values)
+        parameter_names = set(self._parameters)
+        all_parameter_names = set(parameter_names)  # later include static derived
+
+        base_parameter_values: dict[str, float] = {
+            k: val
+            for k, v in self._parameters.items()
+            if not isinstance(val := v.value, InitialAssignment)
+        }
+        base_variable_values: dict[str, float] = {
+            k: init
+            for k, v in self._variables.items()
+            if not isinstance(init := v.initial_value, InitialAssignment)
+        }
+        initial_assignments: dict[str, InitialAssignment] = {
+            k: init
+            for k, v in self._variables.items()
+            if isinstance(init := v.initial_value, InitialAssignment)
+        } | {
+            k: init
+            for k, v in self._parameters.items()
+            if isinstance(init := v.value, InitialAssignment)
+        }
 
         # Sanity checks
         for name, el in it.chain(
+            initial_assignments.items(),
             self._derived.items(),
             self._reactions.items(),
             self._readouts.items(),
@@ -436,25 +463,17 @@ class Model:
                 raise ArityMismatchError(name, el.fn, el.args)
 
         # Sort derived & reactions
+        available = (
+            set(base_parameter_values)
+            | set(base_variable_values)
+            | set(self._data)
+            | {"time"}
+        )
         to_sort = (
-            self._derived
-            | self._reactions
-            | self._surrogates
-            | {
-                k: init
-                for k, v in self._variables.items()
-                if isinstance(init := v.initial_value, Derived)
-            }
+            initial_assignments | self._derived | self._reactions | self._surrogates
         )
         order = _sort_dependencies(
-            available=all_parameter_names
-            | {
-                k
-                for k, v in self._variables.items()
-                if not isinstance(v.initial_value, Derived)
-            }
-            | set(self._data)
-            | {"time"},
+            available=available,
             elements=[
                 Dependency(name=k, required=set(v.args), provided={k})
                 if not isinstance(v, AbstractSurrogate)
@@ -466,14 +485,7 @@ class Model:
         # Calculate all values once, including dynamic ones
         # That way, we can make initial conditions dependent on e.g. rates
         dependent = (
-            all_parameter_values
-            | self._data
-            | {
-                k: init
-                for k, v in self._variables.items()
-                if not isinstance(init := v.initial_value, Derived)
-            }
-            | {"time": 0.0}
+            base_parameter_values | base_variable_values | self._data | {"time": 0.0}
         )
         for name in order:
             to_sort[name].calculate_inpl(name, dependent)
@@ -484,7 +496,7 @@ class Model:
         for name in order:
             if name in self._reactions or name in self._surrogates:
                 dyn_order.append(name)
-            elif name in self._variables:
+            elif name in self._variables or name in self._parameters:
                 static_order.append(name)
             else:
                 derived = self._derived[name]
@@ -528,22 +540,23 @@ class Model:
         dxdt = pd.Series(np.zeros(len(var_names), dtype=float), index=var_names)
 
         initial_conditions: dict[str, float] = {
-            k: init
-            for k, v in self._variables.items()
-            if not isinstance(init := v.initial_value, Derived)
+            k: cast(float, dependent[k]) for k in self._variables
         }
+        all_parameter_values = dict(base_parameter_values)
         for name in static_order:
             if name in self._variables:
-                initial_conditions[name] = cast(float, dependent[name])
-            elif name in self._derived:
+                continue  # handled in initial_conditions above
+            if name in self._parameters or name in self._derived:
                 all_parameter_values[name] = cast(float, dependent[name])
             else:
                 msg = "Unknown target for static derived variable."
                 raise KeyError(msg)
 
         self._cache = ModelCache(
+            order=order,
             var_names=var_names,
             dyn_order=dyn_order,
+            base_parameter_values=base_parameter_values,
             all_parameter_values=all_parameter_values,
             stoich_by_cpds=stoich_by_compounds,
             dyn_stoich_by_cpds=dyn_stoich_by_compounds,
@@ -609,14 +622,25 @@ class Model:
     def parameters(self) -> TableView:
         """Return view of parameters."""
         index = list(self._parameters.keys())
-        data = [
-            {
-                "value": el.value,
-                "unit": _latex_view(unit) if (unit := el.unit) is not None else "",
-                # "source": ...,
-            }
-            for el in self._parameters.values()
-        ]
+        data = []
+        for name, el in self._parameters.items():
+            if isinstance(init := el.value, InitialAssignment):
+                value_str = _latex_view(
+                    fn_to_sympy(
+                        init.fn,
+                        origin=name,
+                        model_args=list_of_symbols(init.args),
+                    )
+                )
+            else:
+                value_str = str(init)
+            data.append(
+                {
+                    "value": value_str,
+                    "unit": _latex_view(unit) if (unit := el.unit) is not None else "",
+                    # "source": ...,
+                }
+            )
         return TableView(data=pd.DataFrame(data, index=index))
 
     def get_raw_parameters(self, *, as_copy: bool = True) -> dict[str, Parameter]:
@@ -637,7 +661,9 @@ class Model:
                   and the values are parameter values (as floats).
 
         """
-        return {k: v.value for k, v in self._parameters.items()}
+        if (cache := self._cache) is None:
+            cache = self._create_cache()
+        return cache.base_parameter_values
 
     def get_parameter_names(self) -> list[str]:
         """Retrieve the names of the parameters.
@@ -660,7 +686,7 @@ class Model:
     def add_parameter(
         self,
         name: str,
-        value: float,
+        value: float | InitialAssignment,
         unit: sympy.Expr | None = None,
         source: str | None = None,
     ) -> Self:
@@ -683,7 +709,9 @@ class Model:
         self._parameters[name] = Parameter(value=value, unit=unit, source=source)
         return self
 
-    def add_parameters(self, parameters: Mapping[str, float | Parameter]) -> Self:
+    def add_parameters(
+        self, parameters: Mapping[str, float | Parameter | InitialAssignment]
+    ) -> Self:
         """Adds multiple parameters to the model.
 
         Examples:
@@ -751,7 +779,7 @@ class Model:
     def update_parameter(
         self,
         name: str,
-        value: float | None = None,
+        value: float | InitialAssignment | None = None,
         *,
         unit: sympy.Expr | None = None,
         source: str | None = None,
@@ -775,7 +803,7 @@ class Model:
 
         """
         if name not in self._parameters:
-            msg = f"'{name}' not found in parameters"
+            msg = f"{name!r} not found in parameters"
             raise KeyError(msg)
 
         parameter = self._parameters[name]
@@ -787,7 +815,9 @@ class Model:
             parameter.source = source
         return self
 
-    def update_parameters(self, parameters: Mapping[str, float | Parameter]) -> Self:
+    def update_parameters(
+        self, parameters: Mapping[str, float | Parameter | InitialAssignment]
+    ) -> Self:
         """Update multiple parameters of the model.
 
         Examples:
@@ -821,7 +851,17 @@ class Model:
             Self: The instance of the class with the updated parameter.
 
         """
-        return self.update_parameter(name, self._parameters[name].value * factor)
+        old = self._parameters[name].value
+        if isinstance(old, InitialAssignment):
+            LOGGER.warning("Overwriting initial assignment %s", name)
+            if (cache := self._cache) is None:
+                cache = self._create_cache()
+
+            return self.update_parameter(
+                name, cache.all_parameter_values[name] * factor
+            )
+
+        return self.update_parameter(name, old * factor)
 
     def scale_parameters(self, parameters: dict[str, float]) -> Self:
         """Scales the parameters of the model.
@@ -923,7 +963,7 @@ class Model:
         index = list(self._variables.keys())
         data = []
         for name, el in self._variables.items():
-            if isinstance(init := el.initial_value, Derived):
+            if isinstance(init := el.initial_value, InitialAssignment):
                 value_str = _latex_view(
                     fn_to_sympy(
                         init.fn,
@@ -989,7 +1029,7 @@ class Model:
     def add_variable(
         self,
         name: str,
-        initial_value: float | Derived,
+        initial_value: float | InitialAssignment,
         unit: sympy.Expr | None = None,
         source: str | None = None,
     ) -> Self:
@@ -1015,7 +1055,7 @@ class Model:
         return self
 
     def add_variables(
-        self, variables: Mapping[str, float | Variable | Derived]
+        self, variables: Mapping[str, float | Variable | InitialAssignment]
     ) -> Self:
         """Adds multiple variables to the model with their initial conditions.
 
@@ -1081,7 +1121,7 @@ class Model:
     def update_variable(
         self,
         name: str,
-        initial_value: float | Derived,
+        initial_value: float | InitialAssignment,
         unit: sympy.Expr | None = None,
         source: str | None = None,
     ) -> Self:
@@ -1115,7 +1155,7 @@ class Model:
         return self
 
     def update_variables(
-        self, variables: Mapping[str, float | Derived | Variable]
+        self, variables: Mapping[str, float | Variable | InitialAssignment]
     ) -> Self:
         """Updates multiple variables in the model.
 
@@ -1184,7 +1224,7 @@ class Model:
         return self
 
     ##########################################################################
-    # Derived - views
+    # Derived
     ##########################################################################
 
     @property

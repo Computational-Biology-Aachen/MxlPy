@@ -62,7 +62,14 @@ from .model import Model
 from .scan import steady_state, time_course, time_course_over_protocol
 from .simulator import Simulator
 from .symbolic import SymbolicModel, to_symbolic_model
-from .types import Derived, IntegratorProtocol, Parameter, Variable, unwrap
+from .types import (
+    Derived,
+    InitialAssignment,
+    IntegratorProtocol,
+    Parameter,
+    Variable,
+    unwrap,
+)
 
 with contextlib.suppress(ImportError):
     from .integrators import Assimulo
@@ -84,6 +91,7 @@ __all__ = [
     "Cache",
     "DefaultIntegrator",
     "Derived",
+    "InitialAssignment",
     "IntegratorProtocol",
     "LabelMapper",
     "LinearLabelMapper",

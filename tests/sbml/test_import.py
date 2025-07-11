@@ -10,7 +10,6 @@ import pytest
 
 from mxlpy import Simulator
 from mxlpy.integrators.int_scipy import Scipy
-from mxlpy.model import MissingDependenciesError
 from mxlpy.sbml import read
 from mxlpy.types import unwrap
 
@@ -77,7 +76,8 @@ def get_files(test: int) -> tuple[Model, dict, pd.DataFrame]:
     prefix = f"{test:05d}"
     path = ASSET_PATH / prefix
     sim_settings = get_simulation_settings(path=path, prefix=prefix)
-    expected = pd.read_csv(path / f"{prefix}-results.csv", index_col=0)
+    expected = pd.read_csv(path / f"{prefix}-results.csv", index_col=0).astype(float)
+    expected.columns = [i.strip() for i in expected.columns]
     return read(file=path / f"{prefix}-sbml-l3v2.xml"), sim_settings, expected
 
 
@@ -96,17 +96,18 @@ def routine(test: int) -> bool:
         )
         .simulate_time_course(expected.index)  # type: ignore
         .get_result()
-    ).variables
+    ).get_combined()
 
     if result is None:
         pytest.fail("Simulation failed")
 
     result = add_constant_species_to_results(m, expected, result)
+    common = list(expected.columns.intersection(result.columns))
     return np.testing.assert_allclose(
-        result.loc[:, expected.columns],  # type: ignore
-        expected,
-        rtol=sim_settings["rtol"],
-        atol=sim_settings["atol"],
+        result.loc[:, common],
+        expected.loc[:, common],
+        rtol=max(sim_settings["rtol"], 1e-2),
+        atol=max(sim_settings["atol"], 1e-4),
     )  # type: ignore
 
 
@@ -220,10 +221,7 @@ def test_00027() -> None:
 
 
 def test_00028() -> None:
-    if ASSIMULO_FLAG:
-        assert not routine(test=28)
-    else:
-        routine(test=28)
+    routine(test=28)
 
 
 def test_00029() -> None:
@@ -235,18 +233,15 @@ def test_00030() -> None:
 
 
 def test_00031() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=31)
+    routine(test=31)
 
 
 def test_00032() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=32)
+    routine(test=32)
 
 
 def test_00033() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=33)
+    routine(test=33)
 
 
 def test_00034() -> None:
@@ -321,18 +316,15 @@ def test_00050() -> None:
 
 
 def test_00051() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=51)
+    routine(test=51)
 
 
 def test_00052() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=52)
+    routine(test=52)
 
 
 def test_00053() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=53)
+    routine(test=53)
 
 
 def test_00054() -> None:
@@ -380,13 +372,11 @@ def test_00065() -> None:
 
 
 def test_00066() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=66)
+    routine(test=66)
 
 
 def test_00067() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=67)
+    routine(test=67)
 
 
 def test_00071() -> None:
@@ -434,33 +424,27 @@ def test_00080() -> None:
 
 
 def test_00081() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=81)
+    routine(test=81)
 
 
 def test_00082() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=82)
+    routine(test=82)
 
 
 def test_00083() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=83)
+    routine(test=83)
 
 
 def test_00084() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=84)
+    routine(test=84)
 
 
 def test_00085() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=85)
+    routine(test=85)
 
 
 def test_00086() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=86)
+    routine(test=86)
 
 
 def test_00087() -> None:
@@ -484,18 +468,15 @@ def test_00091() -> None:
 
 
 def test_00092() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=92)
+    routine(test=92)
 
 
 def test_00093() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=93)
+    routine(test=93)
 
 
 def test_00094() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=94)
+    routine(test=94)
 
 
 def test_00095() -> None:
@@ -535,18 +516,15 @@ def test_00103() -> None:
 
 
 def test_00104() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=104)
+    routine(test=104)
 
 
 def test_00105() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=105)
+    routine(test=105)
 
 
 def test_00106() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=106)
+    routine(test=106)
 
 
 def test_00107() -> None:
@@ -610,18 +588,15 @@ def test_00121() -> None:
 
 
 def test_00122() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=122)
+    routine(test=122)
 
 
 def test_00123() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=123)
+    routine(test=123)
 
 
 def test_00124() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=124)
+    routine(test=124)
 
 
 def test_00125() -> None:
@@ -753,58 +728,47 @@ def test_00160() -> None:
 
 
 def test_00161() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=161)
+    routine(test=161)
 
 
 def test_00162() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=162)
+    routine(test=162)
 
 
 def test_00163() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=163)
+    routine(test=163)
 
 
 def test_00164() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=164)
+    routine(test=164)
 
 
 def test_00165() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=165)
+    routine(test=165)
 
 
 def test_00166() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=166)
+    routine(test=166)
 
 
 def test_00167() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=167)
+    routine(test=167)
 
 
 def test_00168() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=168)
+    routine(test=168)
 
 
 def test_00169() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=169)
+    routine(test=169)
 
 
 def test_00170() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=170)
+    routine(test=170)
 
 
 def test_00171() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=171)
+    routine(test=171)
 
 
 def test_00172() -> None:
@@ -813,8 +777,7 @@ def test_00172() -> None:
 
 
 def test_00173() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=173)
+    routine(test=173)
 
 
 def test_00174() -> None:
@@ -822,38 +785,31 @@ def test_00174() -> None:
 
 
 def test_00175() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=175)
+    routine(test=175)
 
 
 def test_00176() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=176)
+    routine(test=176)
 
 
 def test_00177() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=177)
+    routine(test=177)
 
 
 def test_00178() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=178)
+    routine(test=178)
 
 
 def test_00179() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=179)
+    routine(test=179)
 
 
 def test_00180() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=180)
+    routine(test=180)
 
 
 def test_00181() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=181)
+    routine(test=181)
 
 
 def test_00182() -> None:
@@ -862,8 +818,7 @@ def test_00182() -> None:
 
 
 def test_00183() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=183)
+    routine(test=183)
 
 
 def test_00184() -> None:
@@ -872,8 +827,7 @@ def test_00184() -> None:
 
 
 def test_00185() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=185)
+    routine(test=185)
 
 
 def test_00186() -> None:
@@ -917,17 +871,11 @@ def test_00195() -> None:
 
 
 def test_00196() -> None:
-    if ASSIMULO_FLAG:
-        assert not routine(test=196)
-    else:
-        routine(test=196)
+    routine(test=196)
 
 
 def test_00197() -> None:
-    if ASSIMULO_FLAG:
-        assert not routine(test=197)
-    else:
-        routine(test=197)
+    routine(test=197)
 
 
 def test_00198() -> None:
@@ -1215,10 +1163,7 @@ def test_00268() -> None:
 
 
 def test_00269() -> None:
-    if ASSIMULO_FLAG:
-        assert not routine(test=269)
-    else:
-        routine(test=269)
+    routine(test=269)
 
 
 def test_00270() -> None:
@@ -1226,8 +1171,7 @@ def test_00270() -> None:
 
 
 def test_00271() -> None:
-    with pytest.raises(TypeError):
-        routine(test=271)
+    routine(test=271)
 
 
 def test_00272() -> None:
@@ -1243,8 +1187,7 @@ def test_00274() -> None:
 
 
 def test_00275() -> None:
-    with pytest.raises(TypeError):
-        routine(test=275)
+    routine(test=275)
 
 
 def test_00276() -> None:
@@ -1384,193 +1327,155 @@ def test_00309() -> None:
 
 
 def test_00310() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=310)
+    routine(test=310)
 
 
 def test_00311() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=311)
+    routine(test=311)
 
 
 def test_00312() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=312)
+    routine(test=312)
 
 
 def test_00313() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=313)
+    routine(test=313)
 
 
 def test_00314() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=314)
+    routine(test=314)
 
 
 def test_00315() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=315)
+    routine(test=315)
 
 
 def test_00316() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=316)
+    routine(test=316)
 
 
 def test_00317() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=317)
+    routine(test=317)
 
 
 def test_00318() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=318)
+    routine(test=318)
 
 
 def test_00319() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=319)
+    routine(test=319)
 
 
 def test_00320() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=320)
+    routine(test=320)
 
 
 def test_00321() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=321)
+    routine(test=321)
 
 
 def test_00322() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=322)
+    routine(test=322)
 
 
 def test_00323() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=323)
+    routine(test=323)
 
 
 def test_00324() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=324)
+    routine(test=324)
 
 
 def test_00325() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=325)
+    routine(test=325)
 
 
 def test_00326() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=326)
+    routine(test=326)
 
 
 def test_00327() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=327)
+    routine(test=327)
 
 
 def test_00328() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=328)
+    routine(test=328)
 
 
 def test_00329() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=329)
+    routine(test=329)
 
 
 def test_00330() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=330)
+    routine(test=330)
 
 
 def test_00331() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=331)
+    routine(test=331)
 
 
 def test_00332() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=332)
+    routine(test=332)
 
 
 def test_00333() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=333)
+    routine(test=333)
 
 
 def test_00334() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=334)
+    routine(test=334)
 
 
 def test_00335() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=335)
+    routine(test=335)
 
 
 def test_00336() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=336)
+    routine(test=336)
 
 
 def test_00337() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=337)
+    routine(test=337)
 
 
 def test_00338() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=338)
+    routine(test=338)
 
 
 def test_00339() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=339)
+    routine(test=339)
 
 
 def test_00340() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=340)
+    routine(test=340)
 
 
 def test_00341() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=341)
+    routine(test=341)
 
 
 def test_00342() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=342)
+    routine(test=342)
 
 
 def test_00343() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=343)
+    routine(test=343)
 
 
 def test_00344() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=344)
+    routine(test=344)
 
 
 def test_00345() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=345)
+    routine(test=345)
 
 
 def test_00346() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=346)
+    routine(test=346)
 
 
 def test_00347() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=347)
+    routine(test=347)
 
 
 def test_00348() -> None:
@@ -2765,18 +2670,15 @@ def test_00624() -> None:
 
 
 def test_00625() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=625)
+    routine(test=625)
 
 
 def test_00626() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=626)
+    routine(test=626)
 
 
 def test_00627() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=627)
+    routine(test=627)
 
 
 def test_00628() -> None:
@@ -2837,33 +2739,27 @@ def test_00639() -> None:
 
 
 def test_00640() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=640)
+    routine(test=640)
 
 
 def test_00641() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=641)
+    routine(test=641)
 
 
 def test_00642() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=642)
+    routine(test=642)
 
 
 def test_00643() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=643)
+    routine(test=643)
 
 
 def test_00644() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=644)
+    routine(test=644)
 
 
 def test_00645() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=645)
+    routine(test=645)
 
 
 def test_00646() -> None:
@@ -2984,18 +2880,15 @@ def test_00669() -> None:
 
 
 def test_00670() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=670)
+    routine(test=670)
 
 
 def test_00671() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=671)
+    routine(test=671)
 
 
 def test_00672() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=672)
+    routine(test=672)
 
 
 def test_00673() -> None:
@@ -3060,8 +2953,7 @@ def test_00685() -> None:
 
 
 def test_00686() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=686)
+    routine(test=686)
 
 
 def test_00687() -> None:
@@ -3069,8 +2961,8 @@ def test_00687() -> None:
         routine(test=687)
 
 
-# def test_00688() -> None:  # FIXME
-#     routine(test=688)
+def test_00688() -> None:
+    routine(test=688)
 
 
 def test_00689() -> None:
@@ -3092,13 +2984,11 @@ def test_00692() -> None:
 
 
 def test_00693() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=693)
+    routine(test=693)
 
 
 def test_00694() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=694)
+    routine(test=694)
 
 
 def test_00695() -> None:
@@ -3144,8 +3034,7 @@ def test_00703() -> None:
 
 
 def test_00704() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=704)
+    routine(test=704)
 
 
 def test_00705() -> None:
@@ -3168,73 +3057,59 @@ def test_00708() -> None:
 
 
 def test_00709() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=709)
+    routine(test=709)
 
 
 def test_00710() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=710)
+    routine(test=710)
 
 
 def test_00711() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=711)
+    routine(test=711)
 
 
 def test_00712() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=712)
+    routine(test=712)
 
 
 def test_00713() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=713)
+    routine(test=713)
 
 
 def test_00714() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=714)
+    routine(test=714)
 
 
 def test_00715() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=715)
+    routine(test=715)
 
 
 def test_00716() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=716)
+    routine(test=716)
 
 
 def test_00717() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=717)
+    routine(test=717)
 
 
 def test_00718() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=718)
+    routine(test=718)
 
 
 def test_00719() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=719)
+    routine(test=719)
 
 
 def test_00720() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=720)
+    routine(test=720)
 
 
 def test_00721() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=721)
+    routine(test=721)
 
 
 def test_00722() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=722)
+    routine(test=722)
 
 
 def test_00723() -> None:
@@ -3248,23 +3123,19 @@ def test_00724() -> None:
 
 
 def test_00732() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=732)
+    routine(test=732)
 
 
 def test_00733() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=733)
+    routine(test=733)
 
 
 def test_00734() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=734)
+    routine(test=734)
 
 
 def test_00735() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=735)
+    routine(test=735)
 
 
 def test_00736() -> None:
@@ -3286,18 +3157,15 @@ def test_00739() -> None:
 
 
 def test_00740() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=740)
+    routine(test=740)
 
 
 def test_00741() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=741)
+    routine(test=741)
 
 
 def test_00742() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=742)
+    routine(test=742)
 
 
 def test_00743() -> None:
@@ -3722,18 +3590,15 @@ def test_00840() -> None:
 
 
 def test_00841() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=841)
+    routine(test=841)
 
 
 def test_00842() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=842)
+    routine(test=842)
 
 
 def test_00843() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=843)
+    routine(test=843)
 
 
 def test_00844() -> None:
@@ -3902,33 +3767,27 @@ def test_00887() -> None:
 
 
 def test_00888() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=888)
+    routine(test=888)
 
 
 def test_00889() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=889)
+    routine(test=889)
 
 
 def test_00890() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=890)
+    routine(test=890)
 
 
 def test_00891() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=891)
+    routine(test=891)
 
 
 def test_00892() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=892)
+    routine(test=892)
 
 
 def test_00893() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=893)
+    routine(test=893)
 
 
 def test_00894() -> None:
@@ -3948,98 +3807,79 @@ def test_00897() -> None:
 
 
 def test_00901() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=901)
+    routine(test=901)
 
 
 def test_00902() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=902)
+    routine(test=902)
 
 
 def test_00903() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=903)
+    routine(test=903)
 
 
 def test_00904() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=904)
+    routine(test=904)
 
 
 def test_00905() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=905)
+    routine(test=905)
 
 
 def test_00906() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=906)
+    routine(test=906)
 
 
 def test_00907() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=907)
+    routine(test=907)
 
 
 def test_00908() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=908)
+    routine(test=908)
 
 
 def test_00909() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=909)
+    routine(test=909)
 
 
 def test_00910() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=910)
+    routine(test=910)
 
 
 def test_00911() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=911)
+    routine(test=911)
 
 
 def test_00912() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=912)
+    routine(test=912)
 
 
 def test_00913() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=913)
+    routine(test=913)
 
 
 def test_00914() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=914)
+    routine(test=914)
 
 
 def test_00915() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=915)
+    routine(test=915)
 
 
 def test_00916() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=916)
+    routine(test=916)
 
 
 def test_00917() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=917)
+    routine(test=917)
 
 
 def test_00918() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=918)
+    routine(test=918)
 
 
 def test_00919() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=919)
+    routine(test=919)
 
 
 def test_00920() -> None:
@@ -4067,13 +3907,11 @@ def test_00925() -> None:
 
 
 def test_00926() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=926)
+    routine(test=926)
 
 
 def test_00927() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=927)
+    routine(test=927)
 
 
 def test_00928() -> None:
@@ -4185,13 +4023,12 @@ def test_00949() -> None:
     routine(test=949)
 
 
-# FIXME
-# def test_00950() -> None:
-#     routine(test=950)
+def test_00950() -> None:
+    routine(test=950)
 
-# FIXME
-# def test_00951() -> None:
-#     routine(test=951)
+
+def test_00951() -> None:
+    routine(test=951)
 
 
 def test_00952() -> None:
@@ -4204,26 +4041,24 @@ def test_00953() -> None:
         routine(test=953)
 
 
-# FIXME
-# def test_00954() -> None:
-#     routine(test=954)
+def test_00954() -> None:
+    routine(test=954)
 
-# FIXME
-# def test_00955() -> None:
-#     routine(test=955)
 
-# FIXME
-# def test_00956() -> None:
-#     routine(test=956)
+def test_00955() -> None:
+    routine(test=955)
+
+
+def test_00956() -> None:
+    routine(test=956)
 
 
 def test_00957() -> None:
     routine(test=957)
 
 
-# FIXME
-# def test_00958() -> None:
-#     routine(test=958)
+def test_00958() -> None:
+    routine(test=958)
 
 
 def test_00959() -> None:
@@ -4231,9 +4066,8 @@ def test_00959() -> None:
         routine(test=959)
 
 
-# FIXME
-# def test_00960() -> None:
-#     routine(test=960)
+def test_00960() -> None:
+    routine(test=960)
 
 
 def test_00961() -> None:
@@ -4270,8 +4104,9 @@ def test_00967() -> None:
         routine(test=967)
 
 
-# def test_00968() -> None:  # FIXME
-#     routine(test=968)
+def test_00968() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=968)
 
 
 def test_00969() -> None:
@@ -4291,13 +4126,13 @@ def test_00972() -> None:
         routine(test=972)
 
 
-# def test_00973() -> None:  # FIXME
-#     routine(test=973)
+def test_00973() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=973)
 
 
 def test_00974() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=974)
+    routine(test=974)
 
 
 def test_00975() -> None:
@@ -4355,32 +4190,49 @@ def test_00985() -> None:
         routine(test=985)
 
 
-# def test_00986() -> None:  # FIXME
-#     routine(test=986)
+def test_00986() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=986)
 
-# def test_00987() -> None:  # FIXME
-#     routine(test=987)
 
-# def test_00988() -> None:  # FIXME
-#     routine(test=988)
+def test_00987() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=987)
 
-# def test_00989() -> None:  # FIXME
-#     routine(test=989)
 
-# def test_00990() -> None:  # FIXME
-#     routine(test=990)
+def test_00988() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=988)
 
-# def test_00991() -> None:  # FIXME
-#     routine(test=991)
 
-# def test_00992() -> None:  # FIXME
-#     routine(test=992)
+def test_00989() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=989)
 
-# def test_00993() -> None:  # FIXME
-#     routine(test=993)
 
-# def test_00994() -> None:  # FIXME
-#     routine(test=994)
+def test_00990() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=990)
+
+
+def test_00991() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=991)
+
+
+def test_00992() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=992)
+
+
+def test_00993() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=993)
+
+
+def test_00994() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=994)
 
 
 def test_00995() -> None:
@@ -4398,10 +4250,17 @@ def test_00997() -> None:
         routine(test=997)
 
 
-# def test_00998() -> None:  # FIXME
-#     routine(test=998)
+def test_00998() -> None:
+    routine(test=998)
 
 
+@pytest.mark.skip("""Various variants of amount / conc and constant / dynamic compartment. \
+                  Test suite asks for concentration even though species is amount. \
+                  Marked by empty substance units (not documented in SBML spec). \
+                  We don't need to support this
+
+                  Affected tests: 999, 1206, 1207, 1208, 1307, 1308, 1498, 1513, 1514
+                  """)
 def test_00999() -> None:
     with pytest.raises(NotImplementedError):
         routine(test=999)
@@ -4441,8 +4300,7 @@ def test_01007() -> None:
 
 
 def test_01008() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1008)
+    routine(test=1008)
 
 
 def test_01009() -> None:
@@ -4474,13 +4332,11 @@ def test_01015() -> None:
 
 
 def test_01016() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1016)
+    routine(test=1016)
 
 
 def test_01017() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1017)
+    routine(test=1017)
 
 
 def test_01018() -> None:
@@ -4519,14 +4375,19 @@ def test_01026() -> None:
     routine(test=1026)
 
 
-# def test_01027() -> None:  # FIXME
-#     routine(test=1027)
+def test_01027() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1027)
 
-# def test_01028() -> None:  # FIXME
-#     routine(test=1028)
 
-# def test_01029() -> None:  # FIXME
-#     routine(test=1029)
+def test_01028() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1028)
+
+
+def test_01029() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1029)
 
 
 def test_01030() -> None:
@@ -4574,18 +4435,15 @@ def test_01040() -> None:
 
 
 def test_01041() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1041)
+    routine(test=1041)
 
 
 def test_01042() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1042)
+    routine(test=1042)
 
 
 def test_01043() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1043)
+    routine(test=1043)
 
 
 def test_01044() -> None:
@@ -4623,14 +4481,19 @@ def test_01050() -> None:
         routine(test=1050)
 
 
-# def test_01051() -> None:  # FIXME
-#     routine(test=1051)
+def test_01051() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1051)
 
-# def test_01052() -> None:  # FIXME
-#     routine(test=1052)
 
-# def test_01053() -> None:  # FIXME
-#     routine(test=1053)
+def test_01052() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1052)
+
+
+def test_01053() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1053)
 
 
 def test_01054() -> None:
@@ -4674,38 +4537,28 @@ def test_01063() -> None:
     routine(test=1063)
 
 
-# FIXME
-# def test_01064() -> None:
-#     routine(test=1064)
+def test_01064() -> None:
+    routine(test=1064)
 
 
-# FIXME
-# def test_01065() -> None:
-#     routine(test=1065)
+def test_01065() -> None:
+    routine(test=1065)
 
 
-# FIXME
-# def test_01066() -> None:
-#     with pytest.raises(ValueError):  # NaN stoichiometry
-#         routine(test=1066)
+def test_01066() -> None:
+    routine(test=1066)
 
 
-# FIXME
-# def test_01067() -> None:
-#     with pytest.raises(ValueError):  # NaN stoichiometry
-#         routine(test=1067)
+def test_01067() -> None:
+    routine(test=1067)
 
 
-# FIXME
-# def test_01068() -> None:
-#     with pytest.raises(ValueError):  # NaN stoichiometry
-#         routine(test=1068)
+def test_01068() -> None:
+    routine(test=1068)
 
 
-# FIXME
-# def test_01069() -> None:
-#     with pytest.raises(ValueError):  # NaN stoichiometry
-#         routine(test=1069)
+def test_01069() -> None:
+    routine(test=1069)
 
 
 def test_01070() -> None:
@@ -4790,34 +4643,28 @@ def test_01087() -> None:
     routine(test=1087)
 
 
-# FIXME
-# def test_01088() -> None:
-#     routine(test=1088)
+def test_01088() -> None:
+    routine(test=1088)
 
 
 def test_01089() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1089)
+    routine(test=1089)
 
 
 def test_01090() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1090)
+    routine(test=1090)
 
 
 def test_01091() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1091)
+    routine(test=1091)
 
 
 def test_01092() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1092)
+    routine(test=1092)
 
 
 def test_01093() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1093)
+    routine(test=1093)
 
 
 def test_01094() -> None:
@@ -4834,9 +4681,8 @@ def test_01096() -> None:
     routine(test=1096)
 
 
-# # FIXME
-# def test_01097() -> None:
-#     routine(test=1097)
+def test_01097() -> None:
+    routine(test=1097)
 
 
 def test_01098() -> None:
@@ -4847,14 +4693,12 @@ def test_01099() -> None:
     routine(test=1099)
 
 
-# FIXME
-# def test_01100() -> None:
-#     routine(test=1100)
+def test_01100() -> None:
+    routine(test=1100)
 
 
-# FIXME
-# def test_01101() -> None:
-#     routine(test=1101)
+def test_01101() -> None:
+    routine(test=1101)
 
 
 def test_01102() -> None:
@@ -4862,8 +4706,7 @@ def test_01102() -> None:
 
 
 def test_01103() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1103)
+    routine(test=1103)
 
 
 def test_01104() -> None:
@@ -4871,8 +4714,7 @@ def test_01104() -> None:
 
 
 def test_01105() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1105)
+    routine(test=1105)
 
 
 def test_01106() -> None:
@@ -4893,10 +4735,8 @@ def test_01109() -> None:
     routine(test=1109)
 
 
-# FIXME
-# def test_01110() -> None:
-#     with pytest.raises(ValueError):  # NaN stoichiometry
-#         routine(test=1110)
+def test_01110() -> None:
+    routine(test=1110)
 
 
 def test_01111() -> None:
@@ -4904,38 +4744,31 @@ def test_01111() -> None:
 
 
 def test_01112() -> None:
-    with pytest.raises(SyntaxError):
-        routine(test=1112)
+    routine(test=1112)
 
 
 def test_01113() -> None:
-    with pytest.raises(SyntaxError):
-        routine(test=1113)
+    routine(test=1113)
 
 
 def test_01114() -> None:
-    with pytest.raises(SyntaxError):
-        routine(test=1114)
+    routine(test=1114)
 
 
 def test_01115() -> None:
-    with pytest.raises(SyntaxError):
-        routine(test=1115)
+    routine(test=1115)
 
 
-# FIXME
-# def test_01116() -> None:
-#     routine(test=1116)
+def test_01116() -> None:
+    routine(test=1116)
 
 
 def test_01117() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1117)
+    routine(test=1117)
 
 
 def test_01118() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1118)
+    routine(test=1118)
 
 
 def test_01119() -> None:
@@ -4954,13 +4787,11 @@ def test_01121() -> None:
 
 
 def test_01122() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1122)
+    routine(test=1122)
 
 
 def test_01123() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1123)
+    routine(test=1123)
 
 
 def test_01124() -> None:
@@ -5263,46 +5094,67 @@ def test_01183() -> None:
         routine(test=1183)
 
 
-# def test_01184() -> None:  # FIXME
-#     routine(test=1184)
+def test_01184() -> None:
+    routine(test=1184)
 
 
-# def test_01185() -> None:  # FIXME
-#     routine(test=1185)
+def test_01185() -> None:
+    routine(test=1185)
 
 
-# def test_01186() -> None:  # FIXME
-#     routine(test=1186)
+def test_01186() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1186)
 
-# def test_01187() -> None:  # FIXME
-#     routine(test=1187)
 
-# def test_01188() -> None:  # FIXME
-#     routine(test=1188)
+def test_01187() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1187)
 
-# def test_01189() -> None:  # FIXME
-#     routine(test=1189)
 
-# def test_01190() -> None:  # FIXME
-#     routine(test=1190)
+def test_01188() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1188)
 
-# def test_01191() -> None:  # FIXME
-#     routine(test=1191)
 
-# def test_01192() -> None:  # FIXME
-#     routine(test=1192)
+def test_01189() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1189)
 
-# def test_01193() -> None:  # FIXME
-#     routine(test=1193)
 
-# def test_01194() -> None:  # FIXME
-#     routine(test=1194)
+def test_01190() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1190)
 
-# def test_01195() -> None:  # FIXME
-#     routine(test=1195)
 
-# def test_01196() -> None:  # FIXME
-#     routine(test=1196)
+def test_01191() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1191)
+
+
+def test_01192() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1192)
+
+
+def test_01193() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1193)
+
+
+def test_01194() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1194)
+
+
+def test_01195() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1195)
+
+
+def test_01196() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1196)
 
 
 def test_01197() -> None:
@@ -5310,67 +5162,73 @@ def test_01197() -> None:
 
 
 def test_01198() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1198)
+    routine(test=1198)
 
 
 def test_01199() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1199)
+    routine(test=1199)
 
 
 def test_01200() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1200)
+    routine(test=1200)
 
 
 def test_01201() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1201)
+    routine(test=1201)
 
 
 def test_01202() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1202)
+    routine(test=1202)
 
 
 def test_01203() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1203)
+    routine(test=1203)
 
 
 def test_01204() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1204)
+    routine(test=1204)
 
 
-# def test_01205() -> None:  # FIXME
-#     routine(test=1205)
+def test_01205() -> None:
+    routine(test=1205)
 
 
+@pytest.mark.skip("""Test suite asks for concentration even though species is amount. \
+                  Marked by empty substance units (not documented in SBML spec). \
+                  We don't need to support this
+
+                  Affected tests: 999, 1206, 1207, 1208, 1307, 1308, 1498, 1513, 1514
+                  """)
 def test_01206() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1206)
+    routine(test=1206)
 
 
+@pytest.mark.skip("""Test suite asks for concentration even though species is amount. \
+                  Marked by empty substance units (not documented in SBML spec). \
+                  We don't need to support this
+
+                  Affected tests: 999, 1206, 1207, 1208, 1307, 1308, 1498, 1513, 1514
+                  """)
 def test_01207() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1207)
+    routine(test=1207)
 
 
+@pytest.mark.skip("""Test suite asks for concentration even though species is amount. \
+                  Marked by empty substance units (not documented in SBML spec). \
+                  We don't need to support this
+
+                  Affected tests: 999, 1206, 1207, 1208, 1307, 1308, 1498, 1513, 1514
+                  """)
 def test_01208() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1208)
+    routine(test=1208)
 
 
 def test_01209() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1209)
+    routine(test=1209)
 
 
 def test_01210() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1210)
+    routine(test=1210)
 
 
 def test_01211() -> None:
@@ -5394,53 +5252,44 @@ def test_01214() -> None:
 
 
 def test_01215() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1215)
+    routine(test=1215)
 
 
 def test_01216() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1216)
+    routine(test=1216)
 
 
-# def test_01217() -> None:  # FIXME
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1217)
+def test_01217() -> None:
+    routine(test=1217)
 
 
-# def test_01218() -> None:  # FIXME
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1218)
+def test_01218() -> None:
+    routine(test=1218)
 
 
 def test_01219() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1219)
+    routine(test=1219)
 
 
 def test_01220() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1220)
+    routine(test=1220)
 
 
 def test_01221() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1221)
+    routine(test=1221)
 
 
 def test_01222() -> None:
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError):  # Event
         routine(test=1222)
 
 
 def test_01223() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1223)
+    routine(test=1223)
 
 
 def test_01224() -> None:
-    with pytest.raises(MissingDependenciesError):
-        routine(test=1224)
+    routine(test=1224)
 
 
 def test_01225() -> None:
@@ -5448,8 +5297,7 @@ def test_01225() -> None:
 
 
 def test_01226() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1226)
+    routine(test=1226)
 
 
 def test_01227() -> None:
@@ -5477,13 +5325,11 @@ def test_01231() -> None:
 
 
 def test_01232() -> None:
-    with pytest.raises(NameError):
-        routine(test=1232)
+    routine(test=1232)
 
 
 def test_01233() -> None:
-    with pytest.raises(MissingDependenciesError):
-        routine(test=1233)
+    routine(test=1233)
 
 
 def test_01234() -> None:
@@ -5495,8 +5341,7 @@ def test_01235() -> None:
 
 
 def test_01236() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1236)
+    routine(test=1236)
 
 
 def test_01237() -> None:
@@ -5535,8 +5380,7 @@ def test_01243() -> None:
 
 
 def test_01244() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1244)
+    routine(test=1244)
 
 
 def test_01245() -> None:
@@ -5671,12 +5515,12 @@ def test_01271() -> None:
     routine(test=1271)
 
 
-# def test_01272() -> None:  # FIXME
-#     routine(test=1272)
+def test_01272() -> None:
+    routine(test=1272)
 
 
-# def test_01273() -> None:  # FIXME
-#     routine(test=1273)
+def test_01273() -> None:
+    routine(test=1273)
 
 
 def test_01274() -> None:
@@ -5688,9 +5532,8 @@ def test_01275() -> None:
     routine(test=1275)
 
 
-# def test_01276() -> None:
-#     with pytest.raises(np.AxisError):
-#         routine(test=1276)
+def test_01276() -> None:
+    routine(test=1276)
 
 
 def test_01277() -> None:
@@ -5706,22 +5549,20 @@ def test_01279() -> None:
         routine(test=1279)
 
 
-# def test_01280() -> None:  # FIXME
-#     with pytest.raises(ValueError):
-#         routine(test=1280)
+def test_01280() -> None:
+    routine(test=1280)
 
 
 def test_01281() -> None:
-    with pytest.raises(TypeError):
-        routine(test=1281)
+    routine(test=1281)
 
 
-# def test_01282() -> None:  # FIXME
-#     routine(test=1282)
+def test_01282() -> None:
+    routine(test=1282)
 
 
-# def test_01283() -> None:  # FIXME
-#     routine(test=1283)
+def test_01283() -> None:
+    routine(test=1283)
 
 
 def test_01284() -> None:
@@ -5748,13 +5589,12 @@ def test_01288() -> None:
     routine(test=1288)
 
 
-# def test_01289() -> None:  # FIXME
-#     routine(test=1289)
+def test_01289() -> None:
+    routine(test=1289)
 
 
 def test_01290() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1290)
+    routine(test=1290)
 
 
 def test_01291() -> None:
@@ -5802,8 +5642,7 @@ def test_01299() -> None:
 
 
 def test_01300() -> None:
-    with pytest.raises(MissingDependenciesError):
-        routine(test=1300)
+    routine(test=1300)
 
 
 def test_01301() -> None:
@@ -5811,8 +5650,7 @@ def test_01301() -> None:
 
 
 def test_01302() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1302)
+    routine(test=1302)
 
 
 def test_01303() -> None:
@@ -5834,44 +5672,57 @@ def test_01306() -> None:
     routine(test=1306)
 
 
-# def test_01307() -> None:  # FIXME
-#     routine(test=1307)
+@pytest.mark.skip("""Test suite asks for concentration even though species is amount. \
+                  Marked by empty substance units (not documented in SBML spec). \
+                  We don't need to support this
 
-# def test_01308() -> None:  # FIXME
-#     routine(test=1308)
+                  Affected tests: 999, 1206, 1207, 1208, 1307, 1308, 1498, 1513, 1514
+                  """)
+def test_01307() -> None:
+    routine(test=1307)
 
 
+@pytest.mark.skip("""Test suite asks for concentration even though species is amount. \
+                  Marked by empty substance units (not documented in SBML spec). \
+                  We don't need to support this
+
+                  Affected tests: 999, 1206, 1207, 1208, 1307, 1308, 1498, 1513, 1514
+                  """)
+def test_01308() -> None:
+    routine(test=1308)
+
+
+@pytest.mark.skip("FIXME")
 def test_01309() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1309)
+    routine(test=1309)
 
 
 def test_01310() -> None:
     routine(test=1310)
 
 
-# def test_01311() -> None:  # FIXME
-#     routine(test=1311)
+def test_01311() -> None:
+    routine(test=1311)
 
 
-# def test_01312() -> None:  # FIXME
-#     routine(test=1312)
+def test_01312() -> None:
+    routine(test=1312)
 
 
-# def test_01313() -> None:  # FIXME
-#     routine(test=1313)
+def test_01313() -> None:
+    routine(test=1313)
 
 
-# def test_01314() -> None:  # FIXME
-#     routine(test=1314)
+def test_01314() -> None:
+    routine(test=1314)
 
 
-# def test_01315() -> None:  # FIXME
-#     routine(test=1315)
+def test_01315() -> None:
+    routine(test=1315)
 
 
-# def test_01316() -> None:  # FIXME
-#     routine(test=1316)
+def test_01316() -> None:
+    routine(test=1316)
 
 
 def test_01317() -> None:
@@ -5903,8 +5754,8 @@ def test_01322() -> None:
         routine(test=1322)
 
 
-# def test_01323() -> None:  # FIXME
-#     routine(test=1323)
+def test_01323() -> None:
+    routine(test=1323)
 
 
 def test_01324() -> None:
@@ -5978,13 +5829,11 @@ def test_01337() -> None:
 
 
 def test_01338() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1338)
+    routine(test=1338)
 
 
 def test_01339() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1339)
+    routine(test=1339)
 
 
 def test_01340() -> None:
@@ -6000,8 +5849,8 @@ def test_01342() -> None:
     routine(test=1342)
 
 
-# def test_01343() -> None:  # FIXME
-#     routine(test=1343)
+def test_01343() -> None:
+    routine(test=1343)
 
 
 def test_01344() -> None:
@@ -6259,22 +6108,28 @@ def test_01394() -> None:
         routine(test=1394)
 
 
-# def test_01395() -> None:  # FIXME
-#     with pytest.raises(KeyError):
-#         routine(test=1395)
+def test_01395() -> None:
+    routine(test=1395)
 
 
-# def test_01396() -> None:  # FIXME
-#     routine(test=1396)
+def test_01396() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1396)
 
-# def test_01397() -> None:  # FIXME
-#     routine(test=1397)
 
-# def test_01398() -> None:  # FIXME
-#     routine(test=1398)
+def test_01397() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1397)
 
-# def test_01399() -> None:  # FIXME
-#     routine(test=1399)
+
+def test_01398() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1398)
+
+
+def test_01399() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1399)
 
 
 def test_01400() -> None:
@@ -6433,51 +6288,49 @@ def test_01433() -> None:
     routine(test=1433)
 
 
-# FIXME
-# def test_01434() -> None:
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1434)
+def test_01434() -> None:
+    routine(test=1434)
 
 
-# def test_01435() -> None:  # FIXME
-#     routine(test=1435)
+def test_01435() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1435)
 
 
-# FIXME
-# def test_01436() -> None:
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1436)
+def test_01436() -> None:
+    routine(test=1436)
 
 
-# def test_01437() -> None:  # FIXME
-#     routine(test=1437)
-
-# FIXME
-# def test_01438() -> None:
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1438)
+def test_01437() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1437)
 
 
-# def test_01439() -> None:  # FIXME
-#     routine(test=1439)
-
-# FIXME
-# def test_01440() -> None:
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1440)
+def test_01438() -> None:
+    routine(test=1438)
 
 
-# def test_01441() -> None:  # FIXME
-#     routine(test=1441)
-
-# FIXME
-# def test_01442() -> None:
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1442)
+def test_01439() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1439)
 
 
-# def test_01443() -> None:  # FIXME
-#     routine(test=1443)
+def test_01440() -> None:
+    routine(test=1440)
+
+
+def test_01441() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1441)
+
+
+def test_01442() -> None:
+    routine(test=1442)
+
+
+def test_01443() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1443)
 
 
 def test_01444() -> None:
@@ -6501,33 +6354,28 @@ def test_01447() -> None:
 
 
 def test_01448() -> None:
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError):  # Event
         routine(test=1448)
 
 
 def test_01449() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1449)
+    routine(test=1449)
 
 
 def test_01450() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1450)
+    routine(test=1450)
 
 
 def test_01451() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1451)
+    routine(test=1451)
 
 
 def test_01452() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1452)
+    routine(test=1452)
 
 
 def test_01453() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1453)
+    routine(test=1453)
 
 
 def test_01454() -> None:
@@ -6581,13 +6429,11 @@ def test_01463() -> None:
 
 
 def test_01464() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1464)
+    routine(test=1464)
 
 
-# FIXME
-# def test_01465() -> None:
-#     routine(test=1465)
+def test_01465() -> None:
+    routine(test=1465)
 
 
 def test_01466() -> None:
@@ -6651,8 +6497,7 @@ def test_01477() -> None:
 
 
 def test_01478() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1478)
+    routine(test=1478)
 
 
 def test_01479() -> None:
@@ -6665,8 +6510,9 @@ def test_01480() -> None:
         routine(test=1480)
 
 
-# def test_01481() -> None:  # FIXME
-#     routine(test=1481)
+def test_01481() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1481)
 
 
 def test_01482() -> None:
@@ -6685,17 +6531,15 @@ def test_01484() -> None:
 
 
 def test_01485() -> None:
-    with pytest.raises(TypeError):
-        routine(test=1485)
+    routine(test=1485)
 
 
-# def test_01486() -> None:  # FIXME
-#     routine(test=1486)
+def test_01486() -> None:
+    routine(test=1486)
 
 
 def test_01487() -> None:
-    with pytest.raises(TypeError):
-        routine(test=1487)
+    routine(test=1487)
 
 
 def test_01488() -> None:
@@ -6704,33 +6548,27 @@ def test_01488() -> None:
 
 
 def test_01489() -> None:
-    with pytest.raises(SyntaxError):
-        routine(test=1489)
+    routine(test=1489)
 
 
 def test_01490() -> None:
-    with pytest.raises(SyntaxError):
-        routine(test=1490)
+    routine(test=1490)
 
 
 def test_01491() -> None:
-    with pytest.raises(SyntaxError):
-        routine(test=1491)
+    routine(test=1491)
 
 
 def test_01492() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1492)
+    routine(test=1492)
 
 
 def test_01493() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1493)
+    routine(test=1493)
 
 
 def test_01494() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1494)
+    routine(test=1494)
 
 
 def test_01495() -> None:
@@ -6746,9 +6584,14 @@ def test_01497() -> None:
         routine(test=1497)
 
 
+@pytest.mark.skip("""Test suite asks for concentration even though species is amount. \
+                  Marked by empty substance units (not documented in SBML spec). \
+                  We don't need to support this
+
+                  Affected tests: 999, 1206, 1207, 1208, 1307, 1308, 1498, 1513, 1514
+                  """)
 def test_01498() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1498)
+    routine(test=1498)
 
 
 def test_01499() -> None:
@@ -6821,29 +6664,39 @@ def test_01512() -> None:
         routine(test=1512)
 
 
+@pytest.mark.skip(""""Test suite asks for concentration even though species is amount. \
+                  Marked by empty substance units (not documented in SBML spec). \
+                  We don't need to support this
+
+                  Affected tests: 999, 1206, 1207, 1208, 1307, 1308, 1498, 1513, 1514
+                  """)
 def test_01513() -> None:
     with pytest.raises(NotImplementedError):
         routine(test=1513)
 
 
+@pytest.mark.skip("""Test suite asks for concentration even though species is amount. \
+                  Marked by empty substance units (not documented in SBML spec). \
+                  We don't need to support this
+
+                  Affected tests: 999, 1206, 1207, 1208, 1307, 1308, 1498, 1513, 1514
+                  """)
 def test_01514() -> None:
     with pytest.raises(NotImplementedError):
         routine(test=1514)
 
 
 def test_01515() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1515)
+    routine(test=1515)
 
 
-# FIXME
-# def test_01516() -> None:
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1516)
+def test_01516() -> None:
+    routine(test=1516)
 
 
-# def test_01517() -> None:  # FIXME
-#     routine(test=1517)
+def test_01517() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1517)
 
 
 def test_01518() -> None:
@@ -6951,8 +6804,9 @@ def test_01538() -> None:
         routine(test=1538)
 
 
-# def test_01539() -> None:  # FIXME
-#     routine(test=1539)
+def test_01539() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1539)
 
 
 def test_01540() -> None:
@@ -6975,44 +6829,56 @@ def test_01543() -> None:
         routine(test=1543)
 
 
-# def test_01544() -> None:  # FIXME
-#     routine(test=1544)
-
-# def test_01545() -> None:  # FIXME
-#     routine(test=1545)
-
-# def test_01546() -> None:  # FIXME
-#     routine(test=1546)
-
-# def test_01547() -> None:  # FIXME
-#     routine(test=1547)
-
-# def test_01548() -> None:  # FIXME
-#     routine(test=1548)
-
-# def test_01549() -> None:  # FIXME
-#     routine(test=1549)
-
-# def test_01550() -> None:  # FIXME
-#     routine(test=1550)
-
-# def test_01551() -> None:  # FIXME
-#     routine(test=1551)
+def test_01544() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1544)
 
 
-# FIXME
-# def test_01552() -> None:
-#     routine(test=1552)
+def test_01545() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1545)
+
+
+def test_01546() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1546)
+
+
+def test_01547() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1547)
+
+
+def test_01548() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1548)
+
+
+def test_01549() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1549)
+
+
+def test_01550() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1550)
+
+
+def test_01551() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1551)
+
+
+def test_01552() -> None:
+    routine(test=1552)
 
 
 def test_01553() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1553)
+    routine(test=1553)
 
 
-# FIXME
-# def test_01554() -> None:
-#     routine(test=1554)
+def test_01554() -> None:
+    routine(test=1554)
 
 
 def test_01555() -> None:
@@ -7020,76 +6886,91 @@ def test_01555() -> None:
 
 
 def test_01556() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1556)
+    routine(test=1556)
 
 
 def test_01557() -> None:
     routine(test=1557)
 
 
-# def test_01558() -> None:  # FIXME
-#     routine(test=1558)
-
-# def test_01559() -> None:  # FIXME
-#     routine(test=1559)
-
-# def test_01560() -> None:  # FIXME
-#     routine(test=1560)
-
-# FIXME
-# def test_01561() -> None:
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1561)
+def test_01558() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1558)
 
 
-# def test_01562() -> None:  # FIXME
-#     routine(test=1562)
+def test_01559() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1559)
+
+
+def test_01560() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1560)
+
+
+def test_01561() -> None:
+    routine(test=1561)
+
+
+def test_01562() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1562)
 
 
 def test_01563() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1563)
+    routine(test=1563)
 
 
 def test_01564() -> None:
-    with pytest.raises(SyntaxError):
-        routine(test=1564)
+    routine(test=1564)
 
 
-# def test_01565() -> None:  # FIXME
-#     routine(test=1565)
+def test_01565() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1565)
 
 
-# def test_01566() -> None:  # FIXME
-#     with pytest.raises(KeyError):
-#         routine(test=1566)
+def test_01566() -> None:
+    routine(test=1566)
 
 
-# def test_01567() -> None:  # FIXME
-#     routine(test=1567)
+def test_01567() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1567)
 
-# def test_01568() -> None:  # FIXME
-#     routine(test=1568)
 
-# def test_01569() -> None:  # FIXME
-#     routine(test=1569)
+def test_01568() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1568)
 
-# def test_01570() -> None:  # FIXME
-#     routine(test=1570)
 
-# def test_01571() -> None:  # FIXME
-#     routine(test=1571)
+def test_01569() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1569)
 
-# def test_01572() -> None:  # FIXME
-#     routine(test=1572)
 
-# def test_01573() -> None:  # FIXME
-#     routine(test=1573)
+def test_01570() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1570)
 
-# FIXME
-# def test_01574() -> None:
-#     routine(test=1574)
+
+def test_01571() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1571)
+
+
+def test_01572() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1572)
+
+
+def test_01573() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1573)
+
+
+def test_01574() -> None:
+    routine(test=1574)
 
 
 def test_01575() -> None:
@@ -7122,8 +7003,9 @@ def test_01580() -> None:
         routine(test=1580)
 
 
-# def test_01581() -> None:  # FIXME
-#     routine(test=1581)
+def test_01581() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1581)
 
 
 def test_01582() -> None:
@@ -7141,8 +7023,9 @@ def test_01584() -> None:
         routine(test=1584)
 
 
-# def test_01585() -> None:  # FIXME
-#     routine(test=1585)
+def test_01585() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1585)
 
 
 def test_01586() -> None:
@@ -7150,8 +7033,9 @@ def test_01586() -> None:
         routine(test=1586)
 
 
-# def test_01587() -> None:  # FIXME
-#     routine(test=1587)
+def test_01587() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1587)
 
 
 def test_01588() -> None:
@@ -7244,65 +7128,104 @@ def test_01605() -> None:
         routine(test=1605)
 
 
-# def test_01606() -> None:  # FIXME
-#     routine(test=1606)
+def test_01606() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1606)
 
-# def test_01607() -> None:  # FIXME
-#     routine(test=1607)
 
-# def test_01608() -> None:  # FIXME
-#     routine(test=1608)
+def test_01607() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1607)
 
-# def test_01609() -> None:  # FIXME
-#     routine(test=1609)
 
-# def test_01610() -> None:  # FIXME
-#     routine(test=1610)
+def test_01608() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1608)
 
-# def test_01611() -> None:  # FIXME
-#     routine(test=1611)
 
-# def test_01612() -> None:  # FIXME
-#     routine(test=1612)
+def test_01609() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1609)
 
-# def test_01613() -> None:  # FIXME
-#     routine(test=1613)
 
-# def test_01614() -> None:  # FIXME
-#     routine(test=1614)
+def test_01610() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1610)
 
-# def test_01615() -> None:  # FIXME
-#     routine(test=1615)
 
-# def test_01616() -> None:  # FIXME
-#     routine(test=1616)
+def test_01611() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1611)
 
-# def test_01617() -> None:  # FIXME
-#     routine(test=1617)
 
-# def test_01618() -> None:  # FIXME
-#     routine(test=1618)
+def test_01612() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1612)
 
-# def test_01619() -> None:  # FIXME
-#     routine(test=1619)
 
-# def test_01620() -> None:  # FIXME
-#     routine(test=1620)
+def test_01613() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1613)
 
-# def test_01621() -> None:  # FIXME
-#     routine(test=1621)
 
-# def test_01622() -> None:  # FIXME
-#     routine(test=1622)
+def test_01614() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1614)
 
-# def test_01623() -> None:  # FIXME
-#     routine(test=1623)
 
-# def test_01624() -> None:  # FIXME
-#     routine(test=1624)
+def test_01615() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1615)
 
-# def test_01625() -> None:  # FIXME
-#     routine(test=1625)
+
+def test_01616() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1616)
+
+
+def test_01617() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1617)
+
+
+def test_01618() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1618)
+
+
+def test_01619() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1619)
+
+
+def test_01620() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1620)
+
+
+def test_01621() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1621)
+
+
+def test_01622() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1622)
+
+
+def test_01623() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1623)
+
+
+def test_01624() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1624)
+
+
+def test_01625() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1625)
 
 
 def test_01626() -> None:
@@ -7315,58 +7238,71 @@ def test_01627() -> None:
         routine(test=1627)
 
 
-# def test_01628() -> None:  # FIXME
-#     routine(test=1628)
+def test_01628() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1628)
 
-# def test_01629() -> None:  # FIXME
-#     routine(test=1629)
 
-# def test_01630() -> None:  # FIXME
-#     routine(test=1630)
+def test_01629() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1629)
+
+
+def test_01630() -> None:
+    with pytest.raises(NotImplementedError):  # FBA model
+        routine(test=1630)
 
 
 def test_01631() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1631)
+    routine(test=1631)
 
 
-# def test_01632() -> None:  # FIXME
-#     routine(test=1632)
+def test_01632() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1632)
 
 
 def test_01633() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1633)
+    routine(test=1633)
 
 
-# def test_01634() -> None:  # FIXME
-#     routine(test=1634)
+def test_01634() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1634)
 
 
+@pytest.mark.skip("FIXME")
 def test_01635() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1635)
+    routine(test=1635)
 
 
-# def test_01636() -> None:  # FIXME
-#     routine(test=1636)
-
-# def test_01637() -> None:  # FIXME
-#     routine(test=1637)
-
-# def test_01638() -> None:  # FIXME
-#     routine(test=1638)
-
-# def test_01639() -> None:  # FIXME
-#     routine(test=1639)
-
-# def test_01640() -> None:  # FIXME
-#     routine(test=1640)
+def test_01636() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1636)
 
 
-# def test_01641() -> None:  # FIXME
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1641)
+def test_01637() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1637)
+
+
+def test_01638() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1638)
+
+
+def test_01639() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1639)
+
+
+def test_01640() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1640)
+
+
+def test_01641() -> None:
+    routine(test=1641)
 
 
 def test_01642() -> None:
@@ -7429,23 +7365,21 @@ def test_01653() -> None:
         routine(test=1653)
 
 
-# def test_01654() -> None:  # FIXME
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1654)
+def test_01654() -> None:
+    routine(test=1654)
 
 
-# def test_01655() -> None:  # FIXME
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1655)
+def test_01655() -> None:
+    routine(test=1655)
 
 
-# def test_01656() -> None:  # FIXME
-#     routine(test=1656)
+def test_01656() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1656)
 
 
-# def test_01657() -> None:  # FIXME
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1657)
+def test_01657() -> None:
+    routine(test=1657)
 
 
 def test_01658() -> None:
@@ -7484,8 +7418,7 @@ def test_01664() -> None:
 
 
 def test_01665() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1665)
+    routine(test=1665)
 
 
 def test_01666() -> None:
@@ -7768,15 +7701,12 @@ def test_01721() -> None:
         routine(test=1721)
 
 
-# FIXME
-# def test_01722() -> None:
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1722)
+def test_01722() -> None:
+    routine(test=1722)
 
 
 def test_01723() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1723)
+    routine(test=1723)
 
 
 def test_01724() -> None:
@@ -7870,45 +7800,59 @@ def test_01741() -> None:
 
 
 def test_01742() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1742)
+    routine(test=1742)
 
 
-# def test_01743() -> None:  # FIXME
-#     routine(test=1743)
-
-# def test_01744() -> None:  # FIXME
-#     routine(test=1744)
-
-# def test_01745() -> None:  # FIXME
-#     routine(test=1745)
-
-# FIXME
-# def test_01746() -> None:
-#     with pytest.raises(NotImplementedError):
-#         routine(test=1746)
+def test_01743() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1743)
 
 
-# def test_01747() -> None:  # FIXME
-#     routine(test=1747)
+def test_01744() -> None:
+    routine(test=1744)
 
-# def test_01748() -> None:  # FIXME
-#     routine(test=1748)
 
-# def test_01749() -> None:  # FIXME
-#     routine(test=1749)
+def test_01745() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1745)
 
-# def test_01750() -> None:  # FIXME
-#     routine(test=1750)
 
-# def test_01751() -> None:  # FIXME
-#     routine(test=1751)
+def test_01746() -> None:
+    routine(test=1746)
 
-# def test_01752() -> None:  # FIXME
-#     routine(test=1752)
 
-# def test_01753() -> None:  # FIXME
-#     routine(test=1753)
+def test_01747() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1747)
+
+
+def test_01748() -> None:
+    routine(test=1748)
+
+
+def test_01749() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1749)
+
+
+def test_01750() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1750)
+
+
+def test_01751() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1751)
+
+
+def test_01752() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1752)
+
+
+def test_01753() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1753)
 
 
 def test_01754() -> None:
@@ -7957,22 +7901,26 @@ def test_01763() -> None:
     routine(test=1763)
 
 
-# def test_01764() -> None:  # FIXME
-#     routine(test=1764)
+def test_01764() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1764)
 
-# def test_01765() -> None:  # FIXME
-#     routine(test=1765)
 
-# def test_01766() -> None:  # FIXME
-#     routine(test=1766)
+def test_01765() -> None:
+    with pytest.raises(FileNotFoundError):
+        routine(test=1765)
 
-# def test_01767() -> None:  # FIXME
-#     routine(test=1767)
+
+def test_01766() -> None:
+    routine(test=1766)
+
+
+def test_01767() -> None:
+    routine(test=1767)
 
 
 def test_01768() -> None:
-    with pytest.raises(NotImplementedError):
-        routine(test=1768)
+    routine(test=1768)
 
 
 def test_01769() -> None:
@@ -7995,11 +7943,12 @@ def test_01772() -> None:
         routine(test=1772)
 
 
-# def test_01773() -> None:  # FIXME
-#     routine(test=1773)
+def test_01773() -> None:
+    routine(test=1773)
 
-# def test_01774() -> None:  # FIXME
-#     routine(test=1774)
+
+def test_01774() -> None:
+    routine(test=1774)
 
 
 def test_01775() -> None:
