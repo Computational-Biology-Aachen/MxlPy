@@ -381,7 +381,6 @@ class ModelCache:
     all_parameter_values: dict[str, float]
     stoich_by_cpds: dict[str, dict[str, float]]
     dyn_stoich_by_cpds: dict[str, dict[str, Derived]]
-    dxdt: pd.Series
     initial_conditions: dict[str, float]
 
 
@@ -536,8 +535,6 @@ class Model:
                         d_static[rxn_name] = factor
 
         var_names = self.get_variable_names()
-        dxdt = pd.Series(np.zeros(len(var_names), dtype=float), index=var_names)
-
         initial_conditions: dict[str, float] = {
             k: cast(float, dependent[k]) for k in self._variables
         }
@@ -559,7 +556,6 @@ class Model:
             all_parameter_values=all_parameter_values,
             stoich_by_cpds=stoich_by_compounds,
             dyn_stoich_by_cpds=dyn_stoich_by_compounds,
-            dxdt=dxdt,
             initial_conditions=initial_conditions,
         )
         return self._cache
@@ -2244,7 +2240,7 @@ class Model:
             cache=cache,
         )
 
-        dxdt = dict.fromkeys(cache.stoich_by_cpds, 0.0)
+        dxdt = dict.fromkeys(cache.var_names, 0.0)
         for k, stoc in cache.stoich_by_cpds.items():
             for flux, n in stoc.items():
                 dxdt[k] += n * dependent[flux]
@@ -2252,7 +2248,7 @@ class Model:
             for flux, dv in sd.items():
                 n = dv.calculate(dependent)
                 dxdt[k] += n * dependent[flux]
-        return tuple(dxdt[i] for i in cache.stoich_by_cpds)
+        return tuple(dxdt[i] for i in cache.var_names)
 
     def get_right_hand_side(
         self,

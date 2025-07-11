@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from cycler import cycler
+from matplotlib import colormaps
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.colors import (
@@ -37,6 +38,8 @@ from matplotlib.colors import (
     colorConverter,  # type: ignore
 )
 from matplotlib.figure import Figure
+from matplotlib.legend import Legend
+from matplotlib.patches import Patch
 from mpl_toolkits.mplot3d import Axes3D
 
 from mxlpy.label_map import LabelMapper
@@ -869,11 +872,11 @@ def _create_heatmap(
     if title is not None:
         ax.set_title(title)
     ax.set_xticks(
-        np.arange(0, len(df.columns), 1, dtype=float) + 0.5,
+        np.arange(0, len(df.columns), 1, dtype=float) + 0.5,  # type: ignore
         labels=xticklabels,
     )
     ax.set_yticks(
-        np.arange(0, len(df.index), 1, dtype=float) + 0.5,
+        np.arange(0, len(df.index), 1, dtype=float) + 0.5,  # type: ignore
         labels=yticklabels,
     )
 
@@ -1068,11 +1071,6 @@ def shade_protocol(
     add_legend: bool = True,
 ) -> None:
     """Shade the given protocol on the given axis."""
-    from matplotlib import colormaps
-    from matplotlib.colors import Normalize
-    from matplotlib.legend import Legend
-    from matplotlib.patches import Patch
-
     cmap = colormaps[cmap_name]
     norm = Normalize(
         vmin=protocol.min() if vmin is None else vmin,

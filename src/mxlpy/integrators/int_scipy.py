@@ -145,9 +145,13 @@ class Scipy:
 
         """
         self.reset()
-        integ = spi.ode(self.rhs, jac=self.jacobian)
+
+        # If rhs returns a tuple, we get weird errors, so we need
+        # to wrap this in a list for some reason
+        integ = spi.ode(lambda t, x: list(self.rhs(t, x)), jac=self.jacobian)
         integ.set_integrator(name="lsoda")
         integ.set_initial_value(self.y0)
+
         t = self.t0 + step_size
         y1 = copy.deepcopy(self.y0)
         for _ in range(max_steps):
