@@ -1719,7 +1719,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "parameteriser", specifier = ">=0.1.0" },
     { name = "pebble", specifier = ">=5.0.7" },
-    { name = "pysbml", specifier = ">=0.2.0" },
+    { name = "pysbml", specifier = ">=0.3.0" },
     { name = "python-libsbml", specifier = ">=5.20.4" },
     { name = "salib", specifier = ">=1.5.1" },
     { name = "scipy", specifier = ">=1.14.1" },
@@ -2457,15 +2457,15 @@ wheels = [
 
 [[package]]
 name = "pysbml"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-libsbml" },
     { name = "sympy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/cf/61130a8c6d009d75b4bfb036235dd6532a801f72b4d3da097b4fce081f2c/pysbml-0.2.0.tar.gz", hash = "sha256:14b135d62a513f8a26eec30fd07a1e294db1771ddcc8d2a2b5b79a3c7024da4a", size = 1882655, upload-time = "2025-07-11T09:04:19.795Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/91/41b72b48e9c95e63aadc7a79fc3f548d618cf825b833f092ea4634dff5c6/pysbml-0.3.0.tar.gz", hash = "sha256:19aa1d4c9de96faa3192f88e34670af337f71e2896dfa8bacd5e7ec3e6904b05", size = 1882711, upload-time = "2025-07-14T08:17:08.069Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/71/70/06c09d88851fdfeddace0caf45386176b3f1a2448f09221230e44b1d407f/pysbml-0.2.0-py3-none-any.whl", hash = "sha256:a04a0212ea8805a703caea9f2150c5c30cb0387a5ac2af0e18b4f21e5f286391", size = 27903, upload-time = "2025-07-11T09:04:18.661Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/47/0e52b9333f4019b5a62a3de70b8d1740cb0fc4f617b95f97fe6ee9f5e611/pysbml-0.3.0-py3-none-any.whl", hash = "sha256:bee416440f1d50084ded175d98cb0eab5071a33762941518a65c8d6134a48ea7", size = 27954, upload-time = "2025-07-14T08:17:06.452Z" },
 ]
 
 [[package]]
