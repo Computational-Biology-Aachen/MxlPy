@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Self, cast
 import numpy as np
 import pandas as pd
 import sympy
+from wadler_lindig import pformat
 
 from mxlpy import fns
 from mxlpy.meta.source_tools import fn_to_sympy
@@ -100,6 +101,10 @@ class UnitCheck:
     """Container for unit check."""
 
     per_variable: dict[str, dict[str, bool | Failure | None]]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     @staticmethod
     def _fmt_success(s: str) -> str:
@@ -374,6 +379,10 @@ class ModelCache:
 
     """
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     order: list[str]  # mostly for debug purposes
     var_names: list[str]
     dyn_order: list[str]
@@ -402,14 +411,18 @@ class Model:
     """
 
     _ids: dict[str, str] = field(default_factory=dict, repr=False)
+    _cache: ModelCache | None = field(default=None, repr=False)
     _variables: dict[str, Variable] = field(default_factory=dict)
     _parameters: dict[str, Parameter] = field(default_factory=dict)
     _derived: dict[str, Derived] = field(default_factory=dict)
     _readouts: dict[str, Readout] = field(default_factory=dict)
     _reactions: dict[str, Reaction] = field(default_factory=dict)
     _surrogates: dict[str, AbstractSurrogate] = field(default_factory=dict)
-    _cache: ModelCache | None = None
     _data: dict[str, pd.Series | pd.DataFrame] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     ###########################################################################
     # Cache

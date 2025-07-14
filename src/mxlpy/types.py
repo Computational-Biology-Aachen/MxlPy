@@ -33,6 +33,7 @@ from typing import (
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
+from wadler_lindig import pformat
 
 __all__ = [
     "AbstractEstimator",
@@ -182,6 +183,10 @@ class Variable:
     unit: sympy.Expr | None = None
     source: str | None = None
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
 
 @dataclass
 class Parameter:
@@ -191,6 +196,10 @@ class Parameter:
     unit: sympy.Expr | None = None
     source: str | None = None
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
 
 @dataclass(kw_only=True, slots=True)
 class Derived:
@@ -199,6 +208,10 @@ class Derived:
     fn: RateFn
     args: list[str]
     unit: sympy.Expr | None = None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
@@ -231,6 +244,10 @@ class InitialAssignment:
     args: list[str]
     unit: sympy.Expr | None = None
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
 
@@ -261,6 +278,10 @@ class Readout:
     fn: RateFn
     args: list[str]
     unit: sympy.Expr | None = None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
@@ -293,6 +314,10 @@ class Reaction:
     stoichiometry: Mapping[str, float | Derived]
     args: list[str]
     unit: sympy.Expr | None = None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def get_modifiers(self, model: Model) -> list[str]:
         """Get the modifiers of the reaction."""
@@ -340,6 +365,10 @@ class AbstractSurrogate:
     args: list[str]
     outputs: list[str]
     stoichiometries: dict[str, dict[str, float | Derived]] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     @abstractmethod
     def predict(
@@ -429,6 +458,10 @@ class Result:
     raw_variables: list[pd.DataFrame]
     raw_parameters: list[dict[str, float]]
     raw_args: list[pd.DataFrame] = field(default_factory=list)
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     @classmethod
     def default(cls, model: Model, time_points: Array) -> Result:
@@ -874,6 +907,10 @@ class SteadyStateScan:
 class TimeCourseScan:
     """Container for time courses by scanned values."""
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     to_scan: pd.DataFrame
     raw_results: dict[Hashable, Result]
 
@@ -953,6 +990,10 @@ class ProtocolScan:
     protocol: pd.DataFrame
     raw_results: dict[Hashable, Result]
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     @property
     def variables(self) -> pd.DataFrame:
         """Return all args of the time courses."""
@@ -1031,6 +1072,10 @@ class McSteadyStates:
     fluxes: pd.DataFrame
     parameters: pd.DataFrame
     mc_to_scan: pd.DataFrame
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     @property
     def combined(self) -> pd.DataFrame:
