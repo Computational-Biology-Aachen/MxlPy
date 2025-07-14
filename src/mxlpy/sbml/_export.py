@@ -447,6 +447,7 @@ def _create_sbml_variables(
         cpd.setConstant(False)
         cpd.setBoundaryCondition(False)
         cpd.setHasOnlySubstanceUnits(False)
+        cpd.setCompartment("compartment")
         # cpd.setUnit() # FIXME: implement
         if isinstance((init := variable.initial_value), InitialAssignment):
             ar = sbml_model.createInitialAssignment()
@@ -455,7 +456,7 @@ def _create_sbml_variables(
             ar.setVariable(_convert_id_to_sbml(id_=name, prefix="IA"))
             ar.setMath(_sbmlify_fn(init.fn, init.args))
         else:
-            cpd.setInitialAmount(float(init))
+            cpd.setInitialConcentration(float(init))
 
 
 def _create_sbml_derived_variables(*, model: Model, sbml_model: libsbml.Model) -> None:
@@ -591,8 +592,8 @@ def _default_compartments(
 ) -> dict[str, Compartment]:
     if compartments is None:
         return {
-            "c": Compartment(
-                name="cytosol",
+            "compartment": Compartment(
+                name="compartment",
                 dimensions=3,
                 size=1,
                 units="litre",
