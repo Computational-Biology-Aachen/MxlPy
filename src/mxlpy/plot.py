@@ -213,6 +213,28 @@ def _partition_by_order_of_magnitude(s: pd.Series) -> list[list[str]]:
     ]
 
 
+def _combine_small_groups(
+    groups: list[list[str]], min_group_size: int
+) -> list[list[str]]:
+    """Combine smaller groups."""
+    result = []
+    current_group = groups[0]
+
+    for next_group in groups[1:]:
+        if len(current_group) < min_group_size:
+            current_group.extend(next_group)
+        else:
+            result.append(current_group)
+            current_group = next_group
+
+    # Last group
+    if len(current_group) < min_group_size:
+        result[-1].extend(current_group)
+    else:
+        result.append(current_group)
+    return result
+
+
 def _split_large_groups[T](groups: list[list[T]], max_size: int) -> list[list[T]]:
     """Split groups larger than the given size into smaller groups."""
     return list(
@@ -599,18 +621,20 @@ def bars_autogrouped(
     n_cols: int = 2,
     col_width: float = 4,
     row_height: float = 3,
+    min_group_size: int = 1,
     max_group_size: int = 6,
     grid: bool = True,
     xlabel: str | None = None,
     ylabel: str | None = None,
 ) -> FigAxs:
     """Plot a series or dataframe with lines grouped by order of magnitude."""
-    group_names = _split_large_groups(
+    group_names = (
         _partition_by_order_of_magnitude(s)
         if isinstance(s, pd.Series)
-        else _partition_by_order_of_magnitude(s.max()),
-        max_size=max_group_size,
+        else _partition_by_order_of_magnitude(s.max())
     )
+    group_names = _combine_small_groups(group_names, min_group_size=min_group_size)
+    group_names = _split_large_groups(group_names, max_size=max_group_size)
 
     groups: list[pd.Series] | list[pd.DataFrame] = (
         [s.loc[group] for group in group_names]
@@ -727,6 +751,7 @@ def line_autogrouped(
     n_cols: int = 2,
     col_width: float = 4,
     row_height: float = 3,
+    min_group_size: int = 1,
     max_group_size: int = 6,
     grid: bool = True,
     xlabel: str | None = None,
@@ -736,12 +761,13 @@ def line_autogrouped(
     linestyle: Linestyle | None = None,
 ) -> FigAxs:
     """Plot a series or dataframe with lines grouped by order of magnitude."""
-    group_names = _split_large_groups(
+    group_names = (
         _partition_by_order_of_magnitude(s)
         if isinstance(s, pd.Series)
-        else _partition_by_order_of_magnitude(s.max()),
-        max_size=max_group_size,
+        else _partition_by_order_of_magnitude(s.max())
     )
+    group_names = _combine_small_groups(group_names, min_group_size=min_group_size)
+    group_names = _split_large_groups(group_names, max_size=max_group_size)
 
     groups: list[pd.Series] | list[pd.DataFrame] = (
         [s.loc[group] for group in group_names]
