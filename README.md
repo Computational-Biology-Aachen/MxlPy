@@ -66,3 +66,6 @@ You have two choices here, using `uv` (pypi-only) or using `pixi` (conda-forge, 
 - Run `pixi install --frozen`
 
 
+## LLMs
+
+We support the [llms.txt](https://llmstxt.org/) convention for making documentation available to large language models and the applications that make use of them. It is located at [docs/llms.txt](https://github.com/Computational-Biology-Aachen/MxlPy/tree/main/docs/llms.txt)
