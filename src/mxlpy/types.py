@@ -486,6 +486,7 @@ class Result:
         """Simulation variables."""
         return self.get_variables(
             include_derived_variables=True,
+            include_surrogate_variables=True,
             include_readouts=True,
             concatenated=True,
             normalise=None,
@@ -494,7 +495,9 @@ class Result:
     @property
     def fluxes(self) -> pd.DataFrame:
         """Simulation fluxes."""
-        return self.get_fluxes()
+        return self.get_fluxes(
+            include_surrogates=True,
+        )
 
     def _compute_args(self) -> list[pd.DataFrame]:
         # Already computed
@@ -651,6 +654,7 @@ class Result:
         *,
         include_derived_variables: bool = True,
         include_readouts: bool = True,
+        include_surrogate_variables: bool = True,
         concatenated: Literal[False],
         normalise: float | ArrayLike | None = None,
     ) -> list[pd.DataFrame]: ...
@@ -661,6 +665,7 @@ class Result:
         *,
         include_derived_variables: bool = True,
         include_readouts: bool = True,
+        include_surrogate_variables: bool = True,
         concatenated: Literal[True],
         normalise: float | ArrayLike | None = None,
     ) -> pd.DataFrame: ...
@@ -671,6 +676,7 @@ class Result:
         *,
         include_derived_variables: bool = True,
         include_readouts: bool = True,
+        include_surrogate_variables: bool = True,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
     ) -> pd.DataFrame: ...
@@ -680,6 +686,7 @@ class Result:
         *,
         include_derived_variables: bool = True,
         include_readouts: bool = True,
+        include_surrogate_variables: bool = True,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
     ) -> pd.DataFrame | list[pd.DataFrame]:
@@ -693,7 +700,9 @@ class Result:
             0.000200   0.999800   0.999800
 
         """
-        if not include_derived_variables and not include_readouts:
+        if not (
+            include_derived_variables or include_readouts or include_surrogate_variables
+        ):
             return self._adjust_data(
                 self.raw_variables,
                 normalise=normalise,
@@ -704,6 +713,7 @@ class Result:
             self._compute_args(),
             include_variables=True,
             include_derived_variables=include_derived_variables,
+            include_surrogate_variables=include_surrogate_variables,
             include_readouts=include_readouts,
         )
         return self._adjust_data(
