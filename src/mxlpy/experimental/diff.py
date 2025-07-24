@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from wadler_lindig import pformat
+
 from mxlpy.types import Derived
 
 if TYPE_CHECKING:
@@ -28,6 +30,10 @@ class DerivedDiff:
     args1: list[str] = field(default_factory=list)
     args2: list[str] = field(default_factory=list)
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
 
 @dataclass
 class ReactionDiff:
@@ -37,6 +43,10 @@ class ReactionDiff:
     args2: list[str] = field(default_factory=list)
     stoichiometry1: dict[str, float | Derived] = field(default_factory=dict)
     stoichiometry2: dict[str, float | Derived] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
 
 @dataclass
@@ -55,6 +65,10 @@ class ModelDiff:
     different_surrogates: dict[str, ReactionDiff] = field(default_factory=dict)
     different_readouts: dict[str, DerivedDiff] = field(default_factory=dict)
     different_derived: dict[str, DerivedDiff] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def __str__(self) -> str:
         """Return a human-readable string representation of the diff."""

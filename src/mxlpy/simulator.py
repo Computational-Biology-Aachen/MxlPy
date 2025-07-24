@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Self, cast
 import numpy as np
 import pandas as pd
 from sympy import lambdify
+from wadler_lindig import pformat
 
 from mxlpy.integrators import DefaultIntegrator
 from mxlpy.symbolic import to_symbolic_model
@@ -62,6 +63,10 @@ class Simulator:
     # For resets (e.g. update variable)
     _integrator_type: IntegratorType
     _time_shift: float | None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def __init__(
         self,

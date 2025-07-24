@@ -92,6 +92,10 @@ class MdText:
 
     content: list[str]
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     def _repr_markdown_(self) -> str:
         return "\n".join(self.content)
 
@@ -175,6 +179,10 @@ class Dependency:
     name: str
     required: set[str]
     provided: set[str]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
 
 class MissingDependenciesError(Exception):

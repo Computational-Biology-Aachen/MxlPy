@@ -9,6 +9,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 import pandas as pd
+from wadler_lindig import pformat
 
 from mxlpy import parallel, scan
 
@@ -25,6 +26,10 @@ if TYPE_CHECKING:
 class ReactionTemplate:
     """Template for a reaction in a model."""
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     fn: RateFn
     args: list[str]
     additional_parameters: dict[str, float] = field(default_factory=dict)
@@ -36,6 +41,10 @@ class CarouselSteadyState:
 
     carousel: list[Model]
     results: list[Result]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def get_variables_by_model(self) -> pd.DataFrame:
         """Get the variables of the time course results, indexed by model."""
@@ -50,6 +59,10 @@ class CarouselTimeCourse:
 
     carousel: list[Model]
     results: list[Result]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def get_variables_by_model(self) -> pd.DataFrame:
         """Get the variables of the time course results, indexed by model."""
@@ -75,6 +88,10 @@ class Carousel:
     """A carousel of models with different reaction templates."""
 
     variants: list[Model]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def __init__(
         self,

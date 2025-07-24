@@ -41,6 +41,7 @@ from matplotlib.figure import Figure
 from matplotlib.legend import Legend
 from matplotlib.patches import Patch
 from mpl_toolkits.mplot3d import Axes3D
+from wadler_lindig import pformat
 
 from mxlpy.label_map import LabelMapper
 
@@ -104,6 +105,10 @@ class Axs:
     def __len__(self) -> int:
         """Length of axes."""
         return len(self.axs.flatten())
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     @overload
     def __getitem__(self, row_col: int) -> Axes: ...

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import sympy
+from wadler_lindig import pformat
 
 from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols
 from mxlpy.types import Derived, RateFn
@@ -358,6 +359,10 @@ class TexReaction:
     fn: RateFn
     args: list[str]
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
 
 @dataclass
 class TexExport:
@@ -396,6 +401,10 @@ class TexExport:
     derived: dict[str, Derived]
     reactions: dict[str, TexReaction]
     diff_eqs: dict[str, Mapping[str, float | Derived]]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     @staticmethod
     def _diff_parameters(

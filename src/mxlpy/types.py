@@ -411,6 +411,10 @@ class AbstractEstimator:
 
     parameter_names: list[str]
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     @abstractmethod
     def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
         """Predict the target values for the given features."""
@@ -821,6 +825,10 @@ class ResponseCoefficients:
     variables: pd.DataFrame
     fluxes: pd.DataFrame
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     @property
     def combined(self) -> pd.DataFrame:
         """Return the response coefficients as a DataFrame."""
@@ -839,6 +847,10 @@ class ResponseCoefficientsByPars:
     fluxes: pd.DataFrame
     parameters: pd.DataFrame
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     @property
     def combined(self) -> pd.DataFrame:
         """Return the response coefficients as a DataFrame."""
@@ -856,6 +868,10 @@ class SteadyStateScan:
     to_scan: pd.DataFrame
     raw_index: pd.Index | pd.MultiIndex
     raw_results: list[Result]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     @property
     def variables(self) -> pd.DataFrame:

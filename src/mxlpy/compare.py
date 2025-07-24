@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 import pandas as pd
+from wadler_lindig import pformat
 
 from mxlpy import plot
 from mxlpy.simulator import Simulator
@@ -31,6 +32,10 @@ class SteadyStateComparison:
 
     res1: Result
     res2: Result
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     @property
     def variables(self) -> pd.DataFrame:
@@ -93,6 +98,10 @@ class TimeCourseComparison:
     res1: Result
     res2: Result
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
     # @property
     # def variables(self) -> pd.DataFrame:
     #     """Compare the steady state variables."""
@@ -143,6 +152,10 @@ class ProtocolComparison:
     res1: Result
     res2: Result
     protocol: pd.DataFrame
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     # @property
     # def variables(self) -> pd.DataFrame:

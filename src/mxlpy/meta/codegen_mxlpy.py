@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
 import sympy
+from wadler_lindig import pformat
 
 from mxlpy.meta.sympy_tools import (
     fn_to_sympy,
@@ -43,6 +44,10 @@ class SymbolicFn:
     expr: sympy.Expr
     args: list[str]
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
 
 @dataclass
 class SymbolicVariable:
@@ -50,6 +55,10 @@ class SymbolicVariable:
 
     value: sympy.Float | SymbolicFn  # initial assignment
     unit: Quantity | None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
 
 @dataclass
@@ -59,6 +68,10 @@ class SymbolicParameter:
     value: sympy.Float | SymbolicFn  # initial assignment
     unit: Quantity | None
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
 
 @dataclass
 class SymbolicReaction:
@@ -66,6 +79,10 @@ class SymbolicReaction:
 
     fn: SymbolicFn
     stoichiometry: dict[str, sympy.Float | str | SymbolicFn]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
 
 @dataclass
@@ -76,6 +93,10 @@ class SymbolicRepr:
     parameters: dict[str, SymbolicParameter] = field(default_factory=dict)
     derived: dict[str, SymbolicFn] = field(default_factory=dict)
     reactions: dict[str, SymbolicReaction] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
 
 def _fn_to_symbolic_repr(k: str, fn: Callable, model_args: list[str]) -> SymbolicFn:

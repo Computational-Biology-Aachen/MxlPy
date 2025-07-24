@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 from scipy.optimize import minimize
+from wadler_lindig import pformat
 
 from mxlpy import parallel
 from mxlpy.simulator import Simulator
@@ -61,6 +62,10 @@ class MinResult:
     parameters: dict[str, float]
     residual: float
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
 
 @dataclass
 class FitResult:
@@ -70,12 +75,20 @@ class FitResult:
     best_pars: dict[str, float]
     loss: float
 
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
 
 @dataclass
 class CarouselFit:
     """Result of a carousel fit operation."""
 
     fits: list[FitResult]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def get_best_fit(self) -> FitResult:
         """Get the best fit from the carousel."""

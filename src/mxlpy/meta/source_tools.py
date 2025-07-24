@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, cast
 import dill
 import numpy as np
 import sympy
+from wadler_lindig import pformat
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -173,6 +174,10 @@ class Context:
     origin: str
     modules: dict[str, ModuleType]
     fns: dict[str, Callable]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def updated(
         self,
