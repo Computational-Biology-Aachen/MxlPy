@@ -132,7 +132,7 @@ class Carousel:
             results=results,
         )
 
-    def protocol_time_course(
+    def protocol(
         self,
         protocol: pd.DataFrame,
         *,
@@ -147,6 +147,34 @@ class Carousel:
                     scan._protocol_worker,  # noqa: SLF001
                     protocol=protocol,
                     integrator=integrator,
+                    y0=y0,
+                ),
+                list(enumerate(self.variants)),
+            )
+        ]
+
+        return CarouselTimeCourse(
+            carousel=self.variants,
+            results=results,
+        )
+
+    def protocol_time_course(
+        self,
+        protocol: pd.DataFrame,
+        time_points: Array,
+        *,
+        y0: dict[str, float] | None = None,
+        integrator: IntegratorType | None = None,
+    ) -> CarouselTimeCourse:
+        """Simulate the carousel of models over a protocol time course."""
+        results = [
+            i[1]
+            for i in parallel.parallelise(
+                partial(
+                    scan._protocol_time_course_worker,  # noqa: SLF001
+                    protocol=protocol,
+                    integrator=integrator,
+                    time_points=time_points,
                     y0=y0,
                 ),
                 list(enumerate(self.variants)),
