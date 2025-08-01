@@ -24,9 +24,11 @@ import pandas as pd
 from mxlpy import mca, scan
 from mxlpy.parallel import Cache, parallelise
 from mxlpy.scan import (
+    ProtocolTimeCourseWorker,
     ProtocolWorker,
     SteadyStateWorker,
     TimeCourseWorker,
+    _protocol_time_course_worker,
     _protocol_worker,
     _steady_state_worker,
     _time_course_worker,
@@ -49,11 +51,12 @@ if TYPE_CHECKING:
 __all__ = [
     "ParameterScanWorker",
     "parameter_elasticities",
+    "protocol",
+    "protocol_time_course",
     "response_coefficients",
     "scan_steady_state",
     "steady_state",
     "time_course",
-    "time_course_over_protocol",
     "variable_elasticities",
 ]
 
@@ -229,7 +232,7 @@ def time_course(
     )
 
 
-def time_course_over_protocol(
+def protocol(
     model: Model,
     *,
     protocol: pd.DataFrame,
@@ -273,6 +276,64 @@ def time_course_over_protocol(
                 integrator=integrator,
                 y0=None,
                 time_points_per_step=time_points_per_step,
+            ),
+            model=model,
+        ),
+        inputs=list(mc_to_scan.iterrows()),
+        max_workers=max_workers,
+        cache=cache,
+    )
+    return ProtocolScan(
+        to_scan=mc_to_scan,
+        protocol=protocol,
+        raw_results=dict(res),
+    )
+
+
+def protocol_time_course(
+    model: Model,
+    *,
+    protocol: pd.DataFrame,
+    time_points: Array,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    worker: ProtocolTimeCourseWorker = _protocol_time_course_worker,
+    integrator: IntegratorType | None = None,
+) -> ProtocolScan:
+    """MC time course.
+
+    Examples:
+        >>> protocol_time_course(model, protocol, time_points, mc_to_scan)
+        p    t     x      y
+        0   0.0   0.1    0.00
+            1.0   0.2    0.01
+            2.0   0.3    0.02
+            3.0   0.4    0.03
+            ...   ...    ...
+        1   0.0   0.1    0.00
+            1.0   0.2    0.01
+            2.0   0.3    0.02
+            3.0   0.4    0.03
+
+    Returns:
+        tuple[concentrations, fluxes] using pandas multiindex
+        Both dataframes are of shape (#time_points * #mc_to_scan, #variables)
+
+    """
+    if y0 is not None:
+        model.update_variables(y0)
+
+    res = parallelise(
+        partial(
+            _update_parameters_and_initial_conditions,
+            fn=partial(
+                worker,
+                protocol=protocol,
+                time_points=time_points,
+                integrator=integrator,
+                y0=None,
             ),
             model=model,
         ),
