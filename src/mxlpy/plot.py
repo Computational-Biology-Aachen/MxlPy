@@ -543,7 +543,7 @@ def grid_layout(
     n_rows = math.ceil(n_groups / n_cols)
     figsize = (n_cols * col_width, n_rows * row_height)
 
-    return _default_fig_axs(
+    fig, axs = _default_fig_axs(
         ncols=n_cols,
         nrows=n_rows,
         figsize=figsize,
@@ -551,6 +551,12 @@ def grid_layout(
         sharey=sharey,
         grid=grid,
     )
+
+    # Disable unused plots by default
+    axsl = list(axs)
+    for i in range(n_groups, len(axs)):
+        axsl[i].set_visible(False)
+    return fig, axs
 
 
 ##########################################################################
@@ -612,10 +618,6 @@ def bars_grouped(
             xlabel=xlabel,
             ylabel=ylabel,
         )
-
-    axsl = list(axs)
-    for i in range(len(groups), len(axs)):
-        axsl[i].set_visible(False)
 
     return fig, axs
 
@@ -742,10 +744,6 @@ def lines_grouped(
             xlabel=xlabel,
             ylabel=ylabel,
         )
-
-    axsl = list(axs)
-    for i in range(len(groups), len(axs)):
-        axsl[i].set_visible(False)
 
     return fig, axs
 
