@@ -39,12 +39,14 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "ProtocolTimeCourseWorker",
     "ProtocolWorker",
     "SteadyStateWorker",
     "TimeCourseWorker",
+    "protocol",
+    "protocol_time_course",
     "steady_state",
     "time_course",
-    "time_course_over_protocol",
 ]
 
 
@@ -68,11 +70,6 @@ def _update_parameters_and_initial_conditions[T](
     model.update_variables({k: v for k, v in pd.items() if k in model._variables})  # noqa: SLF001
     model.update_parameters({k: v for k, v in pd.items() if k in model._parameters})  # noqa: SLF001
     return fn(model)
-
-
-###############################################################################
-# Single returns
-###############################################################################
 
 
 ###############################################################################
@@ -121,6 +118,22 @@ class ProtocolWorker(Protocol):
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
         time_points_per_step: int = 10,
+    ) -> Result:
+        """Call the worker function."""
+        ...
+
+
+class ProtocolTimeCourseWorker(Protocol):
+    """Worker function for protocol-based simulations."""
+
+    def __call__(
+        self,
+        model: Model,
+        protocol: pd.DataFrame,
+        time_points: Array,
+        *,
+        integrator: IntegratorType | None,
+        y0: dict[str, float] | None,
     ) -> Result:
         """Call the worker function."""
         ...
@@ -225,6 +238,42 @@ def _protocol_worker(
         protocol.index[-1].total_seconds(),
         len(protocol) * time_points_per_step,
     )
+    return Result.default(model=model, time_points=time_points) if res is None else res
+
+
+def _protocol_time_course_worker(
+    model: Model,
+    protocol: pd.DataFrame,
+    time_points: Array,
+    *,
+    integrator: IntegratorType | None,
+    y0: dict[str, float] | None,
+) -> Result:
+    """Simulate the model over a protocol and return concentrations and fluxes.
+
+    Args:
+        model: Model instance to simulate.
+        y0: Initial conditions as a dictionary {species: value}.
+        protocol: DataFrame containing the protocol steps.
+        time_points: Time points where to return the simulation
+        integrator: Integrator function to use for steady state calculation
+
+    Returns:
+        TimeCourse: Object containing protocol series concentrations and fluxes.
+
+    """
+    try:
+        res = (
+            Simulator(model, integrator=integrator, y0=y0)
+            .simulate_protocol_time_course(
+                protocol=protocol,
+                time_points=time_points,
+            )
+            .get_result()
+        )
+    except ZeroDivisionError:
+        res = None
+
     return Result.default(model=model, time_points=time_points) if res is None else res
 
 
@@ -393,7 +442,7 @@ def time_course(
     )
 
 
-def time_course_over_protocol(
+def protocol(
     model: Model,
     *,
     to_scan: pd.DataFrame,
@@ -446,6 +495,75 @@ def time_course_over_protocol(
                 worker,
                 protocol=protocol,
                 time_points_per_step=time_points_per_step,
+                integrator=integrator,
+                y0=None,
+            ),
+            model=model,
+        ),
+        inputs=list(to_scan.iterrows()),
+        cache=cache,
+        parallel=parallel,
+    )
+    return ProtocolScan(
+        to_scan=to_scan,
+        protocol=protocol,
+        raw_results=dict(res),
+    )
+
+
+def protocol_time_course(
+    model: Model,
+    *,
+    to_scan: pd.DataFrame,
+    protocol: pd.DataFrame,
+    time_points: Array,
+    y0: dict[str, float] | None = None,
+    parallel: bool = True,
+    cache: Cache | None = None,
+    worker: ProtocolTimeCourseWorker = _protocol_time_course_worker,
+    integrator: IntegratorType | None = None,
+) -> ProtocolScan:
+    """Get protocol series for each supplied parameter.
+
+    Examples:
+        >>> scan.time_course_over_protocol(
+        ...     model,
+        ...     parameters=pd.DataFrame({"k2": np.linspace(1, 2, 11)}),
+        ...     protocol=make_protocol(
+        ...         {
+        ...             1: {"k1": 1},
+        ...             2: {"k1": 2},
+        ...         }
+        ...     ),
+        ... )
+
+    Args:
+        model: Model instance to simulate.
+        to_scan: DataFrame containing parameter or initial values to scan.
+        protocol: Protocol to follow for the simulation.
+        time_points: Time points where to return simulation results
+        y0: Initial conditions as a dictionary {variable: value}.
+        parallel: Whether to execute in parallel (default: True).
+        cache: Optional cache to store and retrieve results.
+        worker: Worker function to use for the simulation.
+        integrator: Integrator function to use for steady state calculation
+
+    Returns:
+        TimeCourseByPars: Protocol series results for each parameter set.
+
+    """
+    # We update the initial conditions separately here, because `to_scan` might also
+    # contain initial conditions.
+    if y0 is not None:
+        model.update_variables(y0)
+
+    res = parallelise(
+        partial(
+            _update_parameters_and_initial_conditions,
+            fn=partial(
+                worker,
+                protocol=protocol,
+                time_points=time_points,
                 integrator=integrator,
                 y0=None,
             ),
