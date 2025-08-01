@@ -9,6 +9,7 @@ from mxlpy.meta.sympy_tools import (
     fn_to_sympy,
     list_of_symbols,
     stoichiometries_to_sympy,
+    sympy_to_inline_js,
     sympy_to_inline_py,
     sympy_to_inline_rust,
 )
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 __all__ = [
     "generate_model_code_py",
     "generate_model_code_rs",
+    "generate_model_code_ts",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ def _generate_model_code(
     assignment_template: str,
     sympy_inline_fn: Callable[[sympy.Expr], str],
     return_template: str,
+    custom_fns: dict[str, sympy.Expr],
     imports: list[str] | None = None,
     end: str | None = None,
     free_parameters: list[str] | None = None,
@@ -70,11 +73,13 @@ def _generate_model_code(
 
     # Derived
     for name, derived in model.get_raw_derived().items():
-        expr = fn_to_sympy(
-            derived.fn,
-            origin=name,
-            model_args=list_of_symbols(derived.args),
-        )
+        expr = custom_fns.get(name)
+        if expr is None:
+            expr = fn_to_sympy(
+                derived.fn,
+                origin=name,
+                model_args=list_of_symbols(derived.args),
+            )
         if expr is None:
             msg = f"Unable to parse fn for derived value '{name}'"
             raise ValueError(msg)
@@ -82,11 +87,16 @@ def _generate_model_code(
 
     # Reactions
     for name, rxn in model.get_raw_reactions().items():
-        expr = fn_to_sympy(
-            rxn.fn,
-            origin=name,
-            model_args=list_of_symbols(rxn.args),
-        )
+        expr = custom_fns.get(name)
+        if expr is None:
+            try:
+                expr = fn_to_sympy(
+                    rxn.fn,
+                    origin=name,
+                    model_args=list_of_symbols(rxn.args),
+                )
+            except KeyError:
+                _LOGGER.warning("Failed to parse %s", name)
         if expr is None:
             msg = f"Unable to parse fn for reaction value '{name}'"
             raise ValueError(msg)
@@ -123,6 +133,7 @@ def _generate_model_code(
 
 def generate_model_code_py(
     model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
     """Transform the model into a python function, inlining the function calls."""
@@ -137,21 +148,51 @@ def generate_model_code_py(
     return _generate_model_code(
         model,
         imports=[
+            "import math\n",
             "from collections.abc import Iterable\n",
         ],
         sized=False,
         model_fn=model_fn,
         variables_template="    {} = variables",
-        assignment_template="    {k} = {v}",
+        assignment_template="    {k}: float = {v}",
         sympy_inline_fn=sympy_to_inline_py,
         return_template="    return {}",
         end=None,
         free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_code_ts(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model into a typescript function, inlining the function calls."""
+    if free_parameters is None:
+        model_fn = "function model(time: number, variables: number[]) {"
+    else:
+        args = ", ".join(f"{k}: number" for k in free_parameters)
+        model_fn = f"function model(time: number, variables: number[], {args}) {{"
+
+    return _generate_model_code(
+        model,
+        imports=[],
+        sized=False,
+        model_fn=model_fn,
+        variables_template="    let [{}] = variables;",
+        assignment_template="    let {k}: number = {v};",
+        sympy_inline_fn=sympy_to_inline_js,
+        return_template="    return [{}];",
+        end="};",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
     )
 
 
 def generate_model_code_rs(
     model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
     """Transform the model into a rust function, inlining the function calls."""
@@ -172,4 +213,5 @@ def generate_model_code_rs(
         return_template="    return [{}]",
         end="}",
         free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
     )
