@@ -574,6 +574,8 @@ def protocol_time_course(
 ) -> FitResult | None:
     """Fit model parameters to time course of experimental data.
 
+    Time points of protocol time course are taken from the data.
+
     Examples:
         >>> time_course(model, p0, data)
         {'k1': 0.1, 'k2': 0.2}
@@ -701,8 +703,10 @@ def carousel_time_course(
 ) -> CarouselFit:
     """Fit model parameters to time course of experimental data over a carousel.
 
+    Time points are taken from the data.
+
     Examples:
-        >>> carousel_steady_state(carousel, p0=p0, data=data)
+        >>> carousel_time_course(carousel, p0=p0, data=data)
 
     Args:
         carousel: Model carousel to fit
@@ -760,6 +764,8 @@ def carousel_protocol_time_course(
     bounds: Bounds | None = None,
 ) -> CarouselFit:
     """Fit model parameters to time course of experimental data over a protocol.
+
+    Time points of protocol time course are taken from the data.
 
     Examples:
         >>> carousel_steady_state(carousel, p0=p0, data=data)
