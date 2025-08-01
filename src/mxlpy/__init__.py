@@ -52,6 +52,7 @@ from . import (
     plot,
     report,
     sbml,
+    scan,
     units,
 )
 from .integrators import DefaultIntegrator, Diffrax, Scipy
@@ -59,7 +60,6 @@ from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
 from .mc import Cache
 from .model import Model
-from .scan import steady_state, time_course, time_course_over_protocol
 from .simulator import Simulator
 from .symbolic import SymbolicModel, to_symbolic_model
 from .types import (
@@ -116,11 +116,9 @@ __all__ = [
     "plot",
     "report",
     "sbml",
-    "steady_state",
+    "scan",
     "surrogates",
     "symbolic",
-    "time_course",
-    "time_course_over_protocol",
     "to_symbolic_model",
     "units",
     "unwrap",

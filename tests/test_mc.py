@@ -210,7 +210,7 @@ def test_time_course() -> None:
 
 
 def test_time_course_over_protocol() -> None:
-    res = mc.time_course_over_protocol(
+    res = mc.protocol(
         get_simple_model(),
         mc_to_scan=get_mc_to_scan(),
         protocol=get_protocol(),
