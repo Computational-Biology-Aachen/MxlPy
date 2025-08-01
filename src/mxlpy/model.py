@@ -2302,7 +2302,7 @@ class Model:
         if (cache := self._cache) is None:
             cache = self._create_cache()
         var_names = self.get_variable_names()
-        dependent = self._get_args(
+        args = self._get_args(
             variables=self.get_initial_conditions() if variables is None else variables,
             time=time,
             cache=cache,
@@ -2310,12 +2310,12 @@ class Model:
         dxdt = pd.Series(np.zeros(len(var_names), dtype=float), index=var_names)
         for k, stoc in cache.stoich_by_cpds.items():
             for flux, n in stoc.items():
-                dxdt[k] += n * dependent[flux]
+                dxdt[k] += n * args[flux]
 
         for k, sd in cache.dyn_stoich_by_cpds.items():
             for flux, dv in sd.items():
-                n = dv.fn(*(dependent[i] for i in dv.args))
-                dxdt[k] += n * dependent[flux]
+                n = dv.fn(*(args[i] for i in dv.args))
+                dxdt[k] += n * args[flux]
         return dxdt
 
     ##########################################################################
