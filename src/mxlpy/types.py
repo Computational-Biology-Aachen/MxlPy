@@ -841,6 +841,104 @@ class Result:
             concatenated=concatenated,
         )
 
+    @overload
+    def get_producers(  # type: ignore
+        self,
+        variable: str,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: Literal[False],
+    ) -> list[pd.DataFrame]: ...
+
+    @overload
+    def get_producers(
+        self,
+        variable: str,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: Literal[True],
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def get_producers(
+        self,
+        variable: str,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: bool = True,
+    ) -> pd.DataFrame: ...
+
+    def get_producers(
+        self,
+        variable: str,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: bool = True,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        """Get fluxes of variable with positive stoichiometry."""
+        names = [
+            k
+            for k, v in self.model.get_stoichiometries_of_variable(variable).items()
+            if v > 0
+        ]
+        args: pd.DataFrame | list[pd.DataFrame] = self.get_fluxes(
+            normalise=normalise, concatenated=concatenated
+        )
+        if concatenated:
+            return args.loc[:, names]
+
+        args = cast(list[pd.DataFrame], args)
+        return [i.loc[:, names] for i in args]
+
+    @overload
+    def get_consumers(  # type: ignore
+        self,
+        variable: str,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: Literal[False],
+    ) -> list[pd.DataFrame]: ...
+
+    @overload
+    def get_consumers(
+        self,
+        variable: str,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: Literal[True],
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def get_consumers(
+        self,
+        variable: str,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: bool = True,
+    ) -> pd.DataFrame: ...
+
+    def get_consumers(
+        self,
+        variable: str,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: bool = True,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        """Get fluxes of variable with negative stoichiometry."""
+        names = [
+            k
+            for k, v in self.model.get_stoichiometries_of_variable(variable).items()
+            if v < 0
+        ]
+        args: pd.DataFrame | list[pd.DataFrame] = self.get_fluxes(
+            normalise=normalise, concatenated=concatenated
+        )
+        if concatenated:
+            return args.loc[:, names]
+
+        args = cast(list[pd.DataFrame], args)
+        return [i.loc[:, names] for i in args]
+
     def get_new_y0(self) -> dict[str, float]:
         """Get the new initial conditions after the simulation.
 
