@@ -4651,8 +4651,8 @@ packages:
   requires_python: '>=3.8'
 - pypi: ./
   name: mxlpy
-  version: 0.24.0
-  sha256: 102008fa603bce1c86fa91fed7608c8dfebdd88930eb5ad1e099bac736163e44
+  version: 0.25.0
+  sha256: 5e8e55e31c74aae17e1ff5384d24bd5d659b450b924ef63f4b4cf6d20196669a
   requires_dist:
   - diffrax>=0.7.0
   - dill>=0.3.9
