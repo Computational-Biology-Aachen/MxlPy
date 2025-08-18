@@ -2271,6 +2271,24 @@ class Model:
                 dxdt[k] += n * dependent[flux]
         return tuple(dxdt[i] for i in cache.var_names)
 
+    def _get_right_hand_side(
+        self,
+        *,
+        args: dict[str, float],
+        var_names: list[str],
+        cache: ModelCache,
+    ) -> pd.Series:
+        dxdt = pd.Series(np.zeros(len(var_names), dtype=float), index=var_names)
+        for k, stoc in cache.stoich_by_cpds.items():
+            for flux, n in stoc.items():
+                dxdt[k] += n * args[flux]
+
+        for k, sd in cache.dyn_stoich_by_cpds.items():
+            for flux, dv in sd.items():
+                n = dv.fn(*(args[i] for i in dv.args))
+                dxdt[k] += n * args[flux]
+        return dxdt
+
     def get_right_hand_side(
         self,
         variables: dict[str, float] | None = None,
@@ -2307,16 +2325,22 @@ class Model:
             time=time,
             cache=cache,
         )
-        dxdt = pd.Series(np.zeros(len(var_names), dtype=float), index=var_names)
-        for k, stoc in cache.stoich_by_cpds.items():
-            for flux, n in stoc.items():
-                dxdt[k] += n * args[flux]
+        return self._get_right_hand_side(args=args, var_names=var_names, cache=cache)
 
-        for k, sd in cache.dyn_stoich_by_cpds.items():
-            for flux, dv in sd.items():
-                n = dv.fn(*(args[i] for i in dv.args))
-                dxdt[k] += n * args[flux]
-        return dxdt
+    def get_right_hand_side_time_course(self, args: pd.DataFrame) -> pd.DataFrame:
+        """Calculate the right-hand side of the differential equations for the model."""
+        if (cache := self._cache) is None:
+            cache = self._create_cache()
+        var_names = self.get_variable_names()
+
+        rhs_by_time = {}
+        for time, variables in args.iterrows():
+            rhs_by_time[time] = self._get_right_hand_side(
+                args=variables.to_dict(),
+                var_names=var_names,
+                cache=cache,
+            )
+        return pd.DataFrame(rhs_by_time).T
 
     ##########################################################################
     # Check units
