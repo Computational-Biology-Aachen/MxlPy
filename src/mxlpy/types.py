@@ -798,6 +798,49 @@ class Result:
         """
         return pd.concat((self.variables, self.fluxes), axis=1)
 
+    @overload
+    def get_right_hand_side(  # type: ignore
+        self,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: Literal[False],
+    ) -> list[pd.DataFrame]: ...
+
+    @overload
+    def get_right_hand_side(
+        self,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: Literal[True],
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def get_right_hand_side(
+        self,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: bool = True,
+    ) -> pd.DataFrame: ...
+
+    def get_right_hand_side(
+        self,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: bool = True,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        """Get right hand side over time."""
+        args_by_simulation = self._compute_args()
+        return self._adjust_data(
+            [
+                self.model.update_parameters(p).get_right_hand_side_time_course(
+                    args=args
+                )
+                for args, p in zip(args_by_simulation, self.raw_parameters, strict=True)
+            ],
+            normalise=normalise,
+            concatenated=concatenated,
+        )
+
     def get_new_y0(self) -> dict[str, float]:
         """Get the new initial conditions after the simulation.
 
