@@ -69,3 +69,10 @@ You have two choices here, using `uv` (pypi-only) or using `pixi` (conda-forge, 
 ## LLMs
 
 We support the [llms.txt](https://llmstxt.org/) convention for making documentation available to large language models and the applications that make use of them. It is located at [docs/llms.txt](https://github.com/Computational-Biology-Aachen/MxlPy/tree/main/docs/llms.txt)
+
+## Tool family 🏠
+
+`MxlPy` is part of a larger family of tools that are designed with a similar set of abstractions. Check them out!
+
+- [MxlBricks](https://github.com/Computational-Biology-Aachen/mxl-bricks) is built on top of `MxlPy` to build mechanistic models composed of pre-defined reactions (bricks)
+- [MxlWeb](https://github.com/Computational-Biology-Aachen/mxl-web) brings simulation of mechanistic models to the browser!
