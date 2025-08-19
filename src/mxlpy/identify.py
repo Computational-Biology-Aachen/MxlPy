@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-import mxlpy.fit_common
 from mxlpy import fit_local
 from mxlpy.distributions import LogNormal, sample
+from mxlpy.fit.common import LossFn, rmse
 from mxlpy.parallel import parallelise
 
 if TYPE_CHECKING:
@@ -46,7 +46,7 @@ def profile_likelihood(
     parameter_name: str,
     parameter_values: Array,
     n_random: int = 10,
-    loss_fn: fit_local.LossFn = mxlpy.fit_common.rmse,
+    loss_fn: LossFn = rmse,
 ) -> pd.Series:
     """Estimate the profile likelihood of model parameters given data.
 

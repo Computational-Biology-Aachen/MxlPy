@@ -45,8 +45,6 @@ from . import (
     compare,
     distributions,
     experimental,
-    fit_global,
-    fit_local,
     fns,
     mc,
     mca,
@@ -56,6 +54,8 @@ from . import (
     scan,
     units,
 )
+from .fit import global_ as fit_global
+from .fit import local_ as fit_local
 from .integrators import DefaultIntegrator, Diffrax, Scipy
 from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
