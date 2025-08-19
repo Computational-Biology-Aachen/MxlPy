@@ -1,28 +1,37 @@
-"""Parameter Fitting Module for Metabolic Models.
+"""Parameter local fitting Module for Metabolic Models.
 
-This module provides functions foru fitting model parameters to experimental data,
-including both steadyd-state and time-series data fitting capabilities.e
-
-Functions:
-    fit_steady_state: Fits parameters to steady-state experimental data
-    fit_time_course: Fits parameters to time-series experimental data
+This module provides functions for fitting model parameters to experimental data,
+including both steadyd-state and time-series data fitting capabilities.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
-import numpy as np
 from scipy.optimize import minimize
-from wadler_lindig import pformat
 
 from mxlpy import parallel
-from mxlpy.simulator import Simulator
-from mxlpy.types import Array, ArrayLike, Callable, IntegratorType, cast
+from mxlpy.fit_common import (
+    Bounds,
+    CarouselFit,
+    FitResult,
+    InitialGuess,
+    LossFn,
+    MinResult,
+    ProtocolResidualFn,
+    ResidualFn,
+    SteadyStateResidualFn,
+    TimeSeriesResidualFn,
+    _protocol_time_course_residual,
+    _steady_state_residual,
+    _time_course_residual,
+    rmse,
+)
+from mxlpy.types import IntegratorType, cast
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -33,71 +42,17 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 __all__ = [
-    "Bounds",
-    "CarouselFit",
-    "FitResult",
-    "InitialGuess",
     "LOGGER",
-    "LossFn",
-    "MinResult",
     "MinimizeFn",
-    "ProtocolResidualFn",
-    "ResidualFn",
-    "SteadyStateResidualFn",
-    "TimeSeriesResidualFn",
     "carousel_protocol_time_course",
     "carousel_steady_state",
     "carousel_time_course",
     "protocol_time_course",
-    "rmse",
     "steady_state",
     "time_course",
 ]
 
 
-@dataclass
-class MinResult:
-    """Result of a minimization operation."""
-
-    parameters: dict[str, float]
-    residual: float
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-@dataclass
-class FitResult:
-    """Result of a fit operation."""
-
-    model: Model
-    best_pars: dict[str, float]
-    loss: float
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-@dataclass
-class CarouselFit:
-    """Result of a carousel fit operation."""
-
-    fits: list[FitResult]
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-    def get_best_fit(self) -> FitResult:
-        """Get the best fit from the carousel."""
-        return min(self.fits, key=lambda x: x.loss)
-
-
-type InitialGuess = dict[str, float]
-type ResidualFn = Callable[[Array], float]
-type Bounds = dict[str, tuple[float | None, float | None]]
 type MinimizeFn = Callable[
     [
         ResidualFn,
@@ -106,76 +61,6 @@ type MinimizeFn = Callable[
     ],
     MinResult | None,
 ]
-type LossFn = Callable[
-    [
-        pd.DataFrame | pd.Series,
-        pd.DataFrame | pd.Series,
-    ],
-    float,
-]
-
-
-def rmse(
-    y_pred: pd.DataFrame | pd.Series,
-    y_true: pd.DataFrame | pd.Series,
-) -> float:
-    """Calculate root mean square error between model and data."""
-    return cast(float, np.sqrt(np.mean(np.square(y_pred - y_true))))
-
-
-class SteadyStateResidualFn(Protocol):
-    """Protocol for steady state residual functions."""
-
-    def __call__(
-        self,
-        par_values: Array,
-        # This will be filled out by partial
-        par_names: list[str],
-        data: pd.Series,
-        model: Model,
-        y0: dict[str, float] | None,
-        integrator: IntegratorType,
-        loss_fn: LossFn,
-    ) -> float:
-        """Calculate residual error between model steady state and experimental data."""
-        ...
-
-
-class TimeSeriesResidualFn(Protocol):
-    """Protocol for time series residual functions."""
-
-    def __call__(
-        self,
-        par_values: Array,
-        # This will be filled out by partial
-        par_names: list[str],
-        data: pd.DataFrame,
-        model: Model,
-        y0: dict[str, float] | None,
-        integrator: IntegratorType,
-        loss_fn: LossFn,
-    ) -> float:
-        """Calculate residual error between model time course and experimental data."""
-        ...
-
-
-class ProtocolResidualFn(Protocol):
-    """Protocol for time series residual functions."""
-
-    def __call__(
-        self,
-        par_values: Array,
-        # This will be filled out by partial
-        par_names: list[str],
-        data: pd.DataFrame,
-        model: Model,
-        y0: dict[str, float] | None,
-        integrator: IntegratorType,
-        loss_fn: LossFn,
-        protocol: pd.DataFrame,
-    ) -> float:
-        """Calculate residual error between model time course and experimental data."""
-        ...
 
 
 def _default_minimize_fn(
@@ -203,151 +88,6 @@ def _default_minimize_fn(
 
     LOGGER.warning("Minimisation failed.")
     return None
-
-
-def _steady_state_residual(
-    par_values: Array,
-    # This will be filled out by partial
-    par_names: list[str],
-    data: pd.Series,
-    model: Model,
-    y0: dict[str, float] | None,
-    integrator: IntegratorType,
-    loss_fn: LossFn,
-) -> float:
-    """Calculate residual error between model steady state and experimental data.
-
-    Args:
-        par_values: Parameter values to test
-        data: Experimental steady state data
-        model: Model instance to simulate
-        y0: Initial conditions
-        par_names: Names of parameters being fit
-        integrator: ODE integrator class to use
-        loss_fn: Loss function to use for residual calculation
-
-    Returns:
-        float: Root mean square error between model and data
-
-    """
-    res = (
-        Simulator(
-            model.update_parameters(
-                dict(
-                    zip(
-                        par_names,
-                        par_values,
-                        strict=True,
-                    )
-                )
-            ),
-            y0=y0,
-            integrator=integrator,
-        )
-        .simulate_to_steady_state()
-        .get_result()
-    )
-    if res is None:
-        return cast(float, np.inf)
-
-    return loss_fn(
-        res.get_combined().loc[:, cast(list, data.index)],
-        data,
-    )
-
-
-def _time_course_residual(
-    par_values: ArrayLike,
-    # This will be filled out by partial
-    par_names: list[str],
-    data: pd.DataFrame,
-    model: Model,
-    y0: dict[str, float] | None,
-    integrator: IntegratorType,
-    loss_fn: LossFn,
-) -> float:
-    """Calculate residual error between model time course and experimental data.
-
-    Args:
-        par_values: Parameter values to test
-        data: Experimental time course data
-        model: Model instance to simulate
-        y0: Initial conditions
-        par_names: Names of parameters being fit
-        integrator: ODE integrator class to use
-        loss_fn: Loss function to use for residual calculation
-
-    Returns:
-        float: Root mean square error between model and data
-
-    """
-    res = (
-        Simulator(
-            model.update_parameters(dict(zip(par_names, par_values, strict=True))),
-            y0=y0,
-            integrator=integrator,
-        )
-        .simulate_time_course(cast(list, data.index))
-        .get_result()
-    )
-    if res is None:
-        return cast(float, np.inf)
-    results_ss = res.get_combined()
-
-    return loss_fn(
-        results_ss.loc[:, cast(list, data.columns)],
-        data,
-    )
-
-
-def _protocol_time_course_residual(
-    par_values: ArrayLike,
-    # This will be filled out by partial
-    par_names: list[str],
-    data: pd.DataFrame,
-    model: Model,
-    y0: dict[str, float] | None,
-    integrator: IntegratorType,
-    loss_fn: LossFn,
-    protocol: pd.DataFrame,
-) -> float:
-    """Calculate residual error between model time course and experimental data.
-
-    Args:
-        par_values: Parameter values to test
-        data: Experimental time course data
-        model: Model instance to simulate
-        y0: Initial conditions
-        par_names: Names of parameters being fit
-        integrator: ODE integrator class to use
-        loss_fn: Loss function to use for residual calculation
-        protocol: Experimental protocol
-        time_points_per_step: Number of time points per step in the protocol
-
-    Returns:
-        float: Root mean square error between model and data
-
-    """
-    res = (
-        Simulator(
-            model.update_parameters(dict(zip(par_names, par_values, strict=True))),
-            y0=y0,
-            integrator=integrator,
-        )
-        .simulate_protocol_time_course(
-            protocol=protocol,
-            time_points=data.index,
-        )
-        .get_result()
-    )
-    if res is None:
-        return cast(float, np.inf)
-    results_ss = res.get_combined()
-
-    return loss_fn(
-        results_ss.loc[:, cast(list, data.columns)],
-        data,
-    )
 
 
 def _carousel_steady_state_worker(

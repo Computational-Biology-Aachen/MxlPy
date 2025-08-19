@@ -3,9 +3,11 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
+import mxlpy.fit_common
 from example_models import get_linear_chain_2v
-from mxlpy import fit
-from mxlpy.fit import Bounds, MinResult, ResidualFn
+from mxlpy import fit_local
+from mxlpy.fit_common import MinResult
+from mxlpy.fit_local import Bounds, ResidualFn
 from mxlpy.fns import constant
 from mxlpy.model import Model
 from mxlpy.types import Array, ArrayLike, IntegratorType, unwrap
@@ -32,7 +34,7 @@ def mock_ss_residual_fn(
     model: Model,  # noqa: ARG001
     y0: dict[str, float] | None,  # noqa: ARG001
     integrator: IntegratorType,  # noqa: ARG001
-    loss_fn: fit.LossFn,  # noqa: ARG001
+    loss_fn: fit_local.LossFn,  # noqa: ARG001
 ) -> float:
     return 0.0
 
@@ -44,7 +46,7 @@ def mock_ts_residual_fn(
     model: Model,  # noqa: ARG001
     y0: dict[str, float] | None,  # noqa: ARG001
     integrator: IntegratorType,  # noqa: ARG001
-    loss_fn: fit.LossFn,  # noqa: ARG001
+    loss_fn: fit_local.LossFn,  # noqa: ARG001
 ) -> float:
     return 0.0
 
@@ -93,7 +95,7 @@ class MockIntegrator:
 
 def test_default_minimize_fn() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
-    p_fit = fit._default_minimize_fn(
+    p_fit = fit_local._default_minimize_fn(
         mock_residual_fn_filled_in,
         p_true,
         bounds={},
@@ -110,14 +112,14 @@ def test_steady_state_residual() -> None:
         .add_reaction("v1", constant, stoichiometry={"x1": 1.0}, args=["k1"])
     )
 
-    residual = fit._steady_state_residual(
+    residual = mxlpy.fit_common._steady_state_residual(
         par_values=np.array([1.0]),
         par_names=["k1"],
         data=pd.Series({"x1": 1.0, "v1": 1.0}),
         model=model,
         integrator=MockIntegrator,
         y0={"x1": 1.0},
-        loss_fn=fit.rmse,
+        loss_fn=mxlpy.fit_common.rmse,
     )
     assert residual == 0.0
 
@@ -125,7 +127,7 @@ def test_steady_state_residual() -> None:
 def test_fit_steady_state() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
     data = pd.Series()
-    p_fit = fit.steady_state(
+    p_fit = fit_local.steady_state(
         model=Model().add_parameters(p_true),
         p0=p_true,
         data=data,
@@ -139,7 +141,7 @@ def test_fit_steady_state() -> None:
 def tets_fit_time_course() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
     data = pd.DataFrame()
-    p_fit = fit.time_course(
+    p_fit = fit_local.time_course(
         model=Model(),
         p0=p_true,
         data=data,
@@ -163,7 +165,7 @@ if __name__ == "__main__":
         .get_result()
     ).get_combined()
 
-    p_fit = fit.steady_state(
+    p_fit = fit_local.steady_state(
         model_fn(),
         p0=p_init,
         data=res.iloc[-1],
@@ -171,7 +173,7 @@ if __name__ == "__main__":
     assert p_fit is not None
     assert np.allclose(pd.Series(p_fit.best_pars), pd.Series(p_true), rtol=0.1)
 
-    p_fit = fit.time_course(
+    p_fit = fit_local.time_course(
         model_fn(),
         p0=p_init,
         data=res,

@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from mxlpy import fit
+import mxlpy.fit_common
+from mxlpy import fit_local
 from mxlpy.distributions import LogNormal, sample
 from mxlpy.parallel import parallelise
 
@@ -26,9 +27,9 @@ def _mc_fit_time_course_worker(
     p0: pd.Series,
     model: Model,
     data: pd.DataFrame,
-    loss_fn: fit.LossFn,
+    loss_fn: fit_local.LossFn,
 ) -> float:
-    fit_result = fit.time_course(
+    fit_result = fit_local.time_course(
         model=model,
         p0=p0.to_dict(),
         data=data,
@@ -45,7 +46,7 @@ def profile_likelihood(
     parameter_name: str,
     parameter_values: Array,
     n_random: int = 10,
-    loss_fn: fit.LossFn = fit.rmse,
+    loss_fn: fit_local.LossFn = mxlpy.fit_common.rmse,
 ) -> pd.Series:
     """Estimate the profile likelihood of model parameters given data.
 
