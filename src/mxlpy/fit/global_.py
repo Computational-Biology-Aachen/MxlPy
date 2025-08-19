@@ -1,4 +1,4 @@
-"""Parameter local fitting Module for Metabolic Models.
+"""Parameter global fitting Module for Metabolic Models.
 
 This module provides functions for fitting model parameters to experimental data,
 including both steadyd-state and time-series data fitting capabilities.
@@ -12,11 +12,12 @@ from copy import deepcopy
 from functools import partial
 from typing import TYPE_CHECKING
 
-from scipy.optimize import minimize
+from scipy.optimize import basinhopping
 
 from mxlpy import parallel
-from mxlpy.fit_common import (
-    Bounds,
+from mxlpy.types import IntegratorType, cast
+
+from .common import (
     CarouselFit,
     FitResult,
     InitialGuess,
@@ -31,7 +32,6 @@ from mxlpy.fit_common import (
     _time_course_residual,
     rmse,
 )
-from mxlpy.types import IntegratorType, cast
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -57,7 +57,6 @@ type MinimizeFn = Callable[
     [
         ResidualFn,
         InitialGuess,
-        Bounds,
     ],
     MinResult | None,
 ]
@@ -66,13 +65,10 @@ type MinimizeFn = Callable[
 def _default_minimize_fn(
     residual_fn: ResidualFn,
     p0: dict[str, float],
-    bounds: Bounds,
 ) -> MinResult | None:
-    res = minimize(
+    res = basinhopping(
         residual_fn,
         x0=list(p0.values()),
-        bounds=[bounds.get(name, (1e-6, 1e6)) for name in p0],
-        method="L-BFGS-B",
     )
     if res.success:
         return MinResult(
@@ -99,7 +95,6 @@ def _carousel_steady_state_worker(
     loss_fn: LossFn,
     minimize_fn: MinimizeFn,
     residual_fn: SteadyStateResidualFn,
-    bounds: Bounds | None,
 ) -> FitResult | None:
     model_pars = model.get_parameter_values()
 
@@ -112,7 +107,6 @@ def _carousel_steady_state_worker(
         residual_fn=residual_fn,
         integrator=integrator,
         loss_fn=loss_fn,
-        bounds=bounds,
     )
 
 
@@ -125,7 +119,6 @@ def _carousel_time_course_worker(
     loss_fn: LossFn,
     minimize_fn: MinimizeFn,
     residual_fn: TimeSeriesResidualFn,
-    bounds: Bounds | None,
 ) -> FitResult | None:
     model_pars = model.get_parameter_values()
     return time_course(
@@ -137,7 +130,6 @@ def _carousel_time_course_worker(
         residual_fn=residual_fn,
         integrator=integrator,
         loss_fn=loss_fn,
-        bounds=bounds,
     )
 
 
@@ -151,7 +143,6 @@ def _carousel_protocol_worker(
     loss_fn: LossFn,
     minimize_fn: MinimizeFn,
     residual_fn: ProtocolResidualFn,
-    bounds: Bounds | None,
 ) -> FitResult | None:
     model_pars = model.get_parameter_values()
     return protocol_time_course(
@@ -164,7 +155,6 @@ def _carousel_protocol_worker(
         residual_fn=residual_fn,
         integrator=integrator,
         loss_fn=loss_fn,
-        bounds=bounds,
     )
 
 
@@ -178,7 +168,6 @@ def steady_state(
     residual_fn: SteadyStateResidualFn = _steady_state_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
-    bounds: Bounds | None = None,
 ) -> FitResult | None:
     """Fit model parameters to steady-state experimental data.
 
@@ -221,7 +210,7 @@ def steady_state(
             loss_fn=loss_fn,
         ),
     )
-    min_result = minimize_fn(fn, p0, {} if bounds is None else bounds)
+    min_result = minimize_fn(fn, p0)
     # Restore original model
     model.update_parameters(p_orig)
     if min_result is None:
@@ -244,7 +233,6 @@ def time_course(
     residual_fn: TimeSeriesResidualFn = _time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
-    bounds: Bounds | None = None,
 ) -> FitResult | None:
     """Fit model parameters to time course of experimental data.
 
@@ -286,7 +274,7 @@ def time_course(
         ),
     )
 
-    min_result = minimize_fn(fn, p0, {} if bounds is None else bounds)
+    min_result = minimize_fn(fn, p0)
     # Restore original model
     model.update_parameters(p_orig)
     if min_result is None:
@@ -310,7 +298,6 @@ def protocol_time_course(
     residual_fn: ProtocolResidualFn = _protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
-    bounds: Bounds | None = None,
 ) -> FitResult | None:
     """Fit model parameters to time course of experimental data.
 
@@ -357,7 +344,7 @@ def protocol_time_course(
         ),
     )
 
-    min_result = minimize_fn(fn, p0, {} if bounds is None else bounds)
+    min_result = minimize_fn(fn, p0)
     # Restore original model
     model.update_parameters(p_orig)
     if min_result is None:
@@ -380,7 +367,6 @@ def carousel_steady_state(
     residual_fn: SteadyStateResidualFn = _steady_state_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
-    bounds: Bounds | None = None,
 ) -> CarouselFit:
     """Fit model parameters to steady-state experimental data over a carousel.
 
@@ -420,7 +406,6 @@ def carousel_steady_state(
                     loss_fn=loss_fn,
                     minimize_fn=minimize_fn,
                     residual_fn=residual_fn,
-                    bounds=bounds,
                 ),
                 inputs=list(enumerate(carousel.variants)),
             )
@@ -439,7 +424,6 @@ def carousel_time_course(
     residual_fn: TimeSeriesResidualFn = _time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
-    bounds: Bounds | None = None,
 ) -> CarouselFit:
     """Fit model parameters to time course of experimental data over a carousel.
 
@@ -481,7 +465,6 @@ def carousel_time_course(
                     loss_fn=loss_fn,
                     minimize_fn=minimize_fn,
                     residual_fn=residual_fn,
-                    bounds=bounds,
                 ),
                 inputs=list(enumerate(carousel.variants)),
             )
@@ -501,7 +484,6 @@ def carousel_protocol_time_course(
     residual_fn: ProtocolResidualFn = _protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
-    bounds: Bounds | None = None,
 ) -> CarouselFit:
     """Fit model parameters to time course of experimental data over a protocol.
 
@@ -544,7 +526,6 @@ def carousel_protocol_time_course(
                     loss_fn=loss_fn,
                     minimize_fn=minimize_fn,
                     residual_fn=residual_fn,
-                    bounds=bounds,
                 ),
                 inputs=list(enumerate(carousel.variants)),
             )

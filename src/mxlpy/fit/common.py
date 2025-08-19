@@ -1,7 +1,4 @@
-"""Common types and utilities between local and global fitting.
-
-This could really be a submodule, but then we have `local` and `global` as filenames.
-"""
+"""Common types and utilities between local and global fitting."""
 
 from __future__ import annotations
 
@@ -112,7 +109,7 @@ class SteadyStateResidualFn(Protocol):
         data: pd.Series,
         model: Model,
         y0: dict[str, float] | None,
-        integrator: IntegratorType,
+        integrator: IntegratorType | None,
         loss_fn: LossFn,
     ) -> float:
         """Calculate residual error between model steady state and experimental data."""
@@ -130,7 +127,7 @@ class TimeSeriesResidualFn(Protocol):
         data: pd.DataFrame,
         model: Model,
         y0: dict[str, float] | None,
-        integrator: IntegratorType,
+        integrator: IntegratorType | None,
         loss_fn: LossFn,
     ) -> float:
         """Calculate residual error between model time course and experimental data."""
@@ -148,7 +145,7 @@ class ProtocolResidualFn(Protocol):
         data: pd.DataFrame,
         model: Model,
         y0: dict[str, float] | None,
-        integrator: IntegratorType,
+        integrator: IntegratorType | None,
         loss_fn: LossFn,
         protocol: pd.DataFrame,
     ) -> float:
@@ -163,7 +160,7 @@ def _steady_state_residual(
     data: pd.Series,
     model: Model,
     y0: dict[str, float] | None,
-    integrator: IntegratorType,
+    integrator: IntegratorType | None,
     loss_fn: LossFn,
 ) -> float:
     """Calculate residual error between model steady state and experimental data.
@@ -214,7 +211,7 @@ def _time_course_residual(
     data: pd.DataFrame,
     model: Model,
     y0: dict[str, float] | None,
-    integrator: IntegratorType,
+    integrator: IntegratorType | None,
     loss_fn: LossFn,
 ) -> float:
     """Calculate residual error between model time course and experimental data.
@@ -258,7 +255,7 @@ def _protocol_time_course_residual(
     data: pd.DataFrame,
     model: Model,
     y0: dict[str, float] | None,
-    integrator: IntegratorType,
+    integrator: IntegratorType | None,
     loss_fn: LossFn,
     protocol: pd.DataFrame,
 ) -> float:

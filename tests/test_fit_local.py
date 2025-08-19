@@ -3,11 +3,9 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-import mxlpy.fit_common
 from example_models import get_linear_chain_2v
 from mxlpy import fit_local
-from mxlpy.fit_common import MinResult
-from mxlpy.fit_local import Bounds, ResidualFn
+from mxlpy.fit.common import Bounds, MinResult, ResidualFn, _steady_state_residual, rmse
 from mxlpy.fns import constant
 from mxlpy.model import Model
 from mxlpy.types import Array, ArrayLike, IntegratorType, unwrap
@@ -112,14 +110,14 @@ def test_steady_state_residual() -> None:
         .add_reaction("v1", constant, stoichiometry={"x1": 1.0}, args=["k1"])
     )
 
-    residual = mxlpy.fit_common._steady_state_residual(
+    residual = _steady_state_residual(
         par_values=np.array([1.0]),
         par_names=["k1"],
         data=pd.Series({"x1": 1.0, "v1": 1.0}),
         model=model,
         integrator=MockIntegrator,
         y0={"x1": 1.0},
-        loss_fn=mxlpy.fit_common.rmse,
+        loss_fn=rmse,
     )
     assert residual == 0.0
 
