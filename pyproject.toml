@@ -122,7 +122,7 @@ fixable = ["ALL"]
 ignore = [
   "ANN401",  # any
   "C901",    # too complex
-  "COM812",  # missing trailing comma  # "D", # all of documenetation
+  "COM812",  # missing trailing comma  # "D", # all of documentation
   "D203",    # blank line before docstring
   "D213",    # multi-line summary first line
   "D401",    # first line should be in imperative mood
