@@ -846,6 +846,7 @@ class Result:
         self,
         variable: str,
         *,
+        scaled: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: Literal[False],
     ) -> list[pd.DataFrame]: ...
@@ -855,6 +856,7 @@ class Result:
         self,
         variable: str,
         *,
+        scaled: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: Literal[True],
     ) -> pd.DataFrame: ...
@@ -864,6 +866,7 @@ class Result:
         self,
         variable: str,
         *,
+        scaled: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: bool = True,
     ) -> pd.DataFrame: ...
@@ -872,29 +875,42 @@ class Result:
         self,
         variable: str,
         *,
+        scaled: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: bool = True,
     ) -> pd.DataFrame | list[pd.DataFrame]:
         """Get fluxes of variable with positive stoichiometry."""
+        self.model.update_parameters(self.raw_parameters[0])
         names = [
             k
             for k, v in self.model.get_stoichiometries_of_variable(variable).items()
             if v > 0
         ]
-        args: pd.DataFrame | list[pd.DataFrame] = self.get_fluxes(
-            normalise=normalise, concatenated=concatenated
-        )
-        if concatenated:
-            return args.loc[:, names]
 
-        args = cast(list[pd.DataFrame], args)
-        return [i.loc[:, names] for i in args]
+        fluxes: list[pd.DataFrame] = [
+            i.loc[:, names]
+            for i in self.get_fluxes(normalise=normalise, concatenated=False)
+        ]
+
+        if scaled:
+            fluxes = [i.copy() for i in fluxes]
+            for v, p in zip(fluxes, self.raw_parameters, strict=True):
+                self.model.update_parameters(p)
+                stoichs = self.model.get_stoichiometries_of_variable(variable)
+                for k in names:
+                    v.loc[:, k] *= stoichs[k]
+
+        self.model.update_parameters(self.raw_parameters[-1])
+        if concatenated:
+            return pd.concat(fluxes, axis=0)
+        return fluxes
 
     @overload
     def get_consumers(  # type: ignore
         self,
         variable: str,
         *,
+        scaled: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: Literal[False],
     ) -> list[pd.DataFrame]: ...
@@ -904,6 +920,7 @@ class Result:
         self,
         variable: str,
         *,
+        scaled: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: Literal[True],
     ) -> pd.DataFrame: ...
@@ -913,6 +930,7 @@ class Result:
         self,
         variable: str,
         *,
+        scaled: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: bool = True,
     ) -> pd.DataFrame: ...
@@ -921,23 +939,35 @@ class Result:
         self,
         variable: str,
         *,
+        scaled: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: bool = True,
     ) -> pd.DataFrame | list[pd.DataFrame]:
         """Get fluxes of variable with negative stoichiometry."""
+        self.model.update_parameters(self.raw_parameters[0])
         names = [
             k
             for k, v in self.model.get_stoichiometries_of_variable(variable).items()
             if v < 0
         ]
-        args: pd.DataFrame | list[pd.DataFrame] = self.get_fluxes(
-            normalise=normalise, concatenated=concatenated
-        )
-        if concatenated:
-            return args.loc[:, names]
 
-        args = cast(list[pd.DataFrame], args)
-        return [i.loc[:, names] for i in args]
+        fluxes: list[pd.DataFrame] = [
+            i.loc[:, names]
+            for i in self.get_fluxes(normalise=normalise, concatenated=False)
+        ]
+
+        if scaled:
+            fluxes = [i.copy() for i in fluxes]
+            for v, p in zip(fluxes, self.raw_parameters, strict=True):
+                self.model.update_parameters(p)
+                stoichs = self.model.get_stoichiometries_of_variable(variable)
+                for k in names:
+                    v.loc[:, k] *= -stoichs[k]
+
+        self.model.update_parameters(self.raw_parameters[-1])
+        if concatenated:
+            return pd.concat(fluxes, axis=0)
+        return fluxes
 
     def get_new_y0(self) -> dict[str, float]:
         """Get the new initial conditions after the simulation.
