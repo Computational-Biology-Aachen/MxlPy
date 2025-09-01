@@ -11,7 +11,7 @@ from mxlpy.model import Model
 from mxlpy.types import Array, ArrayLike, IntegratorType, unwrap
 
 
-def mock_minimize_fn(
+def mock_minimizer(
     residual_fn: ResidualFn,  # noqa: ARG001
     p0: dict[str, float],
     bounds: Bounds | None,  # noqa: ARG001
@@ -91,9 +91,9 @@ class MockIntegrator:
         return t, y
 
 
-def test_default_minimize_fn() -> None:
+def test_default_minimizer() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
-    p_fit = fit_local._default_minimize_fn(
+    p_fit = fit_local._default_minimizer(
         mock_residual_fn_filled_in,
         p_true,
         bounds={},
@@ -129,7 +129,7 @@ def test_fit_steady_state() -> None:
         model=Model().add_parameters(p_true),
         p0=p_true,
         data=data,
-        minimize_fn=mock_minimize_fn,
+        minimizer=mock_minimizer,
         residual_fn=mock_ss_residual_fn,
     )
     assert p_fit is not None
@@ -143,7 +143,7 @@ def tets_fit_time_course() -> None:
         model=Model(),
         p0=p_true,
         data=data,
-        minimize_fn=mock_minimize_fn,
+        minimizer=mock_minimizer,
         residual_fn=mock_ts_residual_fn,
     )
     assert p_fit is not None

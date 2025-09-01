@@ -9,8 +9,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from scipy.optimize import minimize
 
@@ -44,7 +45,7 @@ LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "LOGGER",
-    "MinimizeFn",
+    "Minimizer",
     "carousel_protocol_time_course",
     "carousel_steady_state",
     "carousel_time_course",
@@ -54,7 +55,7 @@ __all__ = [
 ]
 
 
-type MinimizeFn = Callable[
+type Minimizer = Callable[
     [
         ResidualFn,
         InitialGuess,
@@ -64,31 +65,57 @@ type MinimizeFn = Callable[
 ]
 
 
-def _default_minimize_fn(
-    residual_fn: ResidualFn,
-    p0: dict[str, float],
-    bounds: Bounds,
-) -> MinResult | None:
-    res = minimize(
-        residual_fn,
-        x0=list(p0.values()),
-        bounds=[bounds.get(name, (1e-6, 1e6)) for name in p0],
-        method="L-BFGS-B",
-    )
-    if res.success:
-        return MinResult(
-            parameters=dict(
-                zip(
-                    p0,
-                    res.x,
-                    strict=True,
-                ),
-            ),
-            residual=res.fun,
-        )
+@dataclass
+class ScipyMinimizer:
+    tol: float = 1e-6
+    method: Literal[
+        "Nelder-Mead",
+        "Powell",
+        "CG",
+        "BFGS",
+        "Newton-CG",
+        "L-BFGS-B",
+        "TNC",
+        "COBYLA",
+        "COBYQA",
+        "SLSQP",
+        "trust-constr",
+        "dogleg",
+        "trust-ncg",
+        "trust-exact",
+        "trust-krylov",
+    ] = "L-BFGS-B"
 
-    LOGGER.warning("Minimisation failed.")
-    return None
+    def __call__(
+        self,
+        residual_fn: ResidualFn,
+        p0: dict[str, float],
+        bounds: Bounds,
+    ) -> MinResult | None:
+        res = minimize(
+            residual_fn,
+            x0=list(p0.values()),
+            bounds=[bounds.get(name, (1e-6, 1e6)) for name in p0],
+            method=self.method,
+            tol=self.tol,
+        )
+        if res.success:
+            return MinResult(
+                parameters=dict(
+                    zip(
+                        p0,
+                        res.x,
+                        strict=True,
+                    ),
+                ),
+                residual=res.fun,
+            )
+
+        LOGGER.warning("Minimisation failed due to %s", res.message)
+        return None
+
+
+_default_minimizer = ScipyMinimizer()
 
 
 def _carousel_steady_state_worker(
@@ -98,7 +125,7 @@ def _carousel_steady_state_worker(
     y0: dict[str, float] | None,
     integrator: IntegratorType | None,
     loss_fn: LossFn,
-    minimize_fn: MinimizeFn,
+    minimizer: Minimizer,
     residual_fn: SteadyStateResidualFn,
     bounds: Bounds | None,
 ) -> FitResult | None:
@@ -109,7 +136,7 @@ def _carousel_steady_state_worker(
         p0={k: v for k, v in p0.items() if k in model_pars},
         y0=y0,
         data=data,
-        minimize_fn=minimize_fn,
+        minimizer=minimizer,
         residual_fn=residual_fn,
         integrator=integrator,
         loss_fn=loss_fn,
@@ -124,7 +151,7 @@ def _carousel_time_course_worker(
     y0: dict[str, float] | None,
     integrator: IntegratorType | None,
     loss_fn: LossFn,
-    minimize_fn: MinimizeFn,
+    minimizer: Minimizer,
     residual_fn: TimeSeriesResidualFn,
     bounds: Bounds | None,
 ) -> FitResult | None:
@@ -134,7 +161,7 @@ def _carousel_time_course_worker(
         p0={k: v for k, v in p0.items() if k in model_pars},
         y0=y0,
         data=data,
-        minimize_fn=minimize_fn,
+        minimizer=minimizer,
         residual_fn=residual_fn,
         integrator=integrator,
         loss_fn=loss_fn,
@@ -150,7 +177,7 @@ def _carousel_protocol_worker(
     y0: dict[str, float] | None,
     integrator: IntegratorType | None,
     loss_fn: LossFn,
-    minimize_fn: MinimizeFn,
+    minimizer: Minimizer,
     residual_fn: ProtocolResidualFn,
     bounds: Bounds | None,
 ) -> FitResult | None:
@@ -161,7 +188,7 @@ def _carousel_protocol_worker(
         y0=y0,
         protocol=protocol,
         data=data,
-        minimize_fn=minimize_fn,
+        minimizer=minimizer,
         residual_fn=residual_fn,
         integrator=integrator,
         loss_fn=loss_fn,
@@ -175,7 +202,7 @@ def steady_state(
     p0: dict[str, float],
     data: pd.Series,
     y0: dict[str, float] | None = None,
-    minimize_fn: MinimizeFn = _default_minimize_fn,
+    minimizer: Minimizer = _default_minimizer,
     residual_fn: SteadyStateResidualFn = _steady_state_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
@@ -192,7 +219,7 @@ def steady_state(
         data: Experimental steady state data as pandas Series
         p0: Initial parameter guesses as {parameter_name: value}
         y0: Initial conditions as {species_name: value}
-        minimize_fn: Function to minimize fitting error
+        minimizer: Function to minimize fitting error
         residual_fn: Function to calculate fitting error
         integrator: ODE integrator class
         loss_fn: Loss function to use for residual calculation
@@ -222,7 +249,7 @@ def steady_state(
             loss_fn=loss_fn,
         ),
     )
-    min_result = minimize_fn(fn, p0, {} if bounds is None else bounds)
+    min_result = minimizer(fn, p0, {} if bounds is None else bounds)
     # Restore original model
     model.update_parameters(p_orig)
     if min_result is None:
@@ -241,7 +268,7 @@ def time_course(
     p0: dict[str, float],
     data: pd.DataFrame,
     y0: dict[str, float] | None = None,
-    minimize_fn: MinimizeFn = _default_minimize_fn,
+    minimizer: Minimizer = _default_minimizer,
     residual_fn: TimeSeriesResidualFn = _time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
@@ -258,7 +285,7 @@ def time_course(
         data: Experimental time course data
         p0: Initial parameter guesses as {parameter_name: value}
         y0: Initial conditions as {species_name: value}
-        minimize_fn: Function to minimize fitting error
+        minimizer: Function to minimize fitting error
         residual_fn: Function to calculate fitting error
         integrator: ODE integrator class
         loss_fn: Loss function to use for residual calculation
@@ -287,7 +314,7 @@ def time_course(
         ),
     )
 
-    min_result = minimize_fn(fn, p0, {} if bounds is None else bounds)
+    min_result = minimizer(fn, p0, {} if bounds is None else bounds)
     # Restore original model
     model.update_parameters(p_orig)
     if min_result is None:
@@ -307,7 +334,7 @@ def protocol_time_course(
     data: pd.DataFrame,
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
-    minimize_fn: MinimizeFn = _default_minimize_fn,
+    minimizer: Minimizer = _default_minimizer,
     residual_fn: ProtocolResidualFn = _protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
@@ -327,7 +354,7 @@ def protocol_time_course(
         data: Experimental time course data
         protocol: Experimental protocol
         y0: Initial conditions as {species_name: value}
-        minimize_fn: Function to minimize fitting error
+        minimizer: Function to minimize fitting error
         residual_fn: Function to calculate fitting error
         integrator: ODE integrator class
         loss_fn: Loss function to use for residual calculation
@@ -358,7 +385,7 @@ def protocol_time_course(
         ),
     )
 
-    min_result = minimize_fn(fn, p0, {} if bounds is None else bounds)
+    min_result = minimizer(fn, p0, {} if bounds is None else bounds)
     # Restore original model
     model.update_parameters(p_orig)
     if min_result is None:
@@ -377,7 +404,7 @@ def carousel_steady_state(
     p0: dict[str, float],
     data: pd.Series,
     y0: dict[str, float] | None = None,
-    minimize_fn: MinimizeFn = _default_minimize_fn,
+    minimizer: Minimizer = _default_minimizer,
     residual_fn: SteadyStateResidualFn = _steady_state_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
@@ -394,7 +421,7 @@ def carousel_steady_state(
         data: Experimental time course data
         protocol: Experimental protocol
         y0: Initial conditions as {species_name: value}
-        minimize_fn: Function to minimize fitting error
+        minimizer: Function to minimize fitting error
         residual_fn: Function to calculate fitting error
         integrator: ODE integrator class
         loss_fn: Loss function to use for residual calculation
@@ -419,7 +446,7 @@ def carousel_steady_state(
                     y0=y0,
                     integrator=integrator,
                     loss_fn=loss_fn,
-                    minimize_fn=minimize_fn,
+                    minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                 ),
@@ -436,7 +463,7 @@ def carousel_time_course(
     p0: dict[str, float],
     data: pd.DataFrame,
     y0: dict[str, float] | None = None,
-    minimize_fn: MinimizeFn = _default_minimize_fn,
+    minimizer: Minimizer = _default_minimizer,
     residual_fn: TimeSeriesResidualFn = _time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
@@ -455,7 +482,7 @@ def carousel_time_course(
         data: Experimental time course data
         protocol: Experimental protocol
         y0: Initial conditions as {species_name: value}
-        minimize_fn: Function to minimize fitting error
+        minimizer: Function to minimize fitting error
         residual_fn: Function to calculate fitting error
         integrator: ODE integrator class
         loss_fn: Loss function to use for residual calculation
@@ -480,7 +507,7 @@ def carousel_time_course(
                     y0=y0,
                     integrator=integrator,
                     loss_fn=loss_fn,
-                    minimize_fn=minimize_fn,
+                    minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                 ),
@@ -498,7 +525,7 @@ def carousel_protocol_time_course(
     data: pd.DataFrame,
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
-    minimize_fn: MinimizeFn = _default_minimize_fn,
+    minimizer: Minimizer = _default_minimizer,
     residual_fn: ProtocolResidualFn = _protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
@@ -517,7 +544,7 @@ def carousel_protocol_time_course(
         data: Experimental time course data
         protocol: Experimental protocol
         y0: Initial conditions as {species_name: value}
-        minimize_fn: Function to minimize fitting error
+        minimizer: Function to minimize fitting error
         residual_fn: Function to calculate fitting error
         integrator: ODE integrator class
         loss_fn: Loss function to use for residual calculation
@@ -543,7 +570,7 @@ def carousel_protocol_time_course(
                     y0=y0,
                     integrator=integrator,
                     loss_fn=loss_fn,
-                    minimize_fn=minimize_fn,
+                    minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                 ),
