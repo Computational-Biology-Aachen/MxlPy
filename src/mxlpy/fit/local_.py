@@ -46,6 +46,7 @@ LOGGER = logging.getLogger(__name__)
 __all__ = [
     "LOGGER",
     "Minimizer",
+    "ScipyMinimizer",
     "carousel_protocol_time_course",
     "carousel_steady_state",
     "carousel_time_course",
@@ -67,6 +68,14 @@ type Minimizer = Callable[
 
 @dataclass
 class ScipyMinimizer:
+    """Local multivariate minimization using scipy.optimize.
+
+    See Also
+    --------
+    https://docs.scipy.org/doc/scipy/reference/optimize.html#local-multivariate-optimization
+
+    """
+
     tol: float = 1e-6
     method: Literal[
         "Nelder-Mead",
@@ -92,6 +101,7 @@ class ScipyMinimizer:
         p0: dict[str, float],
         bounds: Bounds,
     ) -> MinResult | None:
+        """Call minimzer."""
         res = minimize(
             residual_fn,
             x0=list(p0.values()),
