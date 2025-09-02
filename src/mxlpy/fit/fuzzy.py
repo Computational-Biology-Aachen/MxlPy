@@ -1,19 +1,25 @@
 """Fuzzy / bayesian fitting methods."""
 
+from __future__ import annotations
+
 import multiprocessing
 import sys
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import partial
 from math import ceil
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import numpy as np
 import pandas as pd
 import pebble
 from tqdm import tqdm, trange
 
-from mxlpy import Model, Simulator
+from mxlpy.simulator import Simulator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from mxlpy import Model
 
 __all__ = ["ThompsonState", "thompson_sampling"]
 
