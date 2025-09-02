@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 import scipy.integrate as spi
@@ -48,6 +48,7 @@ class Scipy:
     atol: float = 1e-8
     rtol: float = 1e-8
     t0: float = 0.0
+    method: Literal["RK45", "RK23", "DOP853", "Radau", "BDF", "LSODA"] = "LSODA"
     _y0_orig: tuple[float, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
@@ -111,7 +112,7 @@ class Scipy:
             jac=self.jacobian,
             atol=self.atol,
             rtol=self.rtol,
-            method="LSODA",
+            method=self.method,
         )
 
         if res.success:
@@ -149,7 +150,7 @@ class Scipy:
         # If rhs returns a tuple, we get weird errors, so we need
         # to wrap this in a list for some reason
         integ = spi.ode(lambda t, x: list(self.rhs(t, x)), jac=self.jacobian)
-        integ.set_integrator(name="lsoda")
+        integ.set_integrator(name=self.method)
         integ.set_initial_value(self.y0)
 
         t = self.t0 + step_size
