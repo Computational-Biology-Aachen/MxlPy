@@ -981,6 +981,7 @@ class Result:
             self.get_variables(
                 include_derived_variables=False,
                 include_readouts=False,
+                include_surrogate_variables=False,
             ).iloc[-1]
         )
 
