@@ -1099,7 +1099,12 @@ class Model:
         return self
 
     @_invalidate_cache
-    def remove_variable(self, name: str) -> Self:
+    def remove_variable(
+        self,
+        name: str,
+        *,
+        remove_stoichiometries: bool = True,
+    ) -> Self:
         """Remove a variable from the model.
 
         Examples:
@@ -1107,16 +1112,27 @@ class Model:
 
         Args:
             name: The name of the variable to remove.
+            remove_stoichiometries: whether to remove the variable from all reactions
 
         Returns:
             Self: The instance of the model with the variable removed.
 
         """
+        if remove_stoichiometries:
+            for rxn in self._reactions.values():
+                if name in rxn.stoichiometry:
+                    del rxn.stoichiometry[name]  # type: ignore
+
         self._remove_id(name=name)
         del self._variables[name]
         return self
 
-    def remove_variables(self, variables: Iterable[str]) -> Self:
+    def remove_variables(
+        self,
+        variables: Iterable[str],
+        *,
+        remove_stoichiometries: bool = True,
+    ) -> Self:
         """Remove multiple variables from the model.
 
         Examples:
@@ -1124,13 +1140,16 @@ class Model:
 
         Args:
             variables: An iterable of variable names to be removed.
+            remove_stoichiometries: whether to remove the variables from all reactions
 
         Returns:
             Self: The instance of the model with the specified variables removed.
 
         """
         for variable in variables:
-            self.remove_variable(name=variable)
+            self.remove_variable(
+                name=variable, remove_stoichiometries=remove_stoichiometries
+            )
         return self
 
     @_invalidate_cache
@@ -1219,7 +1238,7 @@ class Model:
         value_or_derived = (
             self._variables[name].initial_value if value is None else value
         )
-        self.remove_variable(name)
+        self.remove_variable(name, remove_stoichiometries=False)
 
         # FIXME: better handling of unit
         if isinstance(value_or_derived, Derived):

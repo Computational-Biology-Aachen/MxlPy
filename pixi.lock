@@ -4690,7 +4690,7 @@ packages:
 - pypi: ./
   name: mxlpy
   version: 0.25.0
-  sha256: b99ad5ba321c9ad18171c5bf9dbc662285c2dd40699ada8e32586ad8011fe8de
+  sha256: 430e72fcdf7b36b1df5cd50925200b50afa5ca8450af88377664e6be52ec751c
   requires_dist:
   - diffrax>=0.7.0
   - dill>=0.3.9
