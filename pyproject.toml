@@ -29,7 +29,7 @@ maintainers = [
 ]
 name = "mxlpy"
 readme = "README.md"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
   "diffrax>=0.7.0",
   "dill>=0.3.9",
