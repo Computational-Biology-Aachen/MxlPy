@@ -327,7 +327,7 @@ def test_add_variables_protected_name() -> None:
 def test_remove_variable() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
-    model.remove_variable("var1")
+    model.remove_variable("var1", remove_stoichiometries=True)
 
     variables = model.get_initial_conditions()
     assert "var1" not in variables
@@ -337,14 +337,14 @@ def test_remove_variable() -> None:
 def test_remove_variable_nonexistent() -> None:
     model = Model()
     with pytest.raises(KeyError):
-        model.remove_variable("var1")
+        model.remove_variable("var1", remove_stoichiometries=True)
 
 
 def test_remove_variables() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
-    model.remove_variables(["var1", "var2"])
+    model.remove_variables(["var1", "var2"], remove_stoichiometries=True)
 
     variables = model.get_initial_conditions()
     assert "var1" not in variables
@@ -358,7 +358,7 @@ def test_remove_variables_partial() -> None:
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
     model.add_variable("var3", 3.0)
-    model.remove_variables(["var1", "var3"])
+    model.remove_variables(["var1", "var3"], remove_stoichiometries=True)
 
     variables = model.get_initial_conditions()
     assert "var1" not in variables
@@ -374,7 +374,7 @@ def test_remove_variables_nonexistent() -> None:
     model = Model()
     model.add_variable("var1", 1.0)
     with pytest.raises(KeyError):
-        model.remove_variables(["var1", "var2"])
+        model.remove_variables(["var1", "var2"], remove_stoichiometries=True)
 
 
 def test_update_variable() -> None:

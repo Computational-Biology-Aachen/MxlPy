@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 
 from example_models import get_linear_chain_2v
-from mxlpy import fit_local
-from mxlpy.fit.common import Bounds, MinResult, ResidualFn, _steady_state_residual, rmse
+from mxlpy import fit
+from mxlpy.fit import Bounds, MinResult, ResidualFn, _steady_state_residual, rmse
 from mxlpy.fns import constant
 from mxlpy.model import Model
 from mxlpy.types import Array, ArrayLike, IntegratorType, unwrap
@@ -31,8 +31,8 @@ def mock_ss_residual_fn(
     data: pd.Series,  # noqa: ARG001
     model: Model,  # noqa: ARG001
     y0: dict[str, float] | None,  # noqa: ARG001
-    integrator: IntegratorType,  # noqa: ARG001
-    loss_fn: fit_local.LossFn,  # noqa: ARG001
+    integrator: IntegratorType | None,  # noqa: ARG001
+    loss_fn: fit.LossFn,  # noqa: ARG001
 ) -> float:
     return 0.0
 
@@ -43,8 +43,8 @@ def mock_ts_residual_fn(
     data: pd.DataFrame,  # noqa: ARG001
     model: Model,  # noqa: ARG001
     y0: dict[str, float] | None,  # noqa: ARG001
-    integrator: IntegratorType,  # noqa: ARG001
-    loss_fn: fit_local.LossFn,  # noqa: ARG001
+    integrator: IntegratorType | None,  # noqa: ARG001
+    loss_fn: fit.LossFn,  # noqa: ARG001
 ) -> float:
     return 0.0
 
@@ -93,7 +93,7 @@ class MockIntegrator:
 
 def test_default_minimizer() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
-    p_fit = fit_local._default_minimizer(
+    p_fit = fit.LocalScipyMinimizer()(
         mock_residual_fn_filled_in,
         p_true,
         bounds={},
@@ -125,7 +125,7 @@ def test_steady_state_residual() -> None:
 def test_fit_steady_state() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
     data = pd.Series()
-    p_fit = fit_local.steady_state(
+    p_fit = fit.steady_state(
         model=Model().add_parameters(p_true),
         p0=p_true,
         data=data,
@@ -139,7 +139,7 @@ def test_fit_steady_state() -> None:
 def tets_fit_time_course() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
     data = pd.DataFrame()
-    p_fit = fit_local.time_course(
+    p_fit = fit.time_course(
         model=Model(),
         p0=p_true,
         data=data,
@@ -163,18 +163,20 @@ if __name__ == "__main__":
         .get_result()
     ).get_combined()
 
-    p_fit = fit_local.steady_state(
+    p_fit = fit.steady_state(
         model_fn(),
         p0=p_init,
         data=res.iloc[-1],
+        minimizer=fit.LocalScipyMinimizer(),
     )
     assert p_fit is not None
     assert np.allclose(pd.Series(p_fit.best_pars), pd.Series(p_true), rtol=0.1)
 
-    p_fit = fit_local.time_course(
+    p_fit = fit.time_course(
         model_fn(),
         p0=p_init,
         data=res,
+        minimizer=fit.LocalScipyMinimizer(),
     )
     assert p_fit is not None
     assert np.allclose(pd.Series(p_fit.best_pars), pd.Series(p_true), rtol=0.1)
