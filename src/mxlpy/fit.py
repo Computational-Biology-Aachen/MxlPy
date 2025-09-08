@@ -1,37 +1,23 @@
-"""Parameter global fitting Module for Metabolic Models.
-
-This module provides functions for fitting model parameters to experimental data,
-including both steadyd-state and time-series data fitting capabilities.
-"""
+"""Fitting routines."""
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Protocol
 
-from scipy.optimize import basinhopping
+import numpy as np
+import pandas as pd
+from scipy.optimize import basinhopping, minimize
+from wadler_lindig import pformat
 
 from mxlpy import parallel
-from mxlpy.types import IntegratorType, cast
-
-from .common import (
-    CarouselFit,
-    FitResult,
-    InitialGuess,
-    LossFn,
-    MinResult,
-    ProtocolResidualFn,
-    ResidualFn,
-    SteadyStateResidualFn,
-    TimeSeriesResidualFn,
-    _protocol_time_course_residual,
-    _steady_state_residual,
-    _time_course_residual,
-    rmse,
-)
+from mxlpy.model import Model
+from mxlpy.simulator import Simulator
+from mxlpy.types import Array, ArrayLike, IntegratorType, cast
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -41,15 +27,16 @@ if TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
-__all__ = [
-    "LOGGER",
-    "Minimizer",
-    "carousel_protocol_time_course",
-    "carousel_steady_state",
-    "carousel_time_course",
-    "protocol_time_course",
-    "steady_state",
-    "time_course",
+type InitialGuess = dict[str, float]
+
+type Bounds = dict[str, tuple[float | None, float | None]]
+type ResidualFn = Callable[[Array], float]
+type LossFn = Callable[
+    [
+        pd.DataFrame | pd.Series,
+        pd.DataFrame | pd.Series,
+    ],
+    float,
 ]
 
 
@@ -57,33 +44,283 @@ type Minimizer = Callable[
     [
         ResidualFn,
         InitialGuess,
+        Bounds,
     ],
     MinResult | None,
 ]
 
 
-def _default_minimizer(
-    residual_fn: ResidualFn,
-    p0: dict[str, float],
-) -> MinResult | None:
-    res = basinhopping(
-        residual_fn,
-        x0=list(p0.values()),
-    )
-    if res.success:
-        return MinResult(
-            parameters=dict(
-                zip(
-                    p0,
-                    res.x,
-                    strict=True,
-                ),
-            ),
-            residual=res.fun,
-        )
+__all__ = [
+    "Bounds",
+    "CarouselFit",
+    "FitResult",
+    "GlobalScipyMinimizer",
+    "InitialGuess",
+    "LOGGER",
+    "LocalScipyMinimizer",
+    "LossFn",
+    "MinResult",
+    "Minimizer",
+    "ProtocolResidualFn",
+    "ResidualFn",
+    "SteadyStateResidualFn",
+    "TimeSeriesResidualFn",
+    "carousel_protocol_time_course",
+    "carousel_steady_state",
+    "carousel_time_course",
+    "protocol_time_course",
+    "rmse",
+    "steady_state",
+    "time_course",
+]
 
-    LOGGER.warning("Minimisation failed.")
-    return None
+
+@dataclass
+class MinResult:
+    """Result of a minimization operation."""
+
+    parameters: dict[str, float]
+    residual: float
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+
+@dataclass
+class FitResult:
+    """Result of a fit operation."""
+
+    model: Model
+    best_pars: dict[str, float]
+    loss: float
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+
+@dataclass
+class CarouselFit:
+    """Result of a carousel fit operation."""
+
+    fits: list[FitResult]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def get_best_fit(self) -> FitResult:
+        """Get the best fit from the carousel."""
+        return min(self.fits, key=lambda x: x.loss)
+
+
+def rmse(
+    y_pred: pd.DataFrame | pd.Series,
+    y_true: pd.DataFrame | pd.Series,
+) -> float:
+    """Calculate root mean square error between model and data."""
+    return cast(float, np.sqrt(np.mean(np.square(y_pred - y_true))))
+
+
+class SteadyStateResidualFn(Protocol):
+    """Protocol for steady state residual functions."""
+
+    def __call__(
+        self,
+        par_values: Array,
+        # This will be filled out by partial
+        par_names: list[str],
+        data: pd.Series,
+        model: Model,
+        y0: dict[str, float] | None,
+        integrator: IntegratorType | None,
+        loss_fn: LossFn,
+    ) -> float:
+        """Calculate residual error between model steady state and experimental data."""
+        ...
+
+
+class TimeSeriesResidualFn(Protocol):
+    """Protocol for time series residual functions."""
+
+    def __call__(
+        self,
+        par_values: Array,
+        # This will be filled out by partial
+        par_names: list[str],
+        data: pd.DataFrame,
+        model: Model,
+        y0: dict[str, float] | None,
+        integrator: IntegratorType | None,
+        loss_fn: LossFn,
+    ) -> float:
+        """Calculate residual error between model time course and experimental data."""
+        ...
+
+
+class ProtocolResidualFn(Protocol):
+    """Protocol for time series residual functions."""
+
+    def __call__(
+        self,
+        par_values: Array,
+        # This will be filled out by partial
+        par_names: list[str],
+        data: pd.DataFrame,
+        model: Model,
+        y0: dict[str, float] | None,
+        integrator: IntegratorType | None,
+        loss_fn: LossFn,
+        protocol: pd.DataFrame,
+    ) -> float:
+        """Calculate residual error between model time course and experimental data."""
+        ...
+
+
+def _steady_state_residual(
+    par_values: Array,
+    # This will be filled out by partial
+    par_names: list[str],
+    data: pd.Series,
+    model: Model,
+    y0: dict[str, float] | None,
+    integrator: IntegratorType | None,
+    loss_fn: LossFn,
+) -> float:
+    """Calculate residual error between model steady state and experimental data.
+
+    Args:
+        par_values: Parameter values to test
+        data: Experimental steady state data
+        model: Model instance to simulate
+        y0: Initial conditions
+        par_names: Names of parameters being fit
+        integrator: ODE integrator class to use
+        loss_fn: Loss function to use for residual calculation
+
+    Returns:
+        float: Root mean square error between model and data
+
+    """
+    res = (
+        Simulator(
+            model.update_parameters(
+                dict(
+                    zip(
+                        par_names,
+                        par_values,
+                        strict=True,
+                    )
+                )
+            ),
+            y0=y0,
+            integrator=integrator,
+        )
+        .simulate_to_steady_state()
+        .get_result()
+    )
+    if res is None:
+        return cast(float, np.inf)
+
+    return loss_fn(
+        res.get_combined().loc[:, cast(list, data.index)],
+        data,
+    )
+
+
+def _time_course_residual(
+    par_values: ArrayLike,
+    # This will be filled out by partial
+    par_names: list[str],
+    data: pd.DataFrame,
+    model: Model,
+    y0: dict[str, float] | None,
+    integrator: IntegratorType | None,
+    loss_fn: LossFn,
+) -> float:
+    """Calculate residual error between model time course and experimental data.
+
+    Args:
+        par_values: Parameter values to test
+        data: Experimental time course data
+        model: Model instance to simulate
+        y0: Initial conditions
+        par_names: Names of parameters being fit
+        integrator: ODE integrator class to use
+        loss_fn: Loss function to use for residual calculation
+
+    Returns:
+        float: Root mean square error between model and data
+
+    """
+    res = (
+        Simulator(
+            model.update_parameters(dict(zip(par_names, par_values, strict=True))),
+            y0=y0,
+            integrator=integrator,
+        )
+        .simulate_time_course(cast(list, data.index))
+        .get_result()
+    )
+    if res is None:
+        return cast(float, np.inf)
+    results_ss = res.get_combined()
+
+    return loss_fn(
+        results_ss.loc[:, cast(list, data.columns)],
+        data,
+    )
+
+
+def _protocol_time_course_residual(
+    par_values: ArrayLike,
+    # This will be filled out by partial
+    par_names: list[str],
+    data: pd.DataFrame,
+    model: Model,
+    y0: dict[str, float] | None,
+    integrator: IntegratorType | None,
+    loss_fn: LossFn,
+    protocol: pd.DataFrame,
+) -> float:
+    """Calculate residual error between model time course and experimental data.
+
+    Args:
+        par_values: Parameter values to test
+        data: Experimental time course data
+        model: Model instance to simulate
+        y0: Initial conditions
+        par_names: Names of parameters being fit
+        integrator: ODE integrator class to use
+        loss_fn: Loss function to use for residual calculation
+        protocol: Experimental protocol
+        time_points_per_step: Number of time points per step in the protocol
+
+    Returns:
+        float: Root mean square error between model and data
+
+    """
+    res = (
+        Simulator(
+            model.update_parameters(dict(zip(par_names, par_values, strict=True))),
+            y0=y0,
+            integrator=integrator,
+        )
+        .simulate_protocol_time_course(
+            protocol=protocol,
+            time_points=data.index,
+        )
+        .get_result()
+    )
+    if res is None:
+        return cast(float, np.inf)
+    results_ss = res.get_combined()
+
+    return loss_fn(
+        results_ss.loc[:, cast(list, data.columns)],
+        data,
+    )
 
 
 def _carousel_steady_state_worker(
@@ -95,6 +332,7 @@ def _carousel_steady_state_worker(
     loss_fn: LossFn,
     minimizer: Minimizer,
     residual_fn: SteadyStateResidualFn,
+    bounds: Bounds | None,
 ) -> FitResult | None:
     model_pars = model.get_parameter_values()
 
@@ -107,6 +345,7 @@ def _carousel_steady_state_worker(
         residual_fn=residual_fn,
         integrator=integrator,
         loss_fn=loss_fn,
+        bounds=bounds,
     )
 
 
@@ -119,6 +358,7 @@ def _carousel_time_course_worker(
     loss_fn: LossFn,
     minimizer: Minimizer,
     residual_fn: TimeSeriesResidualFn,
+    bounds: Bounds | None,
 ) -> FitResult | None:
     model_pars = model.get_parameter_values()
     return time_course(
@@ -130,6 +370,7 @@ def _carousel_time_course_worker(
         residual_fn=residual_fn,
         integrator=integrator,
         loss_fn=loss_fn,
+        bounds=bounds,
     )
 
 
@@ -143,6 +384,7 @@ def _carousel_protocol_worker(
     loss_fn: LossFn,
     minimizer: Minimizer,
     residual_fn: ProtocolResidualFn,
+    bounds: Bounds | None,
 ) -> FitResult | None:
     model_pars = model.get_parameter_values()
     return protocol_time_course(
@@ -155,6 +397,7 @@ def _carousel_protocol_worker(
         residual_fn=residual_fn,
         integrator=integrator,
         loss_fn=loss_fn,
+        bounds=bounds,
     )
 
 
@@ -163,11 +406,12 @@ def steady_state(
     *,
     p0: dict[str, float],
     data: pd.Series,
+    minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    minimizer: Minimizer = _default_minimizer,
     residual_fn: SteadyStateResidualFn = _steady_state_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
+    bounds: Bounds | None = None,
 ) -> FitResult | None:
     """Fit model parameters to steady-state experimental data.
 
@@ -210,7 +454,7 @@ def steady_state(
             loss_fn=loss_fn,
         ),
     )
-    min_result = minimizer(fn, p0)
+    min_result = minimizer(fn, p0, {} if bounds is None else bounds)
     # Restore original model
     model.update_parameters(p_orig)
     if min_result is None:
@@ -228,11 +472,12 @@ def time_course(
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
+    minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    minimizer: Minimizer = _default_minimizer,
     residual_fn: TimeSeriesResidualFn = _time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
+    bounds: Bounds | None = None,
 ) -> FitResult | None:
     """Fit model parameters to time course of experimental data.
 
@@ -274,7 +519,7 @@ def time_course(
         ),
     )
 
-    min_result = minimizer(fn, p0)
+    min_result = minimizer(fn, p0, {} if bounds is None else bounds)
     # Restore original model
     model.update_parameters(p_orig)
     if min_result is None:
@@ -293,11 +538,12 @@ def protocol_time_course(
     p0: dict[str, float],
     data: pd.DataFrame,
     protocol: pd.DataFrame,
+    minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    minimizer: Minimizer = _default_minimizer,
     residual_fn: ProtocolResidualFn = _protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
+    bounds: Bounds | None = None,
 ) -> FitResult | None:
     """Fit model parameters to time course of experimental data.
 
@@ -344,7 +590,7 @@ def protocol_time_course(
         ),
     )
 
-    min_result = minimizer(fn, p0)
+    min_result = minimizer(fn, p0, {} if bounds is None else bounds)
     # Restore original model
     model.update_parameters(p_orig)
     if min_result is None:
@@ -362,11 +608,12 @@ def carousel_steady_state(
     *,
     p0: dict[str, float],
     data: pd.Series,
+    minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    minimizer: Minimizer = _default_minimizer,
     residual_fn: SteadyStateResidualFn = _steady_state_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
+    bounds: Bounds | None = None,
 ) -> CarouselFit:
     """Fit model parameters to steady-state experimental data over a carousel.
 
@@ -406,6 +653,7 @@ def carousel_steady_state(
                     loss_fn=loss_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
+                    bounds=bounds,
                 ),
                 inputs=list(enumerate(carousel.variants)),
             )
@@ -419,11 +667,12 @@ def carousel_time_course(
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
+    minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    minimizer: Minimizer = _default_minimizer,
     residual_fn: TimeSeriesResidualFn = _time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
+    bounds: Bounds | None = None,
 ) -> CarouselFit:
     """Fit model parameters to time course of experimental data over a carousel.
 
@@ -465,6 +714,7 @@ def carousel_time_course(
                     loss_fn=loss_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
+                    bounds=bounds,
                 ),
                 inputs=list(enumerate(carousel.variants)),
             )
@@ -478,12 +728,13 @@ def carousel_protocol_time_course(
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
+    minimizer: Minimizer,
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
-    minimizer: Minimizer = _default_minimizer,
     residual_fn: ProtocolResidualFn = _protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
+    bounds: Bounds | None = None,
 ) -> CarouselFit:
     """Fit model parameters to time course of experimental data over a protocol.
 
@@ -526,9 +777,117 @@ def carousel_protocol_time_course(
                     loss_fn=loss_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
+                    bounds=bounds,
                 ),
                 inputs=list(enumerate(carousel.variants)),
             )
             if (fit := i[1]) is not None
         ]
     )
+
+
+###############################################################################
+# Minimizers
+###############################################################################
+
+
+@dataclass
+class LocalScipyMinimizer:
+    """Local multivariate minimization using scipy.optimize.
+
+    See Also
+    --------
+    https://docs.scipy.org/doc/scipy/reference/optimize.html#local-multivariate-optimization
+
+    """
+
+    tol: float = 1e-6
+    method: Literal[
+        "Nelder-Mead",
+        "Powell",
+        "CG",
+        "BFGS",
+        "Newton-CG",
+        "L-BFGS-B",
+        "TNC",
+        "COBYLA",
+        "COBYQA",
+        "SLSQP",
+        "trust-constr",
+        "dogleg",
+        "trust-ncg",
+        "trust-exact",
+        "trust-krylov",
+    ] = "L-BFGS-B"
+
+    def __call__(
+        self,
+        residual_fn: ResidualFn,
+        p0: dict[str, float],
+        bounds: Bounds,
+    ) -> MinResult | None:
+        """Call minimzer."""
+        res = minimize(
+            residual_fn,
+            x0=list(p0.values()),
+            bounds=[bounds.get(name, (1e-6, 1e6)) for name in p0],
+            method=self.method,
+            tol=self.tol,
+        )
+        if res.success:
+            return MinResult(
+                parameters=dict(
+                    zip(
+                        p0,
+                        res.x,
+                        strict=True,
+                    ),
+                ),
+                residual=res.fun,
+            )
+
+        LOGGER.warning("Minimisation failed due to %s", res.message)
+        return None
+
+
+@dataclass
+class GlobalScipyMinimizer:
+    """Global iate minimization using scipy.optimize.
+
+    See Also
+    --------
+    https://docs.scipy.org/doc/scipy/reference/optimize.html#local-multivariate-optimization
+
+    """
+
+    tol: float = 1e-6
+    method: Literal["basinhopping",] = "basinhopping"
+
+    def __call__(
+        self,
+        residual_fn: ResidualFn,
+        p0: dict[str, float],
+        bounds: Bounds,  # noqa: ARG002
+    ) -> MinResult | None:
+        if self.method == "basinhopping":
+            res = basinhopping(
+                residual_fn,
+                x0=list(p0.values()),
+            )
+        else:
+            msg = f"Unknown method {self.method}"
+            raise NotImplementedError(msg)
+        if res.success:
+            return MinResult(
+                parameters=dict(
+                    zip(
+                        p0,
+                        res.x,
+                        strict=True,
+                    ),
+                ),
+                residual=res.fun,
+            )
+
+        LOGGER.warning("Minimisation failed.")
+        return None

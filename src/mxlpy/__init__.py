@@ -45,7 +45,9 @@ from . import (
     compare,
     distributions,
     experimental,
+    fit,
     fns,
+    fuzzy,
     mc,
     mca,
     plot,
@@ -54,9 +56,6 @@ from . import (
     scan,
     units,
 )
-from .fit import fuzzy as fit_fuzzy
-from .fit import global_ as fit_global
-from .fit import local_ as fit_local
 from .integrators import DefaultIntegrator, Diffrax, Scipy
 from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
@@ -108,10 +107,9 @@ __all__ = [
     "compare",
     "distributions",
     "experimental",
-    "fit_fuzzy",
-    "fit_global",
-    "fit_local",
+    "fit",
     "fns",
+    "fuzzy",
     "make_protocol",
     "mc",
     "mca",
