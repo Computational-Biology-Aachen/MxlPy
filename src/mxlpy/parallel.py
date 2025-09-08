@@ -27,10 +27,7 @@ from tqdm import tqdm
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Hashable
 
-__all__ = [
-    "Cache",
-    "parallelise",
-]
+__all__ = ["Cache", "parallelise", "parallelise_keyless"]
 
 
 def _pickle_name(k: Hashable) -> str:
@@ -166,6 +163,78 @@ def parallelise[K: Hashable, Tin, Tout](
         results = list(
             tqdm(
                 map(worker, inputs),  # type: ignore
+                total=len(inputs),
+                disable=disable_tqdm,
+                desc=tqdm_desc,
+            )
+        )  # type: ignore
+
+    return results
+
+
+def parallelise_keyless[Tin, Tout](
+    fn: Callable[[Tin], Tout],
+    inputs: Collection[Tin],
+    *,
+    parallel: bool = True,
+    max_workers: int | None = None,
+    timeout: float | None = None,
+    disable_tqdm: bool = False,
+    tqdm_desc: str | None = None,
+) -> list[Tout]:
+    """Execute a function in parallel over a collection of inputs.
+
+    Examples:
+        >>> parallelise(square, [("a", 2), ("b", 3), ("c", 4)])
+        {"a": 4, "b": 9, "c": 16}
+
+    Args:
+        fn: Function to execute in parallel. Takes a single input and returns a result.
+        inputs: Collection of (key, input) tuples to process.
+        cache: Optional cache to store and retrieve results.
+        parallel: Whether to execute in parallel (default: True).
+        max_workers: Maximum number of worker processes (default: None, uses all available CPUs).
+        timeout: Maximum time (in seconds) to wait for each worker to complete (default: None).
+        disable_tqdm: Whether to disable the tqdm progress bar (default: False).
+        tqdm_desc: Description for the tqdm progress bar (default: None).
+
+    Returns:
+        dict[Tin, Tout]: Dictionary mapping inputs to their corresponding outputs.
+
+    """
+    if sys.platform in ["win32", "cygwin"]:
+        parallel = False
+
+    results: list[Tout]
+    if parallel:
+        results = []
+        max_workers = (
+            multiprocessing.cpu_count() if max_workers is None else max_workers
+        )
+
+        with (
+            tqdm(
+                total=len(inputs),
+                disable=disable_tqdm,
+                desc=tqdm_desc,
+            ) as pbar,
+            pebble.ProcessPool(max_workers=max_workers) as pool,
+        ):
+            future = pool.map(fn, inputs, timeout=timeout)
+            it = future.result()
+            while True:
+                try:
+                    value = next(it)
+                    pbar.update(1)
+                    results.append(value)
+                except StopIteration:
+                    break
+                except TimeoutError:
+                    pbar.update(1)
+    else:
+        results = list(
+            tqdm(
+                map(fn, inputs),  # type: ignore
                 total=len(inputs),
                 disable=disable_tqdm,
                 desc=tqdm_desc,
