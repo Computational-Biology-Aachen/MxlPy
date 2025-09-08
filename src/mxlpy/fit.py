@@ -11,7 +11,15 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import basinhopping, minimize
+from scipy.optimize import (
+    basinhopping,
+    differential_evolution,
+    direct,
+    dual_annealing,
+    minimize,
+    shgo,
+)
+from scipy.optimize._optimize import OptimizeResult
 from wadler_lindig import pformat
 
 from mxlpy import parallel
@@ -1020,25 +1028,41 @@ class GlobalScipyMinimizer:
 
     See Also
     --------
-    https://docs.scipy.org/doc/scipy/reference/optimize.html#local-multivariate-optimization
+    https://docs.scipy.org/doc/scipy/reference/optimize.html#global-optimization
 
     """
 
     tol: float = 1e-6
-    method: Literal["basinhopping",] = "basinhopping"
+    method: Literal[
+        "basinhopping",
+        "differential_evolution",
+        "shgo",
+        "dual_annealing",
+        "direct",
+    ] = "basinhopping"
 
     def __call__(
         self,
         residual_fn: ResidualFn,
         p0: dict[str, float],
-        bounds: Bounds,  # noqa: ARG002
+        bounds: Bounds,
     ) -> MinResult | None:
         """Minimize residual fn."""
+        res = OptimizeResult
+
         if self.method == "basinhopping":
             res = basinhopping(
                 residual_fn,
                 x0=list(p0.values()),
             )
+        elif self.method == "differential_evolution":
+            res = differential_evolution(residual_fn, bounds)
+        elif self.method == "shgo":
+            res = shgo(residual_fn, bounds)
+        elif self.method == "dual_annealing":
+            res = dual_annealing(residual_fn, bounds)
+        elif self.method == "direct":
+            res = direct(residual_fn, bounds)
         else:
             msg = f"Unknown method {self.method}"
             raise NotImplementedError(msg)
