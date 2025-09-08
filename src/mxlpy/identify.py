@@ -9,9 +9,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from mxlpy import fit_local
+from mxlpy import fit
 from mxlpy.distributions import LogNormal, sample
-from mxlpy.fit.common import LossFn, rmse
 from mxlpy.parallel import parallelise
 
 if TYPE_CHECKING:
@@ -27,13 +26,14 @@ def _mc_fit_time_course_worker(
     p0: pd.Series,
     model: Model,
     data: pd.DataFrame,
-    loss_fn: fit_local.LossFn,
+    loss_fn: fit.LossFn,
 ) -> float:
-    fit_result = fit_local.time_course(
+    fit_result = fit.time_course(
         model=model,
         p0=p0.to_dict(),
         data=data,
         loss_fn=loss_fn,
+        minimizer=fit.LocalScipyMinimizer(),
     )
     if fit_result is None:
         return np.inf
@@ -46,7 +46,7 @@ def profile_likelihood(
     parameter_name: str,
     parameter_values: Array,
     n_random: int = 10,
-    loss_fn: LossFn = rmse,
+    loss_fn: fit.LossFn = fit.rmse,
 ) -> pd.Series:
     """Estimate the profile likelihood of model parameters given data.
 
