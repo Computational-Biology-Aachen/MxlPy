@@ -52,7 +52,7 @@ type Minimizer = Callable[
 
 __all__ = [
     "Bounds",
-    "CarouselFit",
+    "EnsembleFitResult",
     "FitResult",
     "GlobalScipyMinimizer",
     "InitialGuess",
@@ -68,6 +68,9 @@ __all__ = [
     "carousel_protocol_time_course",
     "carousel_steady_state",
     "carousel_time_course",
+    "ensemble_protocol_time_course",
+    "ensemble_steady_state",
+    "ensemble_time_course",
     "protocol_time_course",
     "rmse",
     "steady_state",
@@ -101,7 +104,7 @@ class FitResult:
 
 
 @dataclass
-class CarouselFit:
+class EnsembleFitResult:
     """Result of a carousel fit operation."""
 
     fits: list[FitResult]
@@ -603,6 +606,70 @@ def protocol_time_course(
     )
 
 
+###############################################################################
+# Ensemble / carousel
+###############################################################################
+
+
+def ensemble_steady_state(
+    ensemble: list[Model],
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: Minimizer,
+    y0: dict[str, float] | None = None,
+    residual_fn: SteadyStateResidualFn = _steady_state_residual,
+    integrator: IntegratorType | None = None,
+    loss_fn: LossFn = rmse,
+    bounds: Bounds | None = None,
+) -> EnsembleFitResult:
+    """Fit model ensemble parameters to steady-state experimental data.
+
+    Examples:
+        >>> carousel_steady_state(carousel, p0=p0, data=data)
+
+    Args:
+        ensemble: Ensemble to fit
+        p0: Initial parameter guesses as {parameter_name: value}
+        data: Experimental time course data
+        protocol: Experimental protocol
+        y0: Initial conditions as {species_name: value}
+        minimizer: Function to minimize fitting error
+        residual_fn: Function to calculate fitting error
+        integrator: ODE integrator class
+        loss_fn: Loss function to use for residual calculation
+        time_points_per_step: Number of time points per step in the protocol
+        bounds: Mapping of bounds per parameter
+
+    Returns:
+        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
+
+    Note:
+        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+
+    """
+    return EnsembleFitResult(
+        [
+            fit
+            for i in parallel.parallelise(
+                partial(
+                    _carousel_steady_state_worker,
+                    p0=p0,
+                    data=data,
+                    y0=y0,
+                    integrator=integrator,
+                    loss_fn=loss_fn,
+                    minimizer=minimizer,
+                    residual_fn=residual_fn,
+                    bounds=bounds,
+                ),
+                inputs=list(enumerate(ensemble)),
+            )
+            if (fit := i[1]) is not None
+        ]
+    )
+
+
 def carousel_steady_state(
     carousel: Carousel,
     *,
@@ -614,7 +681,7 @@ def carousel_steady_state(
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
-) -> CarouselFit:
+) -> EnsembleFitResult:
     """Fit model parameters to steady-state experimental data over a carousel.
 
     Examples:
@@ -640,12 +707,64 @@ def carousel_steady_state(
         Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
 
     """
-    return CarouselFit(
+    return ensemble_steady_state(
+        carousel.variants,
+        p0=p0,
+        data=data,
+        minimizer=minimizer,
+        y0=y0,
+        residual_fn=residual_fn,
+        integrator=integrator,
+        loss_fn=loss_fn,
+        bounds=bounds,
+    )
+
+
+def ensemble_time_course(
+    ensemble: list[Model],
+    *,
+    p0: dict[str, float],
+    data: pd.DataFrame,
+    minimizer: Minimizer,
+    y0: dict[str, float] | None = None,
+    residual_fn: TimeSeriesResidualFn = _time_course_residual,
+    integrator: IntegratorType | None = None,
+    loss_fn: LossFn = rmse,
+    bounds: Bounds | None = None,
+) -> EnsembleFitResult:
+    """Fit model parameters to time course of experimental data over a carousel.
+
+    Time points are taken from the data.
+
+    Examples:
+        >>> carousel_time_course(carousel, p0=p0, data=data)
+
+    Args:
+        ensemble: Model ensemble to fit
+        p0: Initial parameter guesses as {parameter_name: value}
+        data: Experimental time course data
+        protocol: Experimental protocol
+        y0: Initial conditions as {species_name: value}
+        minimizer: Function to minimize fitting error
+        residual_fn: Function to calculate fitting error
+        integrator: ODE integrator class
+        loss_fn: Loss function to use for residual calculation
+        time_points_per_step: Number of time points per step in the protocol
+        bounds: Mapping of bounds per parameter
+
+    Returns:
+        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
+
+    Note:
+        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+
+    """
+    return EnsembleFitResult(
         [
             fit
             for i in parallel.parallelise(
                 partial(
-                    _carousel_steady_state_worker,
+                    _carousel_time_course_worker,
                     p0=p0,
                     data=data,
                     y0=y0,
@@ -655,7 +774,7 @@ def carousel_steady_state(
                     residual_fn=residual_fn,
                     bounds=bounds,
                 ),
-                inputs=list(enumerate(carousel.variants)),
+                inputs=list(enumerate(ensemble)),
             )
             if (fit := i[1]) is not None
         ]
@@ -673,7 +792,7 @@ def carousel_time_course(
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
-) -> CarouselFit:
+) -> EnsembleFitResult:
     """Fit model parameters to time course of experimental data over a carousel.
 
     Time points are taken from the data.
@@ -701,14 +820,68 @@ def carousel_time_course(
         Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
 
     """
-    return CarouselFit(
+    return ensemble_time_course(
+        carousel.variants,
+        p0=p0,
+        data=data,
+        minimizer=minimizer,
+        y0=y0,
+        residual_fn=residual_fn,
+        integrator=integrator,
+        loss_fn=loss_fn,
+        bounds=bounds,
+    )
+
+
+def ensemble_protocol_time_course(
+    ensemble: list[Model],
+    *,
+    p0: dict[str, float],
+    data: pd.DataFrame,
+    minimizer: Minimizer,
+    protocol: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    residual_fn: ProtocolResidualFn = _protocol_time_course_residual,
+    integrator: IntegratorType | None = None,
+    loss_fn: LossFn = rmse,
+    bounds: Bounds | None = None,
+) -> EnsembleFitResult:
+    """Fit model parameters to time course of experimental data over a protocol.
+
+    Time points of protocol time course are taken from the data.
+
+    Examples:
+        >>> carousel_steady_state(carousel, p0=p0, data=data)
+
+    Args:
+        ensemble: Model ensemble: value}
+        p0: initial parameter guess
+        data: Experimental time course data
+        protocol: Experimental protocol
+        y0: Initial conditions as {species_name: value}
+        minimizer: Function to minimize fitting error
+        residual_fn: Function to calculate fitting error
+        integrator: ODE integrator class
+        loss_fn: Loss function to use for residual calculation
+        time_points_per_step: Number of time points per step in the protocol
+        bounds: Mapping of bounds per parameter
+
+    Returns:
+        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
+
+    Note:
+        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+
+    """
+    return EnsembleFitResult(
         [
             fit
             for i in parallel.parallelise(
                 partial(
-                    _carousel_time_course_worker,
+                    _carousel_protocol_worker,
                     p0=p0,
                     data=data,
+                    protocol=protocol,
                     y0=y0,
                     integrator=integrator,
                     loss_fn=loss_fn,
@@ -716,7 +889,7 @@ def carousel_time_course(
                     residual_fn=residual_fn,
                     bounds=bounds,
                 ),
-                inputs=list(enumerate(carousel.variants)),
+                inputs=list(enumerate(ensemble)),
             )
             if (fit := i[1]) is not None
         ]
@@ -735,7 +908,7 @@ def carousel_protocol_time_course(
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
-) -> CarouselFit:
+) -> EnsembleFitResult:
     """Fit model parameters to time course of experimental data over a protocol.
 
     Time points of protocol time course are taken from the data.
@@ -763,26 +936,17 @@ def carousel_protocol_time_course(
         Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
 
     """
-    return CarouselFit(
-        [
-            fit
-            for i in parallel.parallelise(
-                partial(
-                    _carousel_protocol_worker,
-                    p0=p0,
-                    data=data,
-                    protocol=protocol,
-                    y0=y0,
-                    integrator=integrator,
-                    loss_fn=loss_fn,
-                    minimizer=minimizer,
-                    residual_fn=residual_fn,
-                    bounds=bounds,
-                ),
-                inputs=list(enumerate(carousel.variants)),
-            )
-            if (fit := i[1]) is not None
-        ]
+    return ensemble_protocol_time_course(
+        carousel.variants,
+        p0=p0,
+        data=data,
+        minimizer=minimizer,
+        protocol=protocol,
+        y0=y0,
+        residual_fn=residual_fn,
+        integrator=integrator,
+        loss_fn=loss_fn,
+        bounds=bounds,
     )
 
 
@@ -869,6 +1033,7 @@ class GlobalScipyMinimizer:
         p0: dict[str, float],
         bounds: Bounds,  # noqa: ARG002
     ) -> MinResult | None:
+        """Minimize residual fn."""
         if self.method == "basinhopping":
             res = basinhopping(
                 residual_fn,
