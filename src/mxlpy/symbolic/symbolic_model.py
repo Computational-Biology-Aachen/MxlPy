@@ -1,5 +1,4 @@
-# ruff: noqa: D100, D101, D102, D103, D104, D105, D106, D107, D200, D203, D400, D401
-
+"""Conversions into symbolic representation."""
 
 from __future__ import annotations
 
@@ -7,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 import sympy
+from wadler_lindig import pformat
 
 from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols
 
@@ -21,13 +21,20 @@ __all__ = [
 
 @dataclass
 class SymbolicModel:
+    """Symbolic model."""
+
     variables: dict[str, sympy.Symbol]
     parameters: dict[str, sympy.Symbol]
+    external: dict[str, sympy.Symbol]
     eqs: list[sympy.Expr]
     initial_conditions: dict[str, float]
     parameter_values: dict[str, float]
 
+    def __repr__(self) -> str:
+        return pformat(self)
+
     def jacobian(self) -> sympy.Matrix:
+        """Get jacobian of symbolic model."""
         # FIXME: don't rely on ordering of variables
         return sympy.Matrix(self.eqs).jacobian(
             sympy.Matrix(list(self.variables.values()))
@@ -35,6 +42,7 @@ class SymbolicModel:
 
 
 def to_symbolic_model(model: Model) -> SymbolicModel:
+    """Convert model into symbolic representation."""
     cache = model._create_cache()  # noqa: SLF001
     initial_conditions = model.get_initial_conditions()
 
@@ -52,7 +60,25 @@ def to_symbolic_model(model: Model) -> SymbolicModel:
             strict=True,
         )
     )
-    symbols: dict[str, sympy.Symbol | sympy.Expr] = variables | parameters  # type: ignore
+    # data
+    data = dict(
+        zip(
+            model._data,  # noqa: SLF001
+            cast(list[sympy.Symbol], list_of_symbols(model._data)),  # noqa: SLF001
+            strict=True,
+        )
+    )
+    # Insert surrogates?
+    _surr = model.get_surrogate_output_names(include_fluxes=True)
+    surrogates: dict[str, sympy.Symbol] = dict(
+        zip(
+            _surr,
+            cast(list[sympy.Symbol], list_of_symbols(_surr)),
+            strict=True,
+        )
+    )
+
+    symbols: dict[str, sympy.Symbol | sympy.Expr] = variables | parameters | data  # type: ignore
 
     # Insert derived into symbols
     for k, v in model.get_raw_derived().items():
@@ -93,4 +119,5 @@ def to_symbolic_model(model: Model) -> SymbolicModel:
         eqs=[eqs[i] for i in cache.var_names],
         initial_conditions=model.get_initial_conditions(),
         parameter_values=model.get_parameter_values(),
+        external=data | surrogates,
     )

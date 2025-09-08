@@ -123,7 +123,7 @@ ignore = [
   "ANN401",  # any
   "C901",    # too complex
   "COM812",  # missing trailing comma  # "D", # all of documentation
-  "D102",    # magic methods
+  "D105",    # magic methods
   "D203",    # blank line before docstring
   "D213",    # multi-line summary first line
   "D401",    # first line should be in imperative mood
