@@ -928,14 +928,14 @@ class Model:
         if stoichiometries is not None:
             for rxn_name, value in stoichiometries.items():
                 target = False
-                if rxn_name in self._reactions:
+                if (rxn := self._reactions.get(rxn_name)) is not None:
                     target = True
-                    cast(dict, self._reactions[name].stoichiometry)[name] = value
+                    cast(dict, rxn.stoichiometry)[name] = value
                 else:
                     for surrogate in self._surrogates.values():
-                        if rxn_name in surrogate.stoichiometries:
+                        if stoich := surrogate.stoichiometries.get(rxn_name):
                             target = True
-                            surrogate.stoichiometries[rxn_name][name] = value
+                            stoich[name] = value
                 if not target:
                     msg = f"Reaction '{rxn_name}' not found in reactions or surrogates"
                     raise KeyError(msg)
