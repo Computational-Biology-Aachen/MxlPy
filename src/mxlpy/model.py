@@ -1121,7 +1121,11 @@ class Model:
         if remove_stoichiometries:
             for rxn in self._reactions.values():
                 if name in rxn.stoichiometry:
-                    del rxn.stoichiometry[name]  # type: ignore
+                    cast(dict, rxn.stoichiometry).pop(name)
+            for surrogate in self._surrogates.values():
+                for stoich in surrogate.stoichiometries.values():
+                    if name in stoich:
+                        cast(dict, stoich).pop(name)
 
         self._remove_id(name=name)
         del self._variables[name]
@@ -1238,24 +1242,17 @@ class Model:
         value_or_derived = (
             self._variables[name].initial_value if value is None else value
         )
-        self.remove_variable(name, remove_stoichiometries=False)
+        self.remove_variable(name, remove_stoichiometries=True)
 
-        # FIXME: better handling of unit
-        if isinstance(value_or_derived, Derived):
-            self.add_derived(name, value_or_derived.fn, args=value_or_derived.args)
+        if isinstance(der := value_or_derived, Derived):
+            self.add_derived(
+                name,
+                der.fn,
+                args=der.args,
+                unit=der.unit,
+            )
         else:
             self.add_parameter(name, value_or_derived)
-
-        # Remove from stoichiometries
-        for reaction in self._reactions.values():
-            if name in reaction.stoichiometry:
-                cast(dict, reaction.stoichiometry).pop(name)
-        for surrogate in self._surrogates.values():
-            surrogate.stoichiometries = {
-                k: {k2: v2 for k2, v2 in v.items() if k2 != name}
-                for k, v in surrogate.stoichiometries.items()
-                if k != name
-            }
         return self
 
     ##########################################################################
@@ -1699,7 +1696,8 @@ class Model:
 
     ##########################################################################
     # Readouts
-    # They are like derived variables, but only calculated on demand
+    # They are like derived variables, but only calculated on demand, e.g. after
+    # a simulation
     # Think of something like NADPH / (NADP + NADPH) as a proxy for energy state
     ##########################################################################
 
