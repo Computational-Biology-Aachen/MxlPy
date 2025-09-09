@@ -1,4 +1,47 @@
-"""Fitting routines."""
+"""Fitting routines.
+
+Single model, single data routines
+----------------------------------
+- `steady_state`
+- `time_course`
+- `protocol_time_course`
+
+Multiple model, single data routines
+------------------------------------
+- `ensemble_steady_state`
+- `ensemble_time_course`
+- `ensemble_protocol_time_course`
+
+A carousel is a special case of an ensemble, where the general
+structure (e.g. stoichiometries) is the same, while the reactions kinetics
+can vary
+- `carousel_steady_state`
+- `carousel_time_course`
+- `carousel_protocol_time_course`
+
+Multiple model, multiple data
+-----------------------------
+- `joint_steady_state`
+- `joint_time_course`
+- `joint_protocol_time_course`
+
+Multiple model, multiple data, multiple methods
+-----------------------------------------------
+Here we also allow to run different methods (e.g. steady-state vs time courses)
+for each combination of model:data.
+
+- `joint_mixed`
+
+Minimizers
+----------
+- LocalScipyMinimizer, including common methods such as Nelder-Mead or L-BFGS-B
+- GlobalScipyMinimizer, including common methods such as basin hopping or dual annealing
+
+Loss functions
+--------------
+- rmse
+
+"""
 
 from __future__ import annotations
 
@@ -58,6 +101,7 @@ __all__ = [
     "carousel_protocol_time_course",
     "carousel_steady_state",
     "carousel_time_course",
+    "cosine_similarity",
     "ensemble_protocol_time_course",
     "ensemble_steady_state",
     "ensemble_time_course",
@@ -65,6 +109,11 @@ __all__ = [
     "joint_protocol_time_course",
     "joint_steady_state",
     "joint_time_course",
+    "mae",
+    "mean",
+    "mean_absolute_percentage",
+    "mean_squared",
+    "mean_squared_logarithmic",
     "protocol_time_course",
     "protocol_time_course_residual",
     "rmse",
@@ -229,12 +278,61 @@ class JointFitResult:
 ###############################################################################
 
 
+def mean(
+    y_pred: pd.DataFrame | pd.Series,
+    y_true: pd.DataFrame | pd.Series,
+) -> float:
+    """Calculate root mean square error between model and data."""
+    return cast(float, np.mean(y_pred - y_true))
+
+
+def mean_squared(
+    y_pred: pd.DataFrame | pd.Series,
+    y_true: pd.DataFrame | pd.Series,
+) -> float:
+    """Calculate mean square error between model and data."""
+    return cast(float, np.mean(np.square(y_pred - y_true)))
+
+
 def rmse(
     y_pred: pd.DataFrame | pd.Series,
     y_true: pd.DataFrame | pd.Series,
 ) -> float:
     """Calculate root mean square error between model and data."""
     return cast(float, np.sqrt(np.mean(np.square(y_pred - y_true))))
+
+
+def mae(
+    y_pred: pd.DataFrame | pd.Series,
+    y_true: pd.DataFrame | pd.Series,
+) -> float:
+    """Calculate mean absolute error."""
+    return cast(float, np.mean(np.abs(y_true - y_pred)))
+
+
+def mean_absolute_percentage(
+    y_pred: pd.DataFrame | pd.Series,
+    y_true: pd.DataFrame | pd.Series,
+) -> float:
+    """Calculate mean absolute error."""
+    return cast(float, 100 * np.mean(np.abs((y_true - y_pred) / y_pred)))
+
+
+def mean_squared_logarithmic(
+    y_pred: pd.DataFrame | pd.Series,
+    y_true: pd.DataFrame | pd.Series,
+) -> float:
+    """Calculate root mean square error between model and data."""
+    return cast(float, np.mean(np.square(np.log(y_pred + 1) - np.log(y_true + 1))))
+
+
+def cosine_similarity(
+    y_pred: pd.DataFrame | pd.Series,
+    y_true: pd.DataFrame | pd.Series,
+) -> float:
+    """Calculate root mean square error between model and data."""
+    norm = np.linalg.norm
+    return cast(float, -np.sum(norm(y_pred, 2) * norm(y_true)))
 
 
 ###############################################################################

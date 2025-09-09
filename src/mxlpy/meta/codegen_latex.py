@@ -795,6 +795,7 @@ def to_tex_export(model: Model) -> TexExport:
     for rxn_name, rxn in model.get_raw_reactions().items():
         for var_name, factor in rxn.stoichiometry.items():
             diff_eqs.setdefault(var_name, {})[rxn_name] = factor
+    # FIXME: think about surrogates here
 
     return TexExport(
         parameters=model.get_parameter_values(),
