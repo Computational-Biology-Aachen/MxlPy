@@ -5,10 +5,14 @@ import pandas as pd
 
 from example_models import get_linear_chain_2v
 from mxlpy import fit
-from mxlpy.fit import Bounds, MinResult, ResidualFn, _steady_state_residual, rmse
-from mxlpy.fns import constant
+from mxlpy.fit import (
+    Bounds,
+    MinResult,
+    ResidualFn,
+    _Settings,
+)
 from mxlpy.model import Model
-from mxlpy.types import Array, ArrayLike, IntegratorType, unwrap
+from mxlpy.types import Array, ArrayLike, unwrap
 
 
 def mock_minimizer(
@@ -19,32 +23,15 @@ def mock_minimizer(
     return MinResult(parameters=p0, residual=0.0)
 
 
-def mock_residual_fn_filled_in(
-    par_values: Array,  # noqa: ARG001
+def mock_residual_fn(
+    updates: dict[str, float],  # noqa: ARG001
 ) -> float:
     return 0.0
 
 
-def mock_ss_residual_fn(
-    par_values: Array,  # noqa: ARG001
-    par_names: list[str],  # noqa: ARG001
-    data: pd.Series,  # noqa: ARG001
-    model: Model,  # noqa: ARG001
-    y0: dict[str, float] | None,  # noqa: ARG001
-    integrator: IntegratorType | None,  # noqa: ARG001
-    loss_fn: fit.LossFn,  # noqa: ARG001
-) -> float:
-    return 0.0
-
-
-def mock_ts_residual_fn(
-    par_values: Array,  # noqa: ARG001
-    par_names: list[str],  # noqa: ARG001
-    data: pd.DataFrame,  # noqa: ARG001
-    model: Model,  # noqa: ARG001
-    y0: dict[str, float] | None,  # noqa: ARG001
-    integrator: IntegratorType | None,  # noqa: ARG001
-    loss_fn: fit.LossFn,  # noqa: ARG001
+def mock_residual_proto(
+    updates: dict[str, float],  # noqa: ARG001
+    settings: _Settings,  # noqa: ARG001
 ) -> float:
     return 0.0
 
@@ -94,32 +81,12 @@ class MockIntegrator:
 def test_default_minimizer() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
     p_fit = fit.LocalScipyMinimizer()(
-        mock_residual_fn_filled_in,
+        mock_residual_fn,
         p_true,
         bounds={},
     )
     assert p_fit is not None
     assert np.allclose(pd.Series(p_fit.parameters), pd.Series(p_true), rtol=0.1)
-
-
-def test_steady_state_residual() -> None:
-    model = (
-        Model()
-        .add_parameters({"k1": 1.0})
-        .add_variables({"x1": 1.0})
-        .add_reaction("v1", constant, stoichiometry={"x1": 1.0}, args=["k1"])
-    )
-
-    residual = _steady_state_residual(
-        par_values=np.array([1.0]),
-        par_names=["k1"],
-        data=pd.Series({"x1": 1.0, "v1": 1.0}),
-        model=model,
-        integrator=MockIntegrator,
-        y0={"x1": 1.0},
-        loss_fn=rmse,
-    )
-    assert residual == 0.0
 
 
 def test_fit_steady_state() -> None:
@@ -130,7 +97,7 @@ def test_fit_steady_state() -> None:
         p0=p_true,
         data=data,
         minimizer=mock_minimizer,
-        residual_fn=mock_ss_residual_fn,
+        residual_fn=mock_residual_proto,
     )
     assert p_fit is not None
     assert np.allclose(pd.Series(p_fit.best_pars), pd.Series(p_true), rtol=0.1)
@@ -144,7 +111,7 @@ def tets_fit_time_course() -> None:
         p0=p_true,
         data=data,
         minimizer=mock_minimizer,
-        residual_fn=mock_ts_residual_fn,
+        residual_fn=mock_residual_proto,
     )
     assert p_fit is not None
     assert np.allclose(pd.Series(p_fit.best_pars), pd.Series(p_true), rtol=0.1)

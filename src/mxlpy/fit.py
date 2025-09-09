@@ -66,9 +66,12 @@ __all__ = [
     "joint_steady_state",
     "joint_time_course",
     "protocol_time_course",
+    "protocol_time_course_residual",
     "rmse",
     "steady_state",
+    "steady_state_residual",
     "time_course",
+    "time_course_residual",
 ]
 
 type InitialGuess = dict[str, float]
@@ -382,7 +385,7 @@ def _pack_updates(
     )
 
 
-def _steady_state_residual(
+def steady_state_residual(
     updates: dict[str, float],
     settings: _Settings,
 ) -> float:
@@ -412,7 +415,7 @@ def _steady_state_residual(
     )
 
 
-def _time_course_residual(
+def time_course_residual(
     updates: dict[str, float],
     settings: _Settings,
 ) -> float:
@@ -443,7 +446,7 @@ def _time_course_residual(
     )
 
 
-def _protocol_time_course_residual(
+def protocol_time_course_residual(
     updates: dict[str, float],
     settings: _Settings,
 ) -> float:
@@ -487,10 +490,11 @@ def steady_state(
     data: pd.Series,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = _steady_state_residual,
+    residual_fn: ResidualProtocol = steady_state_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
 ) -> FitResult | None:
     """Fit model parameters to steady-state experimental data.
 
@@ -508,6 +512,7 @@ def steady_state(
         integrator: ODE integrator class
         loss_fn: Loss function to use for residual calculation
         bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
         dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
@@ -516,7 +521,11 @@ def steady_state(
         Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
 
     """
-    model = deepcopy(model)
+    if as_deepcopy:
+        model = deepcopy(model)
+
+    p_names = model.get_parameter_names()
+    v_names = model.get_variable_names()
 
     fn: ResidualFn = partial(
         residual_fn,
@@ -526,8 +535,8 @@ def steady_state(
             y0=y0,
             integrator=integrator,
             loss_fn=loss_fn,
-            p_names=[i for i in model.get_parameter_names() if i in p0],
-            v_names=[i for i in model.get_variable_names() if i in p0],
+            p_names=[i for i in p0 if i in p_names],
+            v_names=[i for i in p0 if i in v_names],
         ),
     )
     min_result = minimizer(fn, p0, {} if bounds is None else bounds)
@@ -535,7 +544,7 @@ def steady_state(
         return None
 
     return FitResult(
-        model=model.update_parameters(min_result.parameters),
+        model=model,
         best_pars=min_result.parameters,
         loss=min_result.residual,
     )
@@ -548,10 +557,11 @@ def time_course(
     data: pd.DataFrame,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = _time_course_residual,
+    residual_fn: ResidualProtocol = time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
 ) -> FitResult | None:
     """Fit model parameters to time course of experimental data.
 
@@ -569,6 +579,7 @@ def time_course(
         integrator: ODE integrator class
         loss_fn: Loss function to use for residual calculation
         bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
         dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
@@ -577,7 +588,10 @@ def time_course(
         Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
 
     """
-    model = deepcopy(model)
+    if as_deepcopy:
+        model = deepcopy(model)
+    p_names = model.get_parameter_names()
+    v_names = model.get_variable_names()
 
     fn: ResidualFn = partial(
         residual_fn,
@@ -587,8 +601,8 @@ def time_course(
             y0=y0,
             integrator=integrator,
             loss_fn=loss_fn,
-            p_names=[i for i in model.get_parameter_names() if i in p0],
-            v_names=[i for i in model.get_variable_names() if i in p0],
+            p_names=[i for i in p0 if i in p_names],
+            v_names=[i for i in p0 if i in v_names],
         ),
     )
 
@@ -597,7 +611,7 @@ def time_course(
         return None
 
     return FitResult(
-        model=model.update_parameters(min_result.parameters),
+        model=model,
         best_pars=min_result.parameters,
         loss=min_result.residual,
     )
@@ -611,10 +625,11 @@ def protocol_time_course(
     protocol: pd.DataFrame,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = _protocol_time_course_residual,
+    residual_fn: ResidualProtocol = protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
 ) -> FitResult | None:
     """Fit model parameters to time course of experimental data.
 
@@ -636,6 +651,7 @@ def protocol_time_course(
         loss_fn: Loss function to use for residual calculation
         time_points_per_step: Number of time points per step in the protocol
         bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
         dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
@@ -644,7 +660,10 @@ def protocol_time_course(
         Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
 
     """
-    model = deepcopy(model)
+    if as_deepcopy:
+        model = deepcopy(model)
+    p_names = model.get_parameter_names()
+    v_names = model.get_variable_names()
 
     fn: ResidualFn = partial(
         residual_fn,
@@ -654,8 +673,8 @@ def protocol_time_course(
             y0=y0,
             integrator=integrator,
             loss_fn=loss_fn,
-            p_names=[i for i in model.get_parameter_names() if i in p0],
-            v_names=[i for i in model.get_variable_names() if i in p0],
+            p_names=[i for i in p0 if i in p_names],
+            v_names=[i for i in p0 if i in v_names],
             protocol=protocol,
         ),
     )
@@ -665,7 +684,7 @@ def protocol_time_course(
         return None
 
     return FitResult(
-        model=model.update_parameters(min_result.parameters),
+        model=model,
         best_pars=min_result.parameters,
         loss=min_result.residual,
     )
@@ -684,10 +703,11 @@ def ensemble_steady_state(
     data: pd.Series,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = _steady_state_residual,
+    residual_fn: ResidualProtocol = steady_state_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
 ) -> EnsembleFitResult:
     """Fit model ensemble parameters to steady-state experimental data.
 
@@ -706,6 +726,7 @@ def ensemble_steady_state(
         loss_fn: Loss function to use for residual calculation
         time_points_per_step: Number of time points per step in the protocol
         bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
         dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
@@ -728,6 +749,7 @@ def ensemble_steady_state(
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
+                    as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
             )
@@ -743,10 +765,11 @@ def carousel_steady_state(
     data: pd.Series,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = _steady_state_residual,
+    residual_fn: ResidualProtocol = steady_state_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
 ) -> EnsembleFitResult:
     """Fit model parameters to steady-state experimental data over a carousel.
 
@@ -765,6 +788,7 @@ def carousel_steady_state(
         loss_fn: Loss function to use for residual calculation
         time_points_per_step: Number of time points per step in the protocol
         bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
         dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
@@ -783,6 +807,7 @@ def carousel_steady_state(
         integrator=integrator,
         loss_fn=loss_fn,
         bounds=bounds,
+        as_deepcopy=as_deepcopy,
     )
 
 
@@ -793,10 +818,11 @@ def ensemble_time_course(
     data: pd.DataFrame,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = _time_course_residual,
+    residual_fn: ResidualProtocol = time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
 ) -> EnsembleFitResult:
     """Fit model parameters to time course of experimental data over a carousel.
 
@@ -817,6 +843,7 @@ def ensemble_time_course(
         loss_fn: Loss function to use for residual calculation
         time_points_per_step: Number of time points per step in the protocol
         bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
         dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
@@ -839,6 +866,7 @@ def ensemble_time_course(
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
+                    as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
             )
@@ -854,10 +882,11 @@ def carousel_time_course(
     data: pd.DataFrame,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = _time_course_residual,
+    residual_fn: ResidualProtocol = time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
 ) -> EnsembleFitResult:
     """Fit model parameters to time course of experimental data over a carousel.
 
@@ -878,6 +907,7 @@ def carousel_time_course(
         loss_fn: Loss function to use for residual calculation
         time_points_per_step: Number of time points per step in the protocol
         bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
         dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
@@ -896,6 +926,7 @@ def carousel_time_course(
         integrator=integrator,
         loss_fn=loss_fn,
         bounds=bounds,
+        as_deepcopy=as_deepcopy,
     )
 
 
@@ -907,10 +938,11 @@ def ensemble_protocol_time_course(
     minimizer: Minimizer,
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = _protocol_time_course_residual,
+    residual_fn: ResidualProtocol = protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
 ) -> EnsembleFitResult:
     """Fit model parameters to time course of experimental data over a protocol.
 
@@ -931,6 +963,7 @@ def ensemble_protocol_time_course(
         loss_fn: Loss function to use for residual calculation
         time_points_per_step: Number of time points per step in the protocol
         bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
         dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
@@ -954,6 +987,7 @@ def ensemble_protocol_time_course(
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
+                    as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
             )
@@ -970,10 +1004,11 @@ def carousel_protocol_time_course(
     minimizer: Minimizer,
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = _protocol_time_course_residual,
+    residual_fn: ResidualProtocol = protocol_time_course_residual,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
 ) -> EnsembleFitResult:
     """Fit model parameters to time course of experimental data over a protocol.
 
@@ -994,6 +1029,7 @@ def carousel_protocol_time_course(
         loss_fn: Loss function to use for residual calculation
         time_points_per_step: Number of time points per step in the protocol
         bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
         dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
@@ -1013,6 +1049,7 @@ def carousel_protocol_time_course(
         integrator=integrator,
         loss_fn=loss_fn,
         bounds=bounds,
+        as_deepcopy=as_deepcopy,
     )
 
 
@@ -1059,6 +1096,7 @@ def joint_steady_state(
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
+    as_deepcopy: bool = True,
 ) -> JointFitResult | None:
     """Multi-model, multi-data fitting."""
     full_settings = []
@@ -1067,7 +1105,7 @@ def joint_steady_state(
         v_names = i.model.get_variable_names()
         full_settings.append(
             _Settings(
-                model=i.model,
+                model=deepcopy(i.model) if as_deepcopy else i.model,
                 data=i.data,
                 y0=i.y0 if i.y0 is not None else y0,
                 integrator=i.integrator if i.integrator is not None else integrator,
@@ -1085,7 +1123,7 @@ def joint_steady_state(
         min_result = minimizer(
             partial(
                 _sum_of_residuals,
-                residual_fn=_steady_state_residual,
+                residual_fn=steady_state_residual,
                 fits=full_settings,
                 pool=pool,
             ),
@@ -1108,6 +1146,7 @@ def joint_time_course(
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
+    as_deepcopy: bool = True,
 ) -> JointFitResult | None:
     """Multi-model, multi-data fitting."""
     full_settings = []
@@ -1116,7 +1155,7 @@ def joint_time_course(
         v_names = i.model.get_variable_names()
         full_settings.append(
             _Settings(
-                model=i.model,
+                model=deepcopy(i.model) if as_deepcopy else i.model,
                 data=i.data,
                 y0=i.y0 if i.y0 is not None else y0,
                 integrator=i.integrator if i.integrator is not None else integrator,
@@ -1134,7 +1173,7 @@ def joint_time_course(
         min_result = minimizer(
             partial(
                 _sum_of_residuals,
-                residual_fn=_time_course_residual,
+                residual_fn=time_course_residual,
                 fits=full_settings,
                 pool=pool,
             ),
@@ -1157,6 +1196,7 @@ def joint_protocol_time_course(
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
+    as_deepcopy: bool = True,
 ) -> JointFitResult | None:
     """Multi-model, multi-data fitting."""
     full_settings = []
@@ -1165,7 +1205,7 @@ def joint_protocol_time_course(
         v_names = i.model.get_variable_names()
         full_settings.append(
             _Settings(
-                model=i.model,
+                model=deepcopy(i.model) if as_deepcopy else i.model,
                 data=i.data,
                 y0=i.y0 if i.y0 is not None else y0,
                 integrator=i.integrator if i.integrator is not None else integrator,
@@ -1183,7 +1223,7 @@ def joint_protocol_time_course(
         min_result = minimizer(
             partial(
                 _sum_of_residuals,
-                residual_fn=_protocol_time_course_residual,
+                residual_fn=protocol_time_course_residual,
                 fits=full_settings,
                 pool=pool,
             ),
@@ -1236,6 +1276,7 @@ def joint_mixed(
     loss_fn: LossFn = rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
+    as_deepcopy: bool = True,
 ) -> JointFitResult | None:
     """Multi-model, multi-data, multi-simulation fitting."""
     full_settings = []
@@ -1244,7 +1285,7 @@ def joint_mixed(
         v_names = i.model.get_variable_names()
         full_settings.append(
             _Settings(
-                model=i.model,
+                model=deepcopy(i.model) if as_deepcopy else i.model,
                 data=i.data,
                 y0=i.y0 if i.y0 is not None else y0,
                 integrator=i.integrator if i.integrator is not None else integrator,
