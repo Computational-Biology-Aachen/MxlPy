@@ -4690,7 +4690,7 @@ packages:
 - pypi: ./
   name: mxlpy
   version: 0.26.0
-  sha256: 0b9eb968e6e474e19594b51ff648b61f77af5393a8aee675fb11e2177ff7a0b4
+  sha256: 729b4bc23cf7de199c8ea9b0079733a6b5af08095b7b6781935d07107d6b024b
   requires_dist:
   - diffrax>=0.7.0
   - dill>=0.3.9
@@ -4718,6 +4718,8 @@ packages:
   - torch>=2.5.1 ; extra == 'torch'
   - tensorflow>=2.19.0 ; extra == 'tensorflow'
   - keras>=3.9.2 ; extra == 'keras'
+  - equinox>=0.13 ; extra == 'equinox'
+  - optax>=0.2.5 ; extra == 'equinox'
   requires_python: '>=3.12'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/nbclient-0.10.2-pyhd8ed1ab_0.conda

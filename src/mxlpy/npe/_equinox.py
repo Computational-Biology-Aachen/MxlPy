@@ -11,26 +11,25 @@ Functions:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Self, cast
 
+import jax
+import jax.numpy as jnp
 import numpy as np
+import optax
 import pandas as pd
-import torch
-from torch import nn
-from torch.optim.adam import Adam
+from jaxtyping import Array
 
-from mxlpy.nn._torch import LSTM, MLP, DefaultDevice
-from mxlpy.nn._torch import train as _train
+from mxlpy.nn._equinox import LSTM, MLP
+from mxlpy.nn._equinox import train as _train
 from mxlpy.types import AbstractEstimator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    import equinox as eqx
 
-    from torch.optim.optimizer import ParamsT
-
-
-type LossFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+type LossFn = Callable[[Array, Array], Array]
 
 __all__ = [
     "LossFn",
@@ -43,7 +42,7 @@ __all__ = [
 ]
 
 
-def _mean_abs(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+def _mean_abs(x: Array, y: Array) -> Array:
     """Standard loss for surrogates.
 
     Args:
@@ -51,35 +50,36 @@ def _mean_abs(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         y: Targets.
 
     Returns:
-        torch.Tensor: loss.
+        Array: loss.
 
     """
-    return torch.mean(torch.abs(x - y))
+    return jnp.mean(jnp.abs(x - y))
 
 
 @dataclass(kw_only=True)
 class SteadyState(AbstractEstimator):
     """Estimator for steady state data using PyTorch models."""
 
-    model: torch.nn.Module
+    model: eqx.Module
 
     def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
         """Predict the target values for the given features."""
-        with torch.no_grad():
-            pred = self.model(torch.tensor(features.to_numpy(), dtype=torch.float32))
-            return pd.DataFrame(pred, columns=self.parameter_names)
+        # One has to implement __call__ on eqx.Module, so this should
+        # always exist. Should really be abstract on eqx.Module
+        pred = self.model(jnp.array(features))  # type: ignore
+        return pd.DataFrame(pred, columns=self.parameter_names)
 
 
 @dataclass(kw_only=True)
 class TimeCourse(AbstractEstimator):
     """Estimator for time course data using PyTorch models."""
 
-    model: torch.nn.Module
+    model: eqx.Module
 
     def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
         """Predict the target values for the given features."""
         idx = cast(pd.MultiIndex, features.index)
-        features_ = torch.Tensor(
+        features_ = jnp.array(
             np.swapaxes(
                 features.to_numpy().reshape(
                     (
@@ -92,9 +92,10 @@ class TimeCourse(AbstractEstimator):
                 axis2=1,
             ),
         )
-        with torch.no_grad():
-            pred = self.model(features_)
-            return pd.DataFrame(pred, columns=self.parameter_names)
+        # One has to implement __call__ on eqx.Module, so this should
+        # always exist. Should really be abstract on eqx.Module
+        pred = self.model(features_)  # type: ignore
+        return pd.DataFrame(pred, columns=self.parameter_names)
 
 
 @dataclass
@@ -103,20 +104,20 @@ class SteadyStateTrainer:
 
     features: pd.DataFrame
     targets: pd.DataFrame
-    model: nn.Module
-    optimizer: Adam
-    device: torch.device
+    model: eqx.Module
+    optimizer: optax.GradientTransformation
     losses: list[pd.Series]
     loss_fn: LossFn
+    seed: int
 
     def __init__(
         self,
         features: pd.DataFrame,
         targets: pd.DataFrame,
-        model: nn.Module | None = None,
-        optimizer_cls: Callable[[ParamsT], Adam] = Adam,
-        device: torch.device = DefaultDevice,
+        model: eqx.Module | None = None,
+        optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
         loss_fn: LossFn = _mean_abs,
+        seed: int = 0,
     ) -> None:
         """Initialize the trainer with features, targets, and model.
 
@@ -127,6 +128,7 @@ class SteadyStateTrainer:
             optimizer_cls: Optimizer class to use for training (default: Adam)
             device: Device to run the training on (default: DefaultDevice)
             loss_fn: Loss function
+            seed: seed of random initialisation
 
         """
         self.features = features
@@ -138,12 +140,13 @@ class SteadyStateTrainer:
             model = MLP(
                 n_inputs=len(features.columns),
                 neurons_per_layer=[n_hidden, n_hidden, n_outputs],
+                key=jax.random.PRNGKey(seed),
             )
-        self.model = model.to(device)
+        self.model = model
         self.optimizer = optimizer_cls(model.parameters())
-        self.device = device
         self.loss_fn = loss_fn
         self.losses = []
+        self.seed = seed
 
     def train(
         self,
@@ -159,13 +162,12 @@ class SteadyStateTrainer:
         """
         losses = _train(
             model=self.model,
-            features=self.features.to_numpy(),
-            targets=self.targets.to_numpy(),
+            features=jnp.array(self.features),
+            targets=jnp.array(self.targets),
             epochs=epochs,
             optimizer=self.optimizer,
             batch_size=batch_size,
             loss_fn=self.loss_fn,
-            device=self.device,
         )
 
         if len(self.losses) > 0:
@@ -191,9 +193,8 @@ class TimeCourseTrainer:
 
     features: pd.DataFrame
     targets: pd.DataFrame
-    model: nn.Module
-    optimizer: Adam
-    device: torch.device
+    model: eqx.Module
+    optimizer: optax.GradientTransformation
     losses: list[pd.Series]
     loss_fn: LossFn
 
@@ -201,9 +202,8 @@ class TimeCourseTrainer:
         self,
         features: pd.DataFrame,
         targets: pd.DataFrame,
-        model: nn.Module | None = None,
-        optimizer_cls: Callable[[ParamsT], Adam] = Adam,
-        device: torch.device = DefaultDevice,
+        model: eqx.Module | None = None,
+        optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
         loss_fn: LossFn = _mean_abs,
     ) -> None:
         """Initialize the trainer with features, targets, and model.
@@ -225,10 +225,10 @@ class TimeCourseTrainer:
                 n_inputs=len(features.columns),
                 n_outputs=len(targets.columns),
                 n_hidden=1,
-            ).to(device)
-        self.model = model.to(device)
+                key=jnp.array([]),
+            )
+        self.model = model
         self.optimizer = optimizer_cls(model.parameters())
-        self.device = device
         self.loss_fn = loss_fn
         self.losses = []
 
@@ -246,19 +246,20 @@ class TimeCourseTrainer:
         """
         losses = _train(
             model=self.model,
-            features=np.swapaxes(
-                self.features.to_numpy().reshape(
-                    (len(self.targets), -1, len(self.features.columns))
-                ),
-                axis1=0,
-                axis2=1,
+            features=jnp.array(
+                np.swapaxes(
+                    self.features.to_numpy().reshape(
+                        (len(self.targets), -1, len(self.features.columns))
+                    ),
+                    axis1=0,
+                    axis2=1,
+                )
             ),
-            targets=self.targets.to_numpy(),
+            targets=jnp.array(self.targets.to_numpy()),
             epochs=epochs,
             optimizer=self.optimizer,
             batch_size=batch_size,
             loss_fn=self.loss_fn,
-            device=self.device,
         )
 
         if len(self.losses) > 0:
@@ -283,9 +284,8 @@ def train_steady_state(
     targets: pd.DataFrame,
     epochs: int,
     batch_size: int | None = None,
-    model: nn.Module | None = None,
-    optimizer_cls: Callable[[ParamsT], Adam] = Adam,
-    device: torch.device = DefaultDevice,
+    model: eqx.Module | None = None,
+    optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
 ) -> tuple[SteadyState, pd.Series]:
     """Train a PyTorch steady state estimator.
 
@@ -314,7 +314,6 @@ def train_steady_state(
         targets=targets,
         model=model,
         optimizer_cls=optimizer_cls,
-        device=device,
     ).train(epochs=epochs, batch_size=batch_size)
 
     return trainer.get_estimator(), trainer.get_loss()
@@ -325,9 +324,8 @@ def train_time_course(
     targets: pd.DataFrame,
     epochs: int,
     batch_size: int | None = None,
-    model: nn.Module | None = None,
-    optimizer_cls: Callable[[ParamsT], Adam] = Adam,
-    device: torch.device = DefaultDevice,
+    model: eqx.Module | None = None,
+    optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
 ) -> tuple[TimeCourse, pd.Series]:
     """Train a PyTorch time course estimator.
 
@@ -356,7 +354,6 @@ def train_time_course(
         targets=targets,
         model=model,
         optimizer_cls=optimizer_cls,
-        device=device,
     ).train(epochs=epochs, batch_size=batch_size)
 
     return trainer.get_estimator(), trainer.get_loss()

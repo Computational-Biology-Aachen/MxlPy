@@ -65,6 +65,10 @@ tensorflow = [
 keras = [
   "keras>=3.9.2",
 ]
+equinox = [
+  "equinox>=0.13",
+  "optax>=0.2.5",
+]
 
 [dependency-groups]
 dev = [
