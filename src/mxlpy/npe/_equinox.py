@@ -13,8 +13,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self, cast
+from typing import Self, cast
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -26,10 +27,7 @@ from mxlpy.nn._equinox import LSTM, MLP
 from mxlpy.nn._equinox import train as _train
 from mxlpy.types import AbstractEstimator
 
-if TYPE_CHECKING:
-    import equinox as eqx
-
-type LossFn = Callable[[Array, Array], Array]
+type LossFn = Callable[[eqx.Module, Array, Array], float]
 
 __all__ = [
     "LossFn",
@@ -42,18 +40,21 @@ __all__ = [
 ]
 
 
-def _mean_abs(x: Array, y: Array) -> Array:
+@eqx.filter_jit
+def _mean_abs(model: eqx.Module, x: Array, y: Array) -> float:
     """Standard loss for surrogates.
 
     Args:
-        x: Predictions of a model.
+        model: Model
+        x: Inputs.
         y: Targets.
 
     Returns:
         Array: loss.
 
     """
-    return jnp.mean(jnp.abs(x - y))
+    pred_y = jax.vmap(model)(x)  # type: ignore
+    return jnp.mean(jnp.abs(y - pred_y))  # type: ignore
 
 
 @dataclass(kw_only=True)
@@ -66,7 +67,7 @@ class SteadyState(AbstractEstimator):
         """Predict the target values for the given features."""
         # One has to implement __call__ on eqx.Module, so this should
         # always exist. Should really be abstract on eqx.Module
-        pred = self.model(jnp.array(features))  # type: ignore
+        pred = jax.vmap(self.model)(jnp.array(features))
         return pd.DataFrame(pred, columns=self.parameter_names)
 
 
@@ -94,7 +95,7 @@ class TimeCourse(AbstractEstimator):
         )
         # One has to implement __call__ on eqx.Module, so this should
         # always exist. Should really be abstract on eqx.Module
-        pred = self.model(features_)  # type: ignore
+        pred = jax.vmap(self.model)(features_)  # type: ignore
         return pd.DataFrame(pred, columns=self.parameter_names)
 
 
@@ -115,7 +116,7 @@ class SteadyStateTrainer:
         features: pd.DataFrame,
         targets: pd.DataFrame,
         model: eqx.Module | None = None,
-        optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
+        optimizer: optax.GradientTransformation | None = None,
         loss_fn: LossFn = _mean_abs,
         seed: int = 0,
     ) -> None:
@@ -125,7 +126,7 @@ class SteadyStateTrainer:
             features: DataFrame containing the input features for training
             targets: DataFrame containing the target values for training
             model: Predefined neural network model (None to use default MLP)
-            optimizer_cls: Optimizer class to use for training (default: Adam)
+            optimizer: Optimizer class to use for training (default: Adam)
             device: Device to run the training on (default: DefaultDevice)
             loss_fn: Loss function
             seed: seed of random initialisation
@@ -143,7 +144,9 @@ class SteadyStateTrainer:
                 key=jax.random.PRNGKey(seed),
             )
         self.model = model
-        self.optimizer = optimizer_cls(model.parameters())
+        self.optimizer = (
+            optax.adamw(learning_rate=0.001) if optimizer is None else optimizer
+        )
         self.loss_fn = loss_fn
         self.losses = []
         self.seed = seed
@@ -203,7 +206,7 @@ class TimeCourseTrainer:
         features: pd.DataFrame,
         targets: pd.DataFrame,
         model: eqx.Module | None = None,
-        optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
+        optimizer: optax.GradientTransformation | None = None,
         loss_fn: LossFn = _mean_abs,
     ) -> None:
         """Initialize the trainer with features, targets, and model.
@@ -212,7 +215,7 @@ class TimeCourseTrainer:
             features: DataFrame containing the input features for training
             targets: DataFrame containing the target values for training
             model: Predefined neural network model (None to use default LSTM)
-            optimizer_cls: Optimizer class to use for training (default: Adam)
+            optimizer: Optimizer class to use for training (default: Adam)
             device: Device to run the training on (default: DefaultDevice)
             loss_fn: Loss function
 
@@ -228,7 +231,9 @@ class TimeCourseTrainer:
                 key=jnp.array([]),
             )
         self.model = model
-        self.optimizer = optimizer_cls(model.parameters())
+        self.optimizer = (
+            optax.adamw(learning_rate=0.001) if optimizer is None else optimizer
+        )
         self.loss_fn = loss_fn
         self.losses = []
 
@@ -285,7 +290,7 @@ def train_steady_state(
     epochs: int,
     batch_size: int | None = None,
     model: eqx.Module | None = None,
-    optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
+    optimizer: optax.GradientTransformation | None = None,
 ) -> tuple[SteadyState, pd.Series]:
     """Train a PyTorch steady state estimator.
 
@@ -302,7 +307,7 @@ def train_steady_state(
         epochs: Number of training epochs
         batch_size: Size of mini-batches for training (None for full-batch)
         model: Predefined neural network model (None to use default MLP)
-        optimizer_cls: Optimizer class to use for training (default: Adam)
+        optimizer: Optimizer class to use for training (default: Adam)
         device: Device to run the training on (default: DefaultDevice)
 
     Returns:
@@ -313,7 +318,7 @@ def train_steady_state(
         features=features,
         targets=targets,
         model=model,
-        optimizer_cls=optimizer_cls,
+        optimizer=optimizer,
     ).train(epochs=epochs, batch_size=batch_size)
 
     return trainer.get_estimator(), trainer.get_loss()
@@ -325,7 +330,7 @@ def train_time_course(
     epochs: int,
     batch_size: int | None = None,
     model: eqx.Module | None = None,
-    optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
+    optimizer: optax.GradientTransformation | None = None,
 ) -> tuple[TimeCourse, pd.Series]:
     """Train a PyTorch time course estimator.
 
@@ -342,7 +347,7 @@ def train_time_course(
         epochs: Number of training epochs
         batch_size: Size of mini-batches for training (None for full-batch)
         model: Predefined neural network model (None to use default LSTM)
-        optimizer_cls: Optimizer class to use for training (default: Adam)
+        optimizer: Optimizer class to use for training (default: Adam)
         device: Device to run the training on (default: DefaultDevice)
 
     Returns:
@@ -353,7 +358,7 @@ def train_time_course(
         features=features,
         targets=targets,
         model=model,
-        optimizer_cls=optimizer_cls,
+        optimizer=optimizer,
     ).train(epochs=epochs, batch_size=batch_size)
 
     return trainer.get_estimator(), trainer.get_loss()

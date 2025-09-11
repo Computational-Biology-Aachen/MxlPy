@@ -18,7 +18,7 @@ import tqdm
 from jaxtyping import Array, PyTree
 from torch.utils.data import DataLoader, TensorDataset
 
-type LossFn = Callable[[Array, Array], Array]
+type LossFn = Callable[[eqx.Module, Array, Array], float]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -80,7 +80,7 @@ def train(
         x: Array,
         y: Array,
     ) -> tuple[eqx.Module, Array, float]:
-        loss_value, grads = eqx.filter_value_and_grad(loss_fn)(model, x, y)  # type: ignore
+        loss_value, grads = eqx.filter_value_and_grad(loss_fn)(model, x, y)
         updates, opt_state = optimizer.update(
             grads, opt_state, eqx.filter(model, eqx.is_array)
         )
@@ -112,12 +112,13 @@ class MLP(eqx.Module):
 
     """
 
+    layers: list
+
     def __init__(
         self,
         n_inputs: int,
         neurons_per_layer: list[int],
         key: Array,
-        output_activation: Callable | None = None,
     ) -> None:
         """Initializes the MLP with the given number of inputs and list of (hidden) layers.
 
@@ -126,7 +127,6 @@ class MLP(eqx.Module):
             neurons_per_layer: Number of neurons per layer
             n_outputs: A list containing the number of neurons in hidden and output layer.
             key: jax.random.PRNGKey(SEED) for initial parameters
-            output_activation: The activation function to be applied after the final (output) layer
 
         For instance, MLP(10, layers = [50, 50, 10]) initializes a neural network with the following architecture:
         - Linear layer with `n_inputs` inputs and 50 outputs
@@ -140,21 +140,11 @@ class MLP(eqx.Module):
 
         """
         keys = iter(jax.random.split(key, len(neurons_per_layer)))
-
-        layers = []
         previous_neurons = n_inputs
-        for neurons in neurons_per_layer[:-1]:
+        layers = []
+        for neurons in neurons_per_layer:
             layers.append(eqx.nn.Linear(previous_neurons, neurons, key=next(keys)))
-            layers.append(jax.nn.relu)
             previous_neurons = neurons
-
-        # Output layer
-        layers.append(
-            eqx.nn.Linear(previous_neurons, neurons_per_layer[-1], key=next(keys))
-        )
-        if output_activation is not None:
-            layers.append(output_activation)
-
         self.layers = layers
 
     def __call__(self, x: Array) -> Array:
@@ -167,13 +157,17 @@ class MLP(eqx.Module):
             torch.Tensor: Output tensor.
 
         """
-        for layer in self.layers:
-            x = layer(x)
-        return x
+        for layer in self.layers[:-1]:
+            x = jax.nn.relu(layer(x))
+        return self.layers[-1](x)
 
 
 class LSTM(eqx.Module):
     """Default LSTM neural network model for time-series approximation."""
+
+    lstm_cell: eqx.nn.LSTMCell
+    n_hidden: int
+    linear: eqx.nn.Linear
 
     def __init__(
         self,

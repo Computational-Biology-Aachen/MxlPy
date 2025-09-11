@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -15,10 +16,7 @@ from mxlpy.nn._equinox import MLP
 from mxlpy.nn._equinox import train as _train
 from mxlpy.types import AbstractSurrogate, Derived
 
-if TYPE_CHECKING:
-    import equinox as eqx
-
-type LossFn = Callable[[Array, Array], Array]
+type LossFn = Callable[[eqx.Module, Array, Array], float]
 
 __all__ = [
     "LossFn",
@@ -28,18 +26,21 @@ __all__ = [
 ]
 
 
-def _mean_abs(x: Array, y: Array) -> Array:
+@eqx.filter_jit
+def _mean_abs(model: eqx.Module, x: Array, y: Array) -> float:
     """Standard loss for surrogates.
 
     Args:
-        x: Predictions of a model.
+        model: Model
+        x: Inputs.
         y: Targets.
 
     Returns:
         Array: loss.
 
     """
-    return jnp.mean(jnp.abs(x - y))
+    pred_y = jax.vmap(model)(x)  # type: ignore
+    return jnp.mean(jnp.abs(y - pred_y))  # type: ignore
 
 
 @dataclass(kw_only=True)
@@ -99,7 +100,7 @@ class Trainer:
         features: pd.DataFrame,
         targets: pd.DataFrame,
         model: eqx.Module | None = None,
-        optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
+        optimizer: optax.GradientTransformation | None = None,
         loss_fn: LossFn = _mean_abs,
         seed: int = 0,
     ) -> None:
@@ -114,7 +115,9 @@ class Trainer:
             )
         self.model = model
 
-        self.optimizer = optimizer_cls(model.parameters())
+        self.optimizer = (
+            optax.adamw(learning_rate=0.001) if optimizer is None else optimizer
+        )
         self.loss_fn = loss_fn
         self.losses = []
         self.seed = seed
@@ -166,7 +169,7 @@ def train(
     surrogate_stoichiometries: dict[str, dict[str, float | Derived]] | None = None,
     batch_size: int | None = None,
     model: eqx.Module | None = None,
-    optimizer_cls: Callable[..., optax.GradientTransformation] = optax.adamw,
+    optimizer: optax.GradientTransformation | None = None,
     loss_fn: LossFn = _mean_abs,
 ) -> tuple[Surrogate, pd.Series]:
     """Train a PyTorch surrogate model.
@@ -191,7 +194,7 @@ def train(
         surrogate_stoichiometries: Mapping of variables to their stoichiometries
         batch_size: Size of mini-batches for training (None for full-batch).
         model: Predefined neural network model (None to use default MLP features-50-50-output).
-        optimizer_cls: Optimizer class to use for training (default: optax.GradientTransformation).
+        optimizer: Optimizer class to use for training (default: optax.GradientTransformation).
         device: Device to run the training on (default: DefaultDevice).
         loss_fn: Custom loss function or instance of torch loss object
 
@@ -203,7 +206,7 @@ def train(
         features=features,
         targets=targets,
         model=model,
-        optimizer_cls=optimizer_cls,
+        optimizer=optimizer,
         loss_fn=loss_fn,
     ).train(
         epochs=epochs,
