@@ -18,8 +18,6 @@ import tqdm
 from jaxtyping import Array, PyTree
 from torch.utils.data import DataLoader, TensorDataset
 
-type LossFn = Callable[[eqx.Module, Array, Array], float]
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -30,8 +28,76 @@ __all__ = [
     "LSTM",
     "LossFn",
     "MLP",
+    "cosine_similarity",
+    "mean_abs_error",
+    "mean_absolute_percentage",
+    "mean_error",
+    "mean_squared_error",
+    "mean_squared_logarithmic",
+    "rms_error",
     "train",
 ]
+
+
+###############################################################################
+# Loss functions
+###############################################################################
+
+type LossFn = Callable[[eqx.Module, Array, Array], Array]
+
+
+@eqx.filter_jit
+def mean_error(model: eqx.Module, inp: Array, true: Array) -> Array:
+    """Calculate mean error."""
+    pred = jax.vmap(model)(inp)  # type: ignore
+    return jnp.mean(pred - true)
+
+
+@eqx.filter_jit
+def mean_squared_error(model: eqx.Module, inp: Array, true: Array) -> Array:
+    """Calculate mean squared error."""
+    pred = jax.vmap(model)(inp)  # type: ignore
+    return jnp.mean(jnp.square(pred - true))
+
+
+@eqx.filter_jit
+def rms_error(model: eqx.Module, inp: Array, true: Array) -> Array:
+    """Calculate root mean square error."""
+    pred = jax.vmap(model)(inp)  # type: ignore
+    return jnp.sqrt(jnp.mean(jnp.square(pred - true)))
+
+
+@eqx.filter_jit
+def mean_abs_error(model: eqx.Module, inp: Array, true: Array) -> Array:
+    """Calculate mean absolute error."""
+    pred = jax.vmap(model)(inp)  # type: ignore
+    return jnp.mean(jnp.abs(pred - true))
+
+
+@eqx.filter_jit
+def mean_absolute_percentage(model: eqx.Module, inp: Array, true: Array) -> Array:
+    """Calculate mean absolute percentag error."""
+    pred = jax.vmap(model)(inp)  # type: ignore
+    return 100 * jnp.mean(jnp.abs((true - pred) / pred))
+
+
+@eqx.filter_jit
+def mean_squared_logarithmic(model: eqx.Module, inp: Array, true: Array) -> Array:
+    """Calculate root mean square error between model and data."""
+    pred = jax.vmap(model)(inp)  # type: ignore
+    return jnp.mean(jnp.square(jnp.log(pred + 1) - jnp.log(true + 1)))
+
+
+@eqx.filter_jit
+def cosine_similarity(model: eqx.Module, inp: Array, true: Array) -> Array:
+    """Calculate root mean square error between model and data."""
+    pred = jax.vmap(model)(inp)  # type: ignore
+    return -jnp.sum(jnp.linalg.norm(pred, 2) * jnp.linalg.norm(true, 2))
+
+
+###############################################################################
+# Training routines
+###############################################################################
 
 
 def train(
@@ -79,7 +145,7 @@ def train(
         opt_state: PyTree,
         x: Array,
         y: Array,
-    ) -> tuple[eqx.Module, Array, float]:
+    ) -> tuple[eqx.Module, Array, Array]:
         loss_value, grads = eqx.filter_value_and_grad(loss_fn)(model, x, y)
         updates, opt_state = optimizer.update(
             grads, opt_state, eqx.filter(model, eqx.is_array)
@@ -99,6 +165,11 @@ def train(
             epoch_loss += train_loss * xb.size(0)
         losses[i] = epoch_loss / len(data_loader.dataset)  # type: ignore
     return pd.Series(losses, dtype=float)
+
+
+###############################################################################
+# Actual models
+###############################################################################
 
 
 class MLP(eqx.Module):
@@ -154,7 +225,7 @@ class MLP(eqx.Module):
             x: Input tensor.
 
         Returns:
-            torch.Tensor: Output tensor.
+            Output tensor.
 
         """
         for layer in self.layers[:-1]:

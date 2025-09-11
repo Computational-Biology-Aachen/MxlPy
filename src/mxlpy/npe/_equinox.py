@@ -11,26 +11,23 @@ Functions:
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Self, cast
+from typing import TYPE_CHECKING, Self, cast
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import pandas as pd
-from jaxtyping import Array
 
-from mxlpy.nn._equinox import LSTM, MLP
+from mxlpy.nn._equinox import LSTM, MLP, LossFn, mean_abs_error
 from mxlpy.nn._equinox import train as _train
 from mxlpy.types import AbstractEstimator
 
-type LossFn = Callable[[eqx.Module, Array, Array], float]
+if TYPE_CHECKING:
+    import equinox as eqx
 
 __all__ = [
-    "LossFn",
     "SteadyState",
     "SteadyStateTrainer",
     "TimeCourse",
@@ -38,23 +35,6 @@ __all__ = [
     "train_steady_state",
     "train_time_course",
 ]
-
-
-@eqx.filter_jit
-def _mean_abs(model: eqx.Module, x: Array, y: Array) -> float:
-    """Standard loss for surrogates.
-
-    Args:
-        model: Model
-        x: Inputs.
-        y: Targets.
-
-    Returns:
-        Array: loss.
-
-    """
-    pred_y = jax.vmap(model)(x)  # type: ignore
-    return jnp.mean(jnp.abs(y - pred_y))  # type: ignore
 
 
 @dataclass(kw_only=True)
@@ -67,7 +47,7 @@ class SteadyState(AbstractEstimator):
         """Predict the target values for the given features."""
         # One has to implement __call__ on eqx.Module, so this should
         # always exist. Should really be abstract on eqx.Module
-        pred = jax.vmap(self.model)(jnp.array(features))
+        pred = jax.vmap(self.model)(jnp.array(features))  # type: ignore
         return pd.DataFrame(pred, columns=self.parameter_names)
 
 
@@ -117,7 +97,7 @@ class SteadyStateTrainer:
         targets: pd.DataFrame,
         model: eqx.Module | None = None,
         optimizer: optax.GradientTransformation | None = None,
-        loss_fn: LossFn = _mean_abs,
+        loss_fn: LossFn = mean_abs_error,
         seed: int = 0,
     ) -> None:
         """Initialize the trainer with features, targets, and model.
@@ -207,7 +187,7 @@ class TimeCourseTrainer:
         targets: pd.DataFrame,
         model: eqx.Module | None = None,
         optimizer: optax.GradientTransformation | None = None,
-        loss_fn: LossFn = _mean_abs,
+        loss_fn: LossFn = mean_abs_error,
     ) -> None:
         """Initialize the trainer with features, targets, and model.
 

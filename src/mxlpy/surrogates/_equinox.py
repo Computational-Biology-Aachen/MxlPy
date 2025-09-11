@@ -1,46 +1,22 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import pandas as pd
-from jaxtyping import Array
 
-from mxlpy.nn._equinox import MLP
+from mxlpy.nn._equinox import MLP, LossFn, mean_abs_error
 from mxlpy.nn._equinox import train as _train
 from mxlpy.types import AbstractSurrogate, Derived
 
-type LossFn = Callable[[eqx.Module, Array, Array], float]
+if TYPE_CHECKING:
+    import equinox as eqx
 
-__all__ = [
-    "LossFn",
-    "Surrogate",
-    "Trainer",
-    "train",
-]
-
-
-@eqx.filter_jit
-def _mean_abs(model: eqx.Module, x: Array, y: Array) -> float:
-    """Standard loss for surrogates.
-
-    Args:
-        model: Model
-        x: Inputs.
-        y: Targets.
-
-    Returns:
-        Array: loss.
-
-    """
-    pred_y = jax.vmap(model)(x)  # type: ignore
-    return jnp.mean(jnp.abs(y - pred_y))  # type: ignore
+__all__ = ["Surrogate", "Trainer", "train"]
 
 
 @dataclass(kw_only=True)
@@ -101,7 +77,7 @@ class Trainer:
         targets: pd.DataFrame,
         model: eqx.Module | None = None,
         optimizer: optax.GradientTransformation | None = None,
-        loss_fn: LossFn = _mean_abs,
+        loss_fn: LossFn = mean_abs_error,
         seed: int = 0,
     ) -> None:
         self.features = features
@@ -170,7 +146,7 @@ def train(
     batch_size: int | None = None,
     model: eqx.Module | None = None,
     optimizer: optax.GradientTransformation | None = None,
-    loss_fn: LossFn = _mean_abs,
+    loss_fn: LossFn = mean_abs_error,
 ) -> tuple[Surrogate, pd.Series]:
     """Train a PyTorch surrogate model.
 

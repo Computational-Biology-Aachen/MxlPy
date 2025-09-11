@@ -332,7 +332,7 @@ def cosine_similarity(
 ) -> float:
     """Calculate root mean square error between model and data."""
     norm = np.linalg.norm
-    return cast(float, -np.sum(norm(y_pred, 2) * norm(y_true)))
+    return cast(float, -np.sum(norm(y_pred, 2) * norm(y_true, 2)))
 
 
 ###############################################################################

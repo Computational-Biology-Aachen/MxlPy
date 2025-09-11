@@ -20,7 +20,7 @@ import torch
 from torch import nn
 from torch.optim.adam import Adam
 
-from mxlpy.nn._torch import LSTM, MLP, DefaultDevice
+from mxlpy.nn._torch import LSTM, MLP, DefaultDevice, LossFn, mean_abs_error
 from mxlpy.nn._torch import train as _train
 from mxlpy.types import AbstractEstimator
 
@@ -30,10 +30,7 @@ if TYPE_CHECKING:
     from torch.optim.optimizer import ParamsT
 
 
-type LossFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
-
 __all__ = [
-    "LossFn",
     "SteadyState",
     "SteadyStateTrainer",
     "TimeCourse",
@@ -41,20 +38,6 @@ __all__ = [
     "train_steady_state",
     "train_time_course",
 ]
-
-
-def _mean_abs(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """Standard loss for surrogates.
-
-    Args:
-        x: Predictions of a model.
-        y: Targets.
-
-    Returns:
-        torch.Tensor: loss.
-
-    """
-    return torch.mean(torch.abs(x - y))
 
 
 @dataclass(kw_only=True)
@@ -116,7 +99,7 @@ class SteadyStateTrainer:
         model: nn.Module | None = None,
         optimizer_cls: Callable[[ParamsT], Adam] = Adam,
         device: torch.device = DefaultDevice,
-        loss_fn: LossFn = _mean_abs,
+        loss_fn: LossFn = mean_abs_error,
     ) -> None:
         """Initialize the trainer with features, targets, and model.
 
@@ -204,7 +187,7 @@ class TimeCourseTrainer:
         model: nn.Module | None = None,
         optimizer_cls: Callable[[ParamsT], Adam] = Adam,
         device: torch.device = DefaultDevice,
-        loss_fn: LossFn = _mean_abs,
+        loss_fn: LossFn = mean_abs_error,
     ) -> None:
         """Initialize the trainer with features, targets, and model.
 

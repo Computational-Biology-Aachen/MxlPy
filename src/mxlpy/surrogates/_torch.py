@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Self
 
@@ -10,35 +9,21 @@ import torch
 from torch import nn
 from torch.optim.adam import Adam
 
-from mxlpy.nn._torch import MLP, DefaultDevice
+from mxlpy.nn._torch import MLP, DefaultDevice, LossFn, mean_abs_error
 from mxlpy.nn._torch import train as _train
 from mxlpy.types import AbstractSurrogate, Derived
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from torch.optim.optimizer import ParamsT
 
-type LossFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 __all__ = [
-    "LossFn",
     "Surrogate",
     "Trainer",
     "train",
 ]
-
-
-def _mean_abs(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """Standard loss for surrogates.
-
-    Args:
-        x: Predictions of a model.
-        y: Targets.
-
-    Returns:
-        torch.Tensor: loss.
-
-    """
-    return torch.mean(torch.abs(x - y))
 
 
 @dataclass(kw_only=True)
@@ -101,7 +86,7 @@ class Trainer:
         model: nn.Module | None = None,
         optimizer_cls: Callable[[ParamsT], Adam] = Adam,
         device: torch.device = DefaultDevice,
-        loss_fn: LossFn = _mean_abs,
+        loss_fn: LossFn = mean_abs_error,
     ) -> None:
         self.features = features
         self.targets = targets
@@ -168,7 +153,7 @@ def train(
     model: nn.Module | None = None,
     optimizer_cls: Callable[[ParamsT], Adam] = Adam,
     device: torch.device = DefaultDevice,
-    loss_fn: LossFn = _mean_abs,
+    loss_fn: LossFn = mean_abs_error,
 ) -> tuple[Surrogate, pd.Series]:
     """Train a PyTorch surrogate model.
 

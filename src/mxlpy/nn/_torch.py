@@ -15,8 +15,6 @@ import tqdm
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-type LossFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -29,10 +27,64 @@ __all__ = [
     "LSTM",
     "LossFn",
     "MLP",
+    "cosine_similarity",
+    "mean_abs_error",
+    "mean_absolute_percentage",
+    "mean_error",
+    "mean_squared_error",
+    "mean_squared_logarithmic",
+    "rms_error",
     "train",
 ]
 
 DefaultDevice = torch.device("cpu")
+
+###############################################################################
+# Loss functions
+###############################################################################
+
+
+type LossFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+
+
+def mean_error(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+    """Calculate mean error."""
+    return torch.mean(pred - true)
+
+
+def mean_squared_error(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+    """Calculate mean squared error."""
+    return torch.mean(torch.square(pred - true))
+
+
+def rms_error(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+    """Calculate root mean square error."""
+    return torch.sqrt(torch.mean(torch.square(pred - true)))
+
+
+def mean_abs_error(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+    """Calculate mean absolute error."""
+    return torch.mean(torch.abs(pred - true))
+
+
+def mean_absolute_percentage(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+    """Calculate mean absolute percentag error."""
+    return 100 * torch.mean(torch.abs((true - pred) / pred))
+
+
+def mean_squared_logarithmic(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+    """Calculate root mean square error between model and data."""
+    return torch.mean(torch.square(torch.log(pred + 1) - torch.log(true + 1)))
+
+
+def cosine_similarity(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
+    """Calculate root mean square error between model and data."""
+    return -torch.sum(torch.norm(pred, 2) * torch.norm(true, 2))
+
+
+###############################################################################
+# Training routines
+###############################################################################
 
 
 def train(
@@ -83,6 +135,11 @@ def train(
             epoch_loss += loss.item() * xb.size(0)
         losses[i] = epoch_loss / len(data_loader.dataset)  # type: ignore
     return pd.Series(losses, dtype=float)
+
+
+###############################################################################
+# Actual models
+###############################################################################
 
 
 class MLP(nn.Module):
