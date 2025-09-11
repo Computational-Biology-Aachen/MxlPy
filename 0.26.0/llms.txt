@@ -1,0 +1,155 @@
+# MxlPy
+
+> MxlPy is a Python package for mechanistic learning (Mxl) - the combination of mechanistic modeling and machine learning to deliver explainable, data-informed solutions.
+
+## Docs
+
+- [overview](https://computational-biology-aachen.github.io/MxlPy/latest/index.html)
+- [mxlpy quick start](https://computational-biology-aachen.github.io/MxlPy/latest/basics.html)
+- [mechanistic learning](https://computational-biology-aachen.github.io/MxlPy/latest/mxl.html)
+- [examples](https://computational-biology-aachen.github.io/MxlPy/latest/examples.html)
+
+## Example models - linear chain
+
+> Create an mxlpy model of a linear chain of reactions with one variable
+
+```python
+from mxlpy import Model
+
+def get_model() -> Model:
+    return (
+        Model()
+        .add_variables({"x": 1.0})
+        .add_parameters({"k_in": 1.0, "k_out": 1.0})
+        .add_reaction(
+            "v_in",
+            constant,
+            stoichiometry={"x": 1},
+            args=["k_in"],
+        )
+        .add_reaction(
+            "v_out",
+            mass_action_1s,
+            stoichiometry={"x": -1},
+            args=["k_out", "x"],
+        )
+    )
+```
+
+> Create an mxlpy model of a linear chain of reactions with two variables
+
+```python
+from mxlpy import Model
+
+def get_model() -> Model:
+    return (
+        Model()
+        .add_variables({"x": 1.0, "y": 1.0})
+        .add_parameters({"k1": 1.0, "k2": 2.0, "k3": 1.0})
+        .add_reaction("v1", constant, stoichiometry={"x": 1}, args=["k1"])
+        .add_reaction(
+            "v2",
+            mass_action_1s,
+            stoichiometry={"x": -1, "y": 1},
+            args=["k2", "x"],
+        )
+        .add_reaction(
+            "v3",
+            mass_action_1s,
+            stoichiometry={"y": -1},
+            args=["k3", "y"],
+        )
+    )
+```
+
+## Model construction
+
+> Create a model with a moiety where `x2 = x_total - x1`
+
+```python
+from mxlpy import Model, fns
+
+def get_model() -> Model:
+    return (
+        Model()
+        .add_variables({"x1": 1.0})
+        .add_parameters({"x_total": 1.0})
+        .add_derived("x2", fns.moiety_1s, args=["x1", "x_total"])
+    )
+```
+
+## Simulation
+
+> Simulate an mxlpy model and plot the variables
+
+```python
+from mxlpy import Simulator, plot
+
+variables, fluxes = unwrap(
+    Simulator(model)
+    .simulate(t_end=10)
+    .get_result()
+)
+
+fig, ax = plot.lines(variables)
+ax.set(xlabel="time / a.u.", ylabel="concentration / a.u.")
+plt.show()
+```
+
+> Simulate an mxlpy model over a protocol and plot the variables
+
+```python
+from mxlpy import Simulator, plot, make_protocol
+
+protocol = make_protocol(
+    [
+        (1, {"k1": 1}),  # for one second value of 1
+        (2, {"k1": 2}),  # for two seconds value of 2
+        (3, {"k1": 1}),  # for three seconds value of 1
+    ]
+)
+
+variables, fluxes = unwrap(
+    Simulator(model)
+    .simulate_protocol(protocol)
+    .get_result()
+)
+
+fig, ax = plot.one_axes()
+plot.lines(variables, ax=ax)
+plot.shade_protocol(protocol["k1"], ax=ax, alpha=0.1)
+ax.set(xlabel="time / a.u.", ylabel="concentration / a.u.")
+plot.show()
+```
+
+> Simulate an mxlpy model to steady-state
+
+```python
+from mxlpy import Simulator, plot
+
+variables, fluxes = unwrap(
+    Simulator(model)
+    .simulate_to_steady_state()
+    .get_result()
+)
+
+fig, ax = plot.bars(variables)
+ax.set(xlabel="Variable / a.u.", ylabel="Concentration / a.u.")
+plt.show()
+```
+
+> Simulate an mxlpy model to steady-state with custom initial conditions `y0`
+
+```python
+from mxlpy import Simulator, plot
+
+variables, fluxes = unwrap(
+    Simulator(model, y0=y0)
+    .simulate_to_steady_state()
+    .get_result()
+)
+
+fig, ax = plot.bars(variables)
+ax.set(xlabel="Variable / a.u.", ylabel="Concentration / a.u.")
+plt.show()
+```
