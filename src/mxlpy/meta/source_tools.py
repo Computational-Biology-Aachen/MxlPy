@@ -635,7 +635,7 @@ def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
                     )
                 elif (var := variables.get(level)) is not None:
                     _LOGGER.debug("var %s", var)
-                    return _get_inner_object(var, levels[(idx + 1) :] + [node.attr])
+                    return _get_inner_object(var, [*levels[idx + 1 :], node.attr])
 
                 else:
                     _LOGGER.debug("No target found")
