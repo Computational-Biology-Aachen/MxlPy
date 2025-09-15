@@ -1,7 +1,7 @@
 import pandas as pd
 
 from mxlpy import Model, fns
-from mxlpy.types import Result
+from mxlpy.simulation import Simulation
 
 
 def test_get_producers_and_consumers() -> None:
@@ -13,7 +13,7 @@ def test_get_producers_and_consumers() -> None:
         .add_reaction("v_out", fns.constant, args=["k"], stoichiometry={"x": -2})
     )
 
-    res = Result(
+    res = Simulation(
         model=m,
         raw_variables=[
             pd.DataFrame({"x": [1.0]}, index=[0.0]),

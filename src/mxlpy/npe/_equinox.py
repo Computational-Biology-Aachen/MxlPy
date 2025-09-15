@@ -22,7 +22,7 @@ import pandas as pd
 
 from mxlpy.nn._equinox import LSTM, MLP, LossFn, mean_abs_error
 from mxlpy.nn._equinox import train as _train
-from mxlpy.types import AbstractEstimator
+from mxlpy.npe.abstract import AbstractEstimator
 
 if TYPE_CHECKING:
     import equinox as eqx

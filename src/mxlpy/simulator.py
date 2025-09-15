@@ -20,12 +20,13 @@ from sympy import lambdify
 from wadler_lindig import pformat
 
 from mxlpy.integrators import DefaultIntegrator
+from mxlpy.simulation import Simulation
 from mxlpy.symbolic import to_symbolic_model
-from mxlpy.types import Result
 
 if TYPE_CHECKING:
+    from mxlpy.integrators import IntegratorProtocol, IntegratorType
     from mxlpy.model import Model
-    from mxlpy.types import Array, ArrayLike, IntegratorProtocol, IntegratorType
+    from mxlpy.types import Array, ArrayLike
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -398,7 +399,7 @@ class Simulator:
         )
         return self
 
-    def get_result(self) -> Result | None:
+    def get_result(self) -> Simulation | None:
         """Get result of the simulation.
 
         Examples:
@@ -419,7 +420,7 @@ class Simulator:
             return None
         if (parameters := self.simulation_parameters) is None:
             return None
-        return Result(
+        return Simulation(
             model=self.model,
             raw_variables=variables,
             raw_parameters=parameters,

@@ -7,10 +7,12 @@ import numpy as np
 import pandas as pd
 from numpy import polynomial
 
-from mxlpy.types import AbstractSurrogate, ArrayLike, Derived
+from mxlpy.surrogates.abstract import AbstractSurrogate
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from mxlpy.types import ArrayLike, Derived
 
 __all__ = [
     "PolynomialExpansion",

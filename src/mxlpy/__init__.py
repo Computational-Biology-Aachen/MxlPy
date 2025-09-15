@@ -57,6 +57,7 @@ from . import (
     units,
 )
 from .integrators import DefaultIntegrator, Diffrax, Scipy
+from .integrators.abstract import IntegratorProtocol
 from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
 from .mc import Cache
@@ -66,7 +67,6 @@ from .symbolic import SymbolicModel, to_symbolic_model
 from .types import (
     Derived,
     InitialAssignment,
-    IntegratorProtocol,
     Parameter,
     Variable,
     unwrap,

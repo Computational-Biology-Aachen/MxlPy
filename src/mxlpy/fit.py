@@ -69,13 +69,14 @@ from wadler_lindig import pformat
 from mxlpy import parallel
 from mxlpy.model import Model
 from mxlpy.simulator import Simulator
-from mxlpy.types import Array, IntegratorType, cast
+from mxlpy.types import Array, cast
 
 if TYPE_CHECKING:
     import pandas as pd
     from scipy.optimize._optimize import OptimizeResult
 
     from mxlpy.carousel import Carousel
+    from mxlpy.integrators import IntegratorType
     from mxlpy.model import Model
 
 LOGGER = logging.getLogger(__name__)

@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from mxlpy.model import Model
-from mxlpy.types import MockSurrogate
+from mxlpy.surrogates.abstract import MockSurrogate
 from tests.model.test_model import two_arguments
 
 

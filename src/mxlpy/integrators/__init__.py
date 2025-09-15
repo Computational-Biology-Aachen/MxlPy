@@ -6,6 +6,7 @@ It includes support for both Assimulo and Scipy integrators, with Assimulo being
 
 from __future__ import annotations
 
+from .abstract import IntegratorProtocol, IntegratorType
 from .int_diffrax import Diffrax
 from .int_scipy import Scipy
 
@@ -20,5 +21,7 @@ __all__ = [
     "Assimulo",
     "DefaultIntegrator",
     "Diffrax",
+    "IntegratorProtocol",
+    "IntegratorType",
     "Scipy",
 ]

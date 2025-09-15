@@ -16,17 +16,23 @@ Functions:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Protocol, cast
 
 import pandas as pd
+from wadler_lindig import pformat
 
 from mxlpy import mca, scan
+from mxlpy.mca import ResponseCoefficientsByPars
 from mxlpy.parallel import Cache, parallelise
 from mxlpy.scan import (
+    ProtocolScan,
     ProtocolTimeCourseWorker,
     ProtocolWorker,
+    SteadyStateScan,
     SteadyStateWorker,
+    TimeCourseScan,
     TimeCourseWorker,
     _protocol_time_course_worker,
     _protocol_worker,
@@ -34,21 +40,17 @@ from mxlpy.scan import (
     _time_course_worker,
     _update_parameters_and_initial_conditions,
 )
-from mxlpy.types import (
-    IntegratorType,
-    McSteadyStates,
-    ProtocolScan,
-    ResponseCoefficientsByPars,
-    SteadyStateScan,
-    TimeCourseScan,
-)
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from mxlpy.integrators import IntegratorType
     from mxlpy.model import Model
     from mxlpy.types import Array
 
 
 __all__ = [
+    "McSteadyStates",
     "ParameterScanWorker",
     "parameter_elasticities",
     "protocol",
@@ -346,6 +348,29 @@ def protocol_time_course(
         protocol=protocol,
         raw_results=dict(res),
     )
+
+
+@dataclass(kw_only=True, slots=True)
+class McSteadyStates:
+    """Container for Monte Carlo steady states."""
+
+    variables: pd.DataFrame
+    fluxes: pd.DataFrame
+    parameters: pd.DataFrame
+    mc_to_scan: pd.DataFrame
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return the steady states as a DataFrame."""
+        return pd.concat((self.variables, self.fluxes), axis=1)
+
+    def __iter__(self) -> Iterator[pd.DataFrame]:
+        """Iterate over the concentration and flux steady states."""
+        return iter((self.variables, self.fluxes))
 
 
 def scan_steady_state(

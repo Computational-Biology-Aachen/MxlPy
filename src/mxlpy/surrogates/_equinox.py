@@ -11,10 +11,12 @@ import pandas as pd
 
 from mxlpy.nn._equinox import MLP, LossFn, mean_abs_error
 from mxlpy.nn._equinox import train as _train
-from mxlpy.types import AbstractSurrogate, Derived
+from mxlpy.surrogates.abstract import AbstractSurrogate
 
 if TYPE_CHECKING:
     import equinox as eqx
+
+    from mxlpy.types import Derived
 
 __all__ = ["Surrogate", "Trainer", "train"]
 

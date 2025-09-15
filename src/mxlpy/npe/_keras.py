@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from mxlpy.nn._keras import LSTM, MLP, train
-from mxlpy.types import AbstractEstimator
+from mxlpy.npe.abstract import AbstractEstimator
 
 __all__ = [
     "DefaultLoss",

@@ -15,33 +15,34 @@ Functions:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 import numpy as np
 import pandas as pd
+from wadler_lindig import pformat
 
 from mxlpy.parallel import Cache, parallelise
+from mxlpy.simulation import Simulation
 from mxlpy.simulator import Simulator
-from mxlpy.types import (
-    IntegratorType,
-    ProtocolScan,
-    Result,
-    SteadyStateScan,
-    TimeCourseScan,
-)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Hashable, Iterator
 
+    from mxlpy.integrators import IntegratorType
     from mxlpy.model import Model
     from mxlpy.types import Array
 
 
 __all__ = [
+    "ProtocolScan",
     "ProtocolTimeCourseWorker",
     "ProtocolWorker",
+    "SteadyStateScan",
     "SteadyStateWorker",
+    "TimeCourseScan",
     "TimeCourseWorker",
     "protocol",
     "protocol_time_course",
@@ -87,7 +88,7 @@ class SteadyStateWorker(Protocol):
         rel_norm: bool,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
-    ) -> Result:
+    ) -> Simulation:
         """Call the worker function."""
         ...
 
@@ -102,7 +103,7 @@ class TimeCourseWorker(Protocol):
         *,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
-    ) -> Result:
+    ) -> Simulation:
         """Call the worker function."""
         ...
 
@@ -118,7 +119,7 @@ class ProtocolWorker(Protocol):
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
         time_points_per_step: int = 10,
-    ) -> Result:
+    ) -> Simulation:
         """Call the worker function."""
         ...
 
@@ -134,7 +135,7 @@ class ProtocolTimeCourseWorker(Protocol):
         *,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
-    ) -> Result:
+    ) -> Simulation:
         """Call the worker function."""
         ...
 
@@ -145,7 +146,7 @@ def _steady_state_worker(
     rel_norm: bool,
     integrator: IntegratorType | None,
     y0: dict[str, float] | None,
-) -> Result:
+) -> Simulation:
     """Simulate the model to steady state and return concentrations and fluxes.
 
     Args:
@@ -167,7 +168,9 @@ def _steady_state_worker(
     except ZeroDivisionError:
         res = None
     return (
-        Result.default(model=model, time_points=np.array([0.0])) if res is None else res
+        Simulation.default(model=model, time_points=np.array([0.0]))
+        if res is None
+        else res
     )
 
 
@@ -176,7 +179,7 @@ def _time_course_worker(
     time_points: Array,
     y0: dict[str, float] | None,
     integrator: IntegratorType | None,
-) -> Result:
+) -> Simulation:
     """Simulate the model to steady state and return concentrations and fluxes.
 
     Args:
@@ -197,7 +200,9 @@ def _time_course_worker(
         )
     except ZeroDivisionError:
         res = None
-    return Result.default(model=model, time_points=time_points) if res is None else res
+    return (
+        Simulation.default(model=model, time_points=time_points) if res is None else res
+    )
 
 
 def _protocol_worker(
@@ -207,7 +212,7 @@ def _protocol_worker(
     integrator: IntegratorType | None,
     y0: dict[str, float] | None,
     time_points_per_step: int = 10,
-) -> Result:
+) -> Simulation:
     """Simulate the model over a protocol and return concentrations and fluxes.
 
     Args:
@@ -238,7 +243,9 @@ def _protocol_worker(
         protocol.index[-1].total_seconds(),
         len(protocol) * time_points_per_step,
     )
-    return Result.default(model=model, time_points=time_points) if res is None else res
+    return (
+        Simulation.default(model=model, time_points=time_points) if res is None else res
+    )
 
 
 def _protocol_time_course_worker(
@@ -248,7 +255,7 @@ def _protocol_time_course_worker(
     *,
     integrator: IntegratorType | None,
     y0: dict[str, float] | None,
-) -> Result:
+) -> Simulation:
     """Simulate the model over a protocol and return concentrations and fluxes.
 
     Args:
@@ -274,7 +281,77 @@ def _protocol_time_course_worker(
     except ZeroDivisionError:
         res = None
 
-    return Result.default(model=model, time_points=time_points) if res is None else res
+    return (
+        Simulation.default(model=model, time_points=time_points) if res is None else res
+    )
+
+
+@dataclass(kw_only=True, slots=True)
+class SteadyStateScan:
+    """Container for steady states by scanned values."""
+
+    to_scan: pd.DataFrame
+    raw_index: pd.Index | pd.MultiIndex
+    raw_results: list[Simulation]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    @property
+    def variables(self) -> pd.DataFrame:
+        """Return steady-state variables by scan."""
+        return pd.DataFrame(
+            [i.variables.iloc[-1].T for i in self.raw_results], index=self.raw_index
+        )
+
+    @property
+    def fluxes(self) -> pd.DataFrame:
+        """Return steady-state fluxes by scan."""
+        return pd.DataFrame(
+            [i.fluxes.iloc[-1].T for i in self.raw_results], index=self.raw_index
+        )
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return steady-state args by scan."""
+        return self.get_args()
+
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
+        include_readouts: bool = False,
+    ) -> pd.DataFrame:
+        """Return steady-state args by scan."""
+        return pd.DataFrame(
+            [
+                i.get_args(
+                    include_variables=include_variables,
+                    include_parameters=include_parameters,
+                    include_derived_parameters=include_derived_parameters,
+                    include_derived_variables=include_derived_variables,
+                    include_reactions=include_reactions,
+                    include_surrogate_variables=include_surrogate_variables,
+                    include_surrogate_fluxes=include_surrogate_fluxes,
+                    include_readouts=include_readouts,
+                )
+                .iloc[-1]
+                .T
+                for i in self.raw_results
+            ],
+            index=self.raw_index,
+        )
+
+    def __iter__(self) -> Iterator[pd.DataFrame]:
+        """Iterate over the concentration and flux steady states."""
+        return iter((self.variables, self.fluxes))
 
 
 def steady_state(
@@ -353,6 +430,85 @@ def steady_state(
         raw_results=[i[1] for i in res],
         to_scan=to_scan,
     )
+
+
+@dataclass(kw_only=True, slots=True)
+class TimeCourseScan:
+    """Container for time courses by scanned values."""
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    to_scan: pd.DataFrame
+    raw_results: dict[Hashable, Simulation]
+
+    @property
+    def variables(self) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {k: i.variables for k, i in self.raw_results.items()}, names=["n", "time"]
+        )
+
+    @property
+    def fluxes(self) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {k: i.fluxes for k, i in self.raw_results.items()}, names=["n", "time"]
+        )
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return the time courses as a DataFrame."""
+        return self.get_args()
+
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
+        include_readouts: bool = False,
+    ) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {
+                k: i.get_args(
+                    include_variables=include_variables,
+                    include_parameters=include_parameters,
+                    include_derived_parameters=include_derived_parameters,
+                    include_derived_variables=include_derived_variables,
+                    include_reactions=include_reactions,
+                    include_surrogate_variables=include_surrogate_variables,
+                    include_surrogate_fluxes=include_surrogate_fluxes,
+                    include_readouts=include_readouts,
+                )
+                for k, i in self.raw_results.items()
+            },
+            names=["n", "time"],
+        )
+
+    def get_by_name(self, name: str) -> pd.DataFrame:
+        """Get time courses by name."""
+        return self.combined[name].unstack().T
+
+    def get_agg_per_time(self, agg: str | Callable) -> pd.DataFrame:
+        """Get aggregated time courses."""
+        mean = cast(pd.DataFrame, self.combined.unstack(level=1).agg(agg, axis=0))
+        return cast(pd.DataFrame, mean.unstack().T)
+
+    def get_agg_per_run(self, agg: str | Callable) -> pd.DataFrame:
+        """Get aggregated time courses."""
+        mean = cast(pd.DataFrame, self.combined.unstack(level=0).agg(agg, axis=0))
+        return cast(pd.DataFrame, mean.unstack().T)
+
+    def __iter__(self) -> Iterator[pd.DataFrame]:
+        """Iterate over the concentration and flux time courses."""
+        return iter((self.variables, self.fluxes))
 
 
 def time_course(
@@ -440,6 +596,88 @@ def time_course(
         to_scan=to_scan,
         raw_results=dict(res),
     )
+
+
+@dataclass(kw_only=True, slots=True)
+class ProtocolScan:
+    """Container for protocols by scanned values."""
+
+    to_scan: pd.DataFrame
+    protocol: pd.DataFrame
+    raw_results: dict[Hashable, Simulation]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    @property
+    def variables(self) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {k: i.variables for k, i in self.raw_results.items()},
+            names=["n", "time"],
+        )
+
+    @property
+    def fluxes(self) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {k: i.fluxes for k, i in self.raw_results.items()},
+            names=["n", "time"],
+        )
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return the time courses as a DataFrame."""
+        return self.get_args()
+
+    def get_args(
+        self,
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_reactions: bool = True,
+        include_surrogate_variables: bool = False,
+        include_surrogate_fluxes: bool = False,
+        include_readouts: bool = False,
+    ) -> pd.DataFrame:
+        """Return all args of the time courses."""
+        return pd.concat(
+            {
+                k: i.get_args(
+                    include_variables=include_variables,
+                    include_parameters=include_parameters,
+                    include_derived_parameters=include_derived_parameters,
+                    include_derived_variables=include_derived_variables,
+                    include_reactions=include_reactions,
+                    include_surrogate_variables=include_surrogate_variables,
+                    include_surrogate_fluxes=include_surrogate_fluxes,
+                    include_readouts=include_readouts,
+                )
+                for k, i in self.raw_results.items()
+            },
+            names=["n", "time"],
+        )
+
+    def get_by_name(self, name: str) -> pd.DataFrame:
+        """Get concentration or flux by name."""
+        return self.combined[name].unstack().T
+
+    def get_agg_per_time(self, agg: str | Callable) -> pd.DataFrame:
+        """Get aggregated concentration or flux."""
+        mean = cast(pd.DataFrame, self.combined.unstack(level=1).agg(agg, axis=0))
+        return cast(pd.DataFrame, mean.unstack().T)
+
+    def get_agg_per_run(self, agg: str | Callable) -> pd.DataFrame:
+        """Get aggregated concentration or flux."""
+        mean = cast(pd.DataFrame, self.combined.unstack(level=0).agg(agg, axis=0))
+        return cast(pd.DataFrame, mean.unstack().T)
+
+    def __iter__(self) -> Iterator[pd.DataFrame]:
+        """Iterate over the concentration and flux protocols."""
+        return iter((self.variables, self.fluxes))
 
 
 def protocol(

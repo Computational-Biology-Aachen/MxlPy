@@ -17,20 +17,25 @@ Mathematical Background:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
 import pandas as pd
+from wadler_lindig import pformat
 
 from mxlpy.parallel import parallelise
 from mxlpy.scan import _steady_state_worker
-from mxlpy.types import ResponseCoefficients
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from mxlpy.integrators import IntegratorType
     from mxlpy.model import Model
-    from mxlpy.types import IntegratorType
 
 __all__ = [
+    "ResponseCoefficients",
+    "ResponseCoefficientsByPars",
     "parameter_elasticities",
     "response_coefficients",
     "variable_elasticities",
@@ -227,6 +232,27 @@ def parameter_elasticities(
     return pd.DataFrame(data=elasticities)
 
 
+@dataclass(kw_only=True, slots=True)
+class ResponseCoefficients:
+    """Container for response coefficients."""
+
+    variables: pd.DataFrame
+    fluxes: pd.DataFrame
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return the response coefficients as a DataFrame."""
+        return pd.concat((self.variables, self.fluxes), axis=1)
+
+    def __iter__(self) -> Iterator[pd.DataFrame]:
+        """Iterate over the concentration and flux response coefficients."""
+        return iter((self.variables, self.fluxes))
+
+
 # ###############################################################################
 # # Steady state
 # ###############################################################################
@@ -293,3 +319,25 @@ def response_coefficients(
         variables=pd.DataFrame({k: v[0] for k, v in res}),
         fluxes=pd.DataFrame({k: v[1] for k, v in res}),
     )
+
+
+@dataclass(kw_only=True, slots=True)
+class ResponseCoefficientsByPars:
+    """Container for response coefficients by parameter."""
+
+    variables: pd.DataFrame
+    fluxes: pd.DataFrame
+    parameters: pd.DataFrame
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return the response coefficients as a DataFrame."""
+        return pd.concat((self.variables, self.fluxes), axis=1)
+
+    def __iter__(self) -> Iterator[pd.DataFrame]:
+        """Iterate over the concentration and flux response coefficients."""
+        return iter((self.variables, self.fluxes))

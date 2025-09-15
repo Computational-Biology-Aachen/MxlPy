@@ -1,11 +1,11 @@
 import pandas as pd
 
-from mxlpy.types import Result
+from mxlpy.simulation import Simulation, _normalise_split_results
 from tests import models
 
 
-def create_result() -> Result:
-    return Result(
+def create_result() -> Simulation:
+    return Simulation(
         model=models.m_1v_1p_1d_1r(),
         raw_variables=[
             pd.DataFrame(
@@ -28,7 +28,6 @@ def test_normalise_split_results() -> None:
     results = [df1, df2]
 
     # Test scalar normalization
-    from mxlpy.types import _normalise_split_results
 
     normalized = _normalise_split_results(results, normalise=2.0)
     assert len(normalized) == 2

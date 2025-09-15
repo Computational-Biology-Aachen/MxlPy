@@ -13,13 +13,20 @@ from wadler_lindig import pformat
 
 from mxlpy import parallel, scan
 
-__all__ = ["Carousel", "CarouselSteadyState", "CarouselTimeCourse", "ReactionTemplate"]
-
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from mxlpy import Model
-    from mxlpy.types import Array, IntegratorType, RateFn, Result
+    from mxlpy.integrators import IntegratorType
+    from mxlpy.simulation import Simulation
+    from mxlpy.types import Array, RateFn
+
+__all__ = [
+    "Carousel",
+    "CarouselSteadyState",
+    "CarouselTimeCourse",
+    "ReactionTemplate",
+]
 
 
 @dataclass
@@ -40,7 +47,7 @@ class CarouselSteadyState:
     """Time course of a carousel simulation."""
 
     carousel: list[Model]
-    results: list[Result]
+    results: list[Simulation]
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -58,7 +65,7 @@ class CarouselTimeCourse:
     """Time course of a carousel simulation."""
 
     carousel: list[Model]
-    results: list[Result]
+    results: list[Simulation]
 
     def __repr__(self) -> str:
         """Return default representation."""

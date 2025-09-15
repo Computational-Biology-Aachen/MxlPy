@@ -22,7 +22,7 @@ from torch.optim.adam import Adam
 
 from mxlpy.nn._torch import LSTM, MLP, DefaultDevice, LossFn, mean_abs_error
 from mxlpy.nn._torch import train as _train
-from mxlpy.types import AbstractEstimator
+from mxlpy.npe.abstract import AbstractEstimator
 
 if TYPE_CHECKING:
     from collections.abc import Callable

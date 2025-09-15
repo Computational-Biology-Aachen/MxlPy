@@ -11,12 +11,14 @@ from torch.optim.adam import Adam
 
 from mxlpy.nn._torch import MLP, DefaultDevice, LossFn, mean_abs_error
 from mxlpy.nn._torch import train as _train
-from mxlpy.types import AbstractSurrogate, Derived
+from mxlpy.surrogates.abstract import AbstractSurrogate
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from torch.optim.optimizer import ParamsT
+
+    from mxlpy.types import Derived
 
 
 __all__ = [

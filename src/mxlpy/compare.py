@@ -10,10 +10,11 @@ from wadler_lindig import pformat
 
 from mxlpy import plot
 from mxlpy.simulator import Simulator
-from mxlpy.types import Result, unwrap
+from mxlpy.types import unwrap
 
 if TYPE_CHECKING:
     from mxlpy.model import Model
+    from mxlpy.simulation import Simulation
     from mxlpy.types import ArrayLike
 
 __all__ = [
@@ -30,8 +31,8 @@ __all__ = [
 class SteadyStateComparison:
     """Compare two steady states."""
 
-    res1: Result
-    res2: Result
+    res1: Simulation
+    res2: Simulation
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -95,8 +96,8 @@ class SteadyStateComparison:
 class TimeCourseComparison:
     """Compare two time courses."""
 
-    res1: Result
-    res2: Result
+    res1: Simulation
+    res2: Simulation
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -149,8 +150,8 @@ class TimeCourseComparison:
 class ProtocolComparison:
     """Compare two protocol time courses."""
 
-    res1: Result
-    res2: Result
+    res1: Simulation
+    res2: Simulation
     protocol: pd.DataFrame
 
     def __repr__(self) -> str:

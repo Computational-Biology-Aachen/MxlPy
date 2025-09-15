@@ -26,8 +26,8 @@ from mxlpy.meta.sympy_tools import (
     list_of_symbols,
     stoichiometries_to_sympy,
 )
+from mxlpy.surrogates.abstract import AbstractSurrogate
 from mxlpy.types import (
-    AbstractSurrogate,
     Derived,
     InitialAssignment,
     Parameter,

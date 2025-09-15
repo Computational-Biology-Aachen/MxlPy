@@ -4,7 +4,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from mxlpy.types import AbstractSurrogate, Array
+from mxlpy.surrogates.abstract import AbstractSurrogate
+from mxlpy.types import Array
 
 if TYPE_CHECKING:
     import pandas as pd

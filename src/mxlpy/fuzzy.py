@@ -21,7 +21,10 @@ if TYPE_CHECKING:
 
     from mxlpy import Model
 
-__all__ = ["ThompsonState", "thompson_sampling"]
+__all__ = [
+    "ThompsonState",
+    "thompson_sampling",
+]
 
 
 @dataclass

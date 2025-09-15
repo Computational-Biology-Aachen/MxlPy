@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Self, cast
+from typing import TYPE_CHECKING, Self, cast
 
 import keras
 import numpy as np
@@ -9,7 +9,10 @@ import pandas as pd
 
 from mxlpy.nn._keras import MLP
 from mxlpy.nn._keras import train as _train
-from mxlpy.types import AbstractSurrogate, Array, Derived
+from mxlpy.surrogates.abstract import AbstractSurrogate
+
+if TYPE_CHECKING:
+    from mxlpy.types import Array, Derived
 
 __all__ = [
     "DefaultLoss",

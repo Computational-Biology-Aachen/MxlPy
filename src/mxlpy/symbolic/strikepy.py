@@ -1,5 +1,3 @@
-# ruff: noqa: D100, D101, D102, D103, D104, D105, D106, D107, D200, D203, D400, D401
-
 """Reimplementation of strikepy from.
 
 StrikePy: https://github.com/afvillaverde/StrikePy
@@ -43,6 +41,8 @@ __all__ = [
 
 @dataclass
 class Options:
+    """Algorithm options."""
+
     check_observability: bool = True
     max_lie_time: float = inf
     non_zero_known_input_derivatives: list[int] = field(default_factory=lambda: [100])
@@ -52,6 +52,8 @@ class Options:
 
 @dataclass
 class StrikepyModel:
+    """StrikePy model."""
+
     states: list[sym.Symbol]
     pars: list[sym.Symbol]
     eqs: list[sym.Expr]
@@ -62,6 +64,8 @@ class StrikepyModel:
 
 @dataclass
 class Result:
+    """Result."""
+
     rank: int
     model: StrikepyModel
     is_fispo: bool
@@ -73,12 +77,14 @@ class Result:
     input_unobs: list
 
     def all_inputs_observable(self) -> bool:
+        """True if all inputs are observable."""
         return bool(
             len(self.par_ident) == len(self.model.pars)
             and len(self.model.unknown_inputs) > 0
         )
 
     def summary(self) -> str:
+        """Summary of result."""
         return textwrap.dedent(f"""\
         Summary
         =======
@@ -367,6 +373,7 @@ def _create_onx(
 
 
 def strike_goldd(model: StrikepyModel, options: Options | None = None) -> Result:
+    """Run Strike-Goldd algorithm."""
     options = Options() if options is None else options
 
     # Check if the size of nnzDerU and nnzDerW are appropriate
@@ -574,6 +581,7 @@ def strike_goldd(model: StrikepyModel, options: Options | None = None) -> Result
 
 
 def check_identifiability(model: SymbolicModel, outputs: list[sympy.Symbol]) -> Result:
+    """Check identifiability of model."""
     strike_model = StrikepyModel(
         states=list(model.variables.values()),
         pars=list(model.parameters.values()),
