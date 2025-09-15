@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 import sympy
-from sympy.printing import jscode, rust_code
+from sympy.printing import jscode, julia_code, rust_code
 from sympy.printing.pycode import pycode
 
 from mxlpy.meta.source_tools import fn_to_sympy
@@ -18,6 +18,7 @@ __all__ = [
     "list_of_symbols",
     "stoichiometries_to_sympy",
     "sympy_to_inline_js",
+    "sympy_to_inline_julia",
     "sympy_to_inline_py",
     "sympy_to_inline_rust",
     "sympy_to_python_fn",
@@ -62,6 +63,11 @@ def sympy_to_inline_js(expr: sympy.Expr) -> str:
 def sympy_to_inline_rust(expr: sympy.Expr) -> str:
     """Create rust code from sympy expression."""
     return cast(str, rust_code(expr, full_prec=False))
+
+
+def sympy_to_inline_julia(expr: sympy.Expr) -> str:
+    """Create rust code from sympy expression."""
+    return cast(str, julia_code(expr, full_prec=False))
 
 
 def sympy_to_python_fn(

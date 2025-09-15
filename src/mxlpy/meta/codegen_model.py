@@ -10,6 +10,7 @@ from mxlpy.meta.sympy_tools import (
     list_of_symbols,
     stoichiometries_to_sympy,
     sympy_to_inline_js,
+    sympy_to_inline_julia,
     sympy_to_inline_py,
     sympy_to_inline_rust,
 )
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from mxlpy.model import Model
 
 __all__ = [
+    "generate_model_code_jl",
     "generate_model_code_py",
     "generate_model_code_rs",
     "generate_model_code_ts",
@@ -212,6 +214,33 @@ def generate_model_code_rs(
         sympy_inline_fn=sympy_to_inline_rust,
         return_template="    return [{}]",
         end="}",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_code_jl(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model into a julia function, inlining the function calls."""
+    if free_parameters is None:
+        model_fn = "function model(time, variables)"
+    else:
+        args = ", ".join(f"{k}" for k in free_parameters)
+        model_fn = f"function model(time, variables, {args})"
+
+    return _generate_model_code(
+        model,
+        imports=None,
+        sized=True,
+        model_fn=model_fn,
+        variables_template="    {} = *variables",
+        assignment_template="    k = {v}",
+        sympy_inline_fn=sympy_to_inline_julia,
+        return_template="    return {}",
+        end="end",
         free_parameters=free_parameters,
         custom_fns={} if custom_fns is None else custom_fns,
     )
