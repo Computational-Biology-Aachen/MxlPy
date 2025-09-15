@@ -47,62 +47,49 @@ from __future__ import annotations
 
 import logging
 import multiprocessing
-from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import pebble
-from scipy.optimize import (
-    basinhopping,
-    differential_evolution,
-    direct,
-    dual_annealing,
-    minimize,
-    shgo,
-)
-from wadler_lindig import pformat
 
 from mxlpy import parallel
+from mxlpy.fit import losses
+from mxlpy.fit.abstract import (
+    EnsembleFit,
+    Fit,
+    FitResidual,
+    FitSettings,
+    JointFit,
+    MixedSettings,
+    _Settings,
+)
+from mxlpy.minimizers.abstract import Bounds, LossFn, OptimisationState
+from mxlpy.minimizers.abstract import Residual as MinimizerResidual
 from mxlpy.model import Model
+from mxlpy.simulation import Simulation
 from mxlpy.simulator import Simulator
-from mxlpy.types import Array, cast
+from mxlpy.types import Result, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pandas as pd
-    from scipy.optimize._optimize import OptimizeResult
 
     from mxlpy.carousel import Carousel
     from mxlpy.integrators import IntegratorType
+    from mxlpy.minimizers.abstract import Minimizer
     from mxlpy.model import Model
 
-LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(__name__)
 
 
 __all__ = [
-    "Bounds",
-    "EnsembleFitResult",
-    "FitResult",
-    "FitSettings",
-    "GlobalScipyMinimizer",
-    "InitialGuess",
-    "JointFitResult",
-    "LOGGER",
-    "LocalScipyMinimizer",
-    "LossFn",
-    "MinResult",
-    "Minimizer",
-    "MixedSettings",
-    "ResFn",
-    "ResidualFn",
-    "ResidualProtocol",
     "carousel_protocol_time_course",
     "carousel_steady_state",
     "carousel_time_course",
-    "cosine_similarity",
     "ensemble_protocol_time_course",
     "ensemble_steady_state",
     "ensemble_time_course",
@@ -110,378 +97,13 @@ __all__ = [
     "joint_protocol_time_course",
     "joint_steady_state",
     "joint_time_course",
-    "mae",
-    "mean",
-    "mean_absolute_percentage",
-    "mean_squared",
-    "mean_squared_logarithmic",
     "protocol_time_course",
     "protocol_time_course_residual",
-    "rmse",
     "steady_state",
     "steady_state_residual",
     "time_course",
     "time_course_residual",
 ]
-
-type InitialGuess = dict[str, float]
-
-type Bounds = dict[str, tuple[float | None, float | None]]
-type ResFn = Callable[[Array], float]
-type LossFn = Callable[
-    [
-        pd.DataFrame | pd.Series,
-        pd.DataFrame | pd.Series,
-    ],
-    float,
-]
-
-
-type Minimizer = Callable[
-    [
-        ResidualFn,
-        InitialGuess,
-        Bounds,
-    ],
-    MinResult | None,
-]
-
-
-class ResidualProtocol(Protocol):
-    """Protocol for steady state residual functions.
-
-    This is the user-facing variant, for stuff like
-    - `fit.steady_state`
-    - `fit.time_course`
-    - `fit.protocol_time_course`
-
-    The settings are later partially applied to yield ResidualFn
-    """
-
-    def __call__(
-        self,
-        updates: dict[str, float],
-        settings: _Settings,
-    ) -> float:
-        """Calculate residual error between model steady state and experimental data."""
-        ...
-
-
-class ResidualFn(Protocol):
-    """Protocol for steady state residual functions.
-
-    This is the internal version, which is produced by partial
-    application of `settings` of `ResidualProtocol`
-    """
-
-    def __call__(
-        self,
-        updates: dict[str, float],
-    ) -> float:
-        """Calculate residual error between model steady state and experimental data."""
-        ...
-
-
-@dataclass
-class FitSettings:
-    """Settings for a fit."""
-
-    model: Model
-    data: pd.Series | pd.DataFrame
-    y0: dict[str, float] | None = None
-    integrator: IntegratorType | None = None
-    loss_fn: LossFn | None = None
-    protocol: pd.DataFrame | None = None
-
-
-@dataclass
-class MixedSettings:
-    """Settings for a fit."""
-
-    model: Model
-    data: pd.Series | pd.DataFrame
-    residual_fn: ResidualFn
-    y0: dict[str, float] | None = None
-    integrator: IntegratorType | None = None
-    loss_fn: LossFn | None = None
-    protocol: pd.DataFrame | None = None
-
-
-@dataclass
-class _Settings:
-    """Non user-facing version of FitSettings."""
-
-    model: Model
-    data: pd.Series | pd.DataFrame
-    y0: dict[str, float] | None
-    integrator: IntegratorType | None
-    loss_fn: LossFn
-    p_names: list[str]
-    v_names: list[str]
-    protocol: pd.DataFrame | None = None
-    residual_fn: ResidualFn | None = None
-
-
-@dataclass
-class MinResult:
-    """Result of a minimization operation."""
-
-    parameters: dict[str, float]
-    residual: float
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-@dataclass
-class FitResult:
-    """Result of a fit operation."""
-
-    model: Model
-    best_pars: dict[str, float]
-    loss: float
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-@dataclass
-class EnsembleFitResult:
-    """Result of a carousel fit operation."""
-
-    fits: list[FitResult]
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-    def get_best_fit(self) -> FitResult:
-        """Get the best fit from the carousel."""
-        return min(self.fits, key=lambda x: x.loss)
-
-
-@dataclass
-class JointFitResult:
-    """Result of joint fit operation."""
-
-    best_pars: dict[str, float]
-    loss: float
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-###############################################################################
-# loss fns
-###############################################################################
-
-
-def mean(
-    y_pred: pd.DataFrame | pd.Series,
-    y_true: pd.DataFrame | pd.Series,
-) -> float:
-    """Calculate root mean square error between model and data."""
-    return cast(float, np.mean(y_pred - y_true))
-
-
-def mean_squared(
-    y_pred: pd.DataFrame | pd.Series,
-    y_true: pd.DataFrame | pd.Series,
-) -> float:
-    """Calculate mean square error between model and data."""
-    return cast(float, np.mean(np.square(y_pred - y_true)))
-
-
-def rmse(
-    y_pred: pd.DataFrame | pd.Series,
-    y_true: pd.DataFrame | pd.Series,
-) -> float:
-    """Calculate root mean square error between model and data."""
-    return cast(float, np.sqrt(np.mean(np.square(y_pred - y_true))))
-
-
-def mae(
-    y_pred: pd.DataFrame | pd.Series,
-    y_true: pd.DataFrame | pd.Series,
-) -> float:
-    """Calculate mean absolute error."""
-    return cast(float, np.mean(np.abs(y_true - y_pred)))
-
-
-def mean_absolute_percentage(
-    y_pred: pd.DataFrame | pd.Series,
-    y_true: pd.DataFrame | pd.Series,
-) -> float:
-    """Calculate mean absolute error."""
-    return cast(float, 100 * np.mean(np.abs((y_true - y_pred) / y_pred)))
-
-
-def mean_squared_logarithmic(
-    y_pred: pd.DataFrame | pd.Series,
-    y_true: pd.DataFrame | pd.Series,
-) -> float:
-    """Calculate root mean square error between model and data."""
-    return cast(float, np.mean(np.square(np.log(y_pred + 1) - np.log(y_true + 1))))
-
-
-def cosine_similarity(
-    y_pred: pd.DataFrame | pd.Series,
-    y_true: pd.DataFrame | pd.Series,
-) -> float:
-    """Calculate root mean square error between model and data."""
-    norm = np.linalg.norm
-    return cast(float, -np.sum(norm(y_pred, 2) * norm(y_true, 2)))
-
-
-###############################################################################
-# Minimizers
-###############################################################################
-
-
-@dataclass
-class LocalScipyMinimizer:
-    """Local multivariate minimization using scipy.optimize.
-
-    See Also
-    --------
-    https://docs.scipy.org/doc/scipy/reference/optimize.html#local-multivariate-optimization
-
-    """
-
-    tol: float = 1e-6
-    method: Literal[
-        "Nelder-Mead",
-        "Powell",
-        "CG",
-        "BFGS",
-        "Newton-CG",
-        "L-BFGS-B",
-        "TNC",
-        "COBYLA",
-        "COBYQA",
-        "SLSQP",
-        "trust-constr",
-        "dogleg",
-        "trust-ncg",
-        "trust-exact",
-        "trust-krylov",
-    ] = "L-BFGS-B"
-
-    def __call__(
-        self,
-        residual_fn: ResidualFn,
-        p0: dict[str, float],
-        bounds: Bounds,
-    ) -> MinResult | None:
-        """Call minimzer."""
-        par_names = list(p0.keys())
-
-        res = minimize(
-            lambda par_values: residual_fn(_pack_updates(par_values, par_names)),
-            x0=list(p0.values()),
-            bounds=[bounds.get(name, (1e-6, 1e6)) for name in p0],
-            method=self.method,
-            tol=self.tol,
-        )
-        if res.success:
-            return MinResult(
-                parameters=dict(
-                    zip(
-                        p0,
-                        res.x,
-                        strict=True,
-                    ),
-                ),
-                residual=res.fun,
-            )
-
-        LOGGER.warning("Minimisation failed due to %s", res.message)
-        return None
-
-
-@dataclass
-class GlobalScipyMinimizer:
-    """Global iate minimization using scipy.optimize.
-
-    See Also
-    --------
-    https://docs.scipy.org/doc/scipy/reference/optimize.html#global-optimization
-
-    """
-
-    tol: float = 1e-6
-    method: Literal[
-        "basinhopping",
-        "differential_evolution",
-        "shgo",
-        "dual_annealing",
-        "direct",
-    ] = "basinhopping"
-
-    def __call__(
-        self,
-        residual_fn: ResidualFn,
-        p0: dict[str, float],
-        bounds: Bounds,
-    ) -> MinResult | None:
-        """Minimize residual fn."""
-        res: OptimizeResult
-        par_names = list(p0.keys())
-        res_fn: ResFn = lambda par_values: residual_fn(  # noqa: E731
-            _pack_updates(par_values, par_names)
-        )
-
-        if self.method == "basinhopping":
-            res = basinhopping(
-                res_fn,
-                x0=list(p0.values()),
-            )
-        elif self.method == "differential_evolution":
-            res = differential_evolution(res_fn, bounds)
-        elif self.method == "shgo":
-            res = shgo(res_fn, bounds)
-        elif self.method == "dual_annealing":
-            res = dual_annealing(res_fn, bounds)
-        elif self.method == "direct":
-            res = direct(res_fn, bounds)
-        else:
-            msg = f"Unknown method {self.method}"
-            raise NotImplementedError(msg)
-        if res.success:
-            return MinResult(
-                parameters=dict(
-                    zip(
-                        p0,
-                        res.x,
-                        strict=True,
-                    ),
-                ),
-                residual=res.fun,
-            )
-
-        LOGGER.warning("Minimisation failed.")
-        return None
-
-
-###############################################################################
-# Residual functions
-###############################################################################
-
-
-def _pack_updates(
-    par_values: Array,
-    par_names: list[str],
-) -> dict[str, float]:
-    return dict(
-        zip(
-            par_names,
-            par_values,
-            strict=True,
-        )
-    )
 
 
 def steady_state_residual(
@@ -505,13 +127,14 @@ def steady_state_residual(
         .simulate_to_steady_state()
         .get_result()
     )
-    if res is None:
-        return cast(float, np.inf)
-
-    return settings.loss_fn(
-        res.get_combined().loc[:, cast(list, settings.data.index)],
-        settings.data,
-    )
+    match val := res.value:
+        case Simulation():
+            return settings.loss_fn(
+                val.get_combined().loc[:, cast(list, settings.data.index)],
+                settings.data,
+            )
+        case _:
+            return cast(float, np.inf)
 
 
 def time_course_residual(
@@ -535,14 +158,15 @@ def time_course_residual(
         .simulate_time_course(cast(list, settings.data.index))
         .get_result()
     )
-    if res is None:
-        return cast(float, np.inf)
-    results_ss = res.get_combined()
 
-    return settings.loss_fn(
-        results_ss.loc[:, cast(list, settings.data.columns)],
-        settings.data,
-    )
+    match val := res.value:
+        case Simulation():
+            return settings.loss_fn(
+                val.get_combined().loc[:, cast(list, settings.data.columns)],
+                settings.data,
+            )
+        case _:
+            return cast(float, np.inf)
 
 
 def protocol_time_course_residual(
@@ -572,14 +196,15 @@ def protocol_time_course_residual(
         )
         .get_result()
     )
-    if res is None:
-        return cast(float, np.inf)
-    results_ss = res.get_combined()
 
-    return settings.loss_fn(
-        results_ss.loc[:, cast(list, settings.data.columns)],
-        settings.data,
-    )
+    match val := res.value:
+        case Simulation():
+            return settings.loss_fn(
+                val.get_combined().loc[:, cast(list, settings.data.columns)],
+                settings.data,
+            )
+        case _:
+            return cast(float, np.inf)
 
 
 def steady_state(
@@ -589,12 +214,12 @@ def steady_state(
     data: pd.Series,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = steady_state_residual,
+    residual_fn: FitResidual = steady_state_residual,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
-) -> FitResult | None:
+) -> Result[Fit]:
     """Fit model parameters to steady-state experimental data.
 
     Examples:
@@ -626,7 +251,7 @@ def steady_state(
     p_names = model.get_parameter_names()
     v_names = model.get_variable_names()
 
-    fn: ResidualFn = partial(
+    fn: MinimizerResidual = partial(
         residual_fn,
         settings=_Settings(
             model=model,
@@ -638,15 +263,17 @@ def steady_state(
             v_names=[i for i in p0 if i in v_names],
         ),
     )
-    min_result = minimizer(fn, p0, {} if bounds is None else bounds)
-    if min_result is None:
-        return None
-
-    return FitResult(
-        model=model,
-        best_pars=min_result.parameters,
-        loss=min_result.residual,
-    )
+    match minimizer(fn, p0, {} if bounds is None else bounds).value:
+        case OptimisationState(parameters, residual):
+            return Result(
+                Fit(
+                    model=model,
+                    best_pars=parameters,
+                    loss=residual,
+                )
+            )
+        case _ as e:
+            return Result(e)
 
 
 def time_course(
@@ -656,12 +283,12 @@ def time_course(
     data: pd.DataFrame,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = time_course_residual,
+    residual_fn: FitResidual = time_course_residual,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
-) -> FitResult | None:
+) -> Result[Fit]:
     """Fit model parameters to time course of experimental data.
 
     Examples:
@@ -692,7 +319,7 @@ def time_course(
     p_names = model.get_parameter_names()
     v_names = model.get_variable_names()
 
-    fn: ResidualFn = partial(
+    fn: MinimizerResidual = partial(
         residual_fn,
         settings=_Settings(
             model=model,
@@ -705,15 +332,17 @@ def time_course(
         ),
     )
 
-    min_result = minimizer(fn, p0, {} if bounds is None else bounds)
-    if min_result is None:
-        return None
-
-    return FitResult(
-        model=model,
-        best_pars=min_result.parameters,
-        loss=min_result.residual,
-    )
+    match minimizer(fn, p0, {} if bounds is None else bounds).value:
+        case OptimisationState(parameters, residual):
+            return Result(
+                Fit(
+                    model=model,
+                    best_pars=parameters,
+                    loss=residual,
+                )
+            )
+        case _ as e:
+            return Result(e)
 
 
 def protocol_time_course(
@@ -724,12 +353,12 @@ def protocol_time_course(
     protocol: pd.DataFrame,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = protocol_time_course_residual,
+    residual_fn: FitResidual = protocol_time_course_residual,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
-) -> FitResult | None:
+) -> Result[Fit]:
     """Fit model parameters to time course of experimental data.
 
     Time points of protocol time course are taken from the data.
@@ -764,7 +393,7 @@ def protocol_time_course(
     p_names = model.get_parameter_names()
     v_names = model.get_variable_names()
 
-    fn: ResidualFn = partial(
+    fn: MinimizerResidual = partial(
         residual_fn,
         settings=_Settings(
             model=model,
@@ -778,15 +407,17 @@ def protocol_time_course(
         ),
     )
 
-    min_result = minimizer(fn, p0, {} if bounds is None else bounds)
-    if min_result is None:
-        return None
-
-    return FitResult(
-        model=model,
-        best_pars=min_result.parameters,
-        loss=min_result.residual,
-    )
+    match minimizer(fn, p0, {} if bounds is None else bounds).value:
+        case OptimisationState(parameters, residual):
+            return Result(
+                Fit(
+                    model=model,
+                    best_pars=parameters,
+                    loss=residual,
+                )
+            )
+        case _ as e:
+            return Result(e)
 
 
 ###############################################################################
@@ -802,12 +433,12 @@ def ensemble_steady_state(
     data: pd.Series,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = steady_state_residual,
+    residual_fn: FitResidual = steady_state_residual,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
-) -> EnsembleFitResult:
+) -> EnsembleFit:
     """Fit model ensemble parameters to steady-state experimental data.
 
     Examples:
@@ -834,7 +465,7 @@ def ensemble_steady_state(
         Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
 
     """
-    return EnsembleFitResult(
+    return EnsembleFit(
         [
             fit
             for i in parallel.parallelise(
@@ -852,7 +483,7 @@ def ensemble_steady_state(
                 ),
                 inputs=list(enumerate(ensemble)),
             )
-            if (fit := i[1]) is not None
+            if not isinstance(fit := i[1].value, Exception)
         ]
     )
 
@@ -864,12 +495,12 @@ def carousel_steady_state(
     data: pd.Series,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = steady_state_residual,
+    residual_fn: FitResidual = steady_state_residual,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
-) -> EnsembleFitResult:
+) -> EnsembleFit:
     """Fit model parameters to steady-state experimental data over a carousel.
 
     Examples:
@@ -917,12 +548,12 @@ def ensemble_time_course(
     data: pd.DataFrame,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = time_course_residual,
+    residual_fn: FitResidual = time_course_residual,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
-) -> EnsembleFitResult:
+) -> EnsembleFit:
     """Fit model parameters to time course of experimental data over a carousel.
 
     Time points are taken from the data.
@@ -951,7 +582,7 @@ def ensemble_time_course(
         Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
 
     """
-    return EnsembleFitResult(
+    return EnsembleFit(
         [
             fit
             for i in parallel.parallelise(
@@ -969,7 +600,7 @@ def ensemble_time_course(
                 ),
                 inputs=list(enumerate(ensemble)),
             )
-            if (fit := i[1]) is not None
+            if not isinstance(fit := i[1].value, Exception)
         ]
     )
 
@@ -981,12 +612,12 @@ def carousel_time_course(
     data: pd.DataFrame,
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = time_course_residual,
+    residual_fn: FitResidual = time_course_residual,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
-) -> EnsembleFitResult:
+) -> EnsembleFit:
     """Fit model parameters to time course of experimental data over a carousel.
 
     Time points are taken from the data.
@@ -1037,12 +668,12 @@ def ensemble_protocol_time_course(
     minimizer: Minimizer,
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = protocol_time_course_residual,
+    residual_fn: FitResidual = protocol_time_course_residual,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
-) -> EnsembleFitResult:
+) -> EnsembleFit:
     """Fit model parameters to time course of experimental data over a protocol.
 
     Time points of protocol time course are taken from the data.
@@ -1071,7 +702,7 @@ def ensemble_protocol_time_course(
         Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
 
     """
-    return EnsembleFitResult(
+    return EnsembleFit(
         [
             fit
             for i in parallel.parallelise(
@@ -1090,7 +721,7 @@ def ensemble_protocol_time_course(
                 ),
                 inputs=list(enumerate(ensemble)),
             )
-            if (fit := i[1]) is not None
+            if not isinstance(fit := i[1].value, Exception)
         ]
     )
 
@@ -1103,12 +734,12 @@ def carousel_protocol_time_course(
     minimizer: Minimizer,
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
-    residual_fn: ResidualProtocol = protocol_time_course_residual,
+    residual_fn: FitResidual = protocol_time_course_residual,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
-) -> EnsembleFitResult:
+) -> EnsembleFit:
     """Fit model parameters to time course of experimental data over a protocol.
 
     Time points of protocol time course are taken from the data.
@@ -1164,7 +795,7 @@ def _unpacked[T1, T2, Tout](inp: tuple[T1, T2], fn: Callable[[T1, T2], Tout]) ->
 
 def _sum_of_residuals(
     updates: dict[str, float],
-    residual_fn: ResidualProtocol,
+    residual_fn: FitResidual,
     fits: list[_Settings],
     pool: pebble.ProcessPool,
 ) -> float:
@@ -1192,11 +823,11 @@ def joint_steady_state(
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
-) -> JointFitResult | None:
+) -> Result[JointFit]:
     """Multi-model, multi-data fitting."""
     full_settings = []
     for i in to_fit:
@@ -1229,10 +860,11 @@ def joint_steady_state(
             p0,
             {} if bounds is None else bounds,
         )
-    if min_result is None:
-        return None
-
-    return JointFitResult(min_result.parameters, loss=min_result.residual)
+    match min_result.value:
+        case OptimisationState(parameters, residual):
+            return Result(JointFit(parameters, loss=residual))
+        case _ as e:
+            return Result(e)
 
 
 def joint_time_course(
@@ -1242,11 +874,11 @@ def joint_time_course(
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
-) -> JointFitResult | None:
+) -> Result[JointFit]:
     """Multi-model, multi-data fitting."""
     full_settings = []
     for i in to_fit:
@@ -1279,10 +911,12 @@ def joint_time_course(
             p0,
             {} if bounds is None else bounds,
         )
-    if min_result is None:
-        return None
 
-    return JointFitResult(min_result.parameters, loss=min_result.residual)
+    match min_result.value:
+        case OptimisationState(parameters, residual):
+            return Result(JointFit(parameters, loss=residual))
+        case _ as e:
+            return Result(e)
 
 
 def joint_protocol_time_course(
@@ -1292,11 +926,11 @@ def joint_protocol_time_course(
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
-) -> JointFitResult | None:
+) -> Result[JointFit]:
     """Multi-model, multi-data fitting."""
     full_settings = []
     for i in to_fit:
@@ -1329,10 +963,12 @@ def joint_protocol_time_course(
             p0,
             {} if bounds is None else bounds,
         )
-    if min_result is None:
-        return None
 
-    return JointFitResult(min_result.parameters, loss=min_result.residual)
+    match min_result.value:
+        case OptimisationState(parameters, residual):
+            return Result(JointFit(parameters, loss=residual))
+        case _ as e:
+            return Result(e)
 
 
 ###############################################################################
@@ -1342,7 +978,7 @@ def joint_protocol_time_course(
 ###############################################################################
 
 
-def _execute(inp: tuple[dict[str, float], ResidualProtocol, _Settings]) -> float:
+def _execute(inp: tuple[dict[str, float], FitResidual, _Settings]) -> float:
     updates, residual_fn, settings = inp
     return residual_fn(updates, settings)
 
@@ -1372,11 +1008,11 @@ def joint_mixed(
     minimizer: Minimizer,
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
-    loss_fn: LossFn = rmse,
+    loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
-) -> JointFitResult | None:
+) -> Result[JointFit]:
     """Multi-model, multi-data, multi-simulation fitting."""
     full_settings = []
     for i in to_fit:
@@ -1409,7 +1045,9 @@ def joint_mixed(
             p0,
             {} if bounds is None else bounds,
         )
-    if min_result is None:
-        return None
 
-    return JointFitResult(min_result.parameters, loss=min_result.residual)
+    match min_result.value:
+        case OptimisationState(parameters, residual):
+            return Result(JointFit(parameters, loss=residual))
+        case _ as e:
+            return Result(e)

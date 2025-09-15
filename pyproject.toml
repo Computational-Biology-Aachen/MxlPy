@@ -137,6 +137,7 @@ ignore = [
   "FIX001",  # line contains FIXME
   "ISC001",  # single line implicit string concat
   "N806",    # non-lowercase variable
+  "N818",    # Exception should end in "Error"
   "PGH003",  # specific rule type ignore
   "S110",    # try-except-pass
   "S301",    # pickle usage

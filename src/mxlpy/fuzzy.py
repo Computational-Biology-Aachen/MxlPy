@@ -14,6 +14,7 @@ import pandas as pd
 import pebble
 from tqdm import tqdm, trange
 
+from mxlpy.simulation import Simulation
 from mxlpy.simulator import Simulator
 
 if TYPE_CHECKING:
@@ -80,16 +81,17 @@ def _thompson_worker(
     data: pd.DataFrame,
 ) -> tuple[dict[str, int], pd.DataFrame | None]:
     idxs, parameters = inp
-    if (
-        res := (
-            Simulator(model)
-            .update_parameters(parameters)
-            .simulate_time_course(data.index)
-            .get_result()
-        )
-    ) is None:
-        return idxs, None
-    return idxs, res.get_variables()
+    res = (
+        Simulator(model)
+        .update_parameters(parameters)
+        .simulate_time_course(data.index)
+        .get_result()
+    )
+    match val := res.value:
+        case Simulation():
+            return idxs, val.get_variables()
+        case _:
+            return idxs, None
 
 
 def thompson_sampling(

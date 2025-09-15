@@ -18,7 +18,6 @@ from mxlpy.meta.codegen_mxlpy import (
     generate_mxlpy_code_from_symbolic_repr,
 )
 from mxlpy.paths import default_tmp_dir
-from mxlpy.types import unwrap
 
 __all__ = ["free_symbols", "import_from_path", "read", "valid_filename"]
 
@@ -91,10 +90,13 @@ def _codegen(name: str, model: pysbml.transform.data.Model) -> Path:
 
 
 def import_from_path(module_name: str, file_path: Path) -> Callable[[], Model]:
-    spec = unwrap(util.spec_from_file_location(module_name, file_path))
+    spec = util.spec_from_file_location(module_name, file_path)
+    assert spec is not None  # noqa: S101
     module = util.module_from_spec(spec)
     sys.modules[module_name] = module
-    unwrap(spec.loader).exec_module(module)
+    loader = spec.loader
+    assert loader is not None  # noqa: S101
+    loader.exec_module(module)
     return module.create_model
 
 

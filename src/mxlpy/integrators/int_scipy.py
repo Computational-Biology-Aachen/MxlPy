@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import scipy.integrate as spi
 
-from mxlpy.types import Array, ArrayLike
+from mxlpy.integrators.abstract import AbstractIntegrator, TimeCourse
+from mxlpy.types import ArrayLike, IntegrationFailure, NoSteadyState, Result
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -23,7 +24,7 @@ __all__ = [
 
 
 @dataclass
-class Scipy:
+class Scipy(AbstractIntegrator):
     """Scipy integrator for solving ODEs.
 
     Attributes:
@@ -70,7 +71,7 @@ class Scipy:
         *,
         t_end: float,
         steps: int | None = None,
-    ) -> tuple[Array | None, ArrayLike | None]:
+    ) -> Result[TimeCourse]:
         """Integrate the ODE system.
 
         Args:
@@ -90,8 +91,10 @@ class Scipy:
         )
 
     def integrate_time_course(
-        self, *, time_points: ArrayLike
-    ) -> tuple[Array | None, ArrayLike | None]:
+        self,
+        *,
+        time_points: ArrayLike,
+    ) -> Result[TimeCourse]:
         """Integrate the ODE system over a time course.
 
         Args:
@@ -121,8 +124,8 @@ class Scipy:
 
             self.t0 = t[-1]
             self.y0 = y[-1]
-            return t, y
-        return None, None
+            return Result(TimeCourse(time=t, values=y))
+        return Result(IntegrationFailure())
 
     def integrate_to_steady_state(
         self,
@@ -131,7 +134,7 @@ class Scipy:
         rel_norm: bool,
         step_size: int = 100,
         max_steps: int = 1000,
-    ) -> tuple[float | None, ArrayLike | None]:
+    ) -> Result[TimeCourse]:
         """Integrate the ODE system to steady state.
 
         Args:
@@ -159,7 +162,12 @@ class Scipy:
             y2 = integ.integrate(t)
             diff = (y2 - y1) / y1 if rel_norm else y2 - y1
             if np.linalg.norm(diff, ord=2) < tolerance:
-                return t, cast(ArrayLike, y2)
+                return Result(
+                    TimeCourse(
+                        time=np.array([t], dtype=float),
+                        values=np.array([y2], dtype=float),
+                    )
+                )
             y1 = y2
             t += step_size
-        return None, None
+        return Result(NoSteadyState())

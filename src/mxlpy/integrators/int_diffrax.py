@@ -16,16 +16,19 @@ from diffrax import (
     diffeqsolve,
 )
 
+from mxlpy.integrators.abstract import AbstractIntegrator, TimeCourse
+from mxlpy.types import ArrayLike, NoSteadyState, Result
+
 __all__ = ["Diffrax"]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mxlpy.types import Array, Rhs
+    from mxlpy.types import Rhs
 
 
 @dataclass
-class Diffrax:
+class Diffrax(AbstractIntegrator):
     """Diffrax integrator for solving ODEs."""
 
     rhs: Rhs
@@ -51,9 +54,24 @@ class Diffrax:
         self.t0 = 0
         self.y0 = self._y0_orig
 
+    def integrate(
+        self,
+        *,
+        t_end: float,
+        steps: int | None = None,
+    ) -> Result[TimeCourse]:
+        """Integrate the ODE system over a time course."""
+        steps = 100 if steps is None else steps
+
+        return self.integrate_time_course(
+            time_points=np.linspace(self.t0, t_end, steps, dtype=float)
+        )
+
     def integrate_time_course(
-        self, *, time_points: Array
-    ) -> tuple[Array | None, Array | None]:
+        self,
+        *,
+        time_points: ArrayLike,
+    ) -> Result[TimeCourse]:
         """Integrate the ODE system over a time course.
 
         Args:
@@ -83,20 +101,7 @@ class Diffrax:
 
         self.t0 = t[-1]
         self.y0 = y[-1]
-        return t, y
-
-    def integrate(
-        self,
-        *,
-        t_end: float,
-        steps: int | None = None,
-    ) -> tuple[Array | None, Array | None]:
-        """Integrate the ODE system over a time course."""
-        steps = 100 if steps is None else steps
-
-        return self.integrate_time_course(
-            time_points=np.linspace(self.t0, t_end, steps, dtype=float)
-        )
+        return Result(TimeCourse(time=t, values=y))
 
     def integrate_to_steady_state(
         self,
@@ -104,7 +109,7 @@ class Diffrax:
         tolerance: float,
         rel_norm: bool,
         t_max: float = 1_000_000_000,
-    ) -> tuple[float | None, Array | None]:
+    ) -> Result[TimeCourse]:
         """Integrate the ODE system to steady state.
 
         Args:
@@ -116,4 +121,23 @@ class Diffrax:
             tuple[float | None, Array | None]: Tuple containing the final time point and the integrated values at steady state.
 
         """
-        raise NotImplementedError
+        t_start = 0.0
+        for t_end in np.geomspace(1000, t_max, 3):
+            res = self.integrate_time_course(
+                time_points=np.linspace(t_start, t_end, 1000, dtype=float)
+            )
+            match res.value:
+                case TimeCourse(t, y):
+                    diff = (y[-1] - y[-2]) / y[-1] if rel_norm else y[-1] - y[-2]
+                    if np.linalg.norm(diff, ord=2) < tolerance:
+                        return Result(
+                            TimeCourse(
+                                time=np.array([t[-1]], dtype=float),
+                                values=np.array([y[-1]], dtype=float),
+                            )
+                        )
+                case _:
+                    return Result(res.value)
+            t_start = t_end
+
+        return Result(NoSteadyState())

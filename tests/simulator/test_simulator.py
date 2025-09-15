@@ -7,7 +7,6 @@ import pytest
 
 from mxlpy import Model, Simulator
 from mxlpy.fns import mass_action_1s
-from mxlpy.types import unwrap
 
 
 @pytest.fixture
@@ -65,7 +64,7 @@ def test_simulator_simulate(simulator: Simulator) -> None:
     assert len(simulator.simulation_parameters) == 1
 
     # Check time points
-    concs = unwrap(simulator.get_result()).variables
+    concs = (simulator.get_result()).unwrap().variables
     assert concs is not None
     assert concs.index[0] == 0.0
     assert concs.index[-1] == 1.0
@@ -82,7 +81,7 @@ def test_simulator_simulate_time_course(simulator: Simulator) -> None:
     assert len(simulator.variables) == 1
 
     # Check time points
-    concs = unwrap(simulator.get_result()).variables
+    concs = (simulator.get_result()).unwrap().variables
     assert concs is not None
     assert list(concs.index) == time_points
     assert len(concs) == len(time_points)
@@ -97,7 +96,7 @@ def test_simulator_simulate_to_steady_state(simulator: Simulator) -> None:
     assert len(simulator.variables) == 1
 
     # At steady state, dS/dt and dP/dt should be close to zero
-    concs = unwrap(simulator.get_result()).variables
+    concs = (simulator.get_result()).unwrap().variables
     assert concs is not None
 
     # Get the final concentrations
@@ -130,7 +129,7 @@ def test_simulate_over_protocol(simulator: Simulator) -> None:
     assert len(simulator.variables) == 3  # Three protocol steps
 
     # Get concatenated results
-    concs = unwrap(simulator.get_result()).variables
+    concs = (simulator.get_result()).unwrap().variables
     assert concs is not None
     assert (
         len(concs) == 16
@@ -154,20 +153,20 @@ def test_get_concs(simulator: Simulator) -> None:
     simulator.simulate(t_end=1.0, steps=10)
 
     # Test default behavior (concatenated=True)
-    concs = unwrap(simulator.get_result()).variables
+    concs = (simulator.get_result()).unwrap().variables
     assert concs is not None
     assert isinstance(concs, pd.DataFrame)
     assert set(concs.columns) == {"S", "P"}
 
     # Test with concatenated=False
-    concs_list = unwrap(simulator.get_result()).get_variables(concatenated=False)
+    concs_list = (simulator.get_result()).unwrap().get_variables(concatenated=False)
     assert concs_list is not None
     assert isinstance(concs_list, list)
     assert len(concs_list) == 1
     assert set(concs_list[0].columns) == {"S", "P"}
 
     # Test with normalization
-    normalized = unwrap(simulator.get_result()).get_variables(normalise=10.0)
+    normalized = (simulator.get_result()).unwrap().get_variables(normalise=10.0)
     assert normalized is not None
     assert normalized.iloc[0]["S"] == 1.0  # 10.0 / 10.0
 
@@ -184,13 +183,15 @@ def test_get_full_concs(simulator: Simulator) -> None:
     simulator.simulate(t_end=1.0, steps=10)
 
     # Test default behavior
-    full_concs = unwrap(simulator.get_result()).variables
+    full_concs = (simulator.get_result()).unwrap().variables
     assert full_concs is not None
     assert isinstance(full_concs, pd.DataFrame)
     assert set(full_concs.columns) == {"S", "P", "S_plus_P"}
 
     # Test with concatenated=False
-    full_concs_list = unwrap(simulator.get_result()).get_variables(concatenated=False)
+    full_concs_list = (
+        (simulator.get_result()).unwrap().get_variables(concatenated=False)
+    )
     assert full_concs_list is not None
     assert isinstance(full_concs_list, list)
     assert len(full_concs_list) == 1

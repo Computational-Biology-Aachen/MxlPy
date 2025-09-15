@@ -85,10 +85,11 @@ def get_model() -> Model:
 ```python
 from mxlpy import Simulator, plot
 
-variables, fluxes = unwrap(
+variables, fluxes = (
     Simulator(model)
     .simulate(t_end=10)
     .get_result()
+    .unwrap()
 )
 
 fig, ax = plot.lines(variables)
@@ -109,10 +110,11 @@ protocol = make_protocol(
     ]
 )
 
-variables, fluxes = unwrap(
+variables, fluxes = (
     Simulator(model)
     .simulate_protocol(protocol)
     .get_result()
+    .unwrap()
 )
 
 fig, ax = plot.one_axes()
@@ -127,10 +129,11 @@ plot.show()
 ```python
 from mxlpy import Simulator, plot
 
-variables, fluxes = unwrap(
+variables, fluxes = (
     Simulator(model)
     .simulate_to_steady_state()
     .get_result()
+    .unwrap()
 )
 
 fig, ax = plot.bars(variables)
@@ -143,10 +146,11 @@ plt.show()
 ```python
 from mxlpy import Simulator, plot
 
-variables, fluxes = unwrap(
+variables, fluxes = (
     Simulator(model, y0=y0)
     .simulate_to_steady_state()
     .get_result()
+    .unwrap()
 )
 
 fig, ax = plot.bars(variables)

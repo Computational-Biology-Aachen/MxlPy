@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mxlpy import Model, Simulator, fns, make_protocol, unwrap
+from mxlpy import Model, Simulator, fns, make_protocol
 
 
 def get_model() -> Model:
@@ -35,14 +35,18 @@ def test_same() -> None:
             (3, {"kf": 1}),  # for three seconds value of 1
         ]
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_protocol_time_course(
-            protocol,
-            time_points=[0, 1, 3, 6],
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_protocol_time_course(
+                protocol,
+                time_points=[0, 1, 3, 6],
+            )
+            .get_result()
         )
-        .get_result()
-    ).variables
+        .unwrap()
+        .variables
+    )
 
     pd.testing.assert_frame_equal(
         variables,
@@ -78,14 +82,18 @@ def test_in_between() -> None:
             (3, {"kf": 1}),  # for three seconds value of 1
         ]
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_protocol_time_course(
-            protocol,
-            time_points=[2, 4, 5],
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_protocol_time_course(
+                protocol,
+                time_points=[2, 4, 5],
+            )
+            .get_result()
         )
-        .get_result()
-    ).variables
+        .unwrap()
+        .variables
+    )
 
     pd.testing.assert_frame_equal(
         variables,
@@ -121,14 +129,18 @@ def test_both() -> None:
             (3, {"kf": 1}),  # for three seconds value of 1
         ]
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_protocol_time_course(
-            protocol,
-            time_points=np.linspace(0, 6, 7),
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_protocol_time_course(
+                protocol,
+                time_points=np.linspace(0, 6, 7),
+            )
+            .get_result()
         )
-        .get_result()
-    ).variables
+        .unwrap()
+        .variables
+    )
 
     pd.testing.assert_frame_equal(
         variables,
@@ -166,14 +178,18 @@ def test_time_points_outside_of_protocol(caplog: pytest.LogCaptureFixture) -> No
     )
 
     with caplog.at_level(logging.WARNING):
-        variables = unwrap(
-            Simulator(get_model())
-            .simulate_protocol_time_course(
-                protocol,
-                time_points=[7, 8, 9],
+        variables = (
+            (
+                Simulator(get_model())
+                .simulate_protocol_time_course(
+                    protocol,
+                    time_points=[7, 8, 9],
+                )
+                .get_result()
             )
-            .get_result()
-        ).variables
+            .unwrap()
+            .variables
+        )
 
     pd.testing.assert_frame_equal(
         variables,

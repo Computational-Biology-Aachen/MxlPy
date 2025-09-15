@@ -35,17 +35,20 @@ __all__ = [
     "Array",
     "ArrayLike",
     "Derived",
+    "FitFailure",
     "InitialAssignment",
+    "IntegrationFailure",
+    "NoSteadyState",
+    "Option",
     "Param",
     "Parameter",
     "RateFn",
     "Reaction",
     "Readout",
+    "Result",
     "RetType",
     "Rhs",
     "Variable",
-    "unwrap",
-    "unwrap2",
 ]
 
 type RateFn = Callable[..., float]
@@ -69,43 +72,75 @@ if TYPE_CHECKING:
     from mxlpy.model import Model
 
 
-def unwrap[T](el: T | None) -> T:
-    """Unwraps an optional value, raising an error if the value is None.
+class IntegrationFailure(Exception):
+    """Custom exception."""
 
-    Args:
-        el: The value to unwrap. It can be of type T or None.
+    message: str = "Simulation failed because of integration problems."
 
-    Returns:
-        The unwrapped value if it is not None.
-
-    Raises:
-        ValueError: If the provided value is None.
-
-    """
-    if el is None:
-        msg = "Unexpected None"
-        raise ValueError(msg)
-    return el
+    def __init__(self) -> None:
+        """Initialise."""
+        super().__init__(self.message)
 
 
-def unwrap2[T1, T2](tpl: tuple[T1 | None, T2 | None]) -> tuple[T1, T2]:
-    """Unwraps a tuple of optional values, raising an error if either of them is None.
+class NoSteadyState(Exception):
+    """Custom exception."""
 
-    Args:
-        tpl: The value to unwrap.
+    message: str = "Could not find a steady-state."
 
-    Returns:
-        The unwrapped values if it is not None.
+    def __init__(self) -> None:
+        """Initialise."""
+        super().__init__(self.message)
 
-    Raises:
-        ValueError: If the provided value is None.
 
-    """
-    a, b = tpl
-    if a is None or b is None:
-        msg = "Unexpected None"
-        raise ValueError(msg)
-    return a, b
+class FitFailure(Exception):
+    """Custom exception."""
+
+    message: str = "Could not find a good fit."
+    extra_info: list[str]
+
+    def __init__(self, extra_info: list[str] | None) -> None:
+        """Initialise."""
+        super().__init__(self.message)
+        self.extra_info = [] if extra_info is None else extra_info
+
+
+@dataclass(slots=True)
+class Option[T]:
+    """Generic Option type."""
+
+    value: T | None
+
+    def unwrap(self) -> T:
+        """Obtain value if Ok, else raise exception."""
+        if (value := self.value) is None:
+            msg = "Unexpected `None`"
+            raise ValueError(msg)
+        return value
+
+    def default(self, fn: Callable[[], T]) -> T:
+        """Obtain value if Ok, else create default one."""
+        if (value := self.value) is None:
+            return fn()
+        return value
+
+
+@dataclass(slots=True)
+class Result[T]:
+    """Generic Result type."""
+
+    value: T | Exception
+
+    def unwrap(self) -> T:
+        """Obtain value if Ok, else raise exception."""
+        if isinstance(value := self.value, Exception):
+            raise value
+        return value
+
+    def default(self, fn: Callable[[], T]) -> T:
+        """Obtain value if Ok, else create default one."""
+        if isinstance(value := self.value, Exception):
+            return fn()
+        return value
 
 
 @dataclass

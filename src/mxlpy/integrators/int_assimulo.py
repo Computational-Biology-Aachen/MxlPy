@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
+from mxlpy.integrators.abstract import AbstractIntegrator, TimeCourse
+from mxlpy.types import NoSteadyState, Result
+
 with contextlib.redirect_stderr(open(os.devnull, "w")):  # noqa: PTH123
     from assimulo.problem import Explicit_Problem  # type: ignore
     from assimulo.solvers import CVode  # type: ignore
@@ -17,7 +20,7 @@ with contextlib.redirect_stderr(open(os.devnull, "w")):  # noqa: PTH123
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mxlpy.types import Array, ArrayLike, Rhs
+    from mxlpy.types import ArrayLike, Rhs
 
 
 __all__ = [
@@ -26,7 +29,7 @@ __all__ = [
 
 
 @dataclass
-class Assimulo:
+class Assimulo(AbstractIntegrator):
     """Assimulo integrator for solving ODEs.
 
     Attributes:
@@ -82,7 +85,7 @@ class Assimulo:
         *,
         t_end: float,
         steps: int | None = None,
-    ) -> tuple[Array | None, ArrayLike | None]:
+    ) -> Result[TimeCourse]:
         """Integrate the ODE system.
 
         Args:
@@ -98,18 +101,20 @@ class Assimulo:
             steps = 0
         try:
             t, y = self.integrator.simulate(t_end, steps)
-            return (
-                np.atleast_1d(np.array(t, dtype=float)),
-                np.atleast_2d(np.array(y, dtype=float)),
+            return Result(
+                TimeCourse(
+                    time=np.atleast_1d(np.array(t, dtype=float)),
+                    values=np.atleast_2d(np.array(y, dtype=float)),
+                )
             )
-        except CVodeError:
-            return None, None
+        except CVodeError as e:
+            return Result(e)
 
     def integrate_time_course(
         self,
         *,
         time_points: ArrayLike,
-    ) -> tuple[Array | None, ArrayLike | None]:
+    ) -> Result[TimeCourse]:
         """Integrate the ODE system over a time course.
 
         Args:
@@ -121,12 +126,14 @@ class Assimulo:
         """
         try:
             t, y = self.integrator.simulate(time_points[-1], 0, time_points)
-            return (
-                np.atleast_1d(np.array(t, dtype=float)),
-                np.atleast_2d(np.array(y, dtype=float)),
+            return Result(
+                TimeCourse(
+                    time=np.atleast_1d(np.array(t, dtype=float)),
+                    values=np.atleast_2d(np.array(y, dtype=float)),
+                )
             )
-        except CVodeError:
-            return None, None
+        except CVodeError as e:
+            return Result(e)
 
     def integrate_to_steady_state(
         self,
@@ -134,7 +141,7 @@ class Assimulo:
         tolerance: float,
         rel_norm: bool,
         t_max: float = 1_000_000_000,
-    ) -> tuple[float | None, ArrayLike | None]:
+    ) -> Result[TimeCourse]:
         """Integrate the ODE system to steady state.
 
         Args:
@@ -153,7 +160,12 @@ class Assimulo:
                 t, y = self.integrator.simulate(t_end)
                 diff = (y[-1] - y[-2]) / y[-1] if rel_norm else y[-1] - y[-2]
                 if np.linalg.norm(diff, ord=2) < tolerance:
-                    return t[-1], y[-1]
-        except CVodeError:
-            return None, None
-        return None, None
+                    return Result(
+                        TimeCourse(
+                            time=np.array([t[-1]], dtype=float),
+                            values=np.array([y[-1]], dtype=float),
+                        )
+                    )
+        except CVodeError as e:
+            return Result(e)
+        return Result(NoSteadyState())

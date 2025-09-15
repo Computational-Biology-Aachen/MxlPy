@@ -11,7 +11,6 @@ import pytest
 from mxlpy import Simulator
 from mxlpy.integrators.int_scipy import Scipy
 from mxlpy.sbml import read
-from mxlpy.types import unwrap
 
 if TYPE_CHECKING:
     from mxlpy.model import Model
@@ -85,18 +84,22 @@ def routine(test: int) -> bool:
     m, sim_settings, expected = get_files(test=test)
 
     # Make them a bit harder, such that we guarantee we are getting the required ones
-    result = unwrap(
-        Simulator(
-            m,
-            integrator=partial(
-                Scipy,
-                atol=sim_settings["atol"] / 100,
-                rtol=sim_settings["rtol"] / 100,
-            ),  # type: ignore
+    result = (
+        (
+            Simulator(
+                m,
+                integrator=partial(
+                    Scipy,
+                    atol=sim_settings["atol"] / 100,
+                    rtol=sim_settings["rtol"] / 100,
+                ),  # type: ignore
+            )
+            .simulate_time_course(expected.index)  # type: ignore
+            .get_result()
         )
-        .simulate_time_course(expected.index)  # type: ignore
-        .get_result()
-    ).get_combined()
+        .unwrap()
+        .get_combined()
+    )
 
     if result is None:
         pytest.fail("Simulation failed")
