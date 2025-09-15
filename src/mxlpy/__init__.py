@@ -63,6 +63,7 @@ from .linear_label_map import LinearLabelMapper
 from .mc import Cache
 from .minimizers.abstract import AbstractMinimizer, MinimizerProtocol
 from .model import Model
+from .npe.abstract import AbstractEstimator, EstimatorProtocol
 from .simulation import Simulation
 from .simulator import Simulator
 from .surrogates.abstract import AbstractSurrogate, SurrogateProtocol
@@ -90,6 +91,7 @@ else:
 
 
 __all__ = [
+    "AbstractEstimator",
     "AbstractIntegrator",
     "AbstractMinimizer",
     "AbstractSurrogate",
@@ -98,6 +100,7 @@ __all__ = [
     "DefaultIntegrator",
     "Derived",
     "Diffrax",
+    "EstimatorProtocol",
     "InitialAssignment",
     "IntegratorProtocol",
     "LabelMapper",
