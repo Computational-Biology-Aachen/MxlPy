@@ -99,13 +99,13 @@ def to_symbolic_model(model: Model) -> SymbolicModel:
             raise ValueError(msg)
         rxns[k] = expr
 
+    # Go through stoichiometries & derived stoichiometries
     eqs: dict[str, sympy.Expr] = {}
     for cpd, stoich in cache.stoich_by_cpds.items():
         for rxn, stoich_value in stoich.items():
             eqs[cpd] = (
                 eqs.get(cpd, sympy.Float(0.0)) + sympy.Float(stoich_value) * rxns[rxn]  # type: ignore
             )
-
     for cpd, dstoich in cache.dyn_stoich_by_cpds.items():
         for rxn, der in dstoich.items():
             eqs[cpd] = eqs.get(cpd, sympy.Float(0.0)) + fn_to_sympy(
