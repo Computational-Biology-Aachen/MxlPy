@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mxlpy import Model, Simulator, fns, make_protocol, unwrap
+from mxlpy import Model, Simulator, fns, make_protocol
 
 
 def get_model() -> Model:
@@ -20,12 +20,16 @@ def get_model() -> Model:
 
 
 def test_sim_con_sim_sim() -> None:
-    variables = unwrap(
-        Simulator(get_model())  # break for readability
-        .simulate(3, steps=3)
-        .simulate(4, steps=1)
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())  # break for readability
+            .simulate(3, steps=3)
+            .simulate(4, steps=1)
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
 
     pd.testing.assert_frame_equal(
         variables,
@@ -61,12 +65,16 @@ def test_con_sim_tc() -> None:
     )
 
     # Test both case with 3 and without
-    variables = unwrap(
-        Simulator(get_model())  # break for readability
-        .simulate(3, steps=3)
-        .simulate_time_course([4])
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())  # break for readability
+            .simulate(3, steps=3)
+            .simulate_time_course([4])
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -74,12 +82,16 @@ def test_con_sim_tc() -> None:
         rtol=1e-6,
     )
 
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate(3, steps=3)
-        .simulate_time_course([3, 4])
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate(3, steps=3)
+            .simulate_time_course([3, 4])
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -103,24 +115,32 @@ def test_con_tc_sim() -> None:
     )
 
     # Test both case with 3 and without
-    variables = unwrap(
-        Simulator(get_model())  # break for readability
-        .simulate_time_course([0, 1, 2, 3])
-        .simulate(4, steps=1)
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())  # break for readability
+            .simulate_time_course([0, 1, 2, 3])
+            .simulate(4, steps=1)
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
         atol=1e-6,
         rtol=1e-6,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_time_course([0, 1, 2, 3])
-        .simulate_time_course([4])
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_time_course([0, 1, 2, 3])
+            .simulate_time_course([4])
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -144,24 +164,32 @@ def test_con_tc_tc() -> None:
     )
 
     # Test both case with 3 and without
-    variables = unwrap(
-        Simulator(get_model())  # break for readability
-        .simulate_time_course([0, 1, 2, 3])
-        .simulate_time_course([3, 4])
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())  # break for readability
+            .simulate_time_course([0, 1, 2, 3])
+            .simulate_time_course([3, 4])
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
         atol=1e-6,
         rtol=1e-6,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_time_course([0, 1, 2, 3])
-        .simulate_time_course([4])
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_time_course([0, 1, 2, 3])
+            .simulate_time_course([4])
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -200,12 +228,16 @@ def test_con_sim_proto() -> None:
         },
         dtype=float,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate(6, steps=6)
-        .simulate_protocol(protocol, time_points_per_step=1)
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate(6, steps=6)
+            .simulate_protocol(protocol, time_points_per_step=1)
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -239,12 +271,16 @@ def test_con_tc_proto() -> None:
         },
         dtype=float,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_time_course(np.linspace(0, 6, 7))
-        .simulate_protocol(protocol, time_points_per_step=1)
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_time_course(np.linspace(0, 6, 7))
+            .simulate_protocol(protocol, time_points_per_step=1)
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -278,12 +314,16 @@ def test_con_proto_sim() -> None:
         },
         dtype=float,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_protocol(protocol, time_points_per_step=1)
-        .simulate(12, steps=6)
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_protocol(protocol, time_points_per_step=1)
+            .simulate(12, steps=6)
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -317,12 +357,16 @@ def test_con_proto_tc() -> None:
         },
         dtype=float,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_protocol(protocol, time_points_per_step=1)
-        .simulate_time_course(np.linspace(7, 12, 6))
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_protocol(protocol, time_points_per_step=1)
+            .simulate_time_course(np.linspace(7, 12, 6))
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -353,12 +397,16 @@ def test_con_proto_proto() -> None:
         },
         dtype=float,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_protocol(protocol, time_points_per_step=1)
-        .simulate_protocol(protocol, time_points_per_step=1)
-        .get_result()
-    ).variables
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_protocol(protocol, time_points_per_step=1)
+            .simulate_protocol(protocol, time_points_per_step=1)
+            .get_result()
+        )
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -400,15 +448,19 @@ def test_con_sim_ptc() -> None:
         },
         dtype=float,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate(6, steps=6)
-        .simulate_protocol_time_course(
-            protocol,
-            time_points=np.linspace(7, 12, 6),
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate(6, steps=6)
+            .simulate_protocol_time_course(
+                protocol,
+                time_points=np.linspace(7, 12, 6),
+            )
+            .get_result()
         )
-        .get_result()
-    ).variables
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -445,16 +497,20 @@ def test_con_sim_ptc_rel() -> None:
         },
         dtype=float,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate(6, steps=6)
-        .simulate_protocol_time_course(
-            protocol,
-            time_points=np.linspace(0, 6, 7),
-            time_points_as_relative=True,
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate(6, steps=6)
+            .simulate_protocol_time_course(
+                protocol,
+                time_points=np.linspace(0, 6, 7),
+                time_points_as_relative=True,
+            )
+            .get_result()
         )
-        .get_result()
-    ).variables
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -491,15 +547,19 @@ def test_con_ptc_sim() -> None:
         },
         dtype=float,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_protocol_time_course(
-            protocol,
-            time_points=np.linspace(0, 6, 7),
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_protocol_time_course(
+                protocol,
+                time_points=np.linspace(0, 6, 7),
+            )
+            .simulate(12, steps=6)
+            .get_result()
         )
-        .simulate(12, steps=6)
-        .get_result()
-    ).variables
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,
@@ -536,18 +596,22 @@ def test_con_ptc_ptc() -> None:
         },
         dtype=float,
     )
-    variables = unwrap(
-        Simulator(get_model())
-        .simulate_protocol_time_course(
-            protocol,
-            time_points=np.linspace(0, 6, 7),
+    variables = (
+        (
+            Simulator(get_model())
+            .simulate_protocol_time_course(
+                protocol,
+                time_points=np.linspace(0, 6, 7),
+            )
+            .simulate_protocol_time_course(
+                protocol,
+                time_points=np.linspace(7, 12, 6),
+            )
+            .get_result()
         )
-        .simulate_protocol_time_course(
-            protocol,
-            time_points=np.linspace(7, 12, 6),
-        )
-        .get_result()
-    ).variables
+        .unwrap()
+        .variables
+    )
     pd.testing.assert_frame_equal(
         variables,
         expected,

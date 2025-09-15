@@ -27,6 +27,7 @@ from wadler_lindig import pformat
 from mxlpy.parallel import Cache, parallelise
 from mxlpy.simulation import Simulation
 from mxlpy.simulator import Simulator
+from mxlpy.types import Result
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Hashable, Iterator
@@ -166,11 +167,10 @@ def _steady_state_worker(
             .get_result()
         )
     except ZeroDivisionError:
-        res = None
-    return (
-        Simulation.default(model=model, time_points=np.array([0.0]))
-        if res is None
-        else res
+        res = Result(Exception())
+
+    return res.default(
+        lambda: Simulation.default(model=model, time_points=np.array([0.0]))
     )
 
 
@@ -199,10 +199,9 @@ def _time_course_worker(
             .get_result()
         )
     except ZeroDivisionError:
-        res = None
-    return (
-        Simulation.default(model=model, time_points=time_points) if res is None else res
-    )
+        res = Result(Exception())
+
+    return res.default(lambda: Simulation.default(model=model, time_points=time_points))
 
 
 def _protocol_worker(
@@ -236,16 +235,14 @@ def _protocol_worker(
             .get_result()
         )
     except ZeroDivisionError:
-        res = None
+        res = Result(Exception())
 
     time_points = np.linspace(
         0,
         protocol.index[-1].total_seconds(),
         len(protocol) * time_points_per_step,
     )
-    return (
-        Simulation.default(model=model, time_points=time_points) if res is None else res
-    )
+    return res.default(lambda: Simulation.default(model=model, time_points=time_points))
 
 
 def _protocol_time_course_worker(
@@ -279,11 +276,9 @@ def _protocol_time_course_worker(
             .get_result()
         )
     except ZeroDivisionError:
-        res = None
+        res = Result(Exception())
 
-    return (
-        Simulation.default(model=model, time_points=time_points) if res is None else res
-    )
+    return res.default(lambda: Simulation.default(model=model, time_points=time_points))
 
 
 @dataclass(kw_only=True, slots=True)

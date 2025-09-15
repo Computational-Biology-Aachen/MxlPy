@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from wadler_lindig import pformat
 
-__all__ = ["AbstractSurrogate", "MockSurrogate"]
+__all__ = ["AbstractSurrogate", "MockSurrogate", "SurrogateProtocol"]
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -16,6 +16,28 @@ if TYPE_CHECKING:
     import pandas as pd
 
     from mxlpy.types import Derived
+
+
+class SurrogateProtocol(Protocol):
+    """FIXME: Something I will fill out."""
+
+    args: list[str]
+    outputs: list[str]
+    stoichiometries: dict[str, dict[str, float | Derived]]
+
+    def predict(
+        self, args: dict[str, float | pd.Series | pd.DataFrame]
+    ) -> dict[str, float]:
+        """Predict outputs based on input data."""
+        ...
+
+    def calculate_inpl(
+        self,
+        name: str,
+        args: dict[str, float | pd.Series | pd.DataFrame],
+    ) -> None:
+        """Predict outputs based on input data."""
+        ...
 
 
 @dataclass(kw_only=True)

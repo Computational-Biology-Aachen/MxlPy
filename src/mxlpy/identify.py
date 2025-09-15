@@ -35,9 +35,11 @@ def _mc_fit_time_course_worker(
         loss_fn=loss_fn,
         minimizer=fit.LocalScipyMinimizer(),
     )
-    if fit_result is None:
-        return np.inf
-    return fit_result.loss
+    match fit_result.value:
+        case fit.Fit(_, _, loss):
+            return loss
+        case _:
+            return np.inf
 
 
 def profile_likelihood(

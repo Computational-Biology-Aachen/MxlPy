@@ -57,19 +57,21 @@ from . import (
     units,
 )
 from .integrators import DefaultIntegrator, Diffrax, Scipy
-from .integrators.abstract import IntegratorProtocol
+from .integrators.abstract import AbstractIntegrator, IntegratorProtocol
 from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
 from .mc import Cache
+from .minimizers.abstract import AbstractMinimizer, MinimizerProtocol
 from .model import Model
+from .simulation import Simulation
 from .simulator import Simulator
+from .surrogates.abstract import AbstractSurrogate, SurrogateProtocol
 from .symbolic import SymbolicModel, to_symbolic_model
 from .types import (
     Derived,
     InitialAssignment,
     Parameter,
     Variable,
-    unwrap,
 )
 
 with contextlib.suppress(ImportError):
@@ -88,6 +90,9 @@ else:
 
 
 __all__ = [
+    "AbstractIntegrator",
+    "AbstractMinimizer",
+    "AbstractSurrogate",
     "Assimulo",
     "Cache",
     "DefaultIntegrator",
@@ -97,10 +102,13 @@ __all__ = [
     "IntegratorProtocol",
     "LabelMapper",
     "LinearLabelMapper",
+    "MinimizerProtocol",
     "Model",
     "Parameter",
     "Scipy",
+    "Simulation",
     "Simulator",
+    "SurrogateProtocol",
     "SymbolicModel",
     "Variable",
     "cartesian_product",
@@ -123,7 +131,6 @@ __all__ = [
     "symbolic",
     "to_symbolic_model",
     "units",
-    "unwrap",
 ]
 
 

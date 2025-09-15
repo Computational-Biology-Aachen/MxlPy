@@ -20,13 +20,15 @@ from sympy import lambdify
 from wadler_lindig import pformat
 
 from mxlpy.integrators import DefaultIntegrator
+from mxlpy.integrators.abstract import TimeCourse
 from mxlpy.simulation import Simulation
 from mxlpy.symbolic import to_symbolic_model
+from mxlpy.types import IntegrationFailure, Result
 
 if TYPE_CHECKING:
     from mxlpy.integrators import IntegratorProtocol, IntegratorType
     from mxlpy.model import Model
-    from mxlpy.types import Array, ArrayLike
+    from mxlpy.types import ArrayLike
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,6 +66,7 @@ class Simulator:
     # For resets (e.g. update variable)
     _integrator_type: IntegratorType
     _time_shift: float | None
+    _errors: list[Exception]
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -98,6 +101,7 @@ class Simulator:
         self.dependent = None
         self.simulation_parameters = None
         self.use_jacobian = use_jacobian
+        self._errors = []
 
         if test_run:
             self.model.get_right_hand_side(self.y0, time=0)
@@ -139,6 +143,7 @@ class Simulator:
         self.dependent = None
         self.simulation_parameters = None
         self._time_shift = None
+        self._errors = []
         self._initialise_integrator()
 
     def _handle_simulation_results(
@@ -517,3 +522,309 @@ class Simulator:
         self._time_shift = float(sim_variables[-1].index[-1])
         self._initialise_integrator()
         return self
+
+    ###############################################################################
+    # Actual simulation fns
+    ###############################################################################
+
+    def _handle_simulation_results(
+        self,
+        result: Result[TimeCourse],
+        *,
+        skipfirst: bool,
+    ) -> None:
+        """Handle simulation results.
+
+        Args:
+            result: time course of simulation
+            skipfirst: Whether to skip the first row of results.
+
+        """
+        match result.value:
+            case TimeCourse(time=time, values=results):
+                if self._time_shift is not None:
+                    time += self._time_shift
+
+                # NOTE: IMPORTANT!
+                # model._get_rhs sorts the return array by model.get_variable_names()
+                # Do NOT change this ordering
+                results_df = pd.DataFrame(
+                    data=results,
+                    index=time,
+                    columns=self.model.get_variable_names(),
+                )
+
+                if self.variables is None:
+                    self.variables = [results_df]
+                elif skipfirst:
+                    self.variables.append(results_df.iloc[1:, :])
+                else:
+                    self.variables.append(results_df)
+
+                if self.simulation_parameters is None:
+                    self.simulation_parameters = []
+                self.simulation_parameters.append(self.model.get_parameter_values())
+            case _ as e:
+                self._errors.append(e)
+
+    def simulate(
+        self,
+        t_end: float,
+        steps: int | None = None,
+    ) -> Self:
+        """Simulate the model.
+
+        Examples:
+            >>> s.simulate(t_end=100)
+            >>> s.simulate(t_end=100, steps=100)
+
+        You can either supply only a terminal time point, or additionally also the
+        number of steps for which values should be returned.
+
+        Args:
+            t_end: Terminal time point for the simulation.
+            steps: Number of steps for the simulation.
+
+        Returns:
+            Self: The Simulator instance with updated results.
+
+        """
+        if len(self._errors) > 0:
+            return self
+
+        if self._time_shift is not None:
+            t_end -= self._time_shift
+
+        prior_t_end: float = (
+            0.0 if (variables := self.variables) is None else variables[-1].index[-1]
+        )
+        if t_end <= prior_t_end:
+            msg = "End time point has to be larger than previous end time point"
+            raise ValueError(msg)
+
+        self._handle_simulation_results(
+            self.integrator.integrate(t_end=t_end, steps=steps), skipfirst=True
+        )
+        return self
+
+    def simulate_time_course(self, time_points: ArrayLike) -> Self:
+        """Simulate the model over a given set of time points.
+
+        Examples:
+            >>> Simulator(model).simulate_time_course([1, 2, 3])
+
+        You can either supply only a terminal time point, or additionally also the
+        number of steps or exact time points for which values should be returned.
+
+        Args:
+            t_end: Terminal time point for the simulation.
+            steps: Number of steps for the simulation.
+            time_points: Exact time points for which values should be returned.
+
+        Returns:
+            Self: The Simulator instance with updated results.
+
+        """
+        if len(self._errors) > 0:
+            return self
+
+        time_points = np.array(time_points, dtype=float)
+
+        if self._time_shift is not None:
+            time_points -= self._time_shift
+
+        # Check if end is actually larger
+        prior_t_end: float = (
+            0.0 if (variables := self.variables) is None else variables[-1].index[-1]
+        )
+        if time_points[-1] <= prior_t_end:
+            msg = "End time point has to be larger than previous end time point"
+            raise ValueError(msg)
+
+        # Remove points which are smaller than previous t_end
+        if not (larger := time_points >= prior_t_end).all():
+            msg = f"Overlapping time points. Removing: {time_points[~larger]}"
+            _LOGGER.warning(msg)
+            time_points = time_points[larger]
+
+        self._handle_simulation_results(
+            self.integrator.integrate_time_course(time_points=time_points),
+            skipfirst=True,
+        )
+        return self
+
+    def simulate_protocol(
+        self,
+        protocol: pd.DataFrame,
+        *,
+        time_points_per_step: int = 10,
+    ) -> Self:
+        """Simulate the model over a given protocol.
+
+        Examples:
+            >>> Simulator(model).simulate_over_protocol(
+            ...     protocol,
+            ...     time_points_per_step=10
+            ... )
+
+        Args:
+            protocol: DataFrame containing the protocol.
+            time_points_per_step: Number of time points per step.
+
+        Returns:
+            The Simulator instance with updated results.
+
+        """
+        if len(self._errors) > 0:
+            return self
+
+        t_start = (
+            0.0 if (variables := self.variables) is None else variables[-1].index[-1]
+        )
+
+        for t_end, pars in protocol.iterrows():
+            t_end = cast(pd.Timedelta, t_end)
+            self.model.update_parameters(pars.to_dict())
+            self.simulate(t_start + t_end.total_seconds(), steps=time_points_per_step)
+            if self.variables is None:
+                break
+        return self
+
+    def simulate_protocol_time_course(
+        self,
+        protocol: pd.DataFrame,
+        time_points: ArrayLike,
+        *,
+        time_points_as_relative: bool = False,
+    ) -> Self:
+        """Simulate the model over a given protocol.
+
+        Examples:
+            >>> Simulator(model).simulate_over_protocol(
+            ...     protocol,
+            ...     time_points=np.array([1.0, 2.0, 3.0], dtype=float),
+            ... )
+
+        Args:
+            protocol: DataFrame containing the protocol.
+            time_points: Array of time points for which to return the simulation values.
+            time_points_as_relative: Interpret time points as relative time
+
+        Notes:
+            This function will return **both** the control points of the protocol as well
+            as the time points supplied in case they don't match.
+
+        Returns:
+            The Simulator instance with updated results.
+
+        """
+        if len(self._errors) > 0:
+            return self
+
+        t_start = (
+            0.0 if (variables := self.variables) is None else variables[-1].index[-1]
+        )
+
+        protocol = protocol.copy()
+        protocol.index = (
+            cast(pd.TimedeltaIndex, protocol.index) + pd.Timedelta(t_start, unit="s")
+        ).total_seconds()
+
+        time_points = np.array(time_points, dtype=float)
+        if time_points_as_relative:
+            time_points += t_start
+
+        # Error handling
+        if time_points[-1] <= t_start:
+            msg = "End time point has to be larger than previous end time point"
+            raise ValueError(msg)
+
+        larger = time_points > protocol.index[-1]
+        if any(larger):
+            msg = f"Ignoring time points outside of protocol range:\n {time_points[larger]}"
+            _LOGGER.warning(msg)
+
+        # Continue with logic
+        full_time_points = protocol.index.join(time_points, how="outer")
+
+        for t_end, pars in protocol.iterrows():
+            self.model.update_parameters(pars.to_dict())
+
+            self.simulate_time_course(
+                time_points=full_time_points[
+                    (full_time_points > t_start) & (full_time_points <= t_end)
+                ]
+            )
+            t_start = t_end
+            if self.variables is None:
+                break
+        return self
+
+    def simulate_to_steady_state(
+        self,
+        tolerance: float = 1e-6,
+        *,
+        rel_norm: bool = False,
+    ) -> Self:
+        """Simulate the model to steady state.
+
+        Examples:
+            >>> Simulator(model).simulate_to_steady_state()
+            >>> Simulator(model).simulate_to_steady_state(tolerance=1e-8)
+            >>> Simulator(model).simulate_to_steady_state(rel_norm=True)
+
+        You can either supply only a terminal time point, or additionally also the
+        number of steps or exact time points for which values should be returned.
+
+        Args:
+            tolerance: Tolerance for the steady-state calculation.
+            rel_norm: Whether to use relative norm for the steady-state calculation.
+
+        Returns:
+            Self: The Simulator instance with updated results.
+
+        """
+        if len(self._errors) > 0:
+            return self
+
+        self._handle_simulation_results(
+            self.integrator.integrate_to_steady_state(
+                tolerance=tolerance,
+                rel_norm=rel_norm,
+            ),
+            skipfirst=False,
+        )
+        return self
+
+    def get_result(self) -> Result[Simulation]:
+        """Get result of the simulation.
+
+        Examples:
+            >>> variables, fluxes = Simulator(model).simulate().get_result()
+            >>> variables
+            Time            ATP      NADPH
+            0.000000   1.000000   1.000000
+            0.000100   0.999900   0.999900
+            0.000200   0.999800   0.999800
+            >>> fluxes
+            Time             v1         v2
+            0.000000   1.000000   10.00000
+            0.000100   0.999900   9.999000
+            0.000200   0.999800   9.998000
+
+        """
+        if len(self._errors) > 0:
+            # FIXME: think about how to incorporate multiple errors
+            # if that ever occurs
+            return Result(self._errors[0])
+        if (variables := self.variables) is None:
+            return Result(IntegrationFailure())
+        if (parameters := self.simulation_parameters) is None:
+            return Result(IntegrationFailure())
+        return Result(
+            Simulation(
+                model=self.model,
+                raw_variables=variables,
+                raw_parameters=parameters,
+            )
+        )

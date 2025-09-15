@@ -26,7 +26,7 @@ from mxlpy.meta.sympy_tools import (
     list_of_symbols,
     stoichiometries_to_sympy,
 )
-from mxlpy.surrogates.abstract import AbstractSurrogate
+from mxlpy.surrogates.abstract import AbstractSurrogate, SurrogateProtocol
 from mxlpy.types import (
     Derived,
     InitialAssignment,
@@ -425,7 +425,7 @@ class Model:
     _derived: dict[str, Derived] = field(default_factory=dict)
     _readouts: dict[str, Readout] = field(default_factory=dict)
     _reactions: dict[str, Reaction] = field(default_factory=dict)
-    _surrogates: dict[str, AbstractSurrogate] = field(default_factory=dict)
+    _surrogates: dict[str, SurrogateProtocol] = field(default_factory=dict)
     _data: dict[str, pd.Series | pd.DataFrame] = field(default_factory=dict)
 
     def __repr__(self) -> str:
@@ -1775,7 +1775,7 @@ class Model:
     def add_surrogate(
         self,
         name: str,
-        surrogate: AbstractSurrogate,
+        surrogate: SurrogateProtocol,
         args: list[str] | None = None,
         outputs: list[str] | None = None,
         stoichiometries: dict[str, dict[str, float | Derived]] | None = None,
@@ -1816,7 +1816,7 @@ class Model:
     def update_surrogate(
         self,
         name: str,
-        surrogate: AbstractSurrogate | None = None,
+        surrogate: SurrogateProtocol | None = None,
         args: list[str] | None = None,
         outputs: list[str] | None = None,
         stoichiometries: dict[str, dict[str, float | Derived]] | None = None,
@@ -1879,7 +1879,7 @@ class Model:
 
     def get_raw_surrogates(
         self, *, as_copy: bool = True
-    ) -> dict[str, AbstractSurrogate]:
+    ) -> dict[str, SurrogateProtocol]:
         """Get direct copies of model surrogates."""
         if as_copy:
             return copy.deepcopy(self._surrogates)

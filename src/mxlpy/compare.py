@@ -10,7 +10,6 @@ from wadler_lindig import pformat
 
 from mxlpy import plot
 from mxlpy.simulator import Simulator
-from mxlpy.types import unwrap
 
 if TYPE_CHECKING:
     from mxlpy.model import Model
@@ -220,20 +219,22 @@ class ProtocolComparison:
 def steady_states(m1: Model, m2: Model) -> SteadyStateComparison:
     """Compare the steady states of two models."""
     return SteadyStateComparison(
-        res1=unwrap(Simulator(m1).simulate_to_steady_state().get_result()),
-        res2=unwrap(Simulator(m2).simulate_to_steady_state().get_result()),
+        res1=Simulator(m1).simulate_to_steady_state().get_result().unwrap(),
+        res2=Simulator(m2).simulate_to_steady_state().get_result().unwrap(),
     )
 
 
 def time_courses(m1: Model, m2: Model, time_points: ArrayLike) -> TimeCourseComparison:
     """Compare the time courses of two models."""
     return TimeCourseComparison(
-        res1=unwrap(
-            Simulator(m1).simulate_time_course(time_points=time_points).get_result()
-        ),
-        res2=unwrap(
-            Simulator(m2).simulate_time_course(time_points=time_points).get_result()
-        ),
+        res1=Simulator(m1)
+        .simulate_time_course(time_points=time_points)
+        .get_result()
+        .unwrap(),
+        res2=Simulator(m2)
+        .simulate_time_course(time_points=time_points)
+        .get_result()
+        .unwrap(),
     )
 
 
@@ -244,7 +245,7 @@ def protocol_time_courses(
 ) -> ProtocolComparison:
     """Compare the time courses of two models."""
     return ProtocolComparison(
-        res1=unwrap(Simulator(m1).simulate_protocol(protocol=protocol).get_result()),
-        res2=unwrap(Simulator(m2).simulate_protocol(protocol=protocol).get_result()),
+        res1=Simulator(m1).simulate_protocol(protocol=protocol).get_result().unwrap(),
+        res2=Simulator(m2).simulate_protocol(protocol=protocol).get_result().unwrap(),
         protocol=protocol,
     )
