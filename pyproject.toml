@@ -69,6 +69,12 @@ equinox = [
   "equinox>=0.13",
   "optax>=0.2.5",
 ]
+sr = [
+  "equinox>=0.13",
+  "optax>=0.2.5",
+  "pysr>=1.5.9",
+  "sympy2jax>=0.0.7",
+]
 
 [dependency-groups]
 dev = [
