@@ -2,86 +2,90 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/index.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/basics.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/carousel.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/citing.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/comparisons.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/examples.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/fitting.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/fuzzy_fitting.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/integrators.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/label-models.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/mca.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/metaprogramming.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/monte-carlo.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/mxl.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
+    </url>
+    <url>
+         <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/parallel.html</loc>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/parameter_identifiability.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/parameterise.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/report.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/scans.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/stability.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/symbolic.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
     <url>
          <loc>https://computational-biology-aachen.github.io/mxlpy/0.27.0/tips.html</loc>
-         <lastmod>2025-11-03</lastmod>
+         <lastmod>2025-11-10</lastmod>
     </url>
 </urlset>
