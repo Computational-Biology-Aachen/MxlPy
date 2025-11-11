@@ -14,6 +14,7 @@ Functions:
 from __future__ import annotations
 
 import multiprocessing
+import multiprocessing.context
 import pickle
 import sys
 from dataclasses import dataclass
@@ -100,6 +101,7 @@ def parallelise[K: Hashable, Tin, Tout](
     timeout: float | None = None,
     disable_tqdm: bool = False,
     tqdm_desc: str | None = None,
+    mp_context: multiprocessing.context.BaseContext | None = None,
 ) -> list[tuple[K, Tout]]:
     """Execute a function in parallel over a collection of inputs.
 
@@ -116,6 +118,7 @@ def parallelise[K: Hashable, Tin, Tout](
         timeout: Maximum time (in seconds) to wait for each worker to complete (default: None).
         disable_tqdm: Whether to disable the tqdm progress bar (default: False).
         tqdm_desc: Description for the tqdm progress bar (default: None).
+        mp_context: fork / forkserver / spawn
 
     Returns:
         dict[Tin, Tout]: Dictionary mapping inputs to their corresponding outputs.
@@ -126,6 +129,9 @@ def parallelise[K: Hashable, Tin, Tout](
 
     if sys.platform in ["win32", "cygwin"]:
         parallel = False
+
+    if mp_context is None:
+        mp_context = multiprocessing.get_context("fork")
 
     worker: Callable[[K, Tin], tuple[K, Tout]] = partial(
         _load_or_run,
@@ -146,7 +152,7 @@ def parallelise[K: Hashable, Tin, Tout](
                 disable=disable_tqdm,
                 desc=tqdm_desc,
             ) as pbar,
-            pebble.ProcessPool(max_workers=max_workers) as pool,
+            pebble.ProcessPool(max_workers=max_workers, context=mp_context) as pool,
         ):
             future = pool.map(worker, inputs, timeout=timeout)
             it = future.result()
@@ -181,6 +187,7 @@ def parallelise_keyless[Tin, Tout](
     timeout: float | None = None,
     disable_tqdm: bool = False,
     tqdm_desc: str | None = None,
+    mp_context: multiprocessing.context.BaseContext | None = None,
 ) -> list[Tout]:
     """Execute a function in parallel over a collection of inputs.
 
@@ -197,6 +204,7 @@ def parallelise_keyless[Tin, Tout](
         timeout: Maximum time (in seconds) to wait for each worker to complete (default: None).
         disable_tqdm: Whether to disable the tqdm progress bar (default: False).
         tqdm_desc: Description for the tqdm progress bar (default: None).
+        mp_context: fork / forkserver / spawn
 
     Returns:
         dict[Tin, Tout]: Dictionary mapping inputs to their corresponding outputs.
@@ -204,6 +212,9 @@ def parallelise_keyless[Tin, Tout](
     """
     if sys.platform in ["win32", "cygwin"]:
         parallel = False
+
+    if mp_context is None:
+        mp_context = multiprocessing.get_context("fork")
 
     results: list[Tout]
     if parallel:
@@ -218,7 +229,7 @@ def parallelise_keyless[Tin, Tout](
                 disable=disable_tqdm,
                 desc=tqdm_desc,
             ) as pbar,
-            pebble.ProcessPool(max_workers=max_workers) as pool,
+            pebble.ProcessPool(max_workers=max_workers, context=mp_context) as pool,
         ):
             future = pool.map(fn, inputs, timeout=timeout)
             it = future.result()
