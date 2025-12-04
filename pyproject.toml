@@ -23,7 +23,7 @@ classifiers = [
 description = "A package to build metabolic models"
 keywords = ["modelling", "ode", "metabolic"]
 license = "MIT"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12"
 maintainers = [
   { name = "Marvin van Aalst", email = "marvin.vanaalst@gmail.com" },
 ]

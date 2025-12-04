@@ -13,19 +13,24 @@ Functions:
 
 from __future__ import annotations
 
+import concurrent.interpreters as ci
+import itertools as it
 import multiprocessing
 import pickle
 import sys
+from collections.abc import Sized
+from concurrent.futures import Executor, ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import Base
 
 import pebble
 from tqdm import tqdm
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Hashable
+    from collections.abc import Callable, Collection, Hashable, Iterable
 
 __all__ = ["Cache", "parallelise", "parallelise_keyless"]
 
@@ -42,6 +47,43 @@ def _pickle_load(file: Path) -> Any:
 def _pickle_save(file: Path, data: Any) -> None:
     with file.open("wb") as fp:
         pickle.dump(data, fp)
+
+
+def _wrap_ip_call[Tin, Tout](
+    fn: Callable[[Tin], Tout],
+    el_ip: tuple[Tin, Executor],
+) -> Tout:
+    el, ip = el_ip
+    return ip.call(fn, el)
+
+
+class InterpreterPoolExecutor:
+    interpreters: list[ci.Interpreter]
+
+    def __init__(self, max_workers: int | None = None) -> None:
+        max_workers = (
+            multiprocessing.cpu_count() if max_workers is None else max_workers
+        )
+        self.interpreters = [ci.create() for _ in range(max_workers)]
+
+    def __enter__(self) -> Any:
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> Any:
+        for i in self.interpreters:
+            i.close()
+        return False
+
+    def map[Tin, Tout](
+        self,
+        fn: Callable[[Tin], Tout],
+        iterable: Sized[Tin],
+    ) -> Iterable[Tout]:
+        with ThreadPoolExecutor(max_workers=len(self.interpreters)) as pool:
+            return pool.map(
+                partial(_wrap_ip_call, fn),
+                zip(iterable, it.cycle(self.interpreters), strict=False),
+            )
 
 
 @dataclass
@@ -135,30 +177,34 @@ def parallelise[K: Hashable, Tin, Tout](
 
     results: list[tuple[K, Tout]]
     if parallel:
-        results = []
         max_workers = (
             multiprocessing.cpu_count() if max_workers is None else max_workers
         )
 
-        with (
-            tqdm(
-                total=len(inputs),
-                disable=disable_tqdm,
-                desc=tqdm_desc,
-            ) as pbar,
-            pebble.ProcessPool(max_workers=max_workers) as pool,
-        ):
-            future = pool.map(worker, inputs, timeout=timeout)
-            it = future.result()
-            while True:
-                try:
-                    key, value = next(it)
-                    pbar.update(1)
-                    results.append((key, value))
-                except StopIteration:
-                    break
-                except TimeoutError:
-                    pbar.update(1)
+        if sys.version_info >= (3, 14):
+            with InterpreterPoolExecutor(max_workers=max_workers) as pool:
+                results = pool.map(worker, inputs)
+        else:
+            results = []
+            with (
+                tqdm(
+                    total=len(inputs),
+                    disable=disable_tqdm,
+                    desc=tqdm_desc,
+                ) as pbar,
+                pebble.ProcessPool(max_workers=max_workers) as pool,
+            ):
+                future = pool.map(worker, inputs, timeout=timeout)
+                it = future.result()
+                while True:
+                    try:
+                        key, value = next(it)
+                        pbar.update(1)
+                        results.append((key, value))
+                    except StopIteration:
+                        break
+                    except TimeoutError:
+                        pbar.update(1)
     else:
         results = list(
             tqdm(
