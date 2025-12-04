@@ -19,6 +19,7 @@ nav:
       - Identifiability: parameter_identifiability.ipynb
       - Symbolic: symbolic.ipynb
       - Integrator configuration: integrators.ipynb
+      - Compartmentalisation: compartmentalisation.ipynb
   - Mechanistic learning:
       - Introduction: mxl.ipynb
       - Reaction carousel: carousel.ipynb
@@ -26,8 +27,8 @@ nav:
   - Examples: examples.ipynb
   - Reporting: report.ipynb
   - Tips:
-    - General: tips.ipynb
-    - Parallel execution: parallel.ipynb
+      - General: tips.ipynb
+      - Parallel execution: parallel.ipynb
   - How to cite: citing.md
 
 theme:
