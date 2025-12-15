@@ -7,6 +7,7 @@ import pytest
 
 from mxlpy import Model, Simulator
 from mxlpy.fns import mass_action_1s
+from mxlpy.types import IntegrationFailure
 
 
 @pytest.fixture
@@ -240,4 +241,5 @@ def test_scale_parameters(simulator: Simulator) -> None:
 
 def test_empty_results_handling(simulator: Simulator) -> None:
     """Test handling of empty results."""
-    assert simulator.get_result() is None
+    with pytest.raises(IntegrationFailure):
+        simulator.get_result().unwrap()
