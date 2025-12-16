@@ -134,9 +134,8 @@ def steady_state_residual(
     )
     match val := res.value:
         case Simulation():
-            return settings.loss_fn(
+            return settings.loss(
                 val.get_combined().loc[:, cast(list, settings.data.index)],
-                settings.data,
             )
         case _:
             return cast(float, np.inf)
@@ -166,9 +165,8 @@ def time_course_residual(
 
     match val := res.value:
         case Simulation():
-            return settings.loss_fn(
+            return settings.loss(
                 val.get_combined().loc[:, cast(list, settings.data.columns)],
-                settings.data,
             )
         case _:
             return cast(float, np.inf)
@@ -205,9 +203,8 @@ def protocol_time_course_residual(
 
     match val := res.value:
         case Simulation():
-            return settings.loss_fn(
+            return settings.loss(
                 val.get_combined().loc[:, cast(list, settings.data.columns)],
-                settings.data,
             )
         case _:
             return cast(float, np.inf)
@@ -225,11 +222,12 @@ def steady_state(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    standard_scale: bool = True,
 ) -> Result[Fit]:
     """Fit model parameters to steady-state experimental data.
 
     Examples:
-        >>> steady_state(model, p0, data)
+        >>> fit.steady_state(model, p0, data)
         {'k1': 0.1, 'k2': 0.2}
 
     Args:
@@ -243,12 +241,10 @@ def steady_state(
         loss_fn: Loss function to use for residual calculation
         bounds: Mapping of bounds per parameter
         as_deepcopy: Whether to copy the model to avoid overwriting the state
+        standard_scale: Whether to apply standard scale to data and prediction
 
     Returns:
-        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
-
-    Note:
-        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+        Result object containing fit object
 
     """
     if as_deepcopy:
@@ -267,6 +263,7 @@ def steady_state(
             loss_fn=loss_fn,
             p_names=[i for i in p0 if i in p_names],
             v_names=[i for i in p0 if i in v_names],
+            standard_scale=standard_scale,
         ),
     )
     match minimizer(fn, p0, {} if bounds is None else bounds).value:
@@ -294,11 +291,12 @@ def time_course(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    standard_scale: bool = True,
 ) -> Result[Fit]:
     """Fit model parameters to time course of experimental data.
 
     Examples:
-        >>> time_course(model, p0, data)
+        >>> fit.time_course(model, p0, data)
         {'k1': 0.1, 'k2': 0.2}
 
     Args:
@@ -312,12 +310,10 @@ def time_course(
         loss_fn: Loss function to use for residual calculation
         bounds: Mapping of bounds per parameter
         as_deepcopy: Whether to copy the model to avoid overwriting the state
+        standard_scale: Whether to apply standard scale to data and prediction
 
     Returns:
-        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
-
-    Note:
-        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+        Result object containing fit object
 
     """
     if as_deepcopy:
@@ -335,6 +331,7 @@ def time_course(
             loss_fn=loss_fn,
             p_names=[i for i in p0 if i in p_names],
             v_names=[i for i in p0 if i in v_names],
+            standard_scale=standard_scale,
         ),
     )
 
@@ -364,13 +361,20 @@ def protocol_time_course(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    standard_scale: bool = True,
 ) -> Result[Fit]:
     """Fit model parameters to time course of experimental data.
 
     Time points of protocol time course are taken from the data.
 
     Examples:
-        >>> time_course(model, p0, data)
+        >>> fit.protocol_time_course(
+        ...     model_fn(),
+        ...     p0={"k2": 1.87, "k3": 1.093},
+        ...     data=res_protocol,
+        ...     protocol=protocol,
+        ...     minimizer=fit.LocalScipyMinimizer(),
+        ... )
         {'k1': 0.1, 'k2': 0.2}
 
     Args:
@@ -386,12 +390,10 @@ def protocol_time_course(
         time_points_per_step: Number of time points per step in the protocol
         bounds: Mapping of bounds per parameter
         as_deepcopy: Whether to copy the model to avoid overwriting the state
+        standard_scale: Whether to apply standard scale to data and prediction
 
     Returns:
-        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
-
-    Note:
-        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+        Result object containing fit object
 
     """
     if as_deepcopy:
@@ -410,6 +412,7 @@ def protocol_time_course(
             p_names=[i for i in p0 if i in p_names],
             v_names=[i for i in p0 if i in v_names],
             protocol=protocol,
+            standard_scale=standard_scale,
         ),
     )
 
@@ -448,7 +451,15 @@ def ensemble_steady_state(
     """Fit model ensemble parameters to steady-state experimental data.
 
     Examples:
-        >>> carousel_steady_state(carousel, p0=p0, data=data)
+        >>> fit.ensemble_steady_state(
+        ...     [
+        ...         model_fn(),
+        ...         model_fn(),
+        ...     ],
+        ...     data=res.iloc[-1],
+        ...     p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
+        ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
+        ... )
 
     Args:
         ensemble: Ensemble to fit
@@ -465,10 +476,7 @@ def ensemble_steady_state(
         as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
-        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
-
-    Note:
-        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+        Ensemble fit object
 
     """
     return EnsembleFit(
@@ -510,7 +518,15 @@ def carousel_steady_state(
     """Fit model parameters to steady-state experimental data over a carousel.
 
     Examples:
-        >>> carousel_steady_state(carousel, p0=p0, data=data)
+        >>> fit.carousel_steady_state(
+        ...     carousel,
+        ...     p0={
+        ...         "beta": 0.1,
+        ...         "gamma": 0.1,
+        ...     },
+        ...     data=data,
+        ...     minimizer=fit.LocalScipyMinimizer(),
+        ... )
 
     Args:
         carousel: Model carousel to fit
@@ -527,10 +543,7 @@ def carousel_steady_state(
         as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
-        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
-
-    Note:
-        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+        Ensemble fit object
 
     """
     return ensemble_steady_state(
@@ -565,7 +578,15 @@ def ensemble_time_course(
     Time points are taken from the data.
 
     Examples:
-        >>> carousel_time_course(carousel, p0=p0, data=data)
+        >>> fit.ensemble_steady_state(
+        ...     [
+        ...         model1,
+        ...         model2,
+        ...     ],
+        ...     data=res.iloc[-1],
+        ...     p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
+        ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
+        ... )
 
     Args:
         ensemble: Model ensemble to fit
@@ -582,10 +603,7 @@ def ensemble_time_course(
         as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
-        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
-
-    Note:
-        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+        Ensemble fit object
 
     """
     return EnsembleFit(
@@ -629,7 +647,15 @@ def carousel_time_course(
     Time points are taken from the data.
 
     Examples:
-        >>> carousel_time_course(carousel, p0=p0, data=data)
+        >>> fit.carousel_time_course(
+        ...     carousel,
+        ...     p0={
+        ...         "beta": 0.1,
+        ...         "gamma": 0.1,
+        ...     },
+        ...     data=data,
+        ...     minimizer=fit.LocalScipyMinimizer(),
+        ... )
 
     Args:
         carousel: Model carousel to fit
@@ -646,10 +672,7 @@ def carousel_time_course(
         as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
-        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
-
-    Note:
-        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+        Ensemble fit object
 
     """
     return ensemble_time_course(
@@ -685,7 +708,16 @@ def ensemble_protocol_time_course(
     Time points of protocol time course are taken from the data.
 
     Examples:
-        >>> carousel_steady_state(carousel, p0=p0, data=data)
+        >>> fit.ensemble_protocol_time_course(
+        ...     [
+        ...         model_fn(),
+        ...         model_fn(),
+        ...     ],
+        ...     data=res_protocol,
+        ...     protocol=protocol,
+        ...     p0={"k2": 1.87, "k3": 1.093},  # note that k1 is given by the protocol
+        ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
+        ... )
 
     Args:
         ensemble: Model ensemble: value}
@@ -702,10 +734,7 @@ def ensemble_protocol_time_course(
         as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
-        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
-
-    Note:
-        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+        Ensemble fit object
 
     """
     return EnsembleFit(
@@ -751,7 +780,16 @@ def carousel_protocol_time_course(
     Time points of protocol time course are taken from the data.
 
     Examples:
-        >>> carousel_steady_state(carousel, p0=p0, data=data)
+        >>> fit.carousel_protocol_time_course(
+        ...     carousel,
+        ...     p0={
+        ...         "beta": 0.1,
+        ...         "gamma": 0.1,
+        ...     },
+        ...     protocol=protocol,
+        ...     data=data,
+        ...     minimizer=fit.LocalScipyMinimizer(),
+        ... )
 
     Args:
         carousel: Model carousel to fit
@@ -768,10 +806,7 @@ def carousel_protocol_time_course(
         as_deepcopy: Whether to copy the model to avoid overwriting the state
 
     Returns:
-        dict[str, float]: Fitted parameters as {parameter_name: fitted_value}
-
-    Note:
-        Uses L-BFGS-B optimization with bounds [1e-6, 1e6] for all parameters
+        Ensemble fit object
 
     """
     return ensemble_protocol_time_course(
@@ -833,8 +868,37 @@ def joint_steady_state(
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
+    standard_scale: bool = True,
 ) -> Result[JointFit]:
-    """Multi-model, multi-data fitting."""
+    """Multi-model, multi-data fitting.
+
+    Examples:
+        >>> fit.joint_steady_state(
+        ...     [
+        ...         fit.FitSettings(model=model_fn(), data=res.iloc[-1]),
+        ...         fit.FitSettings(model=model_fn(), data=res.iloc[-1]),
+        ...     ],
+        ...     p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
+        ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
+        ... )
+
+    Args:
+        to_fit: Models and data to fit
+        p0: Initial guesses as {name: value}
+        y0: Initial conditions as {species_name: value}
+        minimizer: Function to minimize fitting error
+        residual_fn: Function to calculate fitting error
+        integrator: ODE integrator class
+        loss_fn: Loss function to use for residual calculation
+        bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
+        max_workers: maximal amount of workers in parallel
+        standard_scale: Whether to apply standard scale to data and prediction
+
+    Returns:
+        Result object containing JointFit object
+
+    """
     full_settings = []
     for i in to_fit:
         p_names = i.model.get_parameter_names()
@@ -848,6 +912,7 @@ def joint_steady_state(
                 loss_fn=i.loss_fn if i.loss_fn is not None else loss_fn,
                 p_names=[j for j in p0 if j in p_names],
                 v_names=[j for j in p0 if j in v_names],
+                standard_scale=standard_scale,
             )
         )
 
@@ -884,8 +949,31 @@ def joint_time_course(
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
+    standard_scale: bool = True,
 ) -> Result[JointFit]:
-    """Multi-model, multi-data fitting."""
+    """Multi-model, multi-data fitting.
+
+    Examples:
+        >>> fit.joint_steady_state(model, p0, data)
+        {'k1': 0.1, 'k2': 0.2}
+
+    Args:
+        to_fit: Models and data to fit
+        p0: Initial guesses as {name: value}
+        y0: Initial conditions as {species_name: value}
+        minimizer: Function to minimize fitting error
+        residual_fn: Function to calculate fitting error
+        integrator: ODE integrator class
+        loss_fn: Loss function to use for residual calculation
+        bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
+        max_workers: maximal amount of workers in parallel
+        standard_scale: Whether to apply standard scale to data and prediction
+
+    Returns:
+        Result object containing JointFit object
+
+    """
     full_settings = []
     for i in to_fit:
         p_names = i.model.get_parameter_names()
@@ -899,6 +987,7 @@ def joint_time_course(
                 loss_fn=i.loss_fn if i.loss_fn is not None else loss_fn,
                 p_names=[j for j in p0 if j in p_names],
                 v_names=[j for j in p0 if j in v_names],
+                standard_scale=standard_scale,
             )
         )
 
@@ -936,8 +1025,31 @@ def joint_protocol_time_course(
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
+    standard_scale: bool = True,
 ) -> Result[JointFit]:
-    """Multi-model, multi-data fitting."""
+    """Multi-model, multi-data fitting.
+
+    Examples:
+        >>> fit.joint_steady_state(model, p0, data)
+        {'k1': 0.1, 'k2': 0.2}
+
+    Args:
+        to_fit: Models and data to fit
+        p0: Initial guesses as {name: value}
+        y0: Initial conditions as {species_name: value}
+        minimizer: Function to minimize fitting error
+        residual_fn: Function to calculate fitting error
+        integrator: ODE integrator class
+        loss_fn: Loss function to use for residual calculation
+        bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
+        max_workers: maximal amount of workers in parallel
+        standard_scale: Whether to apply standard scale to data and prediction
+
+    Returns:
+        Result object containing JointFit object
+
+    """
     full_settings = []
     for i in to_fit:
         p_names = i.model.get_parameter_names()
@@ -952,6 +1064,7 @@ def joint_protocol_time_course(
                 protocol=i.protocol,
                 p_names=[j for j in p0 if j in p_names],
                 v_names=[j for j in p0 if j in v_names],
+                standard_scale=standard_scale,
             )
         )
 
@@ -1019,8 +1132,45 @@ def joint_mixed(
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
+    standard_scale: bool = True,
 ) -> Result[JointFit]:
-    """Multi-model, multi-data, multi-simulation fitting."""
+    """Multi-model, multi-data, multi-simulation fitting.
+
+    Examples:
+        >>> fit.joint_mixed(
+        ...     [
+        ...         fit.MixedSettings(
+        ...             model=model_fn(),
+        ...             data=res.iloc[-1],
+        ...             residual_fn=fit.steady_state_residual,
+        ...         ),
+        ...         fit.MixedSettings(
+        ...             model=model_fn(),
+        ...             data=res,
+        ...             residual_fn=fit.time_course_residual,
+        ...         ),
+        ...     ],
+        ...     p0={"k2": 1.87, "k3": 1.093},
+        ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
+        ... )
+
+    Args:
+        to_fit: models, data and residual fn to fit
+        p0: Initial guesses as {name: value}
+        y0: Initial conditions as {species_name: value}
+        minimizer: Function to minimize fitting error
+        residual_fn: Function to calculate fitting error
+        integrator: ODE integrator class
+        loss_fn: Loss function to use for residual calculation
+        bounds: Mapping of bounds per parameter
+        as_deepcopy: Whether to copy the model to avoid overwriting the state
+        max_workers: maximal amount of workers in parallel
+        standard_scale: Whether to apply standard scale to data and prediction
+
+    Returns:
+        Result object containing JointFit object
+
+    """
     full_settings = []
     for i in to_fit:
         p_names = i.model.get_parameter_names()
@@ -1036,6 +1186,7 @@ def joint_mixed(
                 v_names=[j for j in p0 if j in v_names],
                 protocol=i.protocol,
                 residual_fn=i.residual_fn,
+                standard_scale=standard_scale,
             )
         )
 

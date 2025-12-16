@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING, Protocol
 
 from wadler_lindig import pformat
@@ -85,8 +86,26 @@ class _Settings:
     loss_fn: LossFn
     p_names: list[str]
     v_names: list[str]
+    standard_scale: bool
     protocol: pd.DataFrame | None = None
     residual_fn: FitResidual | None = None
+
+    @cached_property
+    def mean(self) -> pd.Series | float:
+        return self.data.mean()
+
+    @cached_property
+    def scale(self) -> pd.Series | float:
+        return self.data.std()
+
+    @cached_property
+    def data_scaled(self) -> pd.Series | pd.DataFrame:
+        return (self.data - self.mean) / self.scale
+
+    def loss(self, prediction: pd.Series | pd.DataFrame) -> float:
+        if self.standard_scale:
+            return self.loss_fn(self.data_scaled, (prediction - self.mean) / self.scale)
+        return self.loss_fn(self.data, prediction)
 
 
 @dataclass
