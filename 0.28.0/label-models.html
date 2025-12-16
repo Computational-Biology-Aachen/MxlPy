@@ -1547,7 +1547,6 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
     <span class="n">LinearLabelMapper</span><span class="p">,</span>
     <span class="n">Simulator</span><span class="p">,</span>
     <span class="n">plot</span><span class="p">,</span>
-    <span class="n">unwrap</span><span class="p">,</span>
 <span class="p">)</span>
 
 
@@ -1571,7 +1570,6 @@ from mxlpy import (
     LinearLabelMapper,
     Simulator,
     plot,
-    unwrap,
 )
 
 
@@ -1645,8 +1643,11 @@ We notate this using normal <strong>0-based indexing</strong> as follows</p>
 <span class="p">)</span>
 
 
-<span class="n">labels</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
-    <span class="n">Simulator</span><span class="p">(</span><span class="n">mapper</span><span class="o">.</span><span class="n">build_model</span><span class="p">(</span><span class="n">initial_labels</span><span class="o">=</span><span class="p">{</span><span class="s2">"GAP"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}))</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+<span class="n">labels</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Simulator</span><span class="p">(</span><span class="n">mapper</span><span class="o">.</span><span class="n">build_model</span><span class="p">(</span><span class="n">initial_labels</span><span class="o">=</span><span class="p">{</span><span class="s2">"GAP"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}))</span>
+    <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
+    <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span><span class="o">.</span><span class="n">variables</span>
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">relative_label_distribution</span><span class="p">(</span><span class="n">mapper</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">n_cols</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
@@ -1664,8 +1665,11 @@ We notate this using normal <strong>0-based indexing</strong> as follows</p>
 )
 
 
-labels = unwrap(
-    Simulator(mapper.build_model(initial_labels={"GAP": 0})).simulate(20).get_result()
+labels = (
+    Simulator(mapper.build_model(initial_labels={"GAP": 0}))
+    .simulate(20)
+    .get_result()
+    .unwrap_or_err()
 ).variables
 
 fig, ax = plot.relative_label_distribution(mapper, labels, n_cols=3)
@@ -1721,7 +1725,7 @@ See <a href="https://doi.org/10.1371/journal.pone.0144652">Sokol and Portais 201
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="n">model_fn</span> <span class="o">=</span> <span class="n">get_tpi_ald_model</span><span class="p">()</span>
 
-<span class="n">concs</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">model_fn</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span>
+<span class="n">concs</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">model_fn</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 
 
 <span class="n">mapper</span> <span class="o">=</span> <span class="n">LinearLabelMapper</span><span class="p">(</span>
@@ -1736,7 +1740,7 @@ See <a href="https://doi.org/10.1371/journal.pone.0144652">Sokol and Portais 201
 <span class="p">)</span>
 
 
-<span class="n">labels</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<span class="n">labels</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span>
         <span class="n">mapper</span><span class="o">.</span><span class="n">build_model</span><span class="p">(</span>
             <span class="n">concs</span><span class="o">=</span><span class="n">concs</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
@@ -1746,13 +1750,14 @@ See <a href="https://doi.org/10.1371/journal.pone.0144652">Sokol and Portais 201
     <span class="p">)</span>
     <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span><span class="o">.</span><span class="n">variables</span>
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">relative_label_distribution</span><span class="p">(</span><span class="n">mapper</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">n_cols</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-3">model_fn = get_tpi_ald_model()
 
-concs, fluxes = unwrap(Simulator(model_fn).simulate(20).get_result())
+concs, fluxes = Simulator(model_fn).simulate(20).get_result().unwrap_or_err()
 
 
 mapper = LinearLabelMapper(
@@ -1767,7 +1772,7 @@ mapper = LinearLabelMapper(
 )
 
 
-labels = unwrap(
+labels = (
     Simulator(
         mapper.build_model(
             concs=concs.iloc[-1],
@@ -1777,6 +1782,7 @@ labels = unwrap(
     )
     .simulate(20)
     .get_result()
+    .unwrap_or_err()
 ).variables
 fig, ax = plot.relative_label_distribution(mapper, labels, n_cols=3)
 plt.show()</div>
@@ -1858,7 +1864,7 @@ We denote that external label pool with <code>EXT</code> and by default set the 
 </clipboard-copy>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">get_linear_chain_2v</span><span class="p">()</span>
-<span class="n">concs</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span>
+<span class="n">concs</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="n">mapper</span> <span class="o">=</span> <span class="n">LinearLabelMapper</span><span class="p">(</span>
     <span class="n">model</span><span class="p">,</span>
     <span class="n">label_variables</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span>
@@ -1884,7 +1890,7 @@ We denote that external label pool with <code>EXT</code> and by default set the 
 <span class="nb">print</span><span class="p">(</span><span class="n">label_model</span><span class="o">.</span><span class="n">get_raw_reactions</span><span class="p">()[</span><span class="s2">"v2__0"</span><span class="p">]</span><span class="o">.</span><span class="n">args</span><span class="p">)</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-4">model = get_linear_chain_2v()
-concs, fluxes = unwrap(Simulator(model).simulate(100).get_result())
+concs, fluxes = Simulator(model).simulate(100).get_result().unwrap_or_err()
 mapper = LinearLabelMapper(
     model,
     label_variables={"x": 2, "y": 2},
@@ -1960,11 +1966,12 @@ print(label_model.get_raw_reactions()["v2__0"].args)</div>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">relative_label_distribution</span><span class="p">(</span>
     <span class="n">mapper</span><span class="p">,</span>
-    <span class="n">unwrap</span><span class="p">(</span>
+    <span class="p">(</span>
         <span class="n">Simulator</span><span class="p">(</span><span class="n">label_model</span><span class="p">)</span>
         <span class="o">.</span><span class="n">update_parameter</span><span class="p">(</span><span class="s2">"EXT"</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>  <span class="c1"># update exeternal label to fully labelled</span>
         <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
         <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
     <span class="p">)</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
     <span class="n">n_cols</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <span class="p">)</span>
@@ -1973,11 +1980,12 @@ print(label_model.get_raw_reactions()["v2__0"].args)</div>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-5">fig, ax = plot.relative_label_distribution(
     mapper,
-    unwrap(
+    (
         Simulator(label_model)
         .update_parameter("EXT", 1.0)  # update exeternal label to fully labelled
         .simulate(20)
         .get_result()
+        .unwrap_or_err()
     ).variables,
     n_cols=3,
 )
@@ -2021,11 +2029,12 @@ plt.show()</div>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">relative_label_distribution</span><span class="p">(</span>
     <span class="n">mapper</span><span class="p">,</span>
-    <span class="n">unwrap</span><span class="p">(</span>
+    <span class="p">(</span>
         <span class="n">Simulator</span><span class="p">(</span><span class="n">label_model</span><span class="p">)</span>
         <span class="o">.</span><span class="n">update_parameter</span><span class="p">(</span><span class="s2">"EXT"</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>  <span class="c1"># update external label to half labelled</span>
         <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
         <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
     <span class="p">)</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
     <span class="n">n_cols</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <span class="p">)</span>
@@ -2036,11 +2045,12 @@ plt.show()</div>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-6">fig, axs = plot.relative_label_distribution(
     mapper,
-    unwrap(
+    (
         Simulator(label_model)
         .update_parameter("EXT", 0.5)  # update external label to half labelled
         .simulate(20)
         .get_result()
+        .unwrap_or_err()
     ).variables,
     n_cols=3,
 )
@@ -2097,8 +2107,12 @@ plt.show()</div>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">relative_label_distribution</span><span class="p">(</span>
     <span class="n">mapper</span><span class="p">,</span>
-    <span class="n">unwrap</span><span class="p">(</span>
-        <span class="n">Simulator</span><span class="p">(</span><span class="n">label_model</span><span class="p">)</span><span class="o">.</span><span class="n">update_parameter</span><span class="p">(</span><span class="s2">"EXT"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="p">(</span>
+        <span class="n">Simulator</span><span class="p">(</span><span class="n">label_model</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">update_parameter</span><span class="p">(</span><span class="s2">"EXT"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
     <span class="p">)</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
     <span class="n">n_cols</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <span class="p">)</span>
@@ -2109,8 +2123,12 @@ plt.show()</div>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-7">fig, axs = plot.relative_label_distribution(
     mapper,
-    unwrap(
-        Simulator(label_model).update_parameter("EXT", 0.0).simulate(20).get_result()
+    (
+        Simulator(label_model)
+        .update_parameter("EXT", 0.0)
+        .simulate(20)
+        .get_result()
+        .unwrap_or_err()
     ).variables,
     n_cols=3,
 )
@@ -2168,11 +2186,12 @@ You can achieve that by updating the initial conditions like so.</p>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">relative_label_distribution</span><span class="p">(</span>
     <span class="n">mapper</span><span class="p">,</span>
-    <span class="n">unwrap</span><span class="p">(</span>
+    <span class="p">(</span>
         <span class="n">Simulator</span><span class="p">(</span><span class="n">label_model</span><span class="p">,</span> <span class="n">y0</span><span class="o">=</span><span class="n">label_model</span><span class="o">.</span><span class="n">get_initial_conditions</span><span class="p">()</span> <span class="o">|</span> <span class="p">{</span><span class="s2">"x__0"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
         <span class="o">.</span><span class="n">update_parameter</span><span class="p">(</span><span class="s2">"EXT"</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
         <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
         <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
     <span class="p">)</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
     <span class="n">n_cols</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <span class="p">)</span>
@@ -2183,11 +2202,12 @@ You can achieve that by updating the initial conditions like so.</p>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-8">fig, axs = plot.relative_label_distribution(
     mapper,
-    unwrap(
+    (
         Simulator(label_model, y0=label_model.get_initial_conditions() | {"x__0": 1.0})
         .update_parameter("EXT", 0.0)
         .simulate(20)
         .get_result()
+        .unwrap_or_err()
     ).variables,
     n_cols=3,
 )
@@ -2252,7 +2272,7 @@ Here, <code>initial_labels</code> specifies the position at which the initial la
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">relative_label_distribution</span><span class="p">(</span>
     <span class="n">mapper</span><span class="p">,</span>
-    <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">label_model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
+    <span class="n">Simulator</span><span class="p">(</span><span class="n">label_model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
     <span class="n">n_cols</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="s2">"No external label, but initial label in C1 of x"</span><span class="p">)</span>
@@ -2267,7 +2287,7 @@ Here, <code>initial_labels</code> specifies the position at which the initial la
 
 fig, axs = plot.relative_label_distribution(
     mapper,
-    unwrap(Simulator(label_model).simulate(20).get_result()).variables,
+    Simulator(label_model).simulate(20).get_result().unwrap_or_err().variables,
     n_cols=3,
 )
 fig.suptitle("No external label, but initial label in C1 of x")
@@ -2328,7 +2348,7 @@ plt.show()</div>
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">relative_label_distribution</span><span class="p">(</span>
     <span class="n">mapper</span><span class="p">,</span>
-    <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">label_model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
+    <span class="n">Simulator</span><span class="p">(</span><span class="n">label_model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
     <span class="n">n_cols</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="s2">"No external label, but initial label in C1 &amp; C2 of x"</span><span class="p">)</span>
@@ -2343,7 +2363,7 @@ plt.show()</div>
 
 fig, axs = plot.relative_label_distribution(
     mapper,
-    unwrap(Simulator(label_model).simulate(20).get_result()).variables,
+    Simulator(label_model).simulate(20).get_result().unwrap_or_err().variables,
     n_cols=3,
 )
 fig.suptitle("No external label, but initial label in C1 &amp; C2 of x")

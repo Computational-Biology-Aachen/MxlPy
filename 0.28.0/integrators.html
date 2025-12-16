@@ -639,6 +639,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#scipy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Scipy
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#diffrax" class="md-nav__link">
     <span class="md-ellipsis">
       Diffrax
@@ -984,6 +993,15 @@
   <a href="#integrator-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       Integrator configuration
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scipy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Scipy
     </span>
   </a>
   
@@ -1471,8 +1489,8 @@ Thus, when setting integrator settings you should always check which integrator 
 </div>
 </div>
 </div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
-<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=054b159d">
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=054b159d">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -1493,12 +1511,54 @@ Thus, when setting integrator settings you should always check which integrator 
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">example_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_linear_chain_2v</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">unwrap</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Simulator</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.integrators</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scipy</span>
 
 <span class="n">model</span> <span class="o">=</span> <span class="n">get_linear_chain_2v</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-1">from functools import partial
 
-<span class="c1"># You can explicitly set an integrator for the simulation</span>
+from example_models import get_linear_chain_2v
+from mxlpy import Simulator
+from mxlpy.integrators import Scipy
+
+model = get_linear_chain_2v()</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=6a130c26">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="scipy">Scipy<a class="anchor-link" href="#scipy">¶</a></h2>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=1d47614a">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [2]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-2">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="c1"># You can explicitly set an integrator for the simulation</span>
 <span class="n">s</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">integrator</span><span class="o">=</span><span class="n">Scipy</span><span class="p">)</span>
 
 <span class="c1"># You can also change the default settings of each integrator</span>
@@ -1512,17 +1572,9 @@ Thus, when setting integrator settings you should always check which integrator 
     <span class="n">s</span><span class="o">.</span><span class="n">integrator</span><span class="o">.</span><span class="n">atol</span> <span class="o">=</span> <span class="mf">1e-8</span>  <span class="c1"># set absolute tolerance</span>
     <span class="n">s</span><span class="o">.</span><span class="n">integrator</span><span class="o">.</span><span class="n">rtol</span> <span class="o">=</span> <span class="mf">1e-8</span>  <span class="c1"># set relative tolerance</span>
 
-<span class="n">_</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+<span class="n">_</span> <span class="o">=</span> <span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">())</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-1">from functools import partial
-
-from example_models import get_linear_chain_2v
-from mxlpy import Simulator, unwrap
-from mxlpy.integrators import Scipy
-
-model = get_linear_chain_2v()
-
-# You can explicitly set an integrator for the simulation
+<div class="clipboard-copy-txt" id="cell-2"># You can explicitly set an integrator for the simulation
 s = Simulator(model, integrator=Scipy)
 
 # You can also change the default settings of each integrator
@@ -1536,7 +1588,7 @@ if isinstance(s.integrator, Scipy):
     s.integrator.atol = 1e-8  # set absolute tolerance
     s.integrator.rtol = 1e-8  # set relative tolerance
 
-_ = unwrap(s.simulate(10).get_result()).variables.plot()</div>
+_ = (s.simulate(10).get_result().unwrap_or_err()).variables.plot()</div>
 </div>
 </div>
 </div>
@@ -1566,45 +1618,6 @@ _ = unwrap(s.simulate(10).get_result()).variables.plot()</div>
 </div>
 </div>
 </div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
-<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=8b2921d8">
-<div class="jp-Cell-inputWrapper" tabindex="0">
-<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
-</div>
-<div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [2]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
-<div class="CodeMirror cm-s-jupyter">
-<div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-2">
-<div>
-<span class="notice" hidden="">Copied!</span>
-<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
-<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
-<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
-</svg>
-</div>
-</clipboard-copy>
-</div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">get_initial_conditions</span><span class="p">()</span>
-</pre></div>
-<div class="clipboard-copy-txt" id="cell-2">model.get_initial_conditions()</div>
-</div>
-</div>
-</div>
-</div>
-<div class="jp-Cell-outputWrapper">
-<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
-</div>
-<div class="jp-OutputArea jp-Cell-outputArea">
-<div class="jp-OutputArea-child jp-OutputArea-executeResult">
-<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[2]:</div>
-<div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
-<pre>{'x': 1.0, 'y': 1.0}</pre>
-</div>
-</div>
-</div>
-</div>
-</div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
 <div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=a5339ae7">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
@@ -1624,43 +1637,49 @@ _ = unwrap(s.simulate(10).get_result()).variables.plot()</div>
 </clipboard-copy>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">diffrax</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tsit5</span>
+
 <span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Diffrax</span>
 
 <span class="n">model</span> <span class="o">=</span> <span class="n">get_linear_chain_2v</span><span class="p">()</span>
 
 <span class="c1"># Use diffrax integrator suite</span>
-<span class="n">s</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
-    <span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">integrator</span><span class="o">=</span><span class="n">Diffrax</span><span class="p">)</span>  <span class="c1">#  Use default solver</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">integrator</span><span class="o">=</span><span class="n">Diffrax</span><span class="p">)</span>  <span class="c1"># pyright: ignore[reportArgumentType]</span>
     <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
 
 
 <span class="c1"># Explicit solver choice</span>
-<span class="n">s</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
-    <span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">integrator</span><span class="o">=</span><span class="n">partial</span><span class="p">(</span><span class="n">Diffrax</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="n">Tsit5</span><span class="p">()))</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">integrator</span><span class="o">=</span><span class="n">partial</span><span class="p">(</span><span class="n">Diffrax</span><span class="p">,</span> <span class="n">solver</span><span class="o">=</span><span class="n">Tsit5</span><span class="p">()))</span>  <span class="c1"># pyright: ignore[reportArgumentType]</span>
     <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-3">from diffrax import Tsit5
+
 from mxlpy import Diffrax
 
 model = get_linear_chain_2v()
 
 # Use diffrax integrator suite
-s = unwrap(
-    Simulator(model, integrator=Diffrax)  #  Use default solver
+s = (
+    Simulator(model, integrator=Diffrax)  # pyright: ignore[reportArgumentType]
     .simulate(5)
     .get_result()
+    .unwrap_or_err()
 ).variables.plot()
 
 
 # Explicit solver choice
-s = unwrap(
-    Simulator(model, integrator=partial(Diffrax, solver=Tsit5()))
+s = (
+    Simulator(model, integrator=partial(Diffrax, solver=Tsit5()))  # pyright: ignore[reportArgumentType]
     .simulate(5)
     .get_result()
+    .unwrap_or_err()
 ).variables.plot()</div>
 </div>
 </div>
@@ -1673,7 +1692,7 @@ s = unwrap(
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>INFO:2025-12-05 11:16:01,139:jax._src.xla_bridge:752: Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
+<pre>INFO:2025-12-16 07:31:45,759:jax._src.xla_bridge:752: Unable to initialize backend 'tpu': INTERNAL: Failed to open libtpu.so: libtpu.so: cannot open shared object file: No such file or directory
 </pre>
 </div>
 </div>

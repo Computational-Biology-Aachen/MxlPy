@@ -455,6 +455,42 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-" class="md-nav__link">
+    <span class="md-ellipsis">
+      -
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      -
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      -
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimizers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Minimizers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#creating-synthetic-data" class="md-nav__link">
     <span class="md-ellipsis">
       Creating synthetic data
@@ -557,7 +593,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#-" class="md-nav__link">
+  <a href="#-_3" class="md-nav__link">
     <span class="md-ellipsis">
       -
     </span>
@@ -1125,6 +1161,42 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-" class="md-nav__link">
+    <span class="md-ellipsis">
+      -
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      -
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      -
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimizers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Minimizers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#creating-synthetic-data" class="md-nav__link">
     <span class="md-ellipsis">
       Creating synthetic data
@@ -1227,7 +1299,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#-" class="md-nav__link">
+  <a href="#-_3" class="md-nav__link">
     <span class="md-ellipsis">
       -
     </span>
@@ -1751,7 +1823,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">example_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_linear_chain_2v</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">make_protocol</span><span class="p">,</span> <span class="n">plot</span><span class="p">,</span> <span class="n">unwrap</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">make_protocol</span><span class="p">,</span> <span class="n">plot</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-1">from __future__ import annotations
 
@@ -1759,7 +1831,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from example_models import get_linear_chain_2v
-from mxlpy import Simulator, fit, make_protocol, plot, unwrap</div>
+from mxlpy import Simulator, fit, make_protocol, plot</div>
 </div>
 </div>
 </div>
@@ -1773,8 +1845,45 @@ from mxlpy import Simulator, fit, make_protocol, plot, unwrap</div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
 <h2 id="fitting">Fitting<a class="anchor-link" href="#fitting">¶</a></h2><p>Almost every model at some point needs to be fitted to experimental data to be <strong>validated</strong>.</p>
-<p><em>mxlpy</em> offers highly customisable local and global routines for fitting either <strong>time series</strong> or <strong>steady-states</strong>.</p>
 <p><img alt="No description has been provided for this image" src="assets/fitting.png" style="max-height: 175px;"/></p>
+<p><em>mxlpy</em> offers highly customisable local and global routines for fitting either <strong>time series</strong> or <strong>steady-states</strong>.</p>
+<p>The entire set of currently supported routines is</p>
+<p>Single model, single data routines</p>
+<ul>
+<li><code>steady_state</code></li>
+<li><code>time_course</code></li>
+<li><code>protocol_time_course</code></li>
+</ul>
+<p>Multiple model, single data routines</p>
+<ul>
+<li><code>ensemble_steady_state</code></li>
+<li><code>ensemble_time_course</code></li>
+<li><code>ensemble_protocol_time_course</code></li>
+</ul>
+<p>A carousel is a special case of an ensemble, where the general
+structure (e.g. stoichiometries) is the same, while the reactions kinetics
+can vary</p>
+<ul>
+<li><code>carousel_steady_state</code></li>
+<li><code>carousel_time_course</code></li>
+<li><code>carousel_protocol_time_course</code></li>
+</ul>
+<p>Multiple model, multiple data</p>
+<ul>
+<li><code>joint_steady_state</code></li>
+<li><code>joint_time_course</code></li>
+<li><code>joint_protocol_time_course</code></li>
+</ul>
+<p>Multiple model, multiple data, multiple methods</p>
+<p>Here we also allow to run different methods (e.g. steady-state vs time courses)
+for each combination of model:data.</p>
+<ul>
+<li><code>joint_mixed</code></li>
+</ul>
+<h2 id="minimizers">Minimizers<a class="anchor-link" href="#minimizers">¶</a></h2><ul>
+<li>LocalScipyMinimizer, including common methods such as Nelder-Mead or L-BFGS-B</li>
+<li>GlobalScipyMinimizer, including common methods such as basin hopping or dual annealing</li>
+</ul>
 <p>For this tutorial we are going to use the <code>fit</code> module to optimise our parameter values and the <code>plot</code> module to plot some results.</p>
 <p>Let's get started!</p>
 </div>
@@ -1817,11 +1926,12 @@ Here, for the sake of simplicity, we will generate some synthetic data.</p>
 <span class="c1"># it with another model</span>
 <span class="n">model_fn</span> <span class="o">=</span> <span class="n">get_linear_chain_2v</span>
 
-<span class="n">res</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<span class="n">res</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span><span class="n">model_fn</span><span class="p">())</span>
     <span class="o">.</span><span class="n">update_parameters</span><span class="p">({</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
     <span class="o">.</span><span class="n">simulate_time_course</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">101</span><span class="p">))</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span><span class="o">.</span><span class="n">get_combined</span><span class="p">()</span>
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
@@ -1833,11 +1943,12 @@ Here, for the sake of simplicity, we will generate some synthetic data.</p>
 # it with another model
 model_fn = get_linear_chain_2v
 
-res = unwrap(
+res = (
     Simulator(model_fn())
     .update_parameters({"k1": 1.0, "k2": 2.0, "k3": 1.0})
     .simulate_time_course(np.linspace(0, 10, 101))
     .get_result()
+    .unwrap_or_err()
 ).get_combined()
 
 fig, ax = plot.lines(res)
@@ -1944,25 +2055,21 @@ Name: 10.0, dtype: float64</pre>
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fit_result</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
-    <span class="n">fit</span><span class="o">.</span><span class="n">steady_state</span><span class="p">(</span>
-        <span class="n">model_fn</span><span class="p">(),</span>
-        <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.038</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>
-        <span class="n">data</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
-        <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
-    <span class="p">)</span>
-<span class="p">)</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fit_result</span> <span class="o">=</span> <span class="n">fit</span><span class="o">.</span><span class="n">steady_state</span><span class="p">(</span>
+    <span class="n">model_fn</span><span class="p">(),</span>
+    <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.038</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+    <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
+<span class="p">)</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 
 <span class="n">fit_result</span><span class="o">.</span><span class="n">best_pars</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-4">fit_result = unwrap(
-    fit.steady_state(
-        model_fn(),
-        p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
-        data=res.iloc[-1],
-        minimizer=fit.LocalScipyMinimizer(),
-    )
-)
+<div class="clipboard-copy-txt" id="cell-4">fit_result = fit.steady_state(
+    model_fn(),
+    p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
+    data=res.iloc[-1],
+    minimizer=fit.LocalScipyMinimizer(),
+).unwrap_or_err()
 
 fit_result.best_pars</div>
 </div>
@@ -2015,24 +2122,20 @@ The fitting routine will only try to fit concentrations and fluxes contained in 
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fit_result</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
-    <span class="n">fit</span><span class="o">.</span><span class="n">steady_state</span><span class="p">(</span>
-        <span class="n">model_fn</span><span class="p">(),</span>
-        <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.038</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>
-        <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">loc</span><span class="p">[[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">]],</span>
-        <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
-    <span class="p">)</span>
-<span class="p">)</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fit_result</span> <span class="o">=</span> <span class="n">fit</span><span class="o">.</span><span class="n">steady_state</span><span class="p">(</span>
+    <span class="n">model_fn</span><span class="p">(),</span>
+    <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.038</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">loc</span><span class="p">[[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">]],</span>
+    <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
+<span class="p">)</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="n">fit_result</span><span class="o">.</span><span class="n">best_pars</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-5">fit_result = unwrap(
-    fit.steady_state(
-        model_fn(),
-        p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
-        data=data.loc[["x", "y"]],
-        minimizer=fit.LocalScipyMinimizer(),
-    )
-)
+<div class="clipboard-copy-txt" id="cell-5">fit_result = fit.steady_state(
+    model_fn(),
+    p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
+    data=data.loc[["x", "y"]],
+    minimizer=fit.LocalScipyMinimizer(),
+).unwrap_or_err()
 fit_result.best_pars</div>
 </div>
 </div>
@@ -2089,25 +2192,21 @@ fit_result.best_pars</div>
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fit_result</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
-    <span class="n">fit</span><span class="o">.</span><span class="n">time_course</span><span class="p">(</span>
-        <span class="n">model_fn</span><span class="p">(),</span>
-        <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.038</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>
-        <span class="n">data</span><span class="o">=</span><span class="n">res</span><span class="p">,</span>
-        <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
-    <span class="p">)</span>
-<span class="p">)</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fit_result</span> <span class="o">=</span> <span class="n">fit</span><span class="o">.</span><span class="n">time_course</span><span class="p">(</span>
+    <span class="n">model_fn</span><span class="p">(),</span>
+    <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.038</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">res</span><span class="p">,</span>
+    <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
+<span class="p">)</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 
 <span class="n">fit_result</span><span class="o">.</span><span class="n">best_pars</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-6">fit_result = unwrap(
-    fit.time_course(
-        model_fn(),
-        p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
-        data=res,
-        minimizer=fit.LocalScipyMinimizer(),
-    )
-)
+<div class="clipboard-copy-txt" id="cell-6">fit_result = fit.time_course(
+    model_fn(),
+    p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
+    data=res,
+    minimizer=fit.LocalScipyMinimizer(),
+).unwrap_or_err()
 
 fit_result.best_pars</div>
 </div>
@@ -2168,7 +2267,7 @@ Here, again, for the sake of simplicity, we will generate some synthetic data.</
     <span class="p">]</span>
 <span class="p">)</span>
 
-<span class="n">res_protocol</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<span class="n">res_protocol</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span><span class="n">model_fn</span><span class="p">())</span>
     <span class="o">.</span><span class="n">update_parameters</span><span class="p">({</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
     <span class="o">.</span><span class="n">simulate_protocol</span><span class="p">(</span>
@@ -2176,6 +2275,7 @@ Here, again, for the sake of simplicity, we will generate some synthetic data.</
         <span class="n">time_points_per_step</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span><span class="o">.</span><span class="n">get_combined</span><span class="p">()</span>
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span><span class="n">res_protocol</span><span class="p">)</span>
@@ -2190,7 +2290,7 @@ Here, again, for the sake of simplicity, we will generate some synthetic data.</
     ]
 )
 
-res_protocol = unwrap(
+res_protocol = (
     Simulator(model_fn())
     .update_parameters({"k1": 1.0, "k2": 2.0, "k3": 1.0})
     .simulate_protocol(
@@ -2198,6 +2298,7 @@ res_protocol = unwrap(
         time_points_per_step=10,
     )
     .get_result()
+    .unwrap_or_err()
 ).get_combined()
 
 fig, ax = plot.lines(res_protocol)
@@ -2258,27 +2359,23 @@ plt.show()</div>
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fit_result</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
-    <span class="n">fit</span><span class="o">.</span><span class="n">protocol_time_course</span><span class="p">(</span>
-        <span class="n">model_fn</span><span class="p">(),</span>
-        <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>  <span class="c1"># note that k1 is given by the protocol</span>
-        <span class="n">data</span><span class="o">=</span><span class="n">res_protocol</span><span class="p">,</span>
-        <span class="n">protocol</span><span class="o">=</span><span class="n">protocol</span><span class="p">,</span>
-        <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
-    <span class="p">)</span>
-<span class="p">)</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fit_result</span> <span class="o">=</span> <span class="n">fit</span><span class="o">.</span><span class="n">protocol_time_course</span><span class="p">(</span>
+    <span class="n">model_fn</span><span class="p">(),</span>
+    <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>  <span class="c1"># note that k1 is given by the protocol</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">res_protocol</span><span class="p">,</span>
+    <span class="n">protocol</span><span class="o">=</span><span class="n">protocol</span><span class="p">,</span>
+    <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
+<span class="p">)</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 
 <span class="n">fit_result</span><span class="o">.</span><span class="n">best_pars</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-8">fit_result = unwrap(
-    fit.protocol_time_course(
-        model_fn(),
-        p0={"k2": 1.87, "k3": 1.093},  # note that k1 is given by the protocol
-        data=res_protocol,
-        protocol=protocol,
-        minimizer=fit.LocalScipyMinimizer(),
-    )
-)
+<div class="clipboard-copy-txt" id="cell-8">fit_result = fit.protocol_time_course(
+    model_fn(),
+    p0={"k2": 1.87, "k3": 1.093},  # note that k1 is given by the protocol
+    data=res_protocol,
+    protocol=protocol,
+    minimizer=fit.LocalScipyMinimizer(),
+).unwrap_or_err()
 
 fit_result.best_pars</div>
 </div>
@@ -2365,13 +2462,13 @@ fit_result.best_pars</div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre> 50%|█████     | 1/2 [00:01&lt;00:01,  1.26s/it]</pre>
+<pre> 50%|█████     | 1/2 [00:01&lt;00:01,  1.35s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>100%|██████████| 2/2 [00:01&lt;00:00,  1.47it/s]</pre>
+<pre>100%|██████████| 2/2 [00:01&lt;00:00,  1.37it/s]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
@@ -2538,13 +2635,13 @@ fit_result.best_pars</div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre> 50%|█████     | 1/2 [00:03&lt;00:03,  3.08s/it]</pre>
+<pre> 50%|█████     | 1/2 [00:03&lt;00:03,  3.02s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>100%|██████████| 2/2 [00:03&lt;00:00,  1.58s/it]</pre>
+<pre>100%|██████████| 2/2 [00:03&lt;00:00,  1.54s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
@@ -2625,13 +2722,19 @@ fit_result.best_pars</div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre> 50%|█████     | 1/2 [00:01&lt;00:01,  1.90s/it]</pre>
+<pre> 50%|█████     | 1/2 [00:01&lt;00:01,  1.88s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>100%|██████████| 2/2 [00:02&lt;00:00,  1.02s/it]</pre>
+<pre>100%|██████████| 2/2 [00:01&lt;00:00,  1.19it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>100%|██████████| 2/2 [00:02&lt;00:00,  1.03s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
@@ -2702,14 +2805,14 @@ fit_result.best_pars</div>
 <div class="jp-OutputArea-child jp-OutputArea-executeResult">
 <div class="jp-OutputPrompt jp-OutputArea-prompt">Out[14]:</div>
 <div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
-<pre>JointFitResult(
+<pre>Result(value=JointFit(
   best_pars={
     'k1': np.float64(1.0000149372806875),
     'k2': np.float64(2.000025722679901),
     'k3': np.float64(0.9999698102562694)
   },
   loss=np.float64(3.316840676386697e-05)
-)</pre>
+))</pre>
 </div>
 </div>
 </div>
@@ -2762,14 +2865,14 @@ fit_result.best_pars</div>
 <div class="jp-OutputArea-child jp-OutputArea-executeResult">
 <div class="jp-OutputPrompt jp-OutputArea-prompt">Out[15]:</div>
 <div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
-<pre>JointFitResult(
+<pre>Result(value=JointFit(
   best_pars={
     'k1': np.float64(0.9999993178316183),
     'k2': np.float64(1.9999961723337583),
     'k3': np.float64(1.0000008116982133)
   },
   loss=np.float64(1.8228566470869358e-06)
-)</pre>
+))</pre>
 </div>
 </div>
 </div>
@@ -2822,10 +2925,10 @@ fit_result.best_pars</div>
 <div class="jp-OutputArea-child jp-OutputArea-executeResult">
 <div class="jp-OutputPrompt jp-OutputArea-prompt">Out[16]:</div>
 <div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
-<pre>JointFitResult(
+<pre>Result(value=JointFit(
   best_pars={'k2': np.float64(2.0000014942851934), 'k3': np.float64(0.9999997359378191)},
   loss=np.float64(6.838379642522272e-07)
-)</pre>
+))</pre>
 </div>
 </div>
 </div>
@@ -2928,10 +3031,10 @@ fit_result.best_pars</div>
 <div class="jp-OutputArea-child jp-OutputArea-executeResult">
 <div class="jp-OutputPrompt jp-OutputArea-prompt">Out[17]:</div>
 <div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
-<pre>JointFitResult(
+<pre>Result(value=JointFit(
   best_pars={'k2': np.float64(1.9999979281880325), 'k3': np.float64(1.0000003839540792)},
   loss=np.float64(2.9641396939299067e-05)
-)</pre>
+))</pre>
 </div>
 </div>
 </div>
@@ -3002,10 +3105,6 @@ fit_result.best_pars</div>
 
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-
-    <span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.fit</span><span class="w"> </span><span class="kn">import</span> <span class="n">LossFn</span><span class="p">,</span> <span class="n">ResidualFn</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.types</span><span class="w"> </span><span class="kn">import</span> <span class="n">Array</span><span class="p">,</span> <span class="n">IntegratorType</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-18">from functools import partial
 from typing import TYPE_CHECKING, cast
@@ -3013,11 +3112,7 @@ from typing import TYPE_CHECKING, cast
 from mxlpy.integrators import Scipy
 
 if TYPE_CHECKING:
-    import pandas as pd
-
-    from mxlpy.fit import LossFn, ResidualFn
-    from mxlpy.model import Model
-    from mxlpy.types import Array, IntegratorType</div>
+    import pandas as pd</div>
 </div>
 </div>
 </div>
@@ -3100,7 +3195,7 @@ Depending on the use case (time course vs steady state) this function will be pa
     <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">y</span><span class="p">)))</span>
 
 
-<span class="n">fit_result</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<span class="p">(</span>
     <span class="n">fit</span><span class="o">.</span><span class="n">time_course</span><span class="p">(</span>
         <span class="n">model_fn</span><span class="p">(),</span>
         <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.038</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>
@@ -3108,9 +3203,9 @@ Depending on the use case (time course vs steady state) this function will be pa
         <span class="n">loss_fn</span><span class="o">=</span><span class="n">mean_absolute_error</span><span class="p">,</span>
         <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
     <span class="p">)</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">best_pars</span>
 <span class="p">)</span>
-
-<span class="n">fit_result</span><span class="o">.</span><span class="n">best_pars</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-20">def mean_absolute_error(
     x: pd.DataFrame | pd.Series,
@@ -3120,7 +3215,7 @@ Depending on the use case (time course vs steady state) this function will be pa
     return cast(float, np.mean(np.abs(x - y)))
 
 
-fit_result = unwrap(
+(
     fit.time_course(
         model_fn(),
         p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
@@ -3128,9 +3223,9 @@ fit_result = unwrap(
         loss_fn=mean_absolute_error,
         minimizer=fit.LocalScipyMinimizer(),
     )
-)
-
-fit_result.best_pars</div>
+    .unwrap_or_err()
+    .best_pars
+)</div>
 </div>
 </div>
 </div>
@@ -3181,7 +3276,7 @@ fit_result.best_pars</div>
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fit_result</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="p">(</span>
     <span class="n">fit</span><span class="o">.</span><span class="n">time_course</span><span class="p">(</span>
         <span class="n">model_fn</span><span class="p">(),</span>
         <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k1"</span><span class="p">:</span> <span class="mf">1.038</span><span class="p">,</span> <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.87</span><span class="p">,</span> <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.093</span><span class="p">},</span>
@@ -3189,11 +3284,11 @@ fit_result.best_pars</div>
         <span class="n">integrator</span><span class="o">=</span><span class="n">partial</span><span class="p">(</span><span class="n">Scipy</span><span class="p">,</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">),</span>
         <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
     <span class="p">)</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">best_pars</span>
 <span class="p">)</span>
-
-<span class="n">fit_result</span><span class="o">.</span><span class="n">best_pars</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-21">fit_result = unwrap(
+<div class="clipboard-copy-txt" id="cell-21">(
     fit.time_course(
         model_fn(),
         p0={"k1": 1.038, "k2": 1.87, "k3": 1.093},
@@ -3201,9 +3296,9 @@ fit_result.best_pars</div>
         integrator=partial(Scipy, rtol=1e-6, atol=1e-6),
         minimizer=fit.LocalScipyMinimizer(),
     )
-)
-
-fit_result.best_pars</div>
+    .unwrap_or_err()
+    .best_pars
+)</div>
 </div>
 </div>
 </div>

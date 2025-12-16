@@ -1477,7 +1477,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">fns</span><span class="p">,</span> <span class="n">plot</span><span class="p">,</span> <span class="n">unwrap</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">fns</span><span class="p">,</span> <span class="n">plot</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.carousel</span><span class="w"> </span><span class="kn">import</span> <span class="n">Carousel</span><span class="p">,</span> <span class="n">ReactionTemplate</span>
 
 
@@ -1526,7 +1526,7 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-1">import numpy as np
 
-from mxlpy import Model, Simulator, fit, fns, plot, unwrap
+from mxlpy import Model, Simulator, fit, fns, plot
 from mxlpy.carousel import Carousel, ReactionTemplate
 
 
@@ -1643,7 +1643,7 @@ plot.show()</div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>100%|██████████| 4/4 [00:00&lt;00:00, 28.14it/s]</pre>
+<pre>100%|██████████| 4/4 [00:00&lt;00:00, 27.86it/s]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
@@ -1692,18 +1692,20 @@ plot.show()</div>
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span><span class="n">get_sir</span><span class="p">()</span><span class="o">.</span><span class="n">update_parameters</span><span class="p">({</span><span class="s2">"beta"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span> <span class="s2">"gamma"</span><span class="p">:</span> <span class="mf">0.15</span><span class="p">}))</span>
     <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">11</span><span class="p">)</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span><span class="o">.</span><span class="n">variables</span>
 
 <span class="n">data</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-3">data = unwrap(
+<div class="clipboard-copy-txt" id="cell-3">data = (
     Simulator(get_sir().update_parameters({"beta": 0.3, "gamma": 0.15}))
     .simulate(100, steps=11)
     .get_result()
+    .unwrap_or_err()
 ).variables
 
 data.head()</div>
@@ -1815,7 +1817,7 @@ data.head()</div>
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">one_axes</span><span class="p">()</span>
 <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span>
-    <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">best</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
+    <span class="n">Simulator</span><span class="p">(</span><span class="n">best</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span>
     <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="n">plot</span><span class="o">.</span><span class="n">reset_prop_cycle</span><span class="p">(</span><span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
@@ -1838,7 +1840,7 @@ best = res.get_best_fit().model
 
 fig, ax = plot.one_axes()
 plot.lines(
-    unwrap(Simulator(best).simulate(100).get_result()).variables,
+    Simulator(best).simulate(100).get_result().unwrap_or_err().variables,
     ax=ax,
 )
 plot.reset_prop_cycle(ax=ax)
@@ -1861,19 +1863,19 @@ plot.show()</div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre> 25%|██▌       | 1/4 [00:01&lt;00:04,  1.35s/it]</pre>
+<pre> 25%|██▌       | 1/4 [00:01&lt;00:04,  1.36s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>100%|██████████| 4/4 [00:01&lt;00:00,  2.71it/s]</pre>
+<pre>100%|██████████| 4/4 [00:01&lt;00:00,  2.79it/s]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>100%|██████████| 4/4 [00:01&lt;00:00,  2.17it/s]</pre>
+<pre>100%|██████████| 4/4 [00:01&lt;00:00,  2.29it/s]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">

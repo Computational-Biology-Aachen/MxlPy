@@ -1763,7 +1763,6 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">example_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_linear_chain_2v</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">unwrap</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">print_annotated</span><span class="p">(</span><span class="n">description</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -1782,7 +1781,6 @@ from typing import Any
 import matplotlib.pyplot as plt
 
 from example_models import get_linear_chain_2v
-from mxlpy import unwrap
 
 
 def print_annotated(description: str, value: Any) -&gt; None:
@@ -2337,10 +2335,13 @@ Finally, we can obtain the concentrations and fluxes using <code>get_result</cod
 <span class="n">res</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span><span class="n">create_linear_chain_model</span><span class="p">())</span>  <span class="c1"># initialise the simulator</span>
     <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>  <span class="c1"># simulate until t_end = 5 a.u.</span>
-    <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>  <span class="c1"># return pd.DataFrames for concentrations and fluxes</span>
+    <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">value</span>
 <span class="p">)</span>
 
-<span class="k">if</span> <span class="n">res</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="n">res</span>
+<span class="k">else</span><span class="p">:</span>
     <span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">res</span>
 
     <span class="n">fig</span><span class="p">,</span> <span class="p">(</span><span class="n">ax1</span><span class="p">,</span> <span class="n">ax2</span><span class="p">)</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">two_axes</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">))</span>
@@ -2357,10 +2358,13 @@ Finally, we can obtain the concentrations and fluxes using <code>get_result</cod
 res = (
     Simulator(create_linear_chain_model())  # initialise the simulator
     .simulate(5)  # simulate until t_end = 5 a.u.
-    .get_result()  # return pd.DataFrames for concentrations and fluxes
+    .get_result()
+    .value
 )
 
-if res is not None:
+if isinstance(res, Exception):
+    raise res
+else:
     variables, fluxes = res
 
     fig, (ax1, ax2) = plot.two_axes(figsize=(6, 2.5))
@@ -2395,12 +2399,12 @@ if res is not None:
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<p>Note, that we checked whether the results were <code>None</code> in case the simulation failed.<br/>
-Explicitly checking using an <code>if</code> clause is the prefered error handling mechanism.</p>
-<p>If you are <strong>sure</strong> the simulation won't fail, and still want your code to be type-safe, you can use <code>unwrap</code>.</p>
-<div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span>
+<p>Note, that we explicitly checked whether the simulation failed.</p>
+<p>Since there can be a multitude of reasons why a simulation might fail, we return a <code>Result[Simulation  | Exception]</code> object, which you can use to investigate potential errors.</p>
+<p>In contrast, if you are <strong>sure</strong> the simulation won't fail, and still want your code to be type-safe, you can use <code>.unwrap_or_err()</code>.</p>
+<div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 </pre></div>
-<p>Note that these functions will throw an error if the values are <code>None</code>, which potentially might crash your programs.</p>
+<p>Note that these functions will raise an error if the simulation failed, which potentially might crash your programs.</p>
 </div>
 </div>
 </div>
@@ -2458,7 +2462,7 @@ This can be done for</p>
     <span class="p">)</span>
 
 
-<span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">model_derived</span><span class="p">())</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span>
+<span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">model_derived</span><span class="p">())</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span><span class="n">variables</span><span class="p">)</span>
 <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"time / a.u."</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"concentration / a.u."</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
@@ -2480,7 +2484,7 @@ def model_derived() -&gt; Model:
     )
 
 
-variables, fluxes = unwrap(Simulator(model_derived()).simulate(10).get_result())
+variables, fluxes = Simulator(model_derived()).simulate(10).get_result().unwrap_or_err()
 fig, ax = plot.lines(variables)
 ax.set(xlabel="time / a.u.", ylabel="concentration / a.u.")
 plt.show()</div>
@@ -3307,7 +3311,7 @@ dtype: float64
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span>
         <span class="n">Model</span><span class="p">()</span>
         <span class="o">.</span><span class="n">add_parameters</span><span class="p">({</span><span class="s2">"stoich"</span><span class="p">:</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="s2">"k"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
@@ -3326,13 +3330,14 @@ dtype: float64
     <span class="c1"># Continue simulation</span>
     <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span>
 
 <span class="n">_</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span><span class="n">variables</span><span class="p">)</span>
 <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"time / a.u."</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"concentration / a.u."</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-19">variables, fluxes = unwrap(
+<div class="clipboard-copy-txt" id="cell-19">variables, fluxes = (
     Simulator(
         Model()
         .add_parameters({"stoich": -1.0, "k": 1.0})
@@ -3351,6 +3356,7 @@ dtype: float64
     # Continue simulation
     .simulate(5)
     .get_result()
+    .unwrap_or_err()
 )
 
 _, ax = plot.lines(variables)
@@ -3415,20 +3421,22 @@ There are two ways how you can define the time points this function returns.</p>
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span><span class="n">get_linear_chain_2v</span><span class="p">())</span>
     <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="n">t_end</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>  <span class="c1"># simulate until t_end = 10 a.u.</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span>
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span><span class="n">variables</span><span class="p">)</span>
 <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"time / a.u."</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"concentration / a.u."</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-20">variables, fluxes = unwrap(
+<div class="clipboard-copy-txt" id="cell-20">variables, fluxes = (
     Simulator(get_linear_chain_2v())
     .simulate(t_end=10)  # simulate until t_end = 10 a.u.
     .get_result()
+    .unwrap_or_err()
 )
 
 fig, ax = plot.lines(variables)
@@ -3484,10 +3492,11 @@ Optionally, you can overwrite the initial conditions using the <code>y0</code> a
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span><span class="n">create_linear_chain_model</span><span class="p">(),</span> <span class="n">y0</span><span class="o">=</span><span class="p">{</span><span class="s2">"S"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span> <span class="s2">"P"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">})</span>
     <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span>
 
 <span class="n">fig</span><span class="p">,</span> <span class="p">(</span><span class="n">ax1</span><span class="p">,</span> <span class="n">ax2</span><span class="p">)</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">two_axes</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
@@ -3498,10 +3507,11 @@ Optionally, you can overwrite the initial conditions using the <code>y0</code> a
 <span class="n">ax2</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"time / a.u."</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"flux / a.u."</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-21">variables, fluxes = unwrap(
+<div class="clipboard-copy-txt" id="cell-21">variables, fluxes = (
     Simulator(create_linear_chain_model(), y0={"S": 2.0, "P": 0.0})
     .simulate(10)
     .get_result()
+    .unwrap_or_err()
 )
 
 fig, (ax1, ax2) = plot.two_axes(figsize=(6, 3))
@@ -3558,16 +3568,18 @@ plt.show()</div>
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">res</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">res</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span><span class="n">create_linear_chain_model</span><span class="p">(),</span> <span class="n">y0</span><span class="o">=</span><span class="p">{</span><span class="s2">"S"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span> <span class="s2">"P"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">})</span>
     <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-22">res = unwrap(
+<div class="clipboard-copy-txt" id="cell-22">res = (
     Simulator(create_linear_chain_model(), y0={"S": 2.0, "P": 0.0})
     .simulate(10)
     .get_result()
+    .unwrap_or_err()
 )</div>
 </div>
 </div>
@@ -4064,8 +4076,11 @@ protocol</div>
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
-    <span class="n">Simulator</span><span class="p">(</span><span class="n">get_linear_chain_2v</span><span class="p">())</span><span class="o">.</span><span class="n">simulate_protocol</span><span class="p">(</span><span class="n">protocol</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Simulator</span><span class="p">(</span><span class="n">get_linear_chain_2v</span><span class="p">())</span>
+    <span class="o">.</span><span class="n">simulate_protocol</span><span class="p">(</span><span class="n">protocol</span><span class="p">)</span>  <span class="c1"># changed here</span>
+    <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span>
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">one_axes</span><span class="p">()</span>
@@ -4074,8 +4089,11 @@ protocol</div>
 <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"time / a.u."</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"concentration / a.u."</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-28">variables, fluxes = unwrap(
-    Simulator(get_linear_chain_2v()).simulate_protocol(protocol).get_result()
+<div class="clipboard-copy-txt" id="cell-28">variables, fluxes = (
+    Simulator(get_linear_chain_2v())
+    .simulate_protocol(protocol)  # changed here
+    .get_result()
+    .unwrap_or_err()
 )
 
 fig, ax = plot.one_axes()
@@ -4121,13 +4139,14 @@ plt.show()</div>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 
-<span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span><span class="n">get_linear_chain_2v</span><span class="p">())</span>
     <span class="o">.</span><span class="n">simulate_protocol_time_course</span><span class="p">(</span>
         <span class="n">protocol</span><span class="p">,</span>
         <span class="n">time_points</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">101</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
     <span class="p">)</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span>
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">()</span>
@@ -4138,13 +4157,14 @@ plt.show()</div>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-29">import numpy as np
 
-variables, fluxes = unwrap(
+variables, fluxes = (
     Simulator(get_linear_chain_2v())
     .simulate_protocol_time_course(
         protocol,
         time_points=np.linspace(0, 6, 101, dtype=float),
     )
     .get_result()
+    .unwrap_or_err()
 )
 
 fig, ax = plt.subplots()
@@ -4201,20 +4221,22 @@ plt.show()</div>
 </div>
 </clipboard-copy>
 </div>
-<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="p">(</span>
     <span class="n">Simulator</span><span class="p">(</span><span class="n">get_linear_chain_2v</span><span class="p">())</span>  <span class="c1"># optionally supply initial conditions</span>
     <span class="o">.</span><span class="n">simulate_to_steady_state</span><span class="p">()</span>
     <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="p">)</span>
 
 <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">bars</span><span class="p">(</span><span class="n">variables</span><span class="p">)</span>
 <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"Variable / a.u."</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"Concentration / a.u."</span><span class="p">)</span>
 <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-30">variables, fluxes = unwrap(
+<div class="clipboard-copy-txt" id="cell-30">variables, fluxes = (
     Simulator(get_linear_chain_2v())  # optionally supply initial conditions
     .simulate_to_steady_state()
     .get_result()
+    .unwrap_or_err()
 )
 
 fig, ax = plot.bars(variables)
@@ -4271,13 +4293,13 @@ plt.show()</div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">sbml</span>
 
 <span class="n">model</span> <span class="o">=</span> <span class="n">sbml</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">"assets"</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"00001-sbml-l3v2.xml"</span><span class="p">)</span>
-<span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span>
+<span class="n">variables</span><span class="p">,</span> <span class="n">fluxes</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
 <span class="n">_</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span><span class="n">variables</span><span class="p">)</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-31">from mxlpy import sbml
 
 model = sbml.read(Path("assets") / "00001-sbml-l3v2.xml")
-variables, fluxes = unwrap(Simulator(model).simulate(10).get_result())
+variables, fluxes = Simulator(model).simulate(10).get_result().unwrap_or_err()
 _ = plot.lines(variables)</div>
 </div>
 </div>
@@ -4444,10 +4466,16 @@ This is why the methods <code>get_args</code>, <code>get_fluxes</code> etc. also
 <span class="p">)</span>
 
 <span class="c1"># During simulations the time is automatically taken care of</span>
-<span class="n">_</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="n">t_end</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
-    <span class="n">xlabel</span><span class="o">=</span><span class="s2">"time / a.u."</span><span class="p">,</span>
-    <span class="n">ylabel</span><span class="o">=</span><span class="s2">"amount / a.u."</span><span class="p">,</span>
-    <span class="n">title</span><span class="o">=</span><span class="s2">"Time-dependent reaction"</span><span class="p">,</span>
+<span class="n">_</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Simulator</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+    <span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="n">t_end</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+    <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+        <span class="n">xlabel</span><span class="o">=</span><span class="s2">"time / a.u."</span><span class="p">,</span>
+        <span class="n">ylabel</span><span class="o">=</span><span class="s2">"amount / a.u."</span><span class="p">,</span>
+        <span class="n">title</span><span class="o">=</span><span class="s2">"Time-dependent reaction"</span><span class="p">,</span>
+    <span class="p">)</span>
 <span class="p">)</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-33">def time_dependency() -&gt; Model:
@@ -4476,10 +4504,16 @@ print_annotated(
 )
 
 # During simulations the time is automatically taken care of
-_ = unwrap(Simulator(model).simulate(t_end=10).get_result()).variables.plot(
-    xlabel="time / a.u.",
-    ylabel="amount / a.u.",
-    title="Time-dependent reaction",
+_ = (
+    Simulator(model)
+    .simulate(t_end=10)
+    .get_result()
+    .unwrap_or_err()
+    .variables.plot(
+        xlabel="time / a.u.",
+        ylabel="amount / a.u.",
+        title="Time-dependent reaction",
+    )
 )</div>
 </div>
 </div>

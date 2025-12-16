@@ -1416,12 +1416,12 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">fns</span><span class="p">,</span> <span class="n">plot</span><span class="p">,</span> <span class="n">unwrap</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">fns</span><span class="p">,</span> <span class="n">plot</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.identify</span><span class="w"> </span><span class="kn">import</span> <span class="n">profile_likelihood</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-1">import numpy as np
 
-from mxlpy import Model, Simulator, fns, plot, unwrap
+from mxlpy import Model, Simulator, fns, plot
 from mxlpy.identify import profile_likelihood</div>
 </div>
 </div>
@@ -1478,7 +1478,7 @@ from mxlpy.identify import profile_likelihood</div>
     <span class="p">)</span>
 
 
-<span class="n">data</span> <span class="o">=</span> <span class="n">unwrap</span><span class="p">(</span><span class="n">Simulator</span><span class="p">(</span><span class="n">sir</span><span class="p">())</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">())</span><span class="o">.</span><span class="n">variables</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">sir</span><span class="p">())</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span><span class="o">.</span><span class="n">variables</span>
 <span class="n">_</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 </pre></div>
 <div class="clipboard-copy-txt" id="cell-2">def sir() -&gt; Model:
@@ -1501,7 +1501,7 @@ from mxlpy.identify import profile_likelihood</div>
     )
 
 
-data = unwrap(Simulator(sir()).simulate(100).get_result()).variables
+data = Simulator(sir()).simulate(100).get_result().unwrap_or_err().variables
 _ = plot.lines(data)</div>
 </div>
 </div>
@@ -1602,7 +1602,7 @@ plot.show()</div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>beta:  20%|██        | 2/10 [00:02&lt;00:09,  1.20s/it]</pre>
+<pre>beta:  20%|██        | 2/10 [00:02&lt;00:09,  1.21s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
@@ -1620,43 +1620,43 @@ plot.show()</div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>beta:  50%|█████     | 5/10 [00:06&lt;00:06,  1.37s/it]</pre>
+<pre>beta:  50%|█████     | 5/10 [00:06&lt;00:07,  1.41s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>beta:  60%|██████    | 6/10 [00:08&lt;00:05,  1.40s/it]</pre>
+<pre>beta:  60%|██████    | 6/10 [00:08&lt;00:05,  1.43s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>beta:  70%|███████   | 7/10 [00:09&lt;00:04,  1.43s/it]</pre>
+<pre>beta:  70%|███████   | 7/10 [00:09&lt;00:04,  1.44s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>beta:  80%|████████  | 8/10 [00:10&lt;00:02,  1.41s/it]</pre>
+<pre>beta:  80%|████████  | 8/10 [00:11&lt;00:02,  1.45s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>beta:  90%|█████████ | 9/10 [00:12&lt;00:01,  1.40s/it]</pre>
+<pre>beta:  90%|█████████ | 9/10 [00:12&lt;00:01,  1.46s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>beta: 100%|██████████| 10/10 [00:13&lt;00:00,  1.43s/it]</pre>
+<pre>beta: 100%|██████████| 10/10 [00:14&lt;00:00,  1.53s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>beta: 100%|██████████| 10/10 [00:13&lt;00:00,  1.38s/it]</pre>
+<pre>beta: 100%|██████████| 10/10 [00:14&lt;00:00,  1.43s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">

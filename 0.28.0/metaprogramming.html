@@ -1558,8 +1558,10 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">example_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_linear_chain_1v</span><span class="p">,</span> <span class="n">get_linear_chain_2v</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.meta</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">generate_latex_code</span><span class="p">,</span>
+    <span class="n">generate_model_code_jl</span><span class="p">,</span>
     <span class="n">generate_model_code_py</span><span class="p">,</span>
     <span class="n">generate_model_code_rs</span><span class="p">,</span>
+    <span class="n">generate_model_code_ts</span><span class="p">,</span>
     <span class="n">generate_mxlpy_code</span><span class="p">,</span>
     <span class="n">to_tex_export</span><span class="p">,</span>
 <span class="p">)</span>
@@ -1567,8 +1569,10 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <div class="clipboard-copy-txt" id="cell-1">from example_models import get_linear_chain_1v, get_linear_chain_2v
 from mxlpy.meta import (
     generate_latex_code,
+    generate_model_code_jl,
     generate_model_code_py,
     generate_model_code_rs,
+    generate_model_code_ts,
     generate_mxlpy_code,
     to_tex_export,
 )</div>
@@ -1674,8 +1678,8 @@ def create_model() -&gt; Model:
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<p><code>mxlpy</code> can also generate a generic python function from the source code.<br/>
-The plan here is to generalise this to be able to export models into other programming languages as well.</p>
+<p><code>mxlpy</code> can also generate normal functions from the source code.<br/>
+Currently, export to <code>Python</code>, <code>Rust</code>, <code>TypeScript</code> and <code>Julia</code> are supported.</p>
 </div>
 </div>
 </div>
@@ -1784,17 +1788,6 @@ def model(time: float, variables: Iterable[float]) -&gt; Iterable[float]:
 </div>
 </div>
 </div>
-</div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
-<div class="jp-Cell-inputWrapper" tabindex="0">
-<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
-</div>
-<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
-</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<h3 id="free-parameters">Free parameters<a class="anchor-link" href="#free-parameters">¶</a></h3><p>In case you want to perform further analyses like parameter scans, you can also define free parameters which then will be additional model inputs</p>
-</div>
-</div>
-</div>
 </div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
 <div class="jp-Cell jp-CodeCell jp-Notebook-cell">
 <div class="jp-Cell-inputWrapper" tabindex="0">
@@ -1814,9 +1807,122 @@ def model(time: float, variables: Iterable[float]) -&gt; Iterable[float]:
 </div>
 </clipboard-copy>
 </div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">generate_model_code_ts</span><span class="p">(</span><span class="n">get_linear_chain_2v</span><span class="p">()))</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-5">print(generate_model_code_ts(get_linear_chain_2v()))</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>function model(time: number, variables: number[]) {
+    let [x, y] = variables;
+    let k1: number = 1.0;
+    let k2: number = 2.0;
+    let k3: number = 1.0;
+    let v1: number = k1;
+    let v2: number = k2*x;
+    let v3: number = k3*y;
+    let dxdt: number = v1 - v2;
+    let dydt: number = v2 - v3;
+    return [dxdt, dydt];
+};
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [6]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-6">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">generate_model_code_jl</span><span class="p">(</span><span class="n">get_linear_chain_2v</span><span class="p">()))</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-6">print(generate_model_code_jl(get_linear_chain_2v()))</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>function model(time, variables)
+    x, y = *variables
+    k = 1.0
+    k = 2.0
+    k = 1.0
+    k = k1
+    k = k2 .* x
+    k = k3 .* y
+    k = v1 - v2
+    k = v2 - v3
+    return dxdt, dydt
+end
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h3 id="free-parameters">Free parameters<a class="anchor-link" href="#free-parameters">¶</a></h3><p>In case you want to perform further analyses like parameter scans, you can also define free parameters which then will be additional model inputs</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [7]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-7">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">generate_model_code_py</span><span class="p">(</span><span class="n">get_linear_chain_2v</span><span class="p">(),</span> <span class="n">free_parameters</span><span class="o">=</span><span class="p">[</span><span class="s2">"k1"</span><span class="p">]))</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-5">print(generate_model_code_py(get_linear_chain_2v(), free_parameters=["k1"]))</div>
+<div class="clipboard-copy-txt" id="cell-7">print(generate_model_code_py(get_linear_chain_2v(), free_parameters=["k1"]))</div>
 </div>
 </div>
 </div>
@@ -1854,10 +1960,10 @@ def model(time: float, variables: Iterable[float], k1: float) -&gt; Iterable[flo
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [6]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [8]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-6">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-8">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -1869,7 +1975,7 @@ def model(time: float, variables: Iterable[float], k1: float) -&gt; Iterable[flo
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">generate_model_code_rs</span><span class="p">(</span><span class="n">get_linear_chain_2v</span><span class="p">(),</span> <span class="n">free_parameters</span><span class="o">=</span><span class="p">[</span><span class="s2">"k1"</span><span class="p">]))</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-6">print(generate_model_code_rs(get_linear_chain_2v(), free_parameters=["k1"]))</div>
+<div class="clipboard-copy-txt" id="cell-8">print(generate_model_code_rs(get_linear_chain_2v(), free_parameters=["k1"]))</div>
 </div>
 </div>
 </div>
@@ -1917,10 +2023,10 @@ def model(time: float, variables: Iterable[float], k1: float) -&gt; Iterable[flo
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [7]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [9]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-7">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-9">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -1932,7 +2038,7 @@ def model(time: float, variables: Iterable[float], k1: float) -&gt; Iterable[flo
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">generate_latex_code</span><span class="p">(</span><span class="n">get_linear_chain_1v</span><span class="p">()))</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-7">print(generate_latex_code(get_linear_chain_1v()))</div>
+<div class="clipboard-copy-txt" id="cell-9">print(generate_latex_code(get_linear_chain_1v()))</div>
 </div>
 </div>
 </div>
@@ -2015,10 +2121,10 @@ def model(time: float, variables: Iterable[float], k1: float) -&gt; Iterable[flo
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [8]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [10]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-8">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-10">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2033,7 +2139,7 @@ def model(time: float, variables: Iterable[float], k1: float) -&gt; Iterable[flo
 <span class="c1"># Optionally add glossary here</span>
 <span class="n">tex</span> <span class="o">=</span> <span class="n">tex</span><span class="o">.</span><span class="n">rename_with_glossary</span><span class="p">({</span><span class="s2">"x"</span><span class="p">:</span> <span class="sa">r</span><span class="s2">"\mu"</span><span class="p">})</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-8">tex = to_tex_export(get_linear_chain_1v())
+<div class="clipboard-copy-txt" id="cell-10">tex = to_tex_export(get_linear_chain_1v())
 
 # Optionally add glossary here
 tex = tex.rename_with_glossary({"x": r"\mu"})</div>
@@ -2048,10 +2154,10 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [9]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [11]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-9">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-11">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2063,7 +2169,7 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">tex</span><span class="o">.</span><span class="n">export_variables</span><span class="p">())</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-9">print(tex.export_variables())</div>
+<div class="clipboard-copy-txt" id="cell-11">print(tex.export_variables())</div>
 </div>
 </div>
 </div>
@@ -2095,10 +2201,10 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [10]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [12]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-10">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-12">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2110,7 +2216,7 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">tex</span><span class="o">.</span><span class="n">export_parameters</span><span class="p">())</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-10">print(tex.export_parameters())</div>
+<div class="clipboard-copy-txt" id="cell-12">print(tex.export_parameters())</div>
 </div>
 </div>
 </div>
@@ -2143,10 +2249,10 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [11]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [13]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-11">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-13">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2158,7 +2264,7 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">tex</span><span class="o">.</span><span class="n">export_derived</span><span class="p">(</span><span class="n">long_name_cutoff</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-11">print(tex.export_derived(long_name_cutoff=10))</div>
+<div class="clipboard-copy-txt" id="cell-13">print(tex.export_derived(long_name_cutoff=10))</div>
 </div>
 </div>
 </div>
@@ -2185,10 +2291,10 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [12]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [14]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-12">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-14">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2200,7 +2306,7 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">tex</span><span class="o">.</span><span class="n">export_reactions</span><span class="p">(</span><span class="n">long_name_cutoff</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-12">print(tex.export_reactions(long_name_cutoff=10))</div>
+<div class="clipboard-copy-txt" id="cell-14">print(tex.export_reactions(long_name_cutoff=10))</div>
 </div>
 </div>
 </div>
@@ -2228,10 +2334,10 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [13]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [15]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-13">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-15">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2243,7 +2349,7 @@ tex = tex.rename_with_glossary({"x": r"\mu"})</div>
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">tex</span><span class="o">.</span><span class="n">export_diff_eqs</span><span class="p">(</span><span class="n">long_name_cutoff</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-13">print(tex.export_diff_eqs(long_name_cutoff=10))</div>
+<div class="clipboard-copy-txt" id="cell-15">print(tex.export_diff_eqs(long_name_cutoff=10))</div>
 </div>
 </div>
 </div>
@@ -2299,10 +2405,10 @@ That way, you can still re-use the remainder of the it.</p>
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [14]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [16]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-14">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-16">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2324,7 +2430,7 @@ That way, you can still re-use the remainder of the it.</p>
 <span class="n">tex</span> <span class="o">=</span> <span class="n">to_tex_export</span><span class="p">(</span><span class="n">Model</span><span class="p">()</span><span class="o">.</span><span class="n">add_derived</span><span class="p">(</span><span class="s2">"d1"</span><span class="p">,</span> <span class="n">broken_fn</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[]))</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">tex</span><span class="o">.</span><span class="n">export_derived</span><span class="p">(</span><span class="n">long_name_cutoff</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-14">import numpy as np
+<div class="clipboard-copy-txt" id="cell-16">import numpy as np
 
 from mxlpy import Model
 
@@ -2380,10 +2486,10 @@ print(tex.export_derived(long_name_cutoff=10))</div>
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [15]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [17]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-15">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-17">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2398,7 +2504,7 @@ print(tex.export_derived(long_name_cutoff=10))</div>
 <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">"Errored:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-15">try:
+<div class="clipboard-copy-txt" id="cell-17">try:
     generate_model_code_py(Model().add_derived("d1", broken_fn, args=[]))
 except ValueError as e:
     print("Errored:", e)</div>
@@ -2433,10 +2539,10 @@ except ValueError as e:
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [16]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [18]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-16">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-18">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2451,7 +2557,7 @@ except ValueError as e:
 <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">"Errored:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-16">try:
+<div class="clipboard-copy-txt" id="cell-18">try:
     generate_model_code_rs(Model().add_derived("d1", broken_fn, args=[]))
 except ValueError as e:
     print("Errored:", e)</div>
@@ -2489,7 +2595,7 @@ except ValueError as e:
 <div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="CodeMirror cm-s-jupyter">
 <div class="zeroclipboard-container">
-<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-17">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-19">
 <div>
 <span class="notice" hidden="">Copied!</span>
 <svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
@@ -2501,7 +2607,7 @@ except ValueError as e:
 </div>
 <div class="highlight-ipynb hl-python"><pre><span></span>
 </pre></div>
-<div class="clipboard-copy-txt" id="cell-17"></div>
+<div class="clipboard-copy-txt" id="cell-19"></div>
 </div>
 </div>
 </div>
