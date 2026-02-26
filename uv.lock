@@ -3179,16 +3179,16 @@ wheels = [
 
 [[package]]
 name = "sympy2jax"
-version = "0.0.7"
+version = "0.0.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "equinox" },
     { name = "jax" },
     { name = "sympy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/18/9c/a0d8c5e5532c76d0d7dc4b5d8e0f90162f8dd0235226394bcb621f619812/sympy2jax-0.0.7.tar.gz", hash = "sha256:e89782a86bdcb61b4fbb64902340843f33a910b464c6d42cf6c6c38954f6b454", size = 9619, upload-time = "2025-04-23T07:28:25.379Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/69/f07c85d10904e24eac38e6563abfb33835c6c1f958693d14cf999f0de24e/sympy2jax-0.0.8.tar.gz", hash = "sha256:17bacf5503a3813011dce97c3b507bc7f66cd550dd677b0b7b1074e13f54a1d7", size = 9676, upload-time = "2026-02-04T22:23:24.676Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/5a/70cfea59ecbc1596c950c90091915083fbf34a1632322228612e384c0627/sympy2jax-0.0.7-py3-none-any.whl", hash = "sha256:d72830bd8c4cd04b60be9cc27190bd1caae934dec45f6df9430fb728813a29fd", size = 13729, upload-time = "2025-04-23T07:28:24.504Z" },
+    { url = "https://files.pythonhosted.org/packages/10/06/7df763dd5f981edf68ad1c371468f0bbf0673f4fc9af82f5fd8a4936fd7d/sympy2jax-0.0.8-py3-none-any.whl", hash = "sha256:da86c3915c69142354d04714ae449a56b4896b043f789bce839fed3d01068745", size = 13782, upload-time = "2026-02-04T22:23:23.292Z" },
 ]
 
 [[package]]
