@@ -3141,14 +3141,14 @@ wheels = [
 
 [[package]]
 name = "ssort"
-version = "0.14.0"
+version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pathspec" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c8/47/34b4901b546c923f602aef2c10b3b81a08b1028c7d0bc4b5b9ea740cb3ac/ssort-0.14.0.tar.gz", hash = "sha256:4ab15d04d94012158f2eac43478f61e08befb53809c78324921dcf872d7172ef", size = 22645, upload-time = "2024-11-04T22:10:56.092Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/c0/696b3c20b58f4a536845bbfded3be1d7a2b99e622ac51755e402c43729f0/ssort-0.16.0.tar.gz", hash = "sha256:1e7222cf7ffbbb0523d88fe1931a36b0bbd7f478d2964feb25be3621c52a981f", size = 23252, upload-time = "2025-12-07T02:20:00.092Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6e/77/59c5c354c0b62b68b2cdabee4e2d484f00e333b26f3452221924397c84b2/ssort-0.14.0-py3-none-any.whl", hash = "sha256:31864909eb7b4a02b14fb52d1918315b5fb8a8124b5d721b0adebe9c0d293219", size = 26865, upload-time = "2024-11-04T22:10:54.336Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/45/a23b1c13f2416e060af4d90e8407a350d5da7ad1ccf33e6eb9cbaaf7b363/ssort-0.16.0-py3-none-any.whl", hash = "sha256:013d57d4a0e4bde896afbcaa1e9e98a6829bf1b63ddcccecfcb7e64336921bba", size = 27683, upload-time = "2025-12-07T02:19:59.139Z" },
 ]
 
 [[package]]
