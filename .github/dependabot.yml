@@ -5,7 +5,13 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "sunday"
+      time: "09:00"
     assignees:
       - "marvinvanaalst"
     commit-message:
-      prefix: "dev: chg: "
+      prefix: "bot: dep: "
+    groups:
+      dependencies:
+        patterns:
+          - "*"
