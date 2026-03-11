@@ -37,6 +37,21 @@ __all__ = [
 ]
 
 
+def _normalise_protocol_index(protocol: pd.DataFrame) -> pd.DataFrame:
+    if isinstance(protocol.index, pd.TimedeltaIndex):
+        return protocol
+
+    protocol = protocol.copy()
+    if isinstance(protocol.index, pd.DatetimeIndex):
+        _LOGGER.warning(
+            "Got DatetimeIndex for protocol. Assuming seconds as simulation time."
+        )
+        protocol.index = protocol.index - protocol.index[0].floor(freq="Min")
+    if isinstance(protocol.index, pd.Index):
+        protocol.index = pd.to_timedelta(protocol.index, unit="s")
+    return protocol
+
+
 @dataclass(
     init=False,
     slots=True,
@@ -393,6 +408,8 @@ class Simulator:
         if len(self._errors) > 0:
             return self
 
+        protocol = _normalise_protocol_index(protocol)
+
         t_start = (
             0.0 if (variables := self.variables) is None else variables[-1].index[-1]
         )
@@ -435,6 +452,8 @@ class Simulator:
         """
         if len(self._errors) > 0:
             return self
+
+        protocol = _normalise_protocol_index(protocol)
 
         t_start = (
             0.0 if (variables := self.variables) is None else variables[-1].index[-1]

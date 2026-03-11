@@ -4580,8 +4580,8 @@ packages:
   requires_python: '>=3.8'
 - pypi: ./
   name: mxlpy
-  version: 0.30.0
-  sha256: fa4e74b29373faa609d47930850f826de917ed93e58c88f8132a0a021cf675c1
+  version: 0.31.0
+  sha256: 71b211e7d895187f583f4562a051087800e75d7488c85c52f29b09a69d32aa68
   requires_dist:
   - dill>=0.3.9
   - latexify-py>=0.4.4

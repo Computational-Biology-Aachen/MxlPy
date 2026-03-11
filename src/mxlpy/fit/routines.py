@@ -70,7 +70,7 @@ from mxlpy.minimizers.abstract import Bounds, LossFn, OptimisationState
 from mxlpy.minimizers.abstract import Residual as MinimizerResidual
 from mxlpy.model import Model
 from mxlpy.simulation import Simulation
-from mxlpy.simulator import Simulator
+from mxlpy.simulator import Simulator, _normalise_protocol_index
 from mxlpy.types import Result, cast
 
 if TYPE_CHECKING:
@@ -400,6 +400,7 @@ def protocol_time_course(
         model = deepcopy(model)
     p_names = model.get_parameter_names()
     v_names = model.get_variable_names()
+    protocol = _normalise_protocol_index(protocol)
 
     fn: MinimizerResidual = partial(
         residual_fn,
@@ -737,6 +738,7 @@ def ensemble_protocol_time_course(
         Ensemble fit object
 
     """
+    protocol = _normalise_protocol_index(protocol)
     return EnsembleFit(
         [
             fit
@@ -809,6 +811,7 @@ def carousel_protocol_time_course(
         Ensemble fit object
 
     """
+    protocol = _normalise_protocol_index(protocol)
     return ensemble_protocol_time_course(
         carousel.variants,
         p0=p0,
@@ -1061,7 +1064,9 @@ def joint_protocol_time_course(
                 y0=i.y0 if i.y0 is not None else y0,
                 integrator=i.integrator if i.integrator is not None else integrator,
                 loss_fn=i.loss_fn if i.loss_fn is not None else loss_fn,
-                protocol=i.protocol,
+                protocol=_normalise_protocol_index(protocol)
+                if (protocol := i.protocol) is not None
+                else None,
                 p_names=[j for j in p0 if j in p_names],
                 v_names=[j for j in p0 if j in v_names],
                 standard_scale=standard_scale,
