@@ -11,13 +11,23 @@ from typing import TYPE_CHECKING
 import pandas as pd
 from wadler_lindig import pformat
 
-from mxlpy import parallel, scan
+import mxlpy.fit.abstract
+from mxlpy import fit, parallel, scan
+from mxlpy.fit import losses
+from mxlpy.fit.residuals import (
+    protocol_time_course_residual,
+    steady_state_residual,
+    time_course_residual,
+)
+from mxlpy.integrators import IntegratorType
+from mxlpy.simulator import _normalise_protocol_index
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from mxlpy import Model
     from mxlpy.integrators import IntegratorType
+    from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
     from mxlpy.simulation import Simulation
     from mxlpy.types import Array, RateFn
 
@@ -26,6 +36,9 @@ __all__ = [
     "CarouselSteadyState",
     "CarouselTimeCourse",
     "ReactionTemplate",
+    "carousel_protocol_time_course",
+    "carousel_steady_state",
+    "carousel_time_course",
 ]
 
 
@@ -264,3 +277,236 @@ class Carousel:
             carousel=self.variants,
             results=results,
         )
+
+
+###############################################################################
+# Ensemble / carousel
+# This is multi-model, single data fitting, where the models share parameters
+###############################################################################
+
+
+def carousel_steady_state(
+    carousel: Carousel,
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    y0: dict[str, float] | None = None,
+    residual_fn: mxlpy.fit.abstract.FitResidual = steady_state_residual,
+    integrator: IntegratorType | None = None,
+    loss_fn: LossFn = losses.rmse,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+) -> mxlpy.fit.abstract.EnsembleFit:
+    """Fit model parameters to steady-state experimental data over a carousel.
+
+    Examples
+    --------
+        >>> fit.carousel_steady_state(
+        ...     carousel,
+        ...     p0={
+        ...         "beta": 0.1,
+        ...         "gamma": 0.1,
+        ...     },
+        ...     data=data,
+        ...     minimizer=fit.LocalScipyMinimizer(),
+        ... )
+
+    Parameters
+    ----------
+    carousel
+        Model carousel to fit
+    p0
+        Initial parameter guesses as {parameter_name: value}
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+
+    Returns
+    -------
+        Ensemble fit object
+
+    """
+    return fit.ensemble_steady_state(
+        carousel.variants,
+        p0=p0,
+        data=data,
+        minimizer=minimizer,
+        y0=y0,
+        residual_fn=residual_fn,
+        integrator=integrator,
+        loss_fn=loss_fn,
+        bounds=bounds,
+        as_deepcopy=as_deepcopy,
+    )
+
+
+def carousel_time_course(
+    carousel: Carousel,
+    *,
+    p0: dict[str, float],
+    data: pd.DataFrame,
+    minimizer: MinimizerProtocol,
+    y0: dict[str, float] | None = None,
+    residual_fn: mxlpy.fit.abstract.FitResidual = time_course_residual,
+    integrator: IntegratorType | None = None,
+    loss_fn: LossFn = losses.rmse,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+) -> mxlpy.fit.abstract.EnsembleFit:
+    """Fit model parameters to time course of experimental data over a carousel.
+
+    Time points are taken from the data.
+
+    Examples
+    --------
+        >>> fit.carousel_time_course(
+        ...     carousel,
+        ...     p0={
+        ...         "beta": 0.1,
+        ...         "gamma": 0.1,
+        ...     },
+        ...     data=data,
+        ...     minimizer=fit.LocalScipyMinimizer(),
+        ... )
+
+    Parameters
+    ----------
+    carousel
+        Model carousel to fit
+    p0
+        Initial parameter guesses as {parameter_name: value}
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+
+    Returns
+    -------
+        Ensemble fit object
+
+    """
+    return fit.ensemble_time_course(
+        carousel.variants,
+        p0=p0,
+        data=data,
+        minimizer=minimizer,
+        y0=y0,
+        residual_fn=residual_fn,
+        integrator=integrator,
+        loss_fn=loss_fn,
+        bounds=bounds,
+        as_deepcopy=as_deepcopy,
+    )
+
+
+def carousel_protocol_time_course(
+    carousel: Carousel,
+    *,
+    p0: dict[str, float],
+    data: pd.DataFrame,
+    minimizer: MinimizerProtocol,
+    protocol: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    residual_fn: mxlpy.fit.abstract.FitResidual = protocol_time_course_residual,
+    integrator: IntegratorType | None = None,
+    loss_fn: LossFn = losses.rmse,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+) -> mxlpy.fit.abstract.EnsembleFit:
+    """Fit model parameters to time course of experimental data over a protocol.
+
+    Time points of protocol time course are taken from the data.
+
+    Examples
+    --------
+        >>> fit.carousel_protocol_time_course(
+        ...     carousel,
+        ...     p0={
+        ...         "beta": 0.1,
+        ...         "gamma": 0.1,
+        ...     },
+        ...     protocol=protocol,
+        ...     data=data,
+        ...     minimizer=fit.LocalScipyMinimizer(),
+        ... )
+
+    Parameters
+    ----------
+    carousel
+        Model carousel to fit
+    p0
+        Initial parameter guesses as {parameter_name: value}
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+
+    Returns
+    -------
+        Ensemble fit object
+
+    """
+    protocol = _normalise_protocol_index(protocol)
+    return fit.ensemble_protocol_time_course(
+        carousel.variants,
+        p0=p0,
+        data=data,
+        minimizer=minimizer,
+        protocol=protocol,
+        y0=y0,
+        residual_fn=residual_fn,
+        integrator=integrator,
+        loss_fn=loss_fn,
+        bounds=bounds,
+        as_deepcopy=as_deepcopy,
+    )

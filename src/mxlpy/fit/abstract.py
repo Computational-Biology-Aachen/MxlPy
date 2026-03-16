@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Protocol
 
+import pandas as pd
 from wadler_lindig import pformat
 
 from mxlpy.model import Model
@@ -16,6 +17,7 @@ __all__ = [
     "Fit",
     "FitResidual",
     "FitSettings",
+    "GroupFit",
     "InitialGuess",
     "JointFit",
     "LOGGER",
@@ -23,8 +25,6 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    import pandas as pd
-
     from mxlpy.integrators.abstract import IntegratorType
     from mxlpy.minimizers.abstract import LossFn
     from mxlpy.model import Model
@@ -132,6 +132,25 @@ class Fit:
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
+
+
+@dataclass
+class GroupFit:
+    """Result of a carousel fit operation."""
+
+    fits: list[Fit]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def get_losses(self) -> pd.Series:
+        """Get losses of all fits."""
+        return pd.Series({i: f.loss for i, f in enumerate(self.fits)})
+
+    def get_best_fit(self) -> Fit:
+        """Get the best fit from the carousel."""
+        return min(self.fits, key=lambda x: x.loss)
 
 
 @dataclass

@@ -39,7 +39,11 @@ Loss functions
 
 """
 
-# Convenience imports to enable fit.time_course(fit.LocalScipyMinimizer) pattern
+from mxlpy.carousel import (
+    carousel_protocol_time_course,
+    carousel_steady_state,
+    carousel_time_course,
+)
 from mxlpy.minimizers import (
     Bounds,
     GlobalScipyMinimizer,
@@ -49,6 +53,19 @@ from mxlpy.minimizers import (
     Residual,
 )
 
+from ._ensemble import (
+    ensemble_protocol_time_course,
+    ensemble_steady_state,
+    ensemble_time_course,
+)
+from ._group import group_protocol_time_course, group_steady_state, group_time_course
+from ._joint import (
+    joint_protocol_time_course,
+    joint_steady_state,
+    joint_time_course,
+)
+from ._joint_mixed import joint_mixed
+from ._single import protocol_time_course, steady_state, time_course
 from .abstract import (
     EnsembleFit,
     Fit,
@@ -65,26 +82,13 @@ from .losses import (
     mean_squared_logarithmic,
     rmse,
 )
-from .routines import (
-    carousel_protocol_time_course,
-    carousel_steady_state,
-    carousel_time_course,
-    ensemble_protocol_time_course,
-    ensemble_steady_state,
-    ensemble_time_course,
-    joint_mixed,
-    joint_protocol_time_course,
-    joint_steady_state,
-    joint_time_course,
-    protocol_time_course,
+from .residuals import (
     protocol_time_course_residual,
-    steady_state,
     steady_state_residual,
-    time_course,
     time_course_residual,
 )
 
-__all__ = [
+__all__: list[str] = [
     "Bounds",
     "EnsembleFit",
     "Fit",
@@ -103,6 +107,9 @@ __all__ = [
     "ensemble_protocol_time_course",
     "ensemble_steady_state",
     "ensemble_time_course",
+    "group_protocol_time_course",
+    "group_steady_state",
+    "group_time_course",
     "joint_mixed",
     "joint_protocol_time_course",
     "joint_steady_state",
