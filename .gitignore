@@ -117,3 +117,5 @@ tmp
 
 # copilot
 .github/copilot-instructions.md
+.claude
+CLAUDE.md
