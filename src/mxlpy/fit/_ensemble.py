@@ -41,6 +41,7 @@ def ensemble_steady_state(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    timeout: float | None = None,
 ) -> EnsembleFit:
     """Fit model ensemble parameters to steady-state experimental data.
 
@@ -82,6 +83,8 @@ def ensemble_steady_state(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    timeout
+        Timeout in seconds for each parallel worker
 
     Returns
     -------
@@ -105,6 +108,7 @@ def ensemble_steady_state(
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
+                timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
         ]
@@ -123,6 +127,7 @@ def ensemble_time_course(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    timeout: float | None = None,
 ) -> EnsembleFit:
     """Fit model parameters to time course of experimental data over a carousel.
 
@@ -166,6 +171,8 @@ def ensemble_time_course(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    timeout
+        Timeout in seconds for each parallel worker
 
     Returns
     -------
@@ -189,6 +196,7 @@ def ensemble_time_course(
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
+                timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
         ]
@@ -208,6 +216,7 @@ def ensemble_protocol_time_course(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    timeout: float | None = None,
 ) -> EnsembleFit:
     """Fit model parameters to time course of experimental data over a protocol.
 
@@ -252,6 +261,8 @@ def ensemble_protocol_time_course(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    timeout
+        Timeout in seconds for each parallel worker
 
     Returns
     -------
@@ -277,6 +288,7 @@ def ensemble_protocol_time_course(
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
+                timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
         ]

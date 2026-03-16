@@ -132,6 +132,7 @@ class Carousel:
         *,
         y0: dict[str, float] | None = None,
         integrator: IntegratorType | None = None,
+        timeout: float | None = None,
     ) -> CarouselTimeCourse:
         """Simulate the carousel of models over a time course.
 
@@ -143,6 +144,8 @@ class Carousel:
             Initial values for variables. If None, uses model defaults.
         integrator
             Integrator to use. If None, uses the default integrator.
+        timeout
+            Timeout in seconds for each parallel worker.
 
         """
         results = [
@@ -155,6 +158,7 @@ class Carousel:
                     y0=y0,
                 ),
                 list(enumerate(self.variants)),
+                timeout=timeout,
             )
         ]
 
@@ -169,6 +173,7 @@ class Carousel:
         *,
         y0: dict[str, float] | None = None,
         integrator: IntegratorType | None = None,
+        timeout: float | None = None,
     ) -> CarouselTimeCourse:
         """Simulate the carousel of models over a protocol time course.
 
@@ -180,6 +185,8 @@ class Carousel:
             Initial values for variables. If None, uses model defaults.
         integrator
             Integrator to use. If None, uses the default integrator.
+        timeout
+            Timeout in seconds for each parallel worker.
 
         """
         results = [
@@ -192,6 +199,7 @@ class Carousel:
                     y0=y0,
                 ),
                 list(enumerate(self.variants)),
+                timeout=timeout,
             )
         ]
 
@@ -207,6 +215,7 @@ class Carousel:
         *,
         y0: dict[str, float] | None = None,
         integrator: IntegratorType | None = None,
+        timeout: float | None = None,
     ) -> CarouselTimeCourse:
         """Simulate the carousel of models over a protocol time course.
 
@@ -220,6 +229,8 @@ class Carousel:
             Initial values for variables. If None, uses model defaults.
         integrator
             Integrator to use. If None, uses the default integrator.
+        timeout
+            Timeout in seconds for each parallel worker.
 
         """
         results = [
@@ -233,6 +244,7 @@ class Carousel:
                     y0=y0,
                 ),
                 list(enumerate(self.variants)),
+                timeout=timeout,
             )
         ]
 
@@ -247,6 +259,7 @@ class Carousel:
         y0: dict[str, float] | None = None,
         integrator: IntegratorType | None = None,
         rel_norm: bool = False,
+        timeout: float | None = None,
     ) -> CarouselSteadyState:
         """Simulate the carousel of models to steady state.
 
@@ -258,6 +271,8 @@ class Carousel:
             Integrator to use. If None, uses the default integrator.
         rel_norm
             Whether to use relative norm for steady-state convergence.
+        timeout
+            Timeout in seconds for each parallel worker.
 
         """
         results = [
@@ -270,6 +285,7 @@ class Carousel:
                     y0=y0,
                 ),
                 list(enumerate(self.variants)),
+                timeout=timeout,
             )
         ]
 
@@ -297,6 +313,7 @@ def carousel_steady_state(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    timeout: float | None = None,
 ) -> mxlpy.fit.abstract.EnsembleFit:
     """Fit model parameters to steady-state experimental data over a carousel.
 
@@ -338,6 +355,8 @@ def carousel_steady_state(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    timeout
+        Timeout in seconds for each parallel worker
 
     Returns
     -------
@@ -355,6 +374,7 @@ def carousel_steady_state(
         loss_fn=loss_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
+        timeout=timeout,
     )
 
 
@@ -370,6 +390,7 @@ def carousel_time_course(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    timeout: float | None = None,
 ) -> mxlpy.fit.abstract.EnsembleFit:
     """Fit model parameters to time course of experimental data over a carousel.
 
@@ -413,6 +434,8 @@ def carousel_time_course(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    timeout
+        Timeout in seconds for each parallel worker
 
     Returns
     -------
@@ -430,6 +453,7 @@ def carousel_time_course(
         loss_fn=loss_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
+        timeout=timeout,
     )
 
 
@@ -446,6 +470,7 @@ def carousel_protocol_time_course(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    timeout: float | None = None,
 ) -> mxlpy.fit.abstract.EnsembleFit:
     """Fit model parameters to time course of experimental data over a protocol.
 
@@ -490,6 +515,8 @@ def carousel_protocol_time_course(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    timeout
+        Timeout in seconds for each parallel worker
 
     Returns
     -------
@@ -509,4 +536,5 @@ def carousel_protocol_time_course(
         loss_fn=loss_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
+        timeout=timeout,
     )

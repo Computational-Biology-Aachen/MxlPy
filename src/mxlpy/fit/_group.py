@@ -134,12 +134,13 @@ def group_steady_state(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    timeout: float | None = None,
 ) -> GroupFit:
-    """Fit model ensemble parameters to steady-state experimental data.
+    """Fit model parameters to steady-state experimental data.
 
     Examples
     --------
-        >>> fit.ensemble_steady_state(
+        >>> fit.group_steady_state(
         ...     model_fn(),
         ...     data=res.iloc[-1],
         ...     p0=p0_guesses,
@@ -172,10 +173,12 @@ def group_steady_state(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    timeout
+        Timeout in seconds for each parallel worker
 
     Returns
     -------
-        Ensemble fit object
+        Group fit object
 
     """
     return GroupFit(
@@ -195,6 +198,7 @@ def group_steady_state(
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(_iterrows(p0)),
+                timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
         ]
@@ -213,6 +217,7 @@ def group_time_course(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    timeout: float | None = None,
 ) -> GroupFit:
     """Fit model parameters to time course of experimental data over a carousel.
 
@@ -220,7 +225,7 @@ def group_time_course(
 
     Examples
     --------
-        >>> fit.ensemble_steady_state(
+        >>> fit.group_steady_state(
         ...     model_fn(),
         ...     data=res.iloc[-1],
         ...     p0=p0_guesses,
@@ -253,10 +258,12 @@ def group_time_course(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    timeout
+        Timeout in seconds for each parallel worker
 
     Returns
     -------
-        Ensemble fit object
+        Group fit object
 
     """
     return GroupFit(
@@ -276,6 +283,7 @@ def group_time_course(
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(_iterrows(p0)),
+                timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
         ]
@@ -295,6 +303,7 @@ def group_protocol_time_course(
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    timeout: float | None = None,
 ) -> GroupFit:
     """Fit model parameters to time course of experimental data over a protocol.
 
@@ -312,8 +321,8 @@ def group_protocol_time_course(
 
     Parameters
     ----------
-    ensemble
-        Model ensemble: value}
+    model
+        Model
     p0
         initial parameter guess
     data
@@ -336,10 +345,12 @@ def group_protocol_time_course(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    timeout
+        Timeout in seconds for each parallel worker
 
     Returns
     -------
-        Ensemble fit object
+        Group fit object
 
     """
     protocol = _normalise_protocol_index(protocol)
@@ -361,6 +372,7 @@ def group_protocol_time_course(
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(_iterrows(p0)),
+                timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
         ]
