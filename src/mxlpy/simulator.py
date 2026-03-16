@@ -282,7 +282,7 @@ class Simulator:
             self._initialise_integrator()
             return self
 
-        self.y0 = sim_variables[-1].iloc[-1, :].to_dict() | variables
+        self.y0 = cast(dict, sim_variables[-1].iloc[-1, :].to_dict()) | variables
         self._time_shift = float(sim_variables[-1].index[-1])
         self._initialise_integrator()
         return self
@@ -471,7 +471,7 @@ class Simulator:
 
         for t_end, pars in protocol.iterrows():
             t_end = cast(pd.Timedelta, t_end)
-            self.model.update_parameters(pars.to_dict())
+            self.model.update_parameters(cast(dict, pars.to_dict()))
             self.simulate(t_start + t_end.total_seconds(), steps=time_points_per_step)
             if self.variables is None:
                 break
@@ -544,7 +544,7 @@ class Simulator:
         full_time_points = protocol.index.join(pd.Index(time_points), how="outer")
 
         for t_end, pars in protocol.iterrows():
-            self.model.update_parameters(pars.to_dict())
+            self.model.update_parameters(cast(dict, pars.to_dict()))
 
             self.simulate_time_course(
                 time_points=full_time_points[

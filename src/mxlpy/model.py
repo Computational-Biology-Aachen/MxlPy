@@ -2552,7 +2552,7 @@ class Model:
         args_by_time = {}
         for time, values in variables.iterrows():
             args = self._get_args(
-                variables=values.to_dict(),
+                variables=cast(dict, values.to_dict()),
                 time=cast(float, time),
                 cache=cache,
             )
@@ -2868,7 +2868,7 @@ class Model:
         rhs_by_time = {}
         for time, variables in args.iterrows():
             rhs_by_time[time] = self._get_right_hand_side(
-                args=variables.to_dict(),
+                args=cast(dict, variables.to_dict()),
                 var_names=var_names,
                 cache=cache,
             )

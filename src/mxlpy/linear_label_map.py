@@ -12,7 +12,7 @@ through metabolic networks. It provides utilities for:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from mxlpy.model import Derived, Model
 
@@ -316,7 +316,11 @@ class LinearLabelMapper:
 
         m = Model()
         m.add_variables(variables)
-        m.add_parameters(concs.to_dict() | fluxes.to_dict() | {"EXT": external_label})
+        m.add_parameters(
+            cast(dict, concs.to_dict())
+            | cast(dict, fluxes.to_dict())
+            | {"EXT": external_label}
+        )
 
         rxns = self.model.get_raw_reactions()
         for rxn_name, label_map in self.label_maps.items():

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import pandas as pd
@@ -30,7 +30,7 @@ def _mc_fit_time_course_worker(
 ) -> float:
     fit_result = fit.time_course(
         model=model,
-        p0=p0.to_dict(),
+        p0=cast(dict, p0.to_dict()),
         data=data,
         loss_fn=loss_fn,
         minimizer=fit.LocalScipyMinimizer(),

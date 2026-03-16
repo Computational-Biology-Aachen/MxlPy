@@ -73,7 +73,7 @@ def _update_parameters_and_initial_conditions[T](
         Result of the function execution.
 
     """
-    pd = pars.to_dict()
+    pd: dict[str, float] = cast(dict, pars.to_dict())
     model.update_variables({k: v for k, v in pd.items() if k in model._variables})  # noqa: SLF001
     model.update_parameters({k: v for k, v in pd.items() if k in model._parameters})  # noqa: SLF001
     return fn(model)
