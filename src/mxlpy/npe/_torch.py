@@ -47,7 +47,19 @@ class SteadyState(AbstractEstimator):
     model: torch.nn.Module
 
     def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
-        """Predict the target values for the given features."""
+        """Predict the target values for the given features.
+
+        Parameters
+        ----------
+        features
+            Input features for prediction.
+
+        Returns
+        -------
+        pd.DataFrame
+            Predicted parameter values.
+
+        """
         with torch.no_grad():
             pred = self.model(torch.tensor(features.to_numpy(), dtype=torch.float32))
             return pd.DataFrame(pred, columns=self.parameter_names)
@@ -60,7 +72,19 @@ class TimeCourse(AbstractEstimator):
     model: torch.nn.Module
 
     def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
-        """Predict the target values for the given features."""
+        """Predict the target values for the given features.
+
+        Parameters
+        ----------
+        features
+            Input features for prediction.
+
+        Returns
+        -------
+        pd.DataFrame
+            Predicted parameter values.
+
+        """
         idx = cast(pd.MultiIndex, features.index)
         features_ = torch.Tensor(
             np.swapaxes(
@@ -103,13 +127,20 @@ class SteadyStateTrainer:
     ) -> None:
         """Initialize the trainer with features, targets, and model.
 
-        Args:
-            features: DataFrame containing the input features for training
-            targets: DataFrame containing the target values for training
-            model: Predefined neural network model (None to use default MLP)
-            optimizer_cls: Optimizer class to use for training (default: Adam)
-            device: Device to run the training on (default: DefaultDevice)
-            loss_fn: Loss function
+        Parameters
+        ----------
+        features
+            DataFrame containing the input features for training
+        targets
+            DataFrame containing the target values for training
+        model
+            Predefined neural network model (None to use default MLP)
+        optimizer_cls
+            Optimizer class to use for training (default: Adam)
+        device
+            Device to run the training on (default: DefaultDevice)
+        loss_fn
+            Loss function
 
         """
         self.features = features
@@ -135,9 +166,12 @@ class SteadyStateTrainer:
     ) -> Self:
         """Train the model using the provided features and targets.
 
-        Args:
-            epochs: Number of training epochs
-            batch_size: Size of mini-batches for training (None for full-batch)
+        Parameters
+        ----------
+        epochs
+            Number of training epochs
+        batch_size
+            Size of mini-batches for training (None for full-batch)
 
         """
         losses = _train(
@@ -191,13 +225,20 @@ class TimeCourseTrainer:
     ) -> None:
         """Initialize the trainer with features, targets, and model.
 
-        Args:
-            features: DataFrame containing the input features for training
-            targets: DataFrame containing the target values for training
-            model: Predefined neural network model (None to use default LSTM)
-            optimizer_cls: Optimizer class to use for training (default: Adam)
-            device: Device to run the training on (default: DefaultDevice)
-            loss_fn: Loss function
+        Parameters
+        ----------
+        features
+            DataFrame containing the input features for training
+        targets
+            DataFrame containing the target values for training
+        model
+            Predefined neural network model (None to use default LSTM)
+        optimizer_cls
+            Optimizer class to use for training (default: Adam)
+        device
+            Device to run the training on (default: DefaultDevice)
+        loss_fn
+            Loss function
 
         """
         self.features = features
@@ -222,9 +263,12 @@ class TimeCourseTrainer:
     ) -> Self:
         """Train the model using the provided features and targets.
 
-        Args:
-            epochs: Number of training epochs
-            batch_size: Size of mini-batches for training (None for full-batch)
+        Parameters
+        ----------
+        epochs
+            Number of training epochs
+        batch_size
+            Size of mini-batches for training (None for full-batch)
 
         """
         losses = _train(
@@ -276,20 +320,31 @@ def train_steady_state(
     using the provided features and targets. It supports both full-batch and
     mini-batch training.
 
-    Examples:
+    Examples
+    --------
         >>> train_torch_ss_estimator(features, targets, epochs=100)
 
-    Args:
-        features: DataFrame containing the input features for training
-        targets: DataFrame containing the target values for training
-        epochs: Number of training epochs
-        batch_size: Size of mini-batches for training (None for full-batch)
-        model: Predefined neural network model (None to use default MLP)
-        optimizer_cls: Optimizer class to use for training (default: Adam)
-        device: Device to run the training on (default: DefaultDevice)
+    Parameters
+    ----------
+    features
+        DataFrame containing the input features for training
+    targets
+        DataFrame containing the target values for training
+    epochs
+        Number of training epochs
+    batch_size
+        Size of mini-batches for training (None for full-batch)
+    model
+        Predefined neural network model (None to use default MLP)
+    optimizer_cls
+        Optimizer class to use for training (default: Adam)
+    device
+        Device to run the training on (default: DefaultDevice)
 
-    Returns:
-        tuple[TorchTimeSeriesEstimator, pd.Series]: Trained estimator and loss history
+    Returns
+    -------
+    tuple[TorchTimeSeriesEstimator, pd.Series]
+        Trained estimator and loss history
 
     """
     trainer = SteadyStateTrainer(
@@ -318,20 +373,31 @@ def train_time_course(
     using the provided features and targets. It supports both full-batch and
     mini-batch training.
 
-    Examples:
+    Examples
+    --------
         >>> train_torch_time_course_estimator(features, targets, epochs=100)
 
-    Args:
-        features: DataFrame containing the input features for training
-        targets: DataFrame containing the target values for training
-        epochs: Number of training epochs
-        batch_size: Size of mini-batches for training (None for full-batch)
-        model: Predefined neural network model (None to use default LSTM)
-        optimizer_cls: Optimizer class to use for training (default: Adam)
-        device: Device to run the training on (default: DefaultDevice)
+    Parameters
+    ----------
+    features
+        DataFrame containing the input features for training
+    targets
+        DataFrame containing the target values for training
+    epochs
+        Number of training epochs
+    batch_size
+        Size of mini-batches for training (None for full-batch)
+    model
+        Predefined neural network model (None to use default LSTM)
+    optimizer_cls
+        Optimizer class to use for training (default: Adam)
+    device
+        Device to run the training on (default: DefaultDevice)
 
-    Returns:
-        tuple[TorchTimeSeriesEstimator, pd.Series]: Trained estimator and loss history
+    Returns
+    -------
+    tuple[TorchTimeSeriesEstimator, pd.Series]
+        Trained estimator and loss history
 
     """
     trainer = TimeCourseTrainer(

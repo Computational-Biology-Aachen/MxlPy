@@ -142,11 +142,15 @@ __all__ = [
 def cartesian_product(parameters: dict[str, ArrayLike]) -> pd.DataFrame:
     """Generate a cartesian product of the parameter values.
 
-    Args:
-        parameters: Dictionary containing parameter names and values.
+    Parameters
+    ----------
+    parameters
+        Dictionary containing parameter names and values.
 
-    Returns:
-        pd.DataFrame: DataFrame containing the cartesian product of the parameter values.
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing the cartesian product of the parameter values.
 
     """
     return pd.DataFrame(
@@ -158,12 +162,15 @@ def cartesian_product(parameters: dict[str, ArrayLike]) -> pd.DataFrame:
 def make_protocol(steps: list[tuple[float, dict[str, float]]]) -> pd.DataFrame:
     """Create protocol DataFrame from a dictionary of steps.
 
-    Arguments:
-        steps: dictionary of steps, where each key is the duration of
-               the step in seconds and the value is a dictionary of all
-               parameter values during that step.
+    Parameters
+    ----------
+    steps
+        dictionary of steps, where each key is the duration of
+        the step in seconds and the value is a dictionary of all
+        parameter values during that step.
 
-    Examples:
+    Examples
+    --------
         >>> make_protocol([
         ...     (1, {"k1": 1.0}),
         ...     (2, {"k1": 2.0}),

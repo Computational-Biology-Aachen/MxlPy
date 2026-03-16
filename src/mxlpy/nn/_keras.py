@@ -25,18 +25,29 @@ def train(
 ) -> pd.Series:
     """Train the neural network using mini-batch gradient descent.
 
-    Args:
-        model: Neural network model to train.
-        features: Input features as a tensor.
-        targets: Target values as a tensor.
-        epochs: Number of training epochs.
-        optimizer: Optimizer for training.
-        device: torch device
-        batch_size: Size of mini-batches for training.
-        loss_fn: Loss function
+    Parameters
+    ----------
+    model
+        Neural network model to train.
+    features
+        Input features as a tensor.
+    targets
+        Target values as a tensor.
+    epochs
+        Number of training epochs.
+    optimizer
+        Optimizer for training.
+    device
+        torch device
+    batch_size
+        Size of mini-batches for training.
+    loss_fn
+        Loss function
 
-    Returns:
-        pd.Series: Series containing the training loss history.
+    Returns
+    -------
+    pd.Series
+        Series containing the training loss history.
 
     """
     history = model.fit(
@@ -58,8 +69,21 @@ def MLP(  # noqa: N802
 ) -> keras.Sequential:
     """Multilayer Perceptron (MLP) for surrogate modeling and neural posterior estimation.
 
-    Methods:
-        forward: Forward pass through the neural network.
+    Parameters
+    ----------
+    n_inputs
+        Number of input features.
+    neurons_per_layer
+        Number of neurons per layer (last entry is the output layer).
+    activation
+        Activation function for hidden layers.
+    output_activation
+        Activation function for the output layer.
+
+    Returns
+    -------
+    keras.Sequential
+        Compiled Keras sequential model.
 
     """
     model = keras.Sequential([keras.Input(shape=(n_inputs,))])
@@ -76,8 +100,19 @@ def LSTM(  # noqa: N802
 ) -> keras.Sequential:
     """Long Short-Term Memory (LSTM) network for time series modeling.
 
-    Methods:
-        forward: Forward pass through the neural network.
+    Parameters
+    ----------
+    n_inputs
+        Number of input features.
+    n_outputs
+        Number of output features.
+    n_hidden
+        Number of hidden units in the LSTM layer.
+
+    Returns
+    -------
+    keras.Sequential
+        Compiled Keras sequential model.
 
     """
     model = keras.Sequential(

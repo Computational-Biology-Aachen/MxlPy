@@ -68,21 +68,42 @@ class SteadyStateComparison:
         )
 
     def plot_variables(self, title: str = "Variables") -> plot.FigAxs:
-        """Plot the relative difference of steady-state variables."""
+        """Plot the relative difference of steady-state variables.
+
+        Parameters
+        ----------
+        title
+            Title for the plot.
+
+        """
         fig, axs = plot.bars_autogrouped(self.variables["rel_diff"], ylabel="")
         plot.grid_labels(axs, ylabel="Relative difference")
         fig.suptitle(title)
         return fig, axs
 
     def plot_fluxes(self, title: str = "Fluxes") -> plot.FigAxs:
-        """Plot the relative difference of steady-state fluxes."""
+        """Plot the relative difference of steady-state fluxes.
+
+        Parameters
+        ----------
+        title
+            Title for the plot.
+
+        """
         fig, axs = plot.bars_autogrouped(self.fluxes["rel_diff"], ylabel="")
         plot.grid_labels(axs, ylabel="Relative difference")
         fig.suptitle(title)
         return fig, axs
 
     def plot_all(self, title: str = "Variables and Fluxes") -> plot.FigAxs:
-        """Plot the relative difference of steady-state variables and fluxes."""
+        """Plot the relative difference of steady-state variables and fluxes.
+
+        Parameters
+        ----------
+        title
+            Title for the plot.
+
+        """
         combined = self.all
 
         fig, axs = plot.bars_autogrouped(combined["rel_diff"], ylabel="")
@@ -181,7 +202,14 @@ class ProtocolComparison:
         self,
         shade_protocol_variable: str | None = None,
     ) -> plot.FigAxs:
-        """Plot the relative difference of time course variables."""
+        """Plot the relative difference of time course variables.
+
+        Parameters
+        ----------
+        shade_protocol_variable
+            Protocol variable name to shade on the plot. If None, no shading.
+
+        """
         c1 = self.res1.variables
         c2 = self.res2.variables
 
@@ -200,7 +228,14 @@ class ProtocolComparison:
         self,
         shade_protocol_variable: str | None = None,
     ) -> plot.FigAxs:
-        """Plot the relative difference of time course fluxes."""
+        """Plot the relative difference of time course fluxes.
+
+        Parameters
+        ----------
+        shade_protocol_variable
+            Protocol variable name to shade on the plot. If None, no shading.
+
+        """
         v1 = self.res1.fluxes
         v2 = self.res2.fluxes
 
@@ -217,7 +252,16 @@ class ProtocolComparison:
 
 
 def steady_states(m1: Model, m2: Model) -> SteadyStateComparison:
-    """Compare the steady states of two models."""
+    """Compare the steady states of two models.
+
+    Parameters
+    ----------
+    m1
+        First model.
+    m2
+        Second model.
+
+    """
     return SteadyStateComparison(
         res1=Simulator(m1).simulate_to_steady_state().get_result().unwrap_or_err(),
         res2=Simulator(m2).simulate_to_steady_state().get_result().unwrap_or_err(),
@@ -225,7 +269,18 @@ def steady_states(m1: Model, m2: Model) -> SteadyStateComparison:
 
 
 def time_courses(m1: Model, m2: Model, time_points: ArrayLike) -> TimeCourseComparison:
-    """Compare the time courses of two models."""
+    """Compare the time courses of two models.
+
+    Parameters
+    ----------
+    m1
+        First model.
+    m2
+        Second model.
+    time_points
+        Array of time points to simulate.
+
+    """
     return TimeCourseComparison(
         res1=Simulator(m1)
         .simulate_time_course(time_points=time_points)
@@ -243,7 +298,18 @@ def protocol_time_courses(
     m2: Model,
     protocol: pd.DataFrame,
 ) -> ProtocolComparison:
-    """Compare the time courses of two models."""
+    """Compare the protocol time courses of two models.
+
+    Parameters
+    ----------
+    m1
+        First model.
+    m2
+        Second model.
+    protocol
+        DataFrame defining the protocol steps.
+
+    """
     return ProtocolComparison(
         res1=Simulator(m1)
         .simulate_protocol(protocol=protocol)

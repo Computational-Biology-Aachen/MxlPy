@@ -60,7 +60,21 @@ class Diffrax(AbstractIntegrator):
         t_end: float,
         steps: int | None = None,
     ) -> Result[TimeCourse]:
-        """Integrate the ODE system over a time course."""
+        """Integrate the ODE system over a time course.
+
+        Parameters
+        ----------
+        t_end
+            End time of the integration.
+        steps
+            Number of integration steps. Defaults to 100 if None.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing time points and values.
+
+        """
         steps = 100 if steps is None else steps
 
         return self.integrate_time_course(
@@ -74,11 +88,15 @@ class Diffrax(AbstractIntegrator):
     ) -> Result[TimeCourse]:
         """Integrate the ODE system over a time course.
 
-        Args:
-            time_points: Time points for the integration.
+        Parameters
+        ----------
+        time_points
+            Time points for the integration.
 
-        Returns:
-            tuple[Array, Array]: Tuple containing the time points and the integrated values.
+        Returns
+        -------
+        tuple[Array, Array]
+            Tuple containing the time points and the integrated values.
 
         """
         if time_points[0] != self.t0:
@@ -112,13 +130,19 @@ class Diffrax(AbstractIntegrator):
     ) -> Result[TimeCourse]:
         """Integrate the ODE system to steady state.
 
-        Args:
-            tolerance: Tolerance for determining steady state.
-            rel_norm: Whether to use relative normalization.
-            t_max: Maximum time point for the integration (default: 1,000,000,000).
+        Parameters
+        ----------
+        tolerance
+            Tolerance for determining steady state.
+        rel_norm
+            Whether to use relative normalization.
+        t_max
+            Maximum time point for the integration (default: 1,000,000,000).
 
-        Returns:
-            tuple[float | None, Array | None]: Tuple containing the final time point and the integrated values at steady state.
+        Returns
+        -------
+        tuple[float | None, Array | None]
+            Tuple containing the final time point and the integrated values at steady state.
 
         """
         t_start = 0.0

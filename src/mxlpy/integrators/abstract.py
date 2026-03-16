@@ -62,7 +62,21 @@ class AbstractIntegrator(ABC):
         t_end: float,
         steps: int | None = None,
     ) -> Result[TimeCourse]:
-        """Integrate the system."""
+        """Integrate the system.
+
+        Parameters
+        ----------
+        t_end
+            End time of the integration.
+        steps
+            Number of integration steps. If None, the integrator chooses.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing time points and values.
+
+        """
         ...
 
     @abstractmethod
@@ -71,7 +85,19 @@ class AbstractIntegrator(ABC):
         *,
         time_points: ArrayLike,
     ) -> Result[TimeCourse]:
-        """Integrate the system over a time course."""
+        """Integrate the system over a time course.
+
+        Parameters
+        ----------
+        time_points
+            Array of time points at which to evaluate the solution.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing time points and values.
+
+        """
         ...
 
     @abstractmethod
@@ -81,7 +107,21 @@ class AbstractIntegrator(ABC):
         tolerance: float,
         rel_norm: bool,
     ) -> Result[TimeCourse]:
-        """Integrate the system to steady state."""
+        """Integrate the system to steady state.
+
+        Parameters
+        ----------
+        tolerance
+            Convergence tolerance for steady-state detection.
+        rel_norm
+            Whether to use relative normalization for the convergence check.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing the steady-state time and values.
+
+        """
         ...
 
 
@@ -107,7 +147,21 @@ class IntegratorProtocol(Protocol):
         t_end: float,
         steps: int | None = None,
     ) -> Result[TimeCourse]:
-        """Integrate the system."""
+        """Integrate the system.
+
+        Parameters
+        ----------
+        t_end
+            End time of the integration.
+        steps
+            Number of integration steps. If None, the integrator chooses.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing time points and values.
+
+        """
         ...
 
     def integrate_time_course(
@@ -115,7 +169,19 @@ class IntegratorProtocol(Protocol):
         *,
         time_points: ArrayLike,
     ) -> Result[TimeCourse]:
-        """Integrate the system over a time course."""
+        """Integrate the system over a time course.
+
+        Parameters
+        ----------
+        time_points
+            Array of time points at which to evaluate the solution.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing time points and values.
+
+        """
         ...
 
     def integrate_to_steady_state(
@@ -124,7 +190,21 @@ class IntegratorProtocol(Protocol):
         tolerance: float,
         rel_norm: bool,
     ) -> Result[TimeCourse]:
-        """Integrate the system to steady state."""
+        """Integrate the system to steady state.
+
+        Parameters
+        ----------
+        tolerance
+            Convergence tolerance for steady-state detection.
+        rel_norm
+            Whether to use relative normalization for the convergence check.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing the steady-state time and values.
+
+        """
         ...
 
 
@@ -160,7 +240,21 @@ class MockIntegrator(AbstractIntegrator):
         t_end: float,  # noqa: ARG002
         steps: int | None = None,  # noqa: ARG002
     ) -> Result[TimeCourse]:
-        """FIXME: Something I will fill out."""
+        """Integrate the system.
+
+        Parameters
+        ----------
+        t_end
+            End time of the integration.
+        steps
+            Number of integration steps. If None, the integrator chooses.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing time points and values.
+
+        """
         return Result(
             TimeCourse(
                 time=np.array([0.0]),
@@ -173,7 +267,19 @@ class MockIntegrator(AbstractIntegrator):
         *,
         time_points: ArrayLike | None = None,  # noqa: ARG002
     ) -> Result[TimeCourse]:
-        """FIXME: Something I will fill out."""
+        """Integrate the system over a time course.
+
+        Parameters
+        ----------
+        time_points
+            Array of time points at which to evaluate the solution.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing time points and values.
+
+        """
         return Result(
             TimeCourse(
                 time=np.array([0.0]),
@@ -187,7 +293,21 @@ class MockIntegrator(AbstractIntegrator):
         tolerance: float,  # noqa: ARG002
         rel_norm: bool,  # noqa: ARG002
     ) -> Result[TimeCourse]:
-        """FIXME: Something I will fill out."""
+        """Integrate the system to steady state.
+
+        Parameters
+        ----------
+        tolerance
+            Convergence tolerance for steady-state detection.
+        rel_norm
+            Whether to use relative normalization for the convergence check.
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Integration result containing the steady-state time and values.
+
+        """
         return Result(
             TimeCourse(
                 time=np.array([0.0], dtype=float),

@@ -37,7 +37,19 @@ class SteadyState(AbstractEstimator):
     model: keras.Model
 
     def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
-        """Predict the target values for the given features."""
+        """Predict the target values for the given features.
+
+        Parameters
+        ----------
+        features
+            Input features for prediction.
+
+        Returns
+        -------
+        pd.DataFrame
+            Predicted parameter values.
+
+        """
         return pd.DataFrame(
             self.model.predict(features),
             columns=self.parameter_names,
@@ -52,7 +64,19 @@ class TimeCourse(AbstractEstimator):
     model: keras.Model
 
     def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
-        """Predict the target values for the given features."""
+        """Predict the target values for the given features.
+
+        Parameters
+        ----------
+        features
+            Input features for prediction.
+
+        Returns
+        -------
+        pd.DataFrame
+            Predicted parameter values.
+
+        """
         idx = cast(pd.MultiIndex, features.index)
         features_ = (
             np.swapaxes(
@@ -95,12 +119,18 @@ class SteadyStateTrainer:
     ) -> None:
         """Initialize the trainer with features, targets, and model.
 
-        Args:
-            features: DataFrame containing the input features for training
-            targets: DataFrame containing the target values for training
-            model: Predefined neural network model (None to use default MLP)
-            optimizer: Optimizer class to use for training (default: Adam)
-            loss: Loss function
+        Parameters
+        ----------
+        features
+            DataFrame containing the input features for training
+        targets
+            DataFrame containing the target values for training
+        model
+            Predefined neural network model (None to use default MLP)
+        optimizer
+            Optimizer class to use for training (default: Adam)
+        loss
+            Loss function
 
         """
         self.features = features
@@ -126,9 +156,12 @@ class SteadyStateTrainer:
     ) -> Self:
         """Train the model using the provided features and targets.
 
-        Args:
-            epochs: Number of training epochs
-            batch_size: Size of mini-batches for training (None for full-batch)
+        Parameters
+        ----------
+        epochs
+            Number of training epochs
+        batch_size
+            Size of mini-batches for training (None for full-batch)
 
         """
         losses = train(
@@ -178,12 +211,18 @@ class TimeCourseTrainer:
     ) -> None:
         """Initialize the trainer with features, targets, and model.
 
-        Args:
-            features: DataFrame containing the input features for training
-            targets: DataFrame containing the target values for training
-            model: Predefined neural network model (None to use default LSTM)
-            optimizer: Optimizer class to use for training
-            loss: Loss function
+        Parameters
+        ----------
+        features
+            DataFrame containing the input features for training
+        targets
+            DataFrame containing the target values for training
+        model
+            Predefined neural network model (None to use default LSTM)
+        optimizer
+            Optimizer class to use for training
+        loss
+            Loss function
 
         """
         self.features = features
@@ -206,9 +245,12 @@ class TimeCourseTrainer:
     ) -> Self:
         """Train the model using the provided features and targets.
 
-        Args:
-            epochs: Number of training epochs
-            batch_size: Size of mini-batches for training (None for full-batch)
+        Parameters
+        ----------
+        epochs
+            Number of training epochs
+        batch_size
+            Size of mini-batches for training (None for full-batch)
 
         """
         losses = train(
@@ -257,20 +299,31 @@ def train_steady_state(
     using the provided features and targets. It supports both full-batch and
     mini-batch training.
 
-    Examples:
+    Examples
+    --------
         >>> train_keras_ss_estimator(features, targets, epochs=100)
 
-    Args:
-        features: DataFrame containing the input features for training
-        targets: DataFrame containing the target values for training
-        epochs: Number of training epochs
-        batch_size: Size of mini-batches for training (None for full-batch)
-        model: Predefined neural network model (None to use default MLP)
-        optimizer: Optimizer class to use for training (default: Adam)
-        loss: Loss function for the training
+    Parameters
+    ----------
+    features
+        DataFrame containing the input features for training
+    targets
+        DataFrame containing the target values for training
+    epochs
+        Number of training epochs
+    batch_size
+        Size of mini-batches for training (None for full-batch)
+    model
+        Predefined neural network model (None to use default MLP)
+    optimizer
+        Optimizer class to use for training (default: Adam)
+    loss
+        Loss function for the training
 
-    Returns:
-        tuple[KerasTimeSeriesEstimator, pd.Series]: Trained estimator and loss history
+    Returns
+    -------
+    tuple[KerasTimeSeriesEstimator, pd.Series]
+        Trained estimator and loss history
 
     """
     trainer = SteadyStateTrainer(
@@ -299,20 +352,31 @@ def train_time_course(
     using the provided features and targets. It supports both full-batch and
     mini-batch training.
 
-    Examples:
+    Examples
+    --------
         >>> train_keras_time_course_estimator(features, targets, epochs=100)
 
-    Args:
-        features: DataFrame containing the input features for training
-        targets: DataFrame containing the target values for training
-        epochs: Number of training epochs
-        batch_size: Size of mini-batches for training (None for full-batch)
-        model: Predefined neural network model (None to use default LSTM)
-        optimizer: Optimizer class to use for training (default: Adam)
-        loss: Loss function for the training
+    Parameters
+    ----------
+    features
+        DataFrame containing the input features for training
+    targets
+        DataFrame containing the target values for training
+    epochs
+        Number of training epochs
+    batch_size
+        Size of mini-batches for training (None for full-batch)
+    model
+        Predefined neural network model (None to use default LSTM)
+    optimizer
+        Optimizer class to use for training (default: Adam)
+    loss
+        Loss function for the training
 
-    Returns:
-        tuple[KerasTimeSeriesEstimator, pd.Series]: Trained estimator and loss history
+    Returns
+    -------
+    tuple[KerasTimeSeriesEstimator, pd.Series]
+        Trained estimator and loss history
 
     """
     trainer = TimeCourseTrainer(

@@ -120,7 +120,18 @@ class Carousel:
         y0: dict[str, float] | None = None,
         integrator: IntegratorType | None = None,
     ) -> CarouselTimeCourse:
-        """Simulate the carousel of models over a time course."""
+        """Simulate the carousel of models over a time course.
+
+        Parameters
+        ----------
+        time_points
+            Array of time points to simulate.
+        y0
+            Initial values for variables. If None, uses model defaults.
+        integrator
+            Integrator to use. If None, uses the default integrator.
+
+        """
         results = [
             i[1]
             for i in parallel.parallelise(
@@ -146,7 +157,18 @@ class Carousel:
         y0: dict[str, float] | None = None,
         integrator: IntegratorType | None = None,
     ) -> CarouselTimeCourse:
-        """Simulate the carousel of models over a protocol time course."""
+        """Simulate the carousel of models over a protocol time course.
+
+        Parameters
+        ----------
+        protocol
+            DataFrame defining the protocol steps.
+        y0
+            Initial values for variables. If None, uses model defaults.
+        integrator
+            Integrator to use. If None, uses the default integrator.
+
+        """
         results = [
             i[1]
             for i in parallel.parallelise(
@@ -173,7 +195,20 @@ class Carousel:
         y0: dict[str, float] | None = None,
         integrator: IntegratorType | None = None,
     ) -> CarouselTimeCourse:
-        """Simulate the carousel of models over a protocol time course."""
+        """Simulate the carousel of models over a protocol time course.
+
+        Parameters
+        ----------
+        protocol
+            DataFrame defining the protocol steps.
+        time_points
+            Array of time points to simulate within each protocol step.
+        y0
+            Initial values for variables. If None, uses model defaults.
+        integrator
+            Integrator to use. If None, uses the default integrator.
+
+        """
         results = [
             i[1]
             for i in parallel.parallelise(
@@ -200,7 +235,18 @@ class Carousel:
         integrator: IntegratorType | None = None,
         rel_norm: bool = False,
     ) -> CarouselSteadyState:
-        """Simulate the carousel of models over a time course."""
+        """Simulate the carousel of models to steady state.
+
+        Parameters
+        ----------
+        y0
+            Initial values for variables. If None, uses model defaults.
+        integrator
+            Integrator to use. If None, uses the default integrator.
+        rel_norm
+            Whether to use relative norm for steady-state convergence.
+
+        """
         results = [
             i[1]
             for i in parallel.parallelise(

@@ -115,7 +115,21 @@ def steady_state_residual(
     updates: dict[str, float],
     settings: _Settings,
 ) -> float:
-    """Calculate residual error between model steady state and experimental data."""
+    """Calculate residual error between model steady state and experimental data.
+
+    Parameters
+    ----------
+    updates
+        Parameter and variable updates as {name: value}.
+    settings
+        Internal fit settings containing model, data, and configuration.
+
+    Returns
+    -------
+    float
+        Residual error, or inf if simulation fails.
+
+    """
     model = settings.model
     if (y0 := settings.y0) is not None:
         model.update_variables(y0)
@@ -145,7 +159,21 @@ def time_course_residual(
     updates: dict[str, float],
     settings: _Settings,
 ) -> float:
-    """Calculate residual error between model time course and experimental data."""
+    """Calculate residual error between model time course and experimental data.
+
+    Parameters
+    ----------
+    updates
+        Parameter and variable updates as {name: value}.
+    settings
+        Internal fit settings containing model, data, and configuration.
+
+    Returns
+    -------
+    float
+        Residual error, or inf if simulation fails.
+
+    """
     model = settings.model
     if (y0 := settings.y0) is not None:
         model.update_variables(y0)
@@ -176,7 +204,21 @@ def protocol_time_course_residual(
     updates: dict[str, float],
     settings: _Settings,
 ) -> float:
-    """Calculate residual error between model time course and experimental data."""
+    """Calculate residual error between model protocol time course and experimental data.
+
+    Parameters
+    ----------
+    updates
+        Parameter and variable updates as {name: value}.
+    settings
+        Internal fit settings containing model, data, and configuration.
+
+    Returns
+    -------
+    float
+        Residual error, or inf if simulation fails.
+
+    """
     model = settings.model
     if (y0 := settings.y0) is not None:
         model.update_variables(y0)
@@ -226,24 +268,38 @@ def steady_state(
 ) -> Result[Fit]:
     """Fit model parameters to steady-state experimental data.
 
-    Examples:
+    Examples
+    --------
         >>> fit.steady_state(model, p0, data)
         {'k1': 0.1, 'k2': 0.2}
 
-    Args:
-        model: Model instance to fit
-        data: Experimental steady state data as pandas Series
-        p0: Initial guesses as {name: value}
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
-        standard_scale: Whether to apply standard scale to data and prediction
+    Parameters
+    ----------
+    model
+        Model instance to fit
+    data
+        Experimental steady state data as pandas Series
+    p0
+        Initial guesses as {name: value}
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+    standard_scale
+        Whether to apply standard scale to data and prediction
 
-    Returns:
+    Returns
+    -------
         Result object containing fit object
 
     """
@@ -295,24 +351,38 @@ def time_course(
 ) -> Result[Fit]:
     """Fit model parameters to time course of experimental data.
 
-    Examples:
+    Examples
+    --------
         >>> fit.time_course(model, p0, data)
         {'k1': 0.1, 'k2': 0.2}
 
-    Args:
-        model: Model instance to fit
-        data: Experimental time course data
-        p0: Initial guesses as {parameter_name: value}
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
-        standard_scale: Whether to apply standard scale to data and prediction
+    Parameters
+    ----------
+    model
+        Model instance to fit
+    data
+        Experimental time course data
+    p0
+        Initial guesses as {parameter_name: value}
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+    standard_scale
+        Whether to apply standard scale to data and prediction
 
-    Returns:
+    Returns
+    -------
         Result object containing fit object
 
     """
@@ -367,7 +437,8 @@ def protocol_time_course(
 
     Time points of protocol time course are taken from the data.
 
-    Examples:
+    Examples
+    --------
         >>> fit.protocol_time_course(
         ...     model_fn(),
         ...     p0={"k2": 1.87, "k3": 1.093},
@@ -377,22 +448,37 @@ def protocol_time_course(
         ... )
         {'k1': 0.1, 'k2': 0.2}
 
-    Args:
-        model: Model instance to fit
-        p0: Initial parameter guesses as {parameter_name: value}
-        data: Experimental time course data
-        protocol: Experimental protocol
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        time_points_per_step: Number of time points per step in the protocol
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
-        standard_scale: Whether to apply standard scale to data and prediction
+    Parameters
+    ----------
+    model
+        Model instance to fit
+    p0
+        Initial parameter guesses as {parameter_name: value}
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+    standard_scale
+        Whether to apply standard scale to data and prediction
 
-    Returns:
+    Returns
+    -------
         Result object containing fit object
 
     """
@@ -451,7 +537,8 @@ def ensemble_steady_state(
 ) -> EnsembleFit:
     """Fit model ensemble parameters to steady-state experimental data.
 
-    Examples:
+    Examples
+    --------
         >>> fit.ensemble_steady_state(
         ...     [
         ...         model_fn(),
@@ -462,21 +549,35 @@ def ensemble_steady_state(
         ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
         ... )
 
-    Args:
-        ensemble: Ensemble to fit
-        p0: Initial parameter guesses as {parameter_name: value}
-        data: Experimental time course data
-        protocol: Experimental protocol
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        time_points_per_step: Number of time points per step in the protocol
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
+    Parameters
+    ----------
+    ensemble
+        Ensemble to fit
+    p0
+        Initial parameter guesses as {parameter_name: value}
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
 
-    Returns:
+    Returns
+    -------
         Ensemble fit object
 
     """
@@ -518,7 +619,8 @@ def carousel_steady_state(
 ) -> EnsembleFit:
     """Fit model parameters to steady-state experimental data over a carousel.
 
-    Examples:
+    Examples
+    --------
         >>> fit.carousel_steady_state(
         ...     carousel,
         ...     p0={
@@ -529,21 +631,35 @@ def carousel_steady_state(
         ...     minimizer=fit.LocalScipyMinimizer(),
         ... )
 
-    Args:
-        carousel: Model carousel to fit
-        p0: Initial parameter guesses as {parameter_name: value}
-        data: Experimental time course data
-        protocol: Experimental protocol
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        time_points_per_step: Number of time points per step in the protocol
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
+    Parameters
+    ----------
+    carousel
+        Model carousel to fit
+    p0
+        Initial parameter guesses as {parameter_name: value}
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
 
-    Returns:
+    Returns
+    -------
         Ensemble fit object
 
     """
@@ -578,7 +694,8 @@ def ensemble_time_course(
 
     Time points are taken from the data.
 
-    Examples:
+    Examples
+    --------
         >>> fit.ensemble_steady_state(
         ...     [
         ...         model1,
@@ -589,21 +706,35 @@ def ensemble_time_course(
         ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
         ... )
 
-    Args:
-        ensemble: Model ensemble to fit
-        p0: Initial parameter guesses as {parameter_name: value}
-        data: Experimental time course data
-        protocol: Experimental protocol
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        time_points_per_step: Number of time points per step in the protocol
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
+    Parameters
+    ----------
+    ensemble
+        Model ensemble to fit
+    p0
+        Initial parameter guesses as {parameter_name: value}
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
 
-    Returns:
+    Returns
+    -------
         Ensemble fit object
 
     """
@@ -647,7 +778,8 @@ def carousel_time_course(
 
     Time points are taken from the data.
 
-    Examples:
+    Examples
+    --------
         >>> fit.carousel_time_course(
         ...     carousel,
         ...     p0={
@@ -658,21 +790,35 @@ def carousel_time_course(
         ...     minimizer=fit.LocalScipyMinimizer(),
         ... )
 
-    Args:
-        carousel: Model carousel to fit
-        p0: Initial parameter guesses as {parameter_name: value}
-        data: Experimental time course data
-        protocol: Experimental protocol
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        time_points_per_step: Number of time points per step in the protocol
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
+    Parameters
+    ----------
+    carousel
+        Model carousel to fit
+    p0
+        Initial parameter guesses as {parameter_name: value}
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
 
-    Returns:
+    Returns
+    -------
         Ensemble fit object
 
     """
@@ -708,7 +854,8 @@ def ensemble_protocol_time_course(
 
     Time points of protocol time course are taken from the data.
 
-    Examples:
+    Examples
+    --------
         >>> fit.ensemble_protocol_time_course(
         ...     [
         ...         model_fn(),
@@ -720,21 +867,35 @@ def ensemble_protocol_time_course(
         ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
         ... )
 
-    Args:
-        ensemble: Model ensemble: value}
-        p0: initial parameter guess
-        data: Experimental time course data
-        protocol: Experimental protocol
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        time_points_per_step: Number of time points per step in the protocol
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
+    Parameters
+    ----------
+    ensemble
+        Model ensemble: value}
+    p0
+        initial parameter guess
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
 
-    Returns:
+    Returns
+    -------
         Ensemble fit object
 
     """
@@ -781,7 +942,8 @@ def carousel_protocol_time_course(
 
     Time points of protocol time course are taken from the data.
 
-    Examples:
+    Examples
+    --------
         >>> fit.carousel_protocol_time_course(
         ...     carousel,
         ...     p0={
@@ -793,21 +955,35 @@ def carousel_protocol_time_course(
         ...     minimizer=fit.LocalScipyMinimizer(),
         ... )
 
-    Args:
-        carousel: Model carousel to fit
-        p0: Initial parameter guesses as {parameter_name: value}
-        data: Experimental time course data
-        protocol: Experimental protocol
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        time_points_per_step: Number of time points per step in the protocol
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
+    Parameters
+    ----------
+    carousel
+        Model carousel to fit
+    p0
+        Initial parameter guesses as {parameter_name: value}
+    data
+        Experimental time course data
+    protocol
+        Experimental protocol
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    time_points_per_step
+        Number of time points per step in the protocol
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
 
-    Returns:
+    Returns
+    -------
         Ensemble fit object
 
     """
@@ -875,7 +1051,8 @@ def joint_steady_state(
 ) -> Result[JointFit]:
     """Multi-model, multi-data fitting.
 
-    Examples:
+    Examples
+    --------
         >>> fit.joint_steady_state(
         ...     [
         ...         fit.FitSettings(model=model_fn(), data=res.iloc[-1]),
@@ -885,20 +1062,33 @@ def joint_steady_state(
         ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
         ... )
 
-    Args:
-        to_fit: Models and data to fit
-        p0: Initial guesses as {name: value}
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
-        max_workers: maximal amount of workers in parallel
-        standard_scale: Whether to apply standard scale to data and prediction
+    Parameters
+    ----------
+    to_fit
+        Models and data to fit
+    p0
+        Initial guesses as {name: value}
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+    max_workers
+        maximal amount of workers in parallel
+    standard_scale
+        Whether to apply standard scale to data and prediction
 
-    Returns:
+    Returns
+    -------
         Result object containing JointFit object
 
     """
@@ -956,24 +1146,38 @@ def joint_time_course(
 ) -> Result[JointFit]:
     """Multi-model, multi-data fitting.
 
-    Examples:
+    Examples
+    --------
         >>> fit.joint_steady_state(model, p0, data)
         {'k1': 0.1, 'k2': 0.2}
 
-    Args:
-        to_fit: Models and data to fit
-        p0: Initial guesses as {name: value}
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
-        max_workers: maximal amount of workers in parallel
-        standard_scale: Whether to apply standard scale to data and prediction
+    Parameters
+    ----------
+    to_fit
+        Models and data to fit
+    p0
+        Initial guesses as {name: value}
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+    max_workers
+        maximal amount of workers in parallel
+    standard_scale
+        Whether to apply standard scale to data and prediction
 
-    Returns:
+    Returns
+    -------
         Result object containing JointFit object
 
     """
@@ -1032,24 +1236,38 @@ def joint_protocol_time_course(
 ) -> Result[JointFit]:
     """Multi-model, multi-data fitting.
 
-    Examples:
+    Examples
+    --------
         >>> fit.joint_steady_state(model, p0, data)
         {'k1': 0.1, 'k2': 0.2}
 
-    Args:
-        to_fit: Models and data to fit
-        p0: Initial guesses as {name: value}
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
-        max_workers: maximal amount of workers in parallel
-        standard_scale: Whether to apply standard scale to data and prediction
+    Parameters
+    ----------
+    to_fit
+        Models and data to fit
+    p0
+        Initial guesses as {name: value}
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+    max_workers
+        maximal amount of workers in parallel
+    standard_scale
+        Whether to apply standard scale to data and prediction
 
-    Returns:
+    Returns
+    -------
         Result object containing JointFit object
 
     """
@@ -1141,7 +1359,8 @@ def joint_mixed(
 ) -> Result[JointFit]:
     """Multi-model, multi-data, multi-simulation fitting.
 
-    Examples:
+    Examples
+    --------
         >>> fit.joint_mixed(
         ...     [
         ...         fit.MixedSettings(
@@ -1159,20 +1378,33 @@ def joint_mixed(
         ...     minimizer=fit.LocalScipyMinimizer(tol=1e-6),
         ... )
 
-    Args:
-        to_fit: models, data and residual fn to fit
-        p0: Initial guesses as {name: value}
-        y0: Initial conditions as {species_name: value}
-        minimizer: Function to minimize fitting error
-        residual_fn: Function to calculate fitting error
-        integrator: ODE integrator class
-        loss_fn: Loss function to use for residual calculation
-        bounds: Mapping of bounds per parameter
-        as_deepcopy: Whether to copy the model to avoid overwriting the state
-        max_workers: maximal amount of workers in parallel
-        standard_scale: Whether to apply standard scale to data and prediction
+    Parameters
+    ----------
+    to_fit
+        models, data and residual fn to fit
+    p0
+        Initial guesses as {name: value}
+    y0
+        Initial conditions as {species_name: value}
+    minimizer
+        Function to minimize fitting error
+    residual_fn
+        Function to calculate fitting error
+    integrator
+        ODE integrator class
+    loss_fn
+        Loss function to use for residual calculation
+    bounds
+        Mapping of bounds per parameter
+    as_deepcopy
+        Whether to copy the model to avoid overwriting the state
+    max_workers
+        maximal amount of workers in parallel
+    standard_scale
+        Whether to apply standard scale to data and prediction
 
-    Returns:
+    Returns
+    -------
         Result object containing JointFit object
 
     """

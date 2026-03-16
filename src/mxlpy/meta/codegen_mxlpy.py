@@ -188,6 +188,19 @@ def generate_mxlpy_code_from_symbolic_repr(
 
     This is both used by MxlPy internally to codegen an existing model again and by the
     SBML import to generate the file.
+
+    Parameters
+    ----------
+    model
+        Symbolic representation of the model
+    imports
+        Optional list of import statements to include at the top of the file
+
+    Returns
+    -------
+    str
+        Python source code that constructs the model using MxlPy API
+
     """
     imports = [] if imports is None else imports
 
@@ -271,5 +284,17 @@ def generate_mxlpy_code_from_symbolic_repr(
 
 
 def generate_mxlpy_code(model: Model) -> str:
-    """Generate a mxlpy model from a model."""
+    """Generate a mxlpy model from a model.
+
+    Parameters
+    ----------
+    model
+        Model to generate MxlPy source code for
+
+    Returns
+    -------
+    str
+        Python source code that reconstructs the model
+
+    """
     return generate_mxlpy_code_from_symbolic_repr(_to_symbolic_repr(model))

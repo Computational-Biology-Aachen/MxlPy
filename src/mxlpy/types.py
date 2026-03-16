@@ -118,7 +118,20 @@ class Option[T]:
         return value
 
     def default(self, fn: Callable[[], T]) -> T:
-        """Obtain value if Ok, else create default one."""
+        """Obtain value if Ok, else create default one.
+
+        Parameters
+        ----------
+        fn
+            Factory function called to produce a default value when the option
+            is None.
+
+        Returns
+        -------
+        T
+            The contained value if present, otherwise the result of calling *fn*.
+
+        """
         if (value := self.value) is None:
             return fn()
         return value
@@ -137,7 +150,20 @@ class Result[T]:
         return value
 
     def default(self, fn: Callable[[], T]) -> T:
-        """Obtain value if Ok, else create default one."""
+        """Obtain value if Ok, else create default one.
+
+        Parameters
+        ----------
+        fn
+            Factory function called to produce a default value when the result
+            contains an exception.
+
+        Returns
+        -------
+        T
+            The contained value if Ok, otherwise the result of calling *fn*.
+
+        """
         if isinstance(value := self.value, Exception):
             return fn()
         return value
@@ -184,10 +210,13 @@ class Derived:
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
 
-        Args:
-            args: Dictionary of args variables.
+        Parameters
+        ----------
+        args
+            Dictionary of args variables.
 
-        Returns:
+        Returns
+        -------
             The calculated derived value.
 
         """
@@ -196,9 +225,12 @@ class Derived:
     def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the derived value in place.
 
-        Args:
-            name: Name of the derived variable.
-            args: Dictionary of args variables.
+        Parameters
+        ----------
+        name
+            Name of the derived variable.
+        args
+            Dictionary of args variables.
 
         """
         args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
@@ -219,10 +251,13 @@ class InitialAssignment:
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
 
-        Args:
-            args: Dictionary of args variables.
+        Parameters
+        ----------
+        args
+            Dictionary of args variables.
 
-        Returns:
+        Returns
+        -------
             The calculated derived value.
 
         """
@@ -231,9 +266,12 @@ class InitialAssignment:
     def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the derived value in place.
 
-        Args:
-            name: Name of the derived variable.
-            args: Dictionary of args variables.
+        Parameters
+        ----------
+        name
+            Name of the derived variable.
+        args
+            Dictionary of args variables.
 
         """
         args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
@@ -254,10 +292,13 @@ class Readout:
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
 
-        Args:
-            args: Dictionary of args variables.
+        Parameters
+        ----------
+        args
+            Dictionary of args variables.
 
-        Returns:
+        Returns
+        -------
             The calculated derived value.
 
         """
@@ -266,9 +307,12 @@ class Readout:
     def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the reaction in place.
 
-        Args:
-            name: Name of the derived variable.
-            args: Dictionary of args variables.
+        Parameters
+        ----------
+        name
+            Name of the derived variable.
+        args
+            Dictionary of args variables.
 
         """
         args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
@@ -288,7 +332,19 @@ class Reaction:
         return pformat(self)
 
     def get_modifiers(self, model: Model) -> list[str]:
-        """Get the modifiers of the reaction."""
+        """Get the modifiers of the reaction.
+
+        Parameters
+        ----------
+        model
+            Model instance used to determine which args are variables.
+
+        Returns
+        -------
+        list[str]
+            Variable names that appear in args but not in the stoichiometry.
+
+        """
         include = set(model.get_variable_names())
         exclude = set(self.stoichiometry)
 
@@ -297,10 +353,13 @@ class Reaction:
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
 
-        Args:
-            args: Dictionary of args variables.
+        Parameters
+        ----------
+        args
+            Dictionary of args variables.
 
-        Returns:
+        Returns
+        -------
             The calculated derived value.
 
         """
@@ -309,9 +368,12 @@ class Reaction:
     def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the reaction in place.
 
-        Args:
-            name: Name of the derived variable.
-            args: Dictionary of args variables.
+        Parameters
+        ----------
+        name
+            Name of the derived variable.
+        args
+            Dictionary of args variables.
 
         """
         args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))

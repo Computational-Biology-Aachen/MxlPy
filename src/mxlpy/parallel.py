@@ -48,11 +48,16 @@ def _pickle_save(file: Path, data: Any) -> None:
 class Cache:
     """Cache class for storing and retrieving computation results.
 
-    Attributes:
-        tmp_dir: Directory to store cache files.
-        name_fn: Function to generate file names from keys.
-        load_fn: Function to load data from files.
-        save_fn: Function to save data to files.
+    Attributes
+    ----------
+    tmp_dir
+        Directory to store cache files.
+    name_fn
+        Function to generate file names from keys.
+    load_fn
+        Function to load data from files.
+    save_fn
+        Function to save data to files.
 
     """
 
@@ -69,13 +74,19 @@ def _load_or_run[K: Hashable, Tin, Tout](
 ) -> tuple[K, Tout]:
     """Load data from cache or execute function and save result.
 
-    Args:
-        inp: Tuple containing a key and input value.
-        fn: Function to execute if result is not in cache.
-        cache: Optional cache to store and retrieve results.
+    Parameters
+    ----------
+    inp
+        Tuple containing a key and input value.
+    fn
+        Function to execute if result is not in cache.
+    cache
+        Optional cache to store and retrieve results.
 
-    Returns:
-        tuple[K, Tout]: Tuple containing the key and the result of the function.
+    Returns
+    -------
+    tuple[K, Tout]
+        Tuple containing the key and the result of the function.
 
     """
     k, v = inp
@@ -103,22 +114,34 @@ def parallelise[K: Hashable, Tin, Tout](
 ) -> list[tuple[K, Tout]]:
     """Execute a function in parallel over a collection of inputs.
 
-    Examples:
+    Examples
+    --------
         >>> parallelise(square, [("a", 2), ("b", 3), ("c", 4)])
         {"a": 4, "b": 9, "c": 16}
 
-    Args:
-        fn: Function to execute in parallel. Takes a single input and returns a result.
-        inputs: Collection of (key, input) tuples to process.
-        cache: Optional cache to store and retrieve results.
-        parallel: Whether to execute in parallel (default: True).
-        max_workers: Maximum number of worker processes (default: None, uses all available CPUs).
-        timeout: Maximum time (in seconds) to wait for each worker to complete (default: None).
-        disable_tqdm: Whether to disable the tqdm progress bar (default: False).
-        tqdm_desc: Description for the tqdm progress bar (default: None).
+    Parameters
+    ----------
+    fn
+        Function to execute in parallel. Takes a single input and returns a result.
+    inputs
+        Collection of (key, input) tuples to process.
+    cache
+        Optional cache to store and retrieve results.
+    parallel
+        Whether to execute in parallel (default: True).
+    max_workers
+        Maximum number of worker processes (default: None, uses all available CPUs).
+    timeout
+        Maximum time (in seconds) to wait for each worker to complete (default: None).
+    disable_tqdm
+        Whether to disable the tqdm progress bar (default: False).
+    tqdm_desc
+        Description for the tqdm progress bar (default: None).
 
-    Returns:
-        dict[Tin, Tout]: Dictionary mapping inputs to their corresponding outputs.
+    Returns
+    -------
+    dict[Tin, Tout]
+        Dictionary mapping inputs to their corresponding outputs.
 
     """
     if cache is not None:
@@ -184,22 +207,34 @@ def parallelise_keyless[Tin, Tout](
 ) -> list[Tout]:
     """Execute a function in parallel over a collection of inputs.
 
-    Examples:
+    Examples
+    --------
         >>> parallelise(square, [("a", 2), ("b", 3), ("c", 4)])
         {"a": 4, "b": 9, "c": 16}
 
-    Args:
-        fn: Function to execute in parallel. Takes a single input and returns a result.
-        inputs: Collection of (key, input) tuples to process.
-        cache: Optional cache to store and retrieve results.
-        parallel: Whether to execute in parallel (default: True).
-        max_workers: Maximum number of worker processes (default: None, uses all available CPUs).
-        timeout: Maximum time (in seconds) to wait for each worker to complete (default: None).
-        disable_tqdm: Whether to disable the tqdm progress bar (default: False).
-        tqdm_desc: Description for the tqdm progress bar (default: None).
+    Parameters
+    ----------
+    fn
+        Function to execute in parallel. Takes a single input and returns a result.
+    inputs
+        Collection of (key, input) tuples to process.
+    cache
+        Optional cache to store and retrieve results.
+    parallel
+        Whether to execute in parallel (default: True).
+    max_workers
+        Maximum number of worker processes (default: None, uses all available CPUs).
+    timeout
+        Maximum time (in seconds) to wait for each worker to complete (default: None).
+    disable_tqdm
+        Whether to disable the tqdm progress bar (default: False).
+    tqdm_desc
+        Description for the tqdm progress bar (default: None).
 
-    Returns:
-        dict[Tin, Tout]: Dictionary mapping inputs to their corresponding outputs.
+    Returns
+    -------
+    dict[Tin, Tout]
+        Dictionary mapping inputs to their corresponding outputs.
 
     """
     if sys.platform in ["win32", "cygwin"]:

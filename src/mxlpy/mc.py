@@ -104,10 +104,11 @@ def _parameter_scan_worker(
     rel_norm : bool
         Whether to use relative normalization in the steady state calculations
 
-    Returns:
+    Returns
+    -------
         SteadyStates
-            Object containing the steady state solutions for the given parameter
-            combinations
+        Object containing the steady state solutions for the given parameter
+        combinations
 
     """
     return scan.steady_state(
@@ -133,7 +134,27 @@ def steady_state(
 ) -> SteadyStateScan:
     """Monte-carlo scan of steady states.
 
-    Examples:
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    mc_to_scan
+        DataFrame of parameter/initial condition samples for Monte Carlo.
+    y0
+        Initial conditions as a dictionary {variable: value}.
+    max_workers
+        Maximum number of parallel workers. None uses all available cores.
+    cache
+        Optional cache to store and retrieve results.
+    rel_norm
+        Whether to use relative normalization.
+    worker
+        Worker function for steady-state simulation.
+    integrator
+        Integrator function to use for simulation.
+
+    Examples
+    --------
         >>> steady_state(model, mc_to_scan)
         p    t     x      y
         0    0.0   0.1    0.00
@@ -146,8 +167,10 @@ def steady_state(
             2.0   0.3    0.02
             3.0   0.4    0.03
 
-    Returns:
-        SteadyStates: Object containing the steady state solutions for the given parameter
+    Returns
+    -------
+    SteadyStates
+        Object containing the steady state solutions for the given parameter
 
     """
     if y0 is not None:
@@ -192,7 +215,27 @@ def time_course(
 ) -> TimeCourseScan:
     """MC time course.
 
-    Examples:
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    time_points
+        Array of time points for the simulation.
+    mc_to_scan
+        DataFrame of parameter/initial condition samples for Monte Carlo.
+    y0
+        Initial conditions as a dictionary {variable: value}.
+    max_workers
+        Maximum number of parallel workers. None uses all available cores.
+    cache
+        Optional cache to store and retrieve results.
+    worker
+        Worker function for time-course simulation.
+    integrator
+        Integrator function to use for simulation.
+
+    Examples
+    --------
         >>> time_course(model, time_points, mc_to_scan)
         p    t     x      y
         0   0.0   0.1    0.00
@@ -204,7 +247,9 @@ def time_course(
             1.0   0.2    0.01
             2.0   0.3    0.02
             3.0   0.4    0.03
-    Returns:
+
+    Returns
+    -------
         tuple[concentrations, fluxes] using pandas multiindex
         Both dataframes are of shape (#time_points * #mc_to_scan, #variables)
 
@@ -248,7 +293,29 @@ def protocol(
 ) -> ProtocolScan:
     """MC time course.
 
-    Examples:
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    protocol
+        DataFrame containing the protocol steps.
+    mc_to_scan
+        DataFrame of parameter/initial condition samples for Monte Carlo.
+    y0
+        Initial conditions as a dictionary {variable: value}.
+    time_points_per_step
+        Number of time points per protocol step.
+    max_workers
+        Maximum number of parallel workers. None uses all available cores.
+    cache
+        Optional cache to store and retrieve results.
+    worker
+        Worker function for protocol simulation.
+    integrator
+        Integrator function to use for simulation.
+
+    Examples
+    --------
         >>> time_course_over_protocol(model, protocol, mc_to_scan)
         p    t     x      y
         0   0.0   0.1    0.00
@@ -261,7 +328,8 @@ def protocol(
             2.0   0.3    0.02
             3.0   0.4    0.03
 
-    Returns:
+    Returns
+    -------
         tuple[concentrations, fluxes] using pandas multiindex
         Both dataframes are of shape (#time_points * #mc_to_scan, #variables)
 
@@ -306,7 +374,29 @@ def protocol_time_course(
 ) -> ProtocolScan:
     """MC time course.
 
-    Examples:
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    protocol
+        DataFrame containing the protocol steps.
+    time_points
+        Array of time points for the simulation.
+    mc_to_scan
+        DataFrame of parameter/initial condition samples for Monte Carlo.
+    y0
+        Initial conditions as a dictionary {variable: value}.
+    max_workers
+        Maximum number of parallel workers. None uses all available cores.
+    cache
+        Optional cache to store and retrieve results.
+    worker
+        Worker function for protocol time-course simulation.
+    integrator
+        Integrator function to use for simulation.
+
+    Examples
+    --------
         >>> protocol_time_course(model, protocol, time_points, mc_to_scan)
         p    t     x      y
         0   0.0   0.1    0.00
@@ -319,7 +409,8 @@ def protocol_time_course(
             2.0   0.3    0.02
             3.0   0.4    0.03
 
-    Returns:
+    Returns
+    -------
         tuple[concentrations, fluxes] using pandas multiindex
         Both dataframes are of shape (#time_points * #mc_to_scan, #variables)
 
@@ -387,7 +478,8 @@ def scan_steady_state(
 ) -> McSteadyStates:
     """Parameter scan of mc distributed steady states.
 
-    Examples:
+    Examples
+    --------
         >>> scan_steady_state(
         ...     model,
         ...     parameters=pd.DataFrame({"k1": np.linspace(0, 1, 3)}),
@@ -404,19 +496,31 @@ def scan_steady_state(
 
 
 
-    Args:
-        model: The model to analyze
-        to_scan: DataFrame containing parameter and initial values to scan over
-        mc_to_scan: DataFrame containing Monte Carlo parameter sets
-        y0: Initial conditions for the solver
-        max_workers: Maximum number of workers for parallel processing
-        cache: Cache object for storing results
-        rel_norm: Whether to use relative normalization in the steady state calculations
-        worker: Worker function for parallel steady state scanning across parameter sets
-        integrator: Function producing an integrator for the simulation.
+    Parameters
+    ----------
+    model
+        The model to analyze
+    to_scan
+        DataFrame containing parameter and initial values to scan over
+    mc_to_scan
+        DataFrame containing Monte Carlo parameter sets
+    y0
+        Initial conditions for the solver
+    max_workers
+        Maximum number of workers for parallel processing
+    cache
+        Cache object for storing results
+    rel_norm
+        Whether to use relative normalization in the steady state calculations
+    worker
+        Worker function for parallel steady state scanning across parameter sets
+    integrator
+        Function producing an integrator for the simulation.
 
-    Returns:
-        McSteadyStates: Object containing the steady state solutions for the given parameter
+    Returns
+    -------
+    McSteadyStates
+        Object containing the steady state solutions for the given parameter
 
     """
     if y0 is not None:
@@ -467,7 +571,8 @@ def variable_elasticities(
 ) -> pd.DataFrame:
     """Calculate variable elasticities using Monte Carlo analysis.
 
-    Examples:
+    Examples
+    --------
         >>> variable_elasticities(
         ...     model,
         ...     variables=["x1", "x2"],
@@ -482,19 +587,31 @@ def variable_elasticities(
             v2  1.0    0.0
             v3  0.0   -1.4
 
-    Args:
-        model: The model to analyze
-        to_scan: List of variables for which to calculate elasticities
-        variables: Custom variable values. Defaults to initial conditions.
-        mc_to_scan: DataFrame containing Monte Carlo parameter sets
-        time: Time point for the analysis
-        cache: Cache object for storing results
-        max_workers: Maximum number of workers for parallel processing
-        normalized: Whether to use normalized elasticities
-        displacement: Displacement for finite difference calculations
+    Parameters
+    ----------
+    model
+        The model to analyze
+    to_scan
+        List of variables for which to calculate elasticities
+    variables
+        Custom variable values. Defaults to initial conditions.
+    mc_to_scan
+        DataFrame containing Monte Carlo parameter sets
+    time
+        Time point for the analysis
+    cache
+        Cache object for storing results
+    max_workers
+        Maximum number of workers for parallel processing
+    normalized
+        Whether to use normalized elasticities
+    displacement
+        Displacement for finite difference calculations
 
-    Returns:
-        pd.DataFrame: DataFrame containing the compound elasticities for the given variables
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing the compound elasticities for the given variables
 
     """
     res = parallelise(
@@ -531,7 +648,8 @@ def parameter_elasticities(
 ) -> pd.DataFrame:
     """Calculate parameter elasticities using Monte Carlo analysis.
 
-    Examples:
+    Examples
+    --------
         >>> parameter_elasticities(
         ...     model,
         ...     parameters=["p1", "p2"],
@@ -546,19 +664,31 @@ def parameter_elasticities(
             v2  1.0    0.0
             v3  0.0   -1.4
 
-    Args:
-        model: The model to analyze
-        to_scan: List of parameters for which to calculate elasticities
-        variables: Custom variable values. Defaults to initial conditions.
-        mc_to_scan: DataFrame containing Monte Carlo parameter sets
-        time: Time point for the analysis
-        cache: Cache object for storing results
-        max_workers: Maximum number of workers for parallel processing
-        normalized: Whether to use normalized elasticities
-        displacement: Displacement for finite difference calculations
+    Parameters
+    ----------
+    model
+        The model to analyze
+    to_scan
+        List of parameters for which to calculate elasticities
+    variables
+        Custom variable values. Defaults to initial conditions.
+    mc_to_scan
+        DataFrame containing Monte Carlo parameter sets
+    time
+        Time point for the analysis
+    cache
+        Cache object for storing results
+    max_workers
+        Maximum number of workers for parallel processing
+    normalized
+        Whether to use normalized elasticities
+    displacement
+        Displacement for finite difference calculations
 
-    Returns:
-        pd.DataFrame: DataFrame containing the parameter elasticities for the given variables
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing the parameter elasticities for the given variables
 
     """
     res = parallelise(
@@ -597,7 +727,8 @@ def response_coefficients(
 ) -> ResponseCoefficientsByPars:
     """Calculate response coefficients using Monte Carlo analysis.
 
-    Examples:
+    Examples
+    --------
         >>> response_coefficients(
         ...     model,
         ...     parameters=["vmax1", "vmax2"],
@@ -609,21 +740,35 @@ def response_coefficients(
         1 vmax_1  0.03  0.03
           vmax_2  0.04  0.04
 
-    Args:
-        model: The model to analyze
-        mc_to_scan: DataFrame containing Monte Carlo parameter sets
-        to_scan: List of parameters for which to calculate elasticities
-        variables: Custom variable values. Defaults to initial conditions.
-        cache: Cache object for storing results
-        normalized: Whether to use normalized elasticities
-        displacement: Displacement for finite difference calculations
-        disable_tqdm: Whether to disable the tqdm progress bar
-        max_workers: Maximum number of workers for parallel processing
-        rel_norm: Whether to use relative normalization in the steady state calculations
-        integrator: Function producing an integrator for the simulation.
+    Parameters
+    ----------
+    model
+        The model to analyze
+    mc_to_scan
+        DataFrame containing Monte Carlo parameter sets
+    to_scan
+        List of parameters for which to calculate elasticities
+    variables
+        Custom variable values. Defaults to initial conditions.
+    cache
+        Cache object for storing results
+    normalized
+        Whether to use normalized elasticities
+    displacement
+        Displacement for finite difference calculations
+    disable_tqdm
+        Whether to disable the tqdm progress bar
+    max_workers
+        Maximum number of workers for parallel processing
+    rel_norm
+        Whether to use relative normalization in the steady state calculations
+    integrator
+        Function producing an integrator for the simulation.
 
-    Returns:
-        ResponseCoefficientsByPars: Object containing the response coefficients for the given parameters
+    Returns
+    -------
+    ResponseCoefficientsByPars
+        Object containing the response coefficients for the given parameters
 
     """
     if variables is not None:

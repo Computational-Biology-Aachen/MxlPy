@@ -48,37 +48,135 @@ type LossFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 def mean_error(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-    """Calculate mean error."""
+    """Calculate mean error.
+
+    Parameters
+    ----------
+    pred
+        Predicted values.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    torch.Tensor
+        Mean error scalar.
+
+    """
     return torch.mean(pred - true)
 
 
 def mean_squared_error(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-    """Calculate mean squared error."""
+    """Calculate mean squared error.
+
+    Parameters
+    ----------
+    pred
+        Predicted values.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    torch.Tensor
+        Mean squared error scalar.
+
+    """
     return torch.mean(torch.square(pred - true))
 
 
 def rms_error(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-    """Calculate root mean square error."""
+    """Calculate root mean square error.
+
+    Parameters
+    ----------
+    pred
+        Predicted values.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    torch.Tensor
+        Root mean square error scalar.
+
+    """
     return torch.sqrt(torch.mean(torch.square(pred - true)))
 
 
 def mean_abs_error(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-    """Calculate mean absolute error."""
+    """Calculate mean absolute error.
+
+    Parameters
+    ----------
+    pred
+        Predicted values.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    torch.Tensor
+        Mean absolute error scalar.
+
+    """
     return torch.mean(torch.abs(pred - true))
 
 
 def mean_absolute_percentage(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-    """Calculate mean absolute percentag error."""
+    """Calculate mean absolute percentage error.
+
+    Parameters
+    ----------
+    pred
+        Predicted values.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    torch.Tensor
+        Mean absolute percentage error scalar.
+
+    """
     return 100 * torch.mean(torch.abs((true - pred) / pred))
 
 
 def mean_squared_logarithmic(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-    """Calculate root mean square error between model and data."""
+    """Calculate mean squared logarithmic error.
+
+    Parameters
+    ----------
+    pred
+        Predicted values.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    torch.Tensor
+        Mean squared logarithmic error scalar.
+
+    """
     return torch.mean(torch.square(torch.log(pred + 1) - torch.log(true + 1)))
 
 
 def cosine_similarity(pred: torch.Tensor, true: torch.Tensor) -> torch.Tensor:
-    """Calculate root mean square error between model and data."""
+    """Calculate negative cosine similarity.
+
+    Parameters
+    ----------
+    pred
+        Predicted values.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    torch.Tensor
+        Negative cosine similarity scalar.
+
+    """
     return -torch.sum(torch.norm(pred, 2) * torch.norm(true, 2))
 
 
@@ -99,18 +197,29 @@ def train(
 ) -> pd.Series:
     """Train the neural network using mini-batch gradient descent.
 
-    Args:
-        model: Neural network model to train.
-        features: Input features as a tensor.
-        targets: Target values as a tensor.
-        epochs: Number of training epochs.
-        optimizer: Optimizer for training.
-        device: torch device
-        batch_size: Size of mini-batches for training.
-        loss_fn: Loss function
+    Parameters
+    ----------
+    model
+        Neural network model to train.
+    features
+        Input features as a tensor.
+    targets
+        Target values as a tensor.
+    epochs
+        Number of training epochs.
+    optimizer
+        Optimizer for training.
+    device
+        torch device
+    batch_size
+        Size of mini-batches for training.
+    loss_fn
+        Loss function
 
-    Returns:
-        pd.Series: Series containing the training loss history.
+    Returns
+    -------
+    pd.Series
+        Series containing the training loss history.
 
     """
     losses = {}
@@ -145,10 +254,13 @@ def train(
 class MLP(nn.Module):
     """Multilayer Perceptron (MLP) for surrogate modeling and neural posterior estimation.
 
-    Attributes:
-        net: Sequential neural network model.
+    Attributes
+    ----------
+    net
+        Sequential neural network model.
 
-    Methods:
+    Methods
+    -------
         forward: Forward pass through the neural network.
 
     """
@@ -162,12 +274,18 @@ class MLP(nn.Module):
     ) -> None:
         """Initializes the MLP with the given number of inputs and list of (hidden) layers.
 
-        Args:
-            n_inputs: The number of input features.
-            neurons_per_layer: Number of neurons per layer
-            n_outputs: A list containing the number of neurons in hidden and output layer.
-            activation: The activation function to be applied after each hidden layer (default nn.ReLU)
-            output_activation: The activation function to be applied after the final (output) layer
+        Parameters
+        ----------
+        n_inputs
+            The number of input features.
+        neurons_per_layer
+            Number of neurons per layer
+        n_outputs
+            A list containing the number of neurons in hidden and output layer.
+        activation
+            The activation function to be applied after each hidden layer (default nn.ReLU)
+        output_activation
+            The activation function to be applied after the final (output) layer
 
         For instance, MLP(10, layers = [50, 50, 10]) initializes a neural network with the following architecture:
         - Linear layer with `n_inputs` inputs and 50 outputs
@@ -209,11 +327,15 @@ class MLP(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the neural network.
 
-        Args:
-            x: Input tensor.
+        Parameters
+        ----------
+        x
+            Input tensor.
 
-        Returns:
-            torch.Tensor: Output tensor.
+        Returns
+        -------
+        torch.Tensor
+            Output tensor.
 
         """
         return self.net(x)
@@ -230,10 +352,14 @@ class LSTM(nn.Module):
     ) -> None:
         """Initializes the neural network model.
 
-        Args:
-            n_inputs (int): Number of input features.
-            n_outputs (int): Number of output features.
-            n_hidden (int): Number of hidden units in the LSTM layer.
+        Parameters
+        ----------
+        n_inputs : int
+            Number of input features.
+        n_outputs : int
+            Number of output features.
+        n_hidden : int
+            Number of hidden units in the LSTM layer.
 
         """
         super().__init__()
@@ -247,7 +373,19 @@ class LSTM(nn.Module):
         nn.init.constant_(self.to_out.bias, val=0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass through the neural network."""
+        """Forward pass through the neural network.
+
+        Parameters
+        ----------
+        x
+            Input tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor.
+
+        """
         # lstm_out, (hidden_state, cell_state)
         _, (hn, _) = self.lstm(x)
         return cast(torch.Tensor, self.to_out(hn[-1]))  # Use last hidden state

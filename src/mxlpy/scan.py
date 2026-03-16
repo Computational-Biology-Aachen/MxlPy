@@ -59,12 +59,17 @@ def _update_parameters_and_initial_conditions[T](
 ) -> T:
     """Update model parameters and execute a function.
 
-    Args:
-        pars: Series containing parameter values to update.
-        fn: Function to execute after updating parameters.
-        model: Model instance to update.
+    Parameters
+    ----------
+    pars
+        Series containing parameter values to update.
+    fn
+        Function to execute after updating parameters.
+    model
+        Model instance to update.
 
-    Returns:
+    Returns
+    -------
         Result of the function execution.
 
     """
@@ -150,14 +155,21 @@ def _steady_state_worker(
 ) -> Simulation:
     """Simulate the model to steady state and return concentrations and fluxes.
 
-    Args:
-        model: Model instance to simulate.
-        y0: Initial conditions as a dictionary {species: value}.
-        rel_norm: Whether to use relative normalization.
-        integrator: Function producing an integrator for the simulation.
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    y0
+        Initial conditions as a dictionary {species: value}.
+    rel_norm
+        Whether to use relative normalization.
+    integrator
+        Function producing an integrator for the simulation.
 
-    Returns:
-        TimePoint: Object containing steady-state concentrations and fluxes.
+    Returns
+    -------
+    TimePoint
+        Object containing steady-state concentrations and fluxes.
 
     """
     try:
@@ -182,14 +194,21 @@ def _time_course_worker(
 ) -> Simulation:
     """Simulate the model to steady state and return concentrations and fluxes.
 
-    Args:
-        model: Model instance to simulate.
-        y0: Initial conditions as a dictionary {species: value}.
-        time_points: Array of time points for the simulation.
-        integrator: Integrator function to use for steady state calculation
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    y0
+        Initial conditions as a dictionary {species: value}.
+    time_points
+        Array of time points for the simulation.
+    integrator
+        Integrator function to use for steady state calculation
 
-    Returns:
-        TimePoint: Object containing steady-state concentrations and fluxes.
+    Returns
+    -------
+    TimePoint
+        Object containing steady-state concentrations and fluxes.
 
     """
     try:
@@ -214,15 +233,23 @@ def _protocol_worker(
 ) -> Simulation:
     """Simulate the model over a protocol and return concentrations and fluxes.
 
-    Args:
-        model: Model instance to simulate.
-        y0: Initial conditions as a dictionary {species: value}.
-        protocol: DataFrame containing the protocol steps.
-        integrator: Integrator function to use for steady state calculation
-        time_points_per_step: Number of time points per protocol step.
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    y0
+        Initial conditions as a dictionary {species: value}.
+    protocol
+        DataFrame containing the protocol steps.
+    integrator
+        Integrator function to use for steady state calculation
+    time_points_per_step
+        Number of time points per protocol step.
 
-    Returns:
-        TimeCourse: Object containing protocol series concentrations and fluxes.
+    Returns
+    -------
+    TimeCourse
+        Object containing protocol series concentrations and fluxes.
 
     """
     try:
@@ -255,15 +282,23 @@ def _protocol_time_course_worker(
 ) -> Simulation:
     """Simulate the model over a protocol and return concentrations and fluxes.
 
-    Args:
-        model: Model instance to simulate.
-        y0: Initial conditions as a dictionary {species: value}.
-        protocol: DataFrame containing the protocol steps.
-        time_points: Time points where to return the simulation
-        integrator: Integrator function to use for steady state calculation
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    y0
+        Initial conditions as a dictionary {species: value}.
+    protocol
+        DataFrame containing the protocol steps.
+    time_points
+        Time points where to return the simulation
+    integrator
+        Integrator function to use for steady state calculation
 
-    Returns:
-        TimeCourse: Object containing protocol series concentrations and fluxes.
+    Returns
+    -------
+    TimeCourse
+        Object containing protocol series concentrations and fluxes.
 
     """
     try:
@@ -324,7 +359,33 @@ class SteadyStateScan:
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
-        """Return steady-state args by scan."""
+        """Return steady-state args by scan.
+
+        Parameters
+        ----------
+        include_variables
+            Include model variables.
+        include_parameters
+            Include model parameters.
+        include_derived_parameters
+            Include derived parameters.
+        include_derived_variables
+            Include derived variables.
+        include_reactions
+            Include reaction fluxes.
+        include_surrogate_variables
+            Include surrogate variables.
+        include_surrogate_fluxes
+            Include surrogate fluxes.
+        include_readouts
+            Include readouts.
+
+        Returns
+        -------
+        pd.DataFrame
+            Steady-state args indexed by scan values.
+
+        """
         return pd.DataFrame(
             [
                 i.get_args(
@@ -362,20 +423,32 @@ def steady_state(
 ) -> SteadyStateScan:
     """Get steady-state results over supplied values.
 
-    Args:
-        model: Model instance to simulate.
-        to_scan: DataFrame containing parameter or initial values to scan.
-        y0: Initial conditions as a dictionary {variable: value}.
-        parallel: Whether to execute in parallel (default: True).
-        rel_norm: Whether to use relative normalization (default: False).
-        cache: Optional cache to store and retrieve results.
-        worker: Worker function to use for the simulation.
-        integrator: Integrator function to use for steady state calculation
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    to_scan
+        DataFrame containing parameter or initial values to scan.
+    y0
+        Initial conditions as a dictionary {variable: value}.
+    parallel
+        Whether to execute in parallel (default: True).
+    rel_norm
+        Whether to use relative normalization (default: False).
+    cache
+        Optional cache to store and retrieve results.
+    worker
+        Worker function to use for the simulation.
+    integrator
+        Integrator function to use for steady state calculation
 
-    Returns:
-        SteadyStates: Steady-state results for each parameter set.
+    Returns
+    -------
+    SteadyStates
+        Steady-state results for each parameter set.
 
-    Examples:
+    Examples
+    --------
         >>> steady_state(
         >>>     model,
         >>>     parameters=pd.DataFrame({"k1": np.linspace(1, 2, 3)})
@@ -469,7 +542,33 @@ class TimeCourseScan:
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
-        """Return all args of the time courses."""
+        """Return all args of the time courses.
+
+        Parameters
+        ----------
+        include_variables
+            Include model variables.
+        include_parameters
+            Include model parameters.
+        include_derived_parameters
+            Include derived parameters.
+        include_derived_variables
+            Include derived variables.
+        include_reactions
+            Include reaction fluxes.
+        include_surrogate_variables
+            Include surrogate variables.
+        include_surrogate_fluxes
+            Include surrogate fluxes.
+        include_readouts
+            Include readouts.
+
+        Returns
+        -------
+        pd.DataFrame
+            Combined args with multi-index (n, time).
+
+        """
         return pd.concat(
             {
                 k: i.get_args(
@@ -488,16 +587,52 @@ class TimeCourseScan:
         )
 
     def get_by_name(self, name: str) -> pd.DataFrame:
-        """Get time courses by name."""
+        """Get time courses by name.
+
+        Parameters
+        ----------
+        name
+            Name of the variable or flux to retrieve.
+
+        Returns
+        -------
+        pd.DataFrame
+            Time course for the given name, with runs as columns.
+
+        """
         return self.combined[name].unstack().T
 
     def get_agg_per_time(self, agg: str | Callable) -> pd.DataFrame:
-        """Get aggregated time courses."""
+        """Get aggregated time courses.
+
+        Parameters
+        ----------
+        agg
+            Aggregation function or name (e.g. "mean", "std").
+
+        Returns
+        -------
+        pd.DataFrame
+            Aggregated values across runs for each time point.
+
+        """
         mean = cast(pd.DataFrame, self.combined.unstack(level=1).agg(agg, axis=0))
         return cast(pd.DataFrame, mean.unstack().T)
 
     def get_agg_per_run(self, agg: str | Callable) -> pd.DataFrame:
-        """Get aggregated time courses."""
+        """Get aggregated time courses.
+
+        Parameters
+        ----------
+        agg
+            Aggregation function or name (e.g. "mean", "std").
+
+        Returns
+        -------
+        pd.DataFrame
+            Aggregated values across time points for each run.
+
+        """
         mean = cast(pd.DataFrame, self.combined.unstack(level=0).agg(agg, axis=0))
         return cast(pd.DataFrame, mean.unstack().T)
 
@@ -519,7 +654,8 @@ def time_course(
 ) -> TimeCourseScan:
     """Get time course for each supplied parameter.
 
-    Examples:
+    Examples
+    --------
         >>> time_course(
         >>>     model,
         >>>     to_scan=pd.DataFrame({"k1": [1, 1.5, 2]}),
@@ -552,18 +688,29 @@ def time_course(
         | (1, 0.5)  | 0.351501 | 1.4712 |
         | (2, 0.0)  | 1        | 1      |
 
-    Args:
-        model: Model instance to simulate.
-        to_scan: DataFrame containing parameter or initial values to scan.
-        time_points: Array of time points for the simulation.
-        y0: Initial conditions as a dictionary {variable: value}.
-        cache: Optional cache to store and retrieve results.
-        parallel: Whether to execute in parallel (default: True).
-        worker: Worker function to use for the simulation.
-        integrator: Integrator function to use for steady state calculation
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    to_scan
+        DataFrame containing parameter or initial values to scan.
+    time_points
+        Array of time points for the simulation.
+    y0
+        Initial conditions as a dictionary {variable: value}.
+    cache
+        Optional cache to store and retrieve results.
+    parallel
+        Whether to execute in parallel (default: True).
+    worker
+        Worker function to use for the simulation.
+    integrator
+        Integrator function to use for steady state calculation
 
-    Returns:
-        TimeCourseByPars: Time series results for each parameter set.
+    Returns
+    -------
+    TimeCourseByPars
+        Time series results for each parameter set.
 
 
     """
@@ -638,7 +785,33 @@ class ProtocolScan:
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
-        """Return all args of the time courses."""
+        """Return all args of the time courses.
+
+        Parameters
+        ----------
+        include_variables
+            Include model variables.
+        include_parameters
+            Include model parameters.
+        include_derived_parameters
+            Include derived parameters.
+        include_derived_variables
+            Include derived variables.
+        include_reactions
+            Include reaction fluxes.
+        include_surrogate_variables
+            Include surrogate variables.
+        include_surrogate_fluxes
+            Include surrogate fluxes.
+        include_readouts
+            Include readouts.
+
+        Returns
+        -------
+        pd.DataFrame
+            Combined args with multi-index (n, time).
+
+        """
         return pd.concat(
             {
                 k: i.get_args(
@@ -657,16 +830,52 @@ class ProtocolScan:
         )
 
     def get_by_name(self, name: str) -> pd.DataFrame:
-        """Get concentration or flux by name."""
+        """Get concentration or flux by name.
+
+        Parameters
+        ----------
+        name
+            Name of the variable or flux to retrieve.
+
+        Returns
+        -------
+        pd.DataFrame
+            Time course for the given name, with runs as columns.
+
+        """
         return self.combined[name].unstack().T
 
     def get_agg_per_time(self, agg: str | Callable) -> pd.DataFrame:
-        """Get aggregated concentration or flux."""
+        """Get aggregated concentration or flux.
+
+        Parameters
+        ----------
+        agg
+            Aggregation function or name (e.g. "mean", "std").
+
+        Returns
+        -------
+        pd.DataFrame
+            Aggregated values across runs for each time point.
+
+        """
         mean = cast(pd.DataFrame, self.combined.unstack(level=1).agg(agg, axis=0))
         return cast(pd.DataFrame, mean.unstack().T)
 
     def get_agg_per_run(self, agg: str | Callable) -> pd.DataFrame:
-        """Get aggregated concentration or flux."""
+        """Get aggregated concentration or flux.
+
+        Parameters
+        ----------
+        agg
+            Aggregation function or name (e.g. "mean", "std").
+
+        Returns
+        -------
+        pd.DataFrame
+            Aggregated values across time points for each run.
+
+        """
         mean = cast(pd.DataFrame, self.combined.unstack(level=0).agg(agg, axis=0))
         return cast(pd.DataFrame, mean.unstack().T)
 
@@ -689,7 +898,8 @@ def protocol(
 ) -> ProtocolScan:
     """Get protocol series for each supplied parameter.
 
-    Examples:
+    Examples
+    --------
         >>> scan.time_course_over_protocol(
         ...     model,
         ...     parameters=pd.DataFrame({"k2": np.linspace(1, 2, 11)}),
@@ -701,19 +911,31 @@ def protocol(
         ...     ),
         ... )
 
-    Args:
-        model: Model instance to simulate.
-        to_scan: DataFrame containing parameter or initial values to scan.
-        protocol: Protocol to follow for the simulation.
-        time_points_per_step: Number of time points per protocol step (default: 10).
-        y0: Initial conditions as a dictionary {variable: value}.
-        parallel: Whether to execute in parallel (default: True).
-        cache: Optional cache to store and retrieve results.
-        worker: Worker function to use for the simulation.
-        integrator: Integrator function to use for steady state calculation
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    to_scan
+        DataFrame containing parameter or initial values to scan.
+    protocol
+        Protocol to follow for the simulation.
+    time_points_per_step
+        Number of time points per protocol step (default: 10).
+    y0
+        Initial conditions as a dictionary {variable: value}.
+    parallel
+        Whether to execute in parallel (default: True).
+    cache
+        Optional cache to store and retrieve results.
+    worker
+        Worker function to use for the simulation.
+    integrator
+        Integrator function to use for steady state calculation
 
-    Returns:
-        TimeCourseByPars: Protocol series results for each parameter set.
+    Returns
+    -------
+    TimeCourseByPars
+        Protocol series results for each parameter set.
 
     """
     # We update the initial conditions separately here, because `to_scan` might also
@@ -758,7 +980,8 @@ def protocol_time_course(
 ) -> ProtocolScan:
     """Get protocol series for each supplied parameter.
 
-    Examples:
+    Examples
+    --------
         >>> scan.time_course_over_protocol(
         ...     model,
         ...     parameters=pd.DataFrame({"k2": np.linspace(1, 2, 11)}),
@@ -770,19 +993,31 @@ def protocol_time_course(
         ...     ),
         ... )
 
-    Args:
-        model: Model instance to simulate.
-        to_scan: DataFrame containing parameter or initial values to scan.
-        protocol: Protocol to follow for the simulation.
-        time_points: Time points where to return simulation results
-        y0: Initial conditions as a dictionary {variable: value}.
-        parallel: Whether to execute in parallel (default: True).
-        cache: Optional cache to store and retrieve results.
-        worker: Worker function to use for the simulation.
-        integrator: Integrator function to use for steady state calculation
+    Parameters
+    ----------
+    model
+        Model instance to simulate.
+    to_scan
+        DataFrame containing parameter or initial values to scan.
+    protocol
+        Protocol to follow for the simulation.
+    time_points
+        Time points where to return simulation results
+    y0
+        Initial conditions as a dictionary {variable: value}.
+    parallel
+        Whether to execute in parallel (default: True).
+    cache
+        Optional cache to store and retrieve results.
+    worker
+        Worker function to use for the simulation.
+    integrator
+        Integrator function to use for steady state calculation
 
-    Returns:
-        TimeCourseByPars: Protocol series results for each parameter set.
+    Returns
+    -------
+    TimeCourseByPars
+        Protocol series results for each parameter set.
 
     """
     # We update the initial conditions separately here, because `to_scan` might also

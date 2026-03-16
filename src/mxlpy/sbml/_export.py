@@ -76,7 +76,20 @@ class IdentifierReplacer(ast.NodeTransformer):
     def __init__(self, mapping: dict[str, str]) -> None:
         self.mapping = mapping
 
-    def visit_Name(self, node: ast.Name) -> ast.Name:  # noqa: N802
+    def visit_Name(self, node: ast.Name) -> ast.Name:
+        """Replace identifier names using the mapping.
+
+        Parameters
+        ----------
+        node
+            AST Name node to transform
+
+        Returns
+        -------
+        ast.Name
+            Transformed node with mapped identifier
+
+        """
         return ast.Name(
             id=self.mapping.get(node.id, node.id),
             ctx=node.ctx,
@@ -84,7 +97,20 @@ class IdentifierReplacer(ast.NodeTransformer):
 
 
 class DocstringRemover(ast.NodeTransformer):
-    def visit_Expr(self, node: ast.Expr) -> ast.Expr | None:  # noqa: N802
+    def visit_Expr(self, node: ast.Expr) -> ast.Expr | None:
+        """Remove docstring expression nodes.
+
+        Parameters
+        ----------
+        node
+            AST Expr node to check
+
+        Returns
+        -------
+        ast.Expr | None
+            The node unchanged, or None if it is a docstring
+
+        """
         if isinstance(const := node.value, ast.Constant) and isinstance(
             const.value, str
         ):
@@ -344,8 +370,10 @@ def _convert_id_to_sbml(id_: str, prefix: str) -> str:
 def _create_sbml_document() -> libsbml.SBMLDocument:
     """Create an sbml document, into which sbml information can be written.
 
-    Returns:
-        doc : libsbml.Document
+    Returns
+    -------
+    doc
+        libsbml.Document
 
     """
     # SBML namespaces
@@ -368,15 +396,23 @@ def _create_sbml_model(
 ) -> libsbml.Model:
     """Create an sbml model.
 
-    Args:
-        model_name: Name of the model.
-        doc: libsbml.Document
-        extent_units: Units for the extent of reactions.
-        substance_units: Units for the amount of substances.
-        time_units: Units for time.
+    Parameters
+    ----------
+    model_name
+        Name of the model.
+    doc
+        libsbml.Document
+    extent_units
+        Units for the extent of reactions.
+    substance_units
+        Units for the amount of substances.
+    time_units
+        Units for time.
 
-    Returns:
-        sbml_model : libsbml.Model
+    Returns
+    -------
+    sbml_model
+        libsbml.Model
 
     """
     name = f"{model_name}_{datetime.now(UTC).date().strftime('%Y-%m-%d')}"
@@ -398,9 +434,12 @@ def _create_sbml_units(
 ) -> None:
     """Create sbml units out of the meta_info.
 
-    Args:
-        units: Dictionary of units to use in the SBML file.
-        sbml_model : libsbml Model
+    Parameters
+    ----------
+    units
+        Dictionary of units to use in the SBML file.
+    sbml_model
+        libsbml Model
 
     """
     for unit_id, unit in units.items():
@@ -435,9 +474,12 @@ def _create_sbml_variables(
 ) -> None:
     """Create the variables for the sbml model.
 
-    Args:
-        model: Model instance to export.
-        sbml_model : libsbml.Model
+    Parameters
+    ----------
+    model
+        Model instance to export.
+    sbml_model
+        libsbml.Model
 
     """
     for name, variable in model.get_raw_variables().items():
@@ -490,9 +532,12 @@ def _create_sbml_parameters(
 ) -> None:
     """Create the parameters for the sbml model.
 
-    Args:
-        model: Model instance to export.
-        sbml_model : libsbml.Model
+    Parameters
+    ----------
+    model
+        Model instance to export.
+    sbml_model
+        libsbml.Model
 
     """
     for name, value in model.get_raw_parameters().items():
@@ -635,18 +680,29 @@ def write(
 ) -> Path:
     """Export a metabolic model to an SBML file.
 
-    Args:
-        model: Model instance to export.
-        file: Name of the SBML file to create.
-        model_name: Name of the model.
-        units: Dictionary of units to use in the SBML file (default: None).
-        compartments: Dictionary of compartments to use in the SBML file (default: None).
-        extent_units: Units for the extent of reactions (default: "mole").
-        substance_units: Units for the amount of substances (default: "mole").
-        time_units: Units for time (default: "second").
+    Parameters
+    ----------
+    model
+        Model instance to export.
+    file
+        Name of the SBML file to create.
+    model_name
+        Name of the model.
+    units
+        Dictionary of units to use in the SBML file (default: None).
+    compartments
+        Dictionary of compartments to use in the SBML file (default: None).
+    extent_units
+        Units for the extent of reactions (default: "mole").
+    substance_units
+        Units for the amount of substances (default: "mole").
+    time_units
+        Units for time (default: "second").
 
-    Returns:
-        str | None: None if the export is successful.
+    Returns
+    -------
+    str | None
+        None if the export is successful.
 
     """
     doc = _model_to_sbml(

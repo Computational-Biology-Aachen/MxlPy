@@ -26,7 +26,19 @@ __all__ = [
 
 
 def list_of_symbols(args: Iterable[str]) -> list[sympy.Symbol | sympy.Expr]:
-    """Convert list of strings to list of symbols."""
+    """Convert list of strings to list of symbols.
+
+    Parameters
+    ----------
+    args
+        Iterable of string names to convert to sympy symbols
+
+    Returns
+    -------
+    list[sympy.Symbol | sympy.Expr]
+        List of sympy symbols
+
+    """
     return [sympy.Symbol(arg) for arg in args]
 
 
@@ -56,17 +68,53 @@ def sympy_to_inline_py(expr: sympy.Expr) -> str:
 
 
 def sympy_to_inline_js(expr: sympy.Expr) -> str:
-    """Create rust code from sympy expression."""
+    """Create JavaScript code from sympy expression.
+
+    Parameters
+    ----------
+    expr
+        Sympy expression to convert
+
+    Returns
+    -------
+    str
+        JavaScript code string
+
+    """
     return cast(str, jscode(expr, full_prec=False))
 
 
 def sympy_to_inline_rust(expr: sympy.Expr) -> str:
-    """Create rust code from sympy expression."""
+    """Create Rust code from sympy expression.
+
+    Parameters
+    ----------
+    expr
+        Sympy expression to convert
+
+    Returns
+    -------
+    str
+        Rust code string
+
+    """
     return cast(str, rust_code(expr, full_prec=False))
 
 
 def sympy_to_inline_julia(expr: sympy.Expr) -> str:
-    """Create rust code from sympy expression."""
+    """Create Julia code from sympy expression.
+
+    Parameters
+    ----------
+    expr
+        Sympy expression to convert
+
+    Returns
+    -------
+    str
+        Julia code string
+
+    """
     return cast(str, julia_code(expr, full_prec=False))
 
 
@@ -113,7 +161,21 @@ def stoichiometries_to_sympy(
     origin: str,
     stoichs: Mapping[str, float | Derived],
 ) -> sympy.Expr:
-    """Convert mxlpy stoichiometries to single expression."""
+    """Convert mxlpy stoichiometries to single expression.
+
+    Parameters
+    ----------
+    origin
+        Name of the variable the stoichiometries belong to
+    stoichs
+        Mapping of reaction names to stoichiometric coefficients or derived expressions
+
+    Returns
+    -------
+    sympy.Expr
+        Combined sympy expression representing the stoichiometries
+
+    """
     expr = sympy.Integer(0)
 
     for rxn_name, rxn_stoich in stoichs.items():

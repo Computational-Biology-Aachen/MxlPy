@@ -26,6 +26,19 @@ class Surrogate(AbstractSurrogate):
         self,
         args: dict[str, float | pd.Series | pd.DataFrame],
     ) -> dict[str, float]:
+        """Predict outputs based on input data.
+
+        Parameters
+        ----------
+        args
+            Mapping of input names to their values.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapping of output names to predicted values.
+
+        """
         return dict(
             zip(
                 self.outputs,

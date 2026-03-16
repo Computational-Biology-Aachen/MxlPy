@@ -103,6 +103,19 @@ class _Settings:
         return (self.data - self.mean) / self.scale
 
     def loss(self, prediction: pd.Series | pd.DataFrame) -> float:
+        """Calculate loss between prediction and stored data.
+
+        Parameters
+        ----------
+        prediction
+            Model prediction to compare against experimental data.
+
+        Returns
+        -------
+        float
+            Loss value computed by the configured loss function.
+
+        """
         if self.standard_scale:
             return self.loss_fn(self.data_scaled, (prediction - self.mean) / self.scale)
         return self.loss_fn(self.data, prediction)

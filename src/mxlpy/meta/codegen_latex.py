@@ -580,6 +580,11 @@ class TexExport:
     ) -> str:
         """Export derived quantities as LaTeX equations.
 
+        Parameters
+        ----------
+        long_name_cutoff
+            Maximum length of argument names before they are shortened
+
         Returns
         -------
         str
@@ -615,6 +620,11 @@ class TexExport:
     ) -> str:
         """Export reactions as LaTeX equations.
 
+        Parameters
+        ----------
+        long_name_cutoff
+            Maximum length of argument names before they are shortened
+
         Returns
         -------
         str
@@ -648,6 +658,11 @@ class TexExport:
         long_name_cutoff: int = 10,
     ) -> str:
         """Export stoichiometries as LaTeX table.
+
+        Parameters
+        ----------
+        long_name_cutoff
+            Maximum length of argument names before they are shortened
 
         Returns
         -------
@@ -790,7 +805,19 @@ class TexExport:
 
 
 def to_tex_export(model: Model) -> TexExport:
-    """Create TexExport object from a model."""
+    """Create TexExport object from a model.
+
+    Parameters
+    ----------
+    model
+        Model to convert to a TexExport
+
+    Returns
+    -------
+    TexExport
+        LaTeX export object containing all model components
+
+    """
     diff_eqs = {}
     for rxn_name, rxn in model.get_raw_reactions().items():
         for var_name, factor in rxn.stoichiometry.items():

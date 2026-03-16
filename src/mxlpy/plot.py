@@ -175,12 +175,17 @@ def _get_norm(vmin: float, vmax: float) -> Normalize:
     a symmetrical logarithmic scale for values less than or equal to 0,
     and a linear scale for all other values.
 
-    Args:
-        vmin: Minimum value of the data.
-        vmax: Maximum value of the data.
+    Parameters
+    ----------
+    vmin
+        Minimum value of the data.
+    vmax
+        Maximum value of the data.
 
-    Returns:
-        Normalize: A normalization object for the given data.
+    Returns
+    -------
+    Normalize
+        A normalization object for the given data.
 
     """
     if vmax < 1000 and vmin > -1000:  # noqa: PLR2004
@@ -272,11 +277,16 @@ def _default_labels(
 ) -> None:
     """Set default labels for the given axis.
 
-    Args:
-        ax: matplotlib Axes
-        xlabel: Label for the x-axis.
-        ylabel: Label for the y-axis.
-        zlabel: Label for the z-axis.
+    Parameters
+    ----------
+    ax
+        matplotlib Axes
+    xlabel
+        Label for the x-axis.
+    ylabel
+        Label for the y-axis.
+    zlabel
+        Label for the z-axis.
 
     """
     ax.set_xlabel("Add a label / unit" if xlabel is None else xlabel)
@@ -294,12 +304,18 @@ def _annotate_colormap(
 ) -> None:
     """Annotate a heatmap with the values of the data.
 
-    Args:
-        df: Dataframe to annotate.
-        ax: Axes to annotate.
-        sci_annotation_bounds: Bounds for scientific notation.
-        annotation_style: Style for the annotations.
-        hm: QuadMesh object of the heatmap.
+    Parameters
+    ----------
+    df
+        Dataframe to annotate.
+    ax
+        Axes to annotate.
+    sci_annotation_bounds
+        Bounds for scientific notation.
+    annotation_style
+        Style for the annotations.
+    hm
+        QuadMesh object of the heatmap.
 
     """
     hm.update_scalarmappable()  # So that get_facecolor is an array
@@ -330,7 +346,19 @@ def _annotate_colormap(
 
 
 def add_grid(ax: Axes) -> Axes:
-    """Add a grid to the given axis."""
+    """Add a grid to the given axis.
+
+    Parameters
+    ----------
+    ax
+        Axis to add the grid to.
+
+    Returns
+    -------
+    Axes
+        The axis with the grid added.
+
+    """
     ax.grid(visible=True)
     ax.set_axisbelow(b=True)
     return ax
@@ -341,7 +369,18 @@ def grid_labels(
     xlabel: str | None = None,
     ylabel: str | None = None,
 ) -> None:
-    """Apply labels to left and bottom axes."""
+    """Apply labels to left and bottom axes.
+
+    Parameters
+    ----------
+    axs
+        Grid of axes to label.
+    xlabel
+        Label for the x-axis on the bottom row.
+    ylabel
+        Label for the y-axis on the left column.
+
+    """
     for ax in axs[-1, :]:
         ax.set_xlabel(xlabel)
     for ax in axs[:, 0]:
@@ -355,12 +394,17 @@ def rotate_xlabels(
 ) -> Axes:
     """Rotate the x-axis labels of the given axis.
 
-    Args:
-        ax: Axis to rotate the labels of.
-        rotation: Rotation angle in degrees (default: 45).
-        ha: Horizontal alignment of the labels (default
+    Parameters
+    ----------
+    ax
+        Axis to rotate the labels of.
+    rotation
+        Rotation angle in degrees (default: 45).
+    ha
+        Horizontal alignment of the labels (default
 
-    Returns:
+    Returns
+    -------
         Axes object for object chaining
 
     """
@@ -373,8 +417,10 @@ def rotate_xlabels(
 def show(fig: Figure | None = None) -> None:
     """Show the given figure or the current figure.
 
-    Args:
-        fig: Figure to show.
+    Parameters
+    ----------
+    fig
+        Figure to show.
 
     """
     if fig is None:
@@ -386,8 +432,10 @@ def show(fig: Figure | None = None) -> None:
 def reset_prop_cycle(ax: Axes) -> None:
     """Reset the property cycle of the given axis.
 
-    Args:
-        ax: Axis to reset the property cycle of.
+    Parameters
+    ----------
+    ax
+        Axis to reset the property cycle of.
 
     """
     ax.set_prop_cycle(plt.rcParams["axes.prop_cycle"])
@@ -402,11 +450,16 @@ def context(
 ) -> Generator[None, None, None]:
     """Context manager to set the defaults for plots.
 
-    Args:
-        colors: colors to use for the plot.
-        linewidth: line width to use for the plot.
-        linestyle: line style to use for the plot.
-        rc: additional keyword arguments to pass to the rc context.
+    Parameters
+    ----------
+    colors
+        colors to use for the plot.
+    linewidth
+        line width to use for the plot.
+    linestyle
+        line style to use for the plot.
+    rc
+        additional keyword arguments to pass to the rc context.
 
     """
     rc = {} if rc is None else rc
@@ -437,12 +490,17 @@ def _default_fig_ax(
 ) -> FigAx:
     """Create a figure and axes if none are provided.
 
-    Args:
-        ax: Axis to use for the plot.
-        grid: Whether to add a grid to the plot.
-        figsize: Size of the figure (default: None).
+    Parameters
+    ----------
+    ax
+        Axis to use for the plot.
+    grid
+        Whether to add a grid to the plot.
+    figsize
+        Size of the figure (default: None).
 
-    Returns:
+    Returns
+    -------
         Figure and Axes objects for the plot.
 
     """
@@ -467,16 +525,25 @@ def _default_fig_axs(
 ) -> FigAxs:
     """Create a figure and multiple axes if none are provided.
 
-    Args:
-        axs: Axes to use for the plot.
-        ncols: Number of columns for the plot.
-        nrows: Number of rows for the plot.
-        figsize: Size of the figure (default: None).
-        grid: Whether to add a grid to the plot.
-        sharex: Whether to share the x-axis between the axes.
-        sharey: Whether to share the y-axis between the axes.
+    Parameters
+    ----------
+    axs
+        Axes to use for the plot.
+    ncols
+        Number of columns for the plot.
+    nrows
+        Number of rows for the plot.
+    figsize
+        Size of the figure (default: None).
+    grid
+        Whether to add a grid to the plot.
+    sharex
+        Whether to share the x-axis between the axes.
+    sharey
+        Whether to share the y-axis between the axes.
 
-    Returns:
+    Returns
+    -------
         Figure and Axes objects for the plot.
 
     """
@@ -502,7 +569,21 @@ def one_axes(
     figsize: tuple[float, float] | None = None,
     grid: bool = False,
 ) -> FigAx:
-    """Create a figure with two axes."""
+    """Create a figure with one axis.
+
+    Parameters
+    ----------
+    figsize
+        Size of the figure.
+    grid
+        Whether to add a grid.
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
     return _default_fig_ax(
         ax=None,
         grid=grid,
@@ -517,7 +598,25 @@ def two_axes(
     sharey: bool = False,
     grid: bool = False,
 ) -> FigAxs:
-    """Create a figure with two axes."""
+    """Create a figure with two axes.
+
+    Parameters
+    ----------
+    figsize
+        Size of the figure.
+    sharex
+        Whether to share the x-axis between axes.
+    sharey
+        Whether to share the y-axis between axes.
+    grid
+        Whether to add a grid.
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
     return _default_fig_axs(
         ncols=2,
         nrows=1,
@@ -538,7 +637,31 @@ def grid_layout(
     sharey: bool = False,
     grid: bool = True,
 ) -> FigAxs:
-    """Create a grid layout for the given number of groups."""
+    """Create a grid layout for the given number of groups.
+
+    Parameters
+    ----------
+    n_groups
+        Number of subplot groups.
+    n_cols
+        Number of columns in the grid.
+    col_width
+        Width of each column in inches.
+    row_height
+        Height of each row in inches.
+    sharex
+        Whether to share the x-axis between axes.
+    sharey
+        Whether to share the y-axis between axes.
+    grid
+        Whether to add a grid to each axis.
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
     n_cols = min(n_groups, n_cols)
     n_rows = math.ceil(n_groups / n_cols)
     figsize = (n_cols * col_width, n_rows * row_height)
@@ -572,7 +695,27 @@ def bars(
     xlabel: str | None = None,
     ylabel: str | None = None,
 ) -> FigAx:
-    """Plot multiple lines on the same axis."""
+    """Plot bars from a Series or DataFrame.
+
+    Parameters
+    ----------
+    x
+        Data to plot.
+    ax
+        Axis to plot on. Created if None.
+    grid
+        Whether to add a grid.
+    xlabel
+        Label for the x-axis.
+    ylabel
+        Label for the y-axis.
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
     fig, ax = _default_fig_ax(ax=ax, grid=grid)
     sns.barplot(data=cast(pd.DataFrame, x), ax=ax)
 
@@ -595,7 +738,33 @@ def bars_grouped(
     xlabel: str | None = None,
     ylabel: str | None = None,
 ) -> FigAxs:
-    """Plot multiple groups of lines on separate axes."""
+    """Plot multiple groups of bars on separate axes.
+
+    Parameters
+    ----------
+    groups
+        List of DataFrames or Series, one per subplot.
+    n_cols
+        Number of columns in the grid.
+    col_width
+        Width of each column in inches.
+    row_height
+        Height of each row in inches.
+    sharey
+        Whether to share the y-axis between axes.
+    grid
+        Whether to add a grid.
+    xlabel
+        Label for the x-axis.
+    ylabel
+        Label for the y-axis.
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
     fig, axs = grid_layout(
         len(groups),
         n_cols=n_cols,
@@ -634,7 +803,35 @@ def bars_autogrouped(
     xlabel: str | None = None,
     ylabel: str | None = None,
 ) -> FigAxs:
-    """Plot a series or dataframe with lines grouped by order of magnitude."""
+    """Plot bars from a Series or DataFrame grouped by order of magnitude.
+
+    Parameters
+    ----------
+    s
+        Data to plot.
+    n_cols
+        Number of columns in the grid.
+    col_width
+        Width of each column in inches.
+    row_height
+        Height of each row in inches.
+    min_group_size
+        Minimum number of items per group.
+    max_group_size
+        Maximum number of items per group.
+    grid
+        Whether to add a grid.
+    xlabel
+        Label for the x-axis.
+    ylabel
+        Label for the y-axis.
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
     group_names = (
         _partition_by_order_of_magnitude(s)
         if isinstance(s, pd.Series)
@@ -673,7 +870,37 @@ def lines(
     xlabel: str | None = None,
     ylabel: str | None = None,
 ) -> FigAx:
-    """Plot multiple lines on the same axis."""
+    """Plot multiple lines on the same axis.
+
+    Parameters
+    ----------
+    x
+        Data to plot.
+    ax
+        Axis to plot on. Created if None.
+    alpha
+        Opacity of the lines.
+    color
+        Color or list of colors for the lines.
+    grid
+        Whether to add a grid.
+    legend
+        Whether to show a legend.
+    linewidth
+        Width of the lines.
+    linestyle
+        Style of the lines.
+    xlabel
+        Label for the x-axis.
+    ylabel
+        Label for the y-axis.
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
     fig, ax = _default_fig_ax(ax=ax, grid=grid)
     _lines = ax.plot(
         x.index,
@@ -717,7 +944,41 @@ def lines_grouped(
     linewidth: float | None = None,
     linestyle: Linestyle | None = None,
 ) -> FigAxs:
-    """Plot multiple groups of lines on separate axes."""
+    """Plot multiple groups of lines on separate axes.
+
+    Parameters
+    ----------
+    groups
+        List of DataFrames or Series, one per subplot.
+    n_cols
+        Number of columns in the grid.
+    col_width
+        Width of each column in inches.
+    row_height
+        Height of each row in inches.
+    sharex
+        Whether to share the x-axis between axes.
+    sharey
+        Whether to share the y-axis between axes.
+    grid
+        Whether to add a grid.
+    xlabel
+        Label for the x-axis.
+    ylabel
+        Label for the y-axis.
+    color
+        Color or nested list of colors per group.
+    linewidth
+        Width of the lines.
+    linestyle
+        Style of the lines.
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
     fig, axs = grid_layout(
         len(groups),
         n_cols=n_cols,
@@ -763,7 +1024,41 @@ def line_autogrouped(
     linewidth: float | None = None,
     linestyle: Linestyle | None = None,
 ) -> FigAxs:
-    """Plot a series or dataframe with lines grouped by order of magnitude."""
+    """Plot lines from a Series or DataFrame grouped by order of magnitude.
+
+    Parameters
+    ----------
+    s
+        Data to plot.
+    n_cols
+        Number of columns in the grid.
+    col_width
+        Width of each column in inches.
+    row_height
+        Height of each row in inches.
+    min_group_size
+        Minimum number of items per group.
+    max_group_size
+        Maximum number of items per group.
+    grid
+        Whether to add a grid.
+    xlabel
+        Label for the x-axis.
+    ylabel
+        Label for the y-axis.
+    color
+        Color or nested list of colors per group.
+    linewidth
+        Width of the lines.
+    linestyle
+        Style of the lines.
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
     group_names = (
         _partition_by_order_of_magnitude(s)
         if isinstance(s, pd.Series)
@@ -803,7 +1098,33 @@ def line_mean_std(
     alpha: float = 0.2,
     grid: bool = True,
 ) -> FigAx:
-    """Plot the mean and standard deviation using a line and fill."""
+    """Plot the mean and standard deviation using a line and fill.
+
+    Parameters
+    ----------
+    df
+        DataFrame where rows are time points and columns are replicates.
+    label
+        Label for the line in the legend.
+    ax
+        Axis to plot on. Created if None.
+    color
+        Color of the line and fill.
+    linewidth
+        Width of the mean line.
+    linestyle
+        Style of the mean line.
+    alpha
+        Opacity of the standard deviation fill.
+    grid
+        Whether to add a grid.
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
     fig, ax = _default_fig_ax(ax=ax, grid=grid)
     color = _default_color(ax=ax, color=color)
 
@@ -843,7 +1164,33 @@ def lines_mean_std_from_2d_idx(
     linewidth: float | None = None,
     linestyle: Linestyle | None = None,
 ) -> FigAx:
-    """Plot the mean and standard deviation of a 2D indexed dataframe."""
+    """Plot the mean and standard deviation of a 2D indexed dataframe.
+
+    Parameters
+    ----------
+    df
+        DataFrame with a two-level MultiIndex.
+    names
+        Column names to plot. Defaults to all columns.
+    ax
+        Axis to plot on. Created if None.
+    alpha
+        Opacity of the standard deviation fill.
+    grid
+        Whether to add a grid.
+    color
+        Color of the lines.
+    linewidth
+        Width of the lines.
+    linestyle
+        Style of the lines.
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
     if len(cast(pd.MultiIndex, df.index).levels) != 2:  # noqa: PLR2004
         msg = "MultiIndex must have exactly two levels"
         raise ValueError(msg)
@@ -937,7 +1284,39 @@ def heatmap(
     sci_annotation_bounds: tuple[float, float] = (0.01, 100),
     annotation_style: str = "2g",
 ) -> tuple[Figure, Axes, QuadMesh]:
-    """Plot a heatmap of the given data."""
+    """Plot a heatmap of the given data.
+
+    Parameters
+    ----------
+    df
+        DataFrame to plot as a heatmap.
+    ax
+        Axis to plot on. Created if None.
+    title
+        Title of the heatmap.
+    annotate
+        Whether to annotate cells with values.
+    colorbar
+        Whether to add a colorbar.
+    invert_yaxis
+        Whether to invert the y-axis.
+    cmap
+        Colormap name.
+    norm
+        Normalization for the colormap.
+    cax
+        Axis for the colorbar.
+    sci_annotation_bounds
+        Bounds for switching to scientific notation in annotations.
+    annotation_style
+        Format string for cell annotations.
+
+    Returns
+    -------
+    tuple[Figure, Axes, QuadMesh]
+        Figure, Axes, and QuadMesh objects.
+
+    """
     return _create_heatmap(
         ax=ax,
         df=df,
@@ -971,7 +1350,39 @@ def heatmap_from_2d_idx(
     sci_annotation_bounds: tuple[float, float] = (0.01, 100),
     annotation_style: str = "2g",
 ) -> tuple[Figure, Axes, QuadMesh]:
-    """Plot a heatmap of a 2D indexed dataframe."""
+    """Plot a heatmap of a 2D indexed dataframe.
+
+    Parameters
+    ----------
+    df
+        DataFrame with a two-level MultiIndex.
+    variable
+        Column name to plot.
+    ax
+        Axis to plot on. Created if None.
+    annotate
+        Whether to annotate cells with values.
+    colorbar
+        Whether to add a colorbar.
+    invert_yaxis
+        Whether to invert the y-axis.
+    cmap
+        Colormap name.
+    norm
+        Normalization for the colormap.
+    cax
+        Axis for the colorbar.
+    sci_annotation_bounds
+        Bounds for switching to scientific notation in annotations.
+    annotation_style
+        Format string for cell annotations.
+
+    Returns
+    -------
+    tuple[Figure, Axes, QuadMesh]
+        Figure, Axes, and QuadMesh objects.
+
+    """
     if len(cast(pd.MultiIndex, df.index).levels) != 2:  # noqa: PLR2004
         msg = "MultiIndex must have exactly two levels"
         raise ValueError(msg)
@@ -1011,7 +1422,43 @@ def heatmaps_from_2d_idx(
     sci_annotation_bounds: tuple[float, float] = (0.01, 100),
     annotation_style: str = "2g",
 ) -> FigAxs:
-    """Plot multiple heatmaps of a 2D indexed dataframe."""
+    """Plot multiple heatmaps of a 2D indexed dataframe.
+
+    Parameters
+    ----------
+    df
+        DataFrame with a two-level MultiIndex.
+    n_cols
+        Number of columns in the grid.
+    col_width_factor
+        Multiplier for column width based on index level size.
+    row_height_factor
+        Multiplier for row height based on index level size.
+    sharex
+        Whether to share the x-axis between axes.
+    sharey
+        Whether to share the y-axis between axes.
+    annotate
+        Whether to annotate cells with values.
+    colorbar
+        Whether to add a colorbar.
+    invert_yaxis
+        Whether to invert the y-axis.
+    cmap
+        Colormap name.
+    norm
+        Normalization for the colormap.
+    sci_annotation_bounds
+        Bounds for switching to scientific notation in annotations.
+    annotation_style
+        Format string for cell annotations.
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
     idx = cast(pd.MultiIndex, df.index)
 
     fig, axs = grid_layout(
@@ -1045,7 +1492,23 @@ def violins(
     ax: Axes | None = None,
     grid: bool = True,
 ) -> FigAx:
-    """Plot multiple violins on the same axis."""
+    """Plot multiple violins on the same axis.
+
+    Parameters
+    ----------
+    df
+        DataFrame to plot.
+    ax
+        Axis to plot on. Created if None.
+    grid
+        Whether to add a grid.
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
     fig, ax = _default_fig_ax(ax=ax, grid=grid)
     sns.violinplot(df, ax=ax)
     _default_labels(ax=ax, xlabel="", ylabel=None)
@@ -1061,7 +1524,29 @@ def violins_from_2d_idx(
     sharey: bool = False,
     grid: bool = True,
 ) -> FigAxs:
-    """Plot multiple violins of a 2D indexed dataframe."""
+    """Plot multiple violins of a 2D indexed dataframe.
+
+    Parameters
+    ----------
+    df
+        DataFrame with a two-level MultiIndex.
+    n_cols
+        Number of columns in the grid.
+    row_height
+        Height of each row in inches.
+    sharex
+        Whether to share the x-axis between axes.
+    sharey
+        Whether to share the y-axis between axes.
+    grid
+        Whether to add a grid.
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
     if len(cast(pd.MultiIndex, df.index).levels) != 2:  # noqa: PLR2004
         msg = "MultiIndex must have exactly two levels"
         raise ValueError(msg)
@@ -1099,7 +1584,26 @@ def shade_protocol(
     alpha: float = 0.5,
     add_legend: bool = True,
 ) -> None:
-    """Shade the given protocol on the given axis."""
+    """Shade the given protocol on the given axis.
+
+    Parameters
+    ----------
+    protocol
+        Series with time deltas as index and protocol values.
+    ax
+        Axis to shade on.
+    cmap_name
+        Name of the colormap to use.
+    vmin
+        Minimum value for colormap normalization.
+    vmax
+        Maximum value for colormap normalization.
+    alpha
+        Opacity of the shading.
+    add_legend
+        Whether to add a legend.
+
+    """
     cmap = colormaps[cmap_name]
     norm = Normalize(
         vmin=protocol.min() if vmin is None else vmin,
@@ -1152,19 +1656,26 @@ def trajectories_2d(
 ) -> FigAx:
     """Plot trajectories of two variables in a 2D phase space.
 
-    Examples:
+    Examples
+    --------
         >>> trajectories_2d(
         ...     model,
         ...     ("S", np.linspace(0, 1, 10)),
         ...     ("P", np.linspace(0, 1, 10)),
         ... )
 
-    Args:
-        model: Model to use for the plot.
-        x1: Tuple of the first variable name and its values.
-        x2: Tuple of the second variable name and its values.
-        y0: Initial conditions for the model.
-        ax: Axes to use for the plot.
+    Parameters
+    ----------
+    model
+        Model to use for the plot.
+    x1
+        Tuple of the first variable name and its values.
+    x2
+        Tuple of the second variable name and its values.
+    y0
+        Initial conditions for the model.
+    ax
+        Axes to use for the plot.
 
     """
     name1, values1 = x1
@@ -1204,7 +1715,39 @@ def relative_label_distribution(
     linewidth: float | None = None,
     linestyle: Linestyle | None = None,
 ) -> FigAxs:
-    """Plot the relative distribution of labels in the given data."""
+    """Plot the relative distribution of labels in the given data.
+
+    Parameters
+    ----------
+    mapper
+        Label mapper defining isotopomer structure.
+    concs
+        DataFrame of concentration time courses.
+    subset
+        Subset of label variables to plot. Defaults to all.
+    n_cols
+        Number of columns in the grid.
+    col_width
+        Width of each column in inches.
+    row_height
+        Height of each row in inches.
+    sharey
+        Whether to share the y-axis between axes.
+    grid
+        Whether to add a grid.
+    color
+        Color of the lines.
+    linewidth
+        Width of the lines.
+    linestyle
+        Style of the lines.
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
     variables = list(mapper.label_variables) if subset is None else subset
     fig, axs = grid_layout(
         n_groups=len(variables),

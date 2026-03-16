@@ -61,19 +61,29 @@ def _response_coefficient_worker(
     3. Computes response coefficients from the differences
     4. Optionally normalizes the results
 
-    Args:
-        parameter: Name of the parameter to analyze
-        model: Metabolic model instance
-        y0: Initial conditions as a dictionary {species: value}
-        normalized: Whether to normalize the coefficients
-        rel_norm: Whether to use relative normalization
-        displacement: Relative perturbation size (default: 1e-4)
-        integrator: Integrator function to use for steady state calculation
+    Parameters
+    ----------
+    parameter
+        Name of the parameter to analyze
+    model
+        Metabolic model instance
+    y0
+        Initial conditions as a dictionary {species: value}
+    normalized
+        Whether to normalize the coefficients
+    rel_norm
+        Whether to use relative normalization
+    displacement
+        Relative perturbation size (default: 1e-4)
+    integrator
+        Integrator function to use for steady state calculation
 
-    Returns:
-        tuple[pd.Series, pd.Series]: Tuple containing:
-            - Series of concentration response coefficients
-            - Series of flux response coefficients
+    Returns
+    -------
+    tuple[pd.Series, pd.Series]
+        Tuple containing:
+        - Series of concentration response coefficients
+        - Series of flux response coefficients
 
     """
     old = model.get_parameter_values()[parameter]
@@ -135,7 +145,8 @@ def variable_elasticities(
     Computes the sensitivity of reaction rates to changes in metabolite
     concentrations (ε-elasticities).
 
-    Examples:
+    Examples
+    --------
         >>> variable_elasticities(model, concs={"A": 1.0, "B": 2.0})
         Rxn     A     B
          v1   0.0   0.0
@@ -143,15 +154,23 @@ def variable_elasticities(
          v3   0.0   5.0
 
 
-    Args:
-        model: Metabolic model instance
-        to_scan: List of variables to analyze. Uses all if None
-        variables: Custom variable values. Defaults to initial conditions.
-        time: Time point for evaluation
-        normalized: Whether to normalize coefficients
-        displacement: Relative perturbation size
+    Parameters
+    ----------
+    model
+        Metabolic model instance
+    to_scan
+        List of variables to analyze. Uses all if None
+    variables
+        Custom variable values. Defaults to initial conditions.
+    time
+        Time point for evaluation
+    normalized
+        Whether to normalize coefficients
+    displacement
+        Relative perturbation size
 
-    Returns:
+    Returns
+    -------
         DataFrame with elasticity coefficients (reactions x metabolites)
 
     """
@@ -188,22 +207,31 @@ def parameter_elasticities(
 ) -> pd.DataFrame:
     """Calculate parameter elasticity coefficients.
 
-    Examples:
+    Examples
+    --------
         >>> parameter_elasticities(model)
         Rxn    k1    k2
          v1   1.0   0.0
          v2   0.0   1.0
          v3   0.0   0.0
 
-    Args:
-        model: Metabolic model instance
-        to_scan: List of parameters to analyze. Uses all if None
-        variables: Custom variable values. Defaults to initial conditions.
-        time: Time point for evaluation
-        normalized: Whether to normalize coefficients
-        displacement: Relative perturbation size
+    Parameters
+    ----------
+    model
+        Metabolic model instance
+    to_scan
+        List of parameters to analyze. Uses all if None
+    variables
+        Custom variable values. Defaults to initial conditions.
+    time
+        Time point for evaluation
+    normalized
+        Whether to normalize coefficients
+    displacement
+        Relative perturbation size
 
-    Returns:
+    Returns
+    -------
         DataFrame with parameter elasticities (reactions x parameters)
 
     """
@@ -273,25 +301,38 @@ def response_coefficients(
 ) -> ResponseCoefficients:
     """Calculate response coefficients.
 
-    Examples:
+    Examples
+    --------
         >>> response_coefficients(model, parameters=["k1", "k2"]).variables
         p    x1    x2
         k1  1.4  1.31
         k2 -1.0 -2.49
 
-    Args:
-        model: Metabolic model instance
-        to_scan: Parameters to analyze. Uses all if None
-        variables: Custom variable values. Defaults to initial conditions.
-        normalized: Whether to normalize coefficients
-        displacement: Relative perturbation size
-        disable_tqdm: Disable progress bar
-        parallel: Whether to parallelize the computation
-        max_workers: Maximum number of workers
-        rel_norm: Whether to use relative normalization
-        integrator: Integrator function to use for steady state calculation
+    Parameters
+    ----------
+    model
+        Metabolic model instance
+    to_scan
+        Parameters to analyze. Uses all if None
+    variables
+        Custom variable values. Defaults to initial conditions.
+    normalized
+        Whether to normalize coefficients
+    displacement
+        Relative perturbation size
+    disable_tqdm
+        Disable progress bar
+    parallel
+        Whether to parallelize the computation
+    max_workers
+        Maximum number of workers
+    rel_norm
+        Whether to use relative normalization
+    integrator
+        Integrator function to use for steady state calculation
 
-    Returns:
+    Returns
+    -------
         ResponseCoefficients object containing:
         - Flux response coefficients
         - Concentration response coefficients

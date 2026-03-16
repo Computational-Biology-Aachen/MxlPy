@@ -32,10 +32,13 @@ __all__ = [
 class Surrogate(AbstractSurrogate):
     """Surrogate model using PyTorch.
 
-    Attributes:
-        model: PyTorch neural network model.
+    Attributes
+    ----------
+    model
+        PyTorch neural network model.
 
-    Methods:
+    Methods
+    -------
         predict: Predict outputs based on input data using the PyTorch model.
 
     """
@@ -45,11 +48,15 @@ class Surrogate(AbstractSurrogate):
     def predict_raw(self, y: np.ndarray) -> np.ndarray:
         """Predict outputs based on input data using the PyTorch model.
 
-        Args:
-            y: Input data as a numpy array.
+        Parameters
+        ----------
+        y
+            Input data as a numpy array.
 
-        Returns:
-            dict[str, float]: Dictionary mapping output variable names to predicted values.
+        Returns
+        -------
+        dict[str, float]
+            Dictionary mapping output variable names to predicted values.
 
         """
         with torch.no_grad():
@@ -61,7 +68,19 @@ class Surrogate(AbstractSurrogate):
         self,
         args: dict[str, float | pd.Series | pd.DataFrame],
     ) -> dict[str, float]:
-        """Predict outputs based on input data."""
+        """Predict outputs based on input data.
+
+        Parameters
+        ----------
+        args
+            Mapping of input names to their values.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapping of output names to predicted values.
+
+        """
         return dict(
             zip(
                 self.outputs,
@@ -110,6 +129,21 @@ class Trainer:
         epochs: int,
         batch_size: int | None = None,
     ) -> Self:
+        """Train the surrogate model.
+
+        Parameters
+        ----------
+        epochs
+            Number of training epochs.
+        batch_size
+            Size of mini-batches for training. None for full-batch.
+
+        Returns
+        -------
+        Self
+            The trainer instance for method chaining.
+
+        """
         losses = _train(
             model=self.model,
             features=self.features.to_numpy(),
@@ -134,6 +168,23 @@ class Trainer:
         surrogate_outputs: list[str] | None = None,
         surrogate_stoichiometries: dict[str, dict[str, float | Derived]] | None = None,
     ) -> Surrogate:
+        """Create a surrogate from the trained model.
+
+        Parameters
+        ----------
+        surrogate_args
+            Names of input arguments for the surrogate.
+        surrogate_outputs
+            Names of output arguments from the surrogate.
+        surrogate_stoichiometries
+            Mapping of reaction names to stoichiometry dicts.
+
+        Returns
+        -------
+        Surrogate
+            Configured surrogate model.
+
+        """
         return Surrogate(
             model=self.model,
             args=surrogate_args if surrogate_args is not None else [],
@@ -159,7 +210,8 @@ def train(
 ) -> tuple[Surrogate, pd.Series]:
     """Train a PyTorch surrogate model.
 
-    Examples:
+    Examples
+    --------
         >>> train_torch_surrogate(
         ...     features,
         ...     targets,
@@ -170,21 +222,35 @@ def train(
         ...     },
         ...)surrogate_stoichiometries
 
-    Args:
-        features: DataFrame containing the input features for training.
-        targets: DataFrame containing the target values for training.
-        epochs: Number of training epochs.
-        surrogate_args: Names of inputs arguments for the surrogate model.
-        surrogate_outputs: Names of output arguments from the surrogate.
-        surrogate_stoichiometries: Mapping of variables to their stoichiometries
-        batch_size: Size of mini-batches for training (None for full-batch).
-        model: Predefined neural network model (None to use default MLP features-50-50-output).
-        optimizer_cls: Optimizer class to use for training (default: Adam).
-        device: Device to run the training on (default: DefaultDevice).
-        loss_fn: Custom loss function or instance of torch loss object
+    Parameters
+    ----------
+    features
+        DataFrame containing the input features for training.
+    targets
+        DataFrame containing the target values for training.
+    epochs
+        Number of training epochs.
+    surrogate_args
+        Names of inputs arguments for the surrogate model.
+    surrogate_outputs
+        Names of output arguments from the surrogate.
+    surrogate_stoichiometries
+        Mapping of variables to their stoichiometries
+    batch_size
+        Size of mini-batches for training (None for full-batch).
+    model
+        Predefined neural network model (None to use default MLP features-50-50-output).
+    optimizer_cls
+        Optimizer class to use for training (default: Adam).
+    device
+        Device to run the training on (default: DefaultDevice).
+    loss_fn
+        Custom loss function or instance of torch loss object
 
-    Returns:
-        tuple[TorchSurrogate, pd.Series]: Trained surrogate model and loss history.
+    Returns
+    -------
+    tuple[TorchSurrogate, pd.Series]
+        Trained surrogate model and loss history.
 
     """
     trainer = Trainer(

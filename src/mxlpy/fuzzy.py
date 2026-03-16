@@ -37,7 +37,14 @@ class ThompsonState:
 
     @classmethod
     def from_parameter_values(cls, parameters: dict[str, Iterable[float]]) -> Self:
-        """Create state from parameter values."""
+        """Create state from parameter values.
+
+        Parameters
+        ----------
+        parameters
+            Mapping of parameter names to iterables of candidate values.
+
+        """
         return cls(
             state={
                 k: pd.DataFrame(
@@ -67,7 +74,20 @@ class ThompsonState:
         data: pd.DataFrame,
         rtol: float,
     ) -> None:
-        """Sample state."""
+        """Update state based on prediction accuracy.
+
+        Parameters
+        ----------
+        idxs
+            Mapping of parameter names to sampled indices.
+        pred
+            Predicted variables DataFrame, or None if simulation failed.
+        data
+            Observed data to compare against.
+        rtol
+            Tolerance for accepting a prediction as successful.
+
+        """
         accept: bool = (
             False if pred is None else np.sqrt(np.mean(np.square(pred - data))) < rtol
         )
@@ -106,7 +126,30 @@ def thompson_sampling(
     timeout: float | None = None,
     parallel: bool = True,
 ) -> ThompsonState:
-    """Perform thompson sampling."""
+    """Perform thompson sampling.
+
+    Parameters
+    ----------
+    model
+        Model to fit.
+    data
+        Observed data to fit against.
+    state
+        Current Thompson sampling state.
+    rtol
+        Tolerance for accepting a prediction as successful.
+    n
+        Number of sampling iterations.
+    max_workers
+        Maximum number of worker processes. If None, uses all available CPUs.
+    disable_tqdm
+        Whether to disable the progress bar.
+    timeout
+        Maximum time in seconds per worker. If None, no timeout.
+    parallel
+        Whether to execute in parallel.
+
+    """
     if sys.platform in ["win32", "cygwin"]:
         parallel = False
 

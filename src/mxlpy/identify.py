@@ -52,13 +52,20 @@ def profile_likelihood(
 ) -> pd.Series:
     """Estimate the profile likelihood of model parameters given data.
 
-    Args:
-        model: The model to be fitted.
-        data: The data to fit the model to.
-        parameter_name: The name of the parameter to profile.
-        parameter_values: The values of the parameter to profile.
-        n_random: Number of Monte Carlo samples.
-        loss_fn: Loss function to use for fitting.
+    Parameters
+    ----------
+    model
+        The model to be fitted.
+    data
+        The data to fit the model to.
+    parameter_name
+        The name of the parameter to profile.
+    parameter_values
+        The values of the parameter to profile.
+    n_random
+        Number of Monte Carlo samples.
+    loss_fn
+        Loss function to use for fitting.
 
     """
     parameter_distributions = sample(

@@ -185,7 +185,23 @@ class Context:
         caller: Callable | None = None,
         parent_module: ModuleType | None = None,
     ) -> Context:
-        """Update the context with new values."""
+        """Update the context with new values.
+
+        Parameters
+        ----------
+        symbols
+            New symbol mapping, or None to keep existing
+        caller
+            New caller function, or None to keep existing
+        parent_module
+            New parent module, or None to keep existing
+
+        Returns
+        -------
+        Context
+            New context with updated values
+
+        """
         return Context(
             symbols=self.symbols if symbols is None else symbols,
             caller=self.caller if caller is None else caller,
@@ -276,15 +292,21 @@ def fn_to_sympy(
 ) -> sympy.Expr | None:
     """Convert a python function to a sympy expression.
 
-    Args:
-        fn: The function to convert
-        origin: Name of the original caller. Used for error messages.
-        model_args: Optional list of sympy symbols to substitute for function arguments
+    Parameters
+    ----------
+    fn
+        The function to convert
+    origin
+        Name of the original caller. Used for error messages.
+    model_args
+        Optional list of sympy symbols to substitute for function arguments
 
-    Returns:
+    Returns
+    -------
         Sympy expression equivalent to the function
 
-    Examples:
+    Examples
+    --------
         >>> def square_fn(x):
         ...     return x**2
         >>> import sympy

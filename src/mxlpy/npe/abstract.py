@@ -23,7 +23,19 @@ class EstimatorProtocol(Protocol):
     parameter_names: list[str]
 
     def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
-        """Predict the target values for the given features."""
+        """Predict the target values for the given features.
+
+        Parameters
+        ----------
+        features
+            Input features for prediction.
+
+        Returns
+        -------
+        pd.DataFrame
+            Predicted parameter values.
+
+        """
         ...
 
 
@@ -39,4 +51,16 @@ class AbstractEstimator:
 
     @abstractmethod
     def predict(self, features: pd.Series | pd.DataFrame) -> pd.DataFrame:
-        """Predict the target values for the given features."""
+        """Predict the target values for the given features.
+
+        Parameters
+        ----------
+        features
+            Input features for prediction.
+
+        Returns
+        -------
+        pd.DataFrame
+            Predicted parameter values.
+
+        """

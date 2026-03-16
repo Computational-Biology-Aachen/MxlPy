@@ -36,11 +36,37 @@ class Surrogate(AbstractSurrogate):
     model: PolynomialExpansion
 
     def predict_raw(self, y: np.ndarray) -> np.ndarray:
+        """Predict raw output from the polynomial model.
+
+        Parameters
+        ----------
+        y
+            Input data as a numpy array.
+
+        Returns
+        -------
+        np.ndarray
+            Raw model prediction.
+
+        """
         return self.model(y)
 
     def predict(
         self, args: dict[str, float | pd.Series | pd.DataFrame]
     ) -> dict[str, float]:
+        """Predict outputs based on input data.
+
+        Parameters
+        ----------
+        args
+            Mapping of input names to their values.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapping of output names to predicted values.
+
+        """
         return dict(
             zip(
                 self.outputs,
@@ -63,17 +89,27 @@ def train(
 ) -> tuple[Surrogate, pd.DataFrame]:
     """Train a surrogate model based on function series expansion.
 
-    Args:
-        feature: Input data as a numpy array.
-        target: Output data as a numpy array.
-        series: Base functions for the surrogate model
-        degrees: Degrees of the polynomial to fit to the data.
-        surrogate_args: Additional arguments for the surrogate model.
-        surrogate_outputs: Names of the surrogate model outputs.
-        surrogate_stoichiometries: Mapping of variables to their stoichiometries
+    Parameters
+    ----------
+    feature
+        Input data as a numpy array.
+    target
+        Output data as a numpy array.
+    series
+        Base functions for the surrogate model
+    degrees
+        Degrees of the polynomial to fit to the data.
+    surrogate_args
+        Additional arguments for the surrogate model.
+    surrogate_outputs
+        Names of the surrogate model outputs.
+    surrogate_stoichiometries
+        Mapping of variables to their stoichiometries
 
-    Returns:
-        PolySurrogate: Polynomial surrogate model.
+    Returns
+    -------
+    PolySurrogate
+        Polynomial surrogate model.
 
     """
     feature = np.array(feature, dtype=float)

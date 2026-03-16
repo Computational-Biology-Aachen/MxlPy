@@ -104,5 +104,21 @@ def mock_minimizer(
     p0: dict[str, float],
     bounds: Bounds | None,  # noqa: ARG001
 ) -> Result[OptimisationState]:
-    """Mock minimizer for testing purposes."""
+    """Mock minimizer for testing purposes.
+
+    Parameters
+    ----------
+    residual_fn
+        Residual function (unused)
+    p0
+        Initial parameter values
+    bounds
+        Parameter bounds (unused)
+
+    Returns
+    -------
+    Result[OptimisationState]
+        Result containing the initial parameters with zero residual
+
+    """
     return Result(OptimisationState(parameters=p0, residual=0.0))

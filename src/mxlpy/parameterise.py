@@ -23,6 +23,14 @@ def get_km_and_kcat_from_brenda(
     """Obtain michaelis and catalytic constants for given ec number.
 
     You can obtain the database from https://www.brenda-enzymes.org/download.php
+
+    Parameters
+    ----------
+    ec
+        EC number of the enzyme (e.g. "4.1.1.39").
+    brenda_path
+        Path to the BRENDA database file.
+
     """
     brenda = Brenda()
     brenda.read_database(brenda_path)

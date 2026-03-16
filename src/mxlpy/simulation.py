@@ -24,12 +24,17 @@ def _normalise_split_results(
 ) -> list[pd.DataFrame]:
     """Normalize split results by a given factor or array.
 
-    Args:
-        results: List of DataFrames containing the results to normalize.
-        normalise: Normalization factor or array.
+    Parameters
+    ----------
+    results
+        List of DataFrames containing the results to normalize.
+    normalise
+        Normalization factor or array.
 
-    Returns:
-        list[pd.DataFrame]: List of normalized DataFrames.
+    Returns
+    -------
+    list[pd.DataFrame]
+        List of normalized DataFrames.
 
     """
     if isinstance(normalise, int | float):
@@ -62,7 +67,16 @@ class Simulation:
 
     @classmethod
     def default(cls, model: Model, time_points: Array) -> Simulation:
-        """Get result filled with NaNs."""
+        """Get result filled with NaNs.
+
+        Parameters
+        ----------
+        model
+            Model to create default results for.
+        time_points
+            Time points for the simulation index.
+
+        """
         return Simulation(
             model=model,
             raw_variables=[
@@ -222,7 +236,31 @@ class Simulation:
     ) -> pd.DataFrame | list[pd.DataFrame]:
         """Get the variables over time.
 
-        Examples:
+        Parameters
+        ----------
+        include_variables
+            Whether to include model variables.
+        include_parameters
+            Whether to include model parameters.
+        include_derived_parameters
+            Whether to include derived parameters.
+        include_derived_variables
+            Whether to include derived variables.
+        include_reactions
+            Whether to include reaction fluxes.
+        include_surrogate_variables
+            Whether to include surrogate variables.
+        include_surrogate_fluxes
+            Whether to include surrogate fluxes.
+        include_readouts
+            Whether to include readouts.
+        concatenated
+            Whether to concatenate results into a single DataFrame.
+        normalise
+            Normalization factor or array.
+
+        Examples
+        --------
             >>> Result().get_variables()
             Time            ATP      NADPH
             0.000000   1.000000   1.000000
@@ -289,7 +327,21 @@ class Simulation:
     ) -> pd.DataFrame | list[pd.DataFrame]:
         """Get the variables over time.
 
-        Examples:
+        Parameters
+        ----------
+        include_derived_variables
+            Whether to include derived variables.
+        include_readouts
+            Whether to include readouts.
+        include_surrogate_variables
+            Whether to include surrogate variables.
+        concatenated
+            Whether to concatenate results into a single DataFrame.
+        normalise
+            Normalization factor or array.
+
+        Examples
+        --------
             >>> Result().get_variables()
             Time            ATP      NADPH
             0.000000   1.000000   1.000000
@@ -353,15 +405,27 @@ class Simulation:
     ) -> pd.DataFrame | list[pd.DataFrame]:
         """Get the flux results.
 
-        Examples:
+        Parameters
+        ----------
+        include_surrogates
+            Whether to include surrogate fluxes.
+        normalise
+            Normalization factor or array.
+        concatenated
+            Whether to concatenate results into a single DataFrame.
+
+        Examples
+        --------
             >>> Result.get_fluxes()
             Time             v1         v2
             0.000000   1.000000   10.00000
             0.000100   0.999900   9.999000
             0.000200   0.999800   9.998000
 
-        Returns:
-            pd.DataFrame: DataFrame of fluxes.
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame of fluxes.
 
         """
         fluxes = self._select_data(
@@ -378,15 +442,18 @@ class Simulation:
     def get_combined(self) -> pd.DataFrame:
         """Get the variables and fluxes as a single pandas.DataFrame.
 
-        Examples:
+        Examples
+        --------
             >>> Result.get_combined()
             Time            ATP      NADPH         v1         v2
             0.000000   1.000000   1.000000   1.000000   10.00000
             0.000100   0.999900   0.999900   0.999900   9.999000
             0.000200   0.999800   0.999800   0.999800   9.998000
 
-        Returns:
-            pd.DataFrame: DataFrame of fluxes.
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame of fluxes.
 
         """
         return pd.concat((self.variables, self.fluxes), axis=1)
@@ -421,7 +488,16 @@ class Simulation:
         normalise: float | ArrayLike | None = None,
         concatenated: bool = True,
     ) -> pd.DataFrame | list[pd.DataFrame]:
-        """Get right hand side over time."""
+        """Get right hand side over time.
+
+        Parameters
+        ----------
+        normalise
+            Normalization factor or array.
+        concatenated
+            Whether to concatenate results into a single DataFrame.
+
+        """
         args_by_simulation = self._compute_args()
         return self._adjust_data(
             [
@@ -472,7 +548,20 @@ class Simulation:
         normalise: float | ArrayLike | None = None,
         concatenated: bool = True,
     ) -> pd.DataFrame | list[pd.DataFrame]:
-        """Get fluxes of variable with positive stoichiometry."""
+        """Get fluxes of variable with positive stoichiometry.
+
+        Parameters
+        ----------
+        variable
+            Name of the variable to get producers for.
+        scaled
+            Whether to scale fluxes by their stoichiometric coefficients.
+        normalise
+            Normalization factor or array.
+        concatenated
+            Whether to concatenate results into a single DataFrame.
+
+        """
         self.model.update_parameters(self.raw_parameters[0])
         names = [
             k
@@ -536,7 +625,20 @@ class Simulation:
         normalise: float | ArrayLike | None = None,
         concatenated: bool = True,
     ) -> pd.DataFrame | list[pd.DataFrame]:
-        """Get fluxes of variable with negative stoichiometry."""
+        """Get fluxes of variable with negative stoichiometry.
+
+        Parameters
+        ----------
+        variable
+            Name of the variable to get consumers for.
+        scaled
+            Whether to scale fluxes by their stoichiometric coefficients.
+        normalise
+            Normalization factor or array.
+        concatenated
+            Whether to concatenate results into a single DataFrame.
+
+        """
         self.model.update_parameters(self.raw_parameters[0])
         names = [
             k
@@ -565,7 +667,8 @@ class Simulation:
     def get_new_y0(self) -> dict[str, float]:
         """Get the new initial conditions after the simulation.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).simulate_to_steady_state().get_new_y0()
             {"ATP": 1.0, "NADPH": 1.0}
 

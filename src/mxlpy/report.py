@@ -62,7 +62,14 @@ class MarkdownReport:
         return self.data
 
     def write(self, path: Path) -> None:
-        """Write report to file."""
+        """Write report to file.
+
+        Parameters
+        ----------
+        path
+            File path to write the report to.
+
+        """
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with path.open("w+") as fp:
@@ -82,20 +89,32 @@ def markdown(
 ) -> MarkdownReport:
     """Generate a markdown report comparing two models.
 
-    Args:
-        m1: The first model to compare
-        m2: The second model to compare
-        analyses: A list of functions that analyze both models and return a report section with image
-        rel_change: The relative change threshold for numerical differences
-        img_path: The path to save images
-        m1_name: Name of the first model
-        m2_name: Name of the second model
-        include_rhs: Whether to include numerical differences in the right hand side
+    Parameters
+    ----------
+    m1
+        The first model to compare
+    m2
+        The second model to compare
+    analyses
+        A list of functions that analyze both models and return a report section with image
+    rel_change
+        The relative change threshold for numerical differences
+    img_path
+        The path to save images
+    m1_name
+        Name of the first model
+    m2_name
+        Name of the second model
+    include_rhs
+        Whether to include numerical differences in the right hand side
 
-    Returns:
-        str: Markdown formatted report comparing the two models
+    Returns
+    -------
+    str
+        Markdown formatted report comparing the two models
 
-    Examples:
+    Examples
+    --------
         >>> from mxlpy import Model
         >>> m1 = Model().add_parameter("k1", 0.1).add_variable("S", 1.0)
         >>> m2 = Model().add_parameter("k1", 0.2).add_variable("S", 1.0)

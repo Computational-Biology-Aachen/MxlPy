@@ -138,7 +138,23 @@ def generate_model_code_py(
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
-    """Transform the model into a python function, inlining the function calls."""
+    """Transform the model into a python function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        Python source code of the generated model function
+
+    """
     if free_parameters is None:
         model_fn = (
             "def model(time: float, variables: Iterable[float]) -> Iterable[float]:"
@@ -170,7 +186,23 @@ def generate_model_code_ts(
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
-    """Transform the model into a typescript function, inlining the function calls."""
+    """Transform the model into a typescript function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        TypeScript source code of the generated model function
+
+    """
     if free_parameters is None:
         model_fn = "function model(time: number, variables: number[]) {"
     else:
@@ -197,7 +229,23 @@ def generate_model_code_rs(
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
-    """Transform the model into a rust function, inlining the function calls."""
+    """Transform the model into a rust function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        Rust source code of the generated model function
+
+    """
     if free_parameters is None:
         model_fn = "fn model(time: f64, variables: &[f64; {n}]) -> [f64; {n}] {{"
     else:
@@ -224,7 +272,23 @@ def generate_model_code_jl(
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
-    """Transform the model into a julia function, inlining the function calls."""
+    """Transform the model into a julia function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        Julia source code of the generated model function
+
+    """
     if free_parameters is None:
         model_fn = "function model(time, variables)"
     else:

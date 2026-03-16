@@ -161,7 +161,21 @@ def _soft_eq_stoichiometries(
 
 
 def soft_eq(m1: Model, m2: Model) -> bool:
-    """Check if two models are equal, ignoring the functions."""
+    """Check if two models are equal, ignoring the functions.
+
+    Parameters
+    ----------
+    m1
+        First model to compare
+    m2
+        Second model to compare
+
+    Returns
+    -------
+    bool
+        True if the models are structurally equal (ignoring functions)
+
+    """
     if m1._parameters != m2._parameters:  # noqa: SLF001
         return False
     if m1._variables != m2._variables:  # noqa: SLF001
@@ -194,7 +208,21 @@ def soft_eq(m1: Model, m2: Model) -> bool:
 
 
 def model_diff(m1: Model, m2: Model) -> ModelDiff:
-    """Compute the difference between two models."""
+    """Compute the difference between two models.
+
+    Parameters
+    ----------
+    m1
+        First model (reference)
+    m2
+        Second model to compare against the first
+
+    Returns
+    -------
+    ModelDiff
+        Structured diff describing missing and differing components
+
+    """
     diff = ModelDiff()
 
     for k, v1 in m1._parameters.items():  # noqa: SLF001

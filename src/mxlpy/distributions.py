@@ -60,11 +60,15 @@ class Distribution(Protocol):
     ) -> Array:
         """Generate random samples from the distribution.
 
-        Args:
-            num: Number of samples to generate
-            rng: Random number generator
+        Parameters
+        ----------
+        num
+            Number of samples to generate
+        rng
+            Random number generator
 
-        Returns:
+        Returns
+        -------
             Array of random samples
 
         """
@@ -75,9 +79,12 @@ class Distribution(Protocol):
 class Beta:
     """Beta distribution for parameters bounded between 0 and 1.
 
-    Args:
-        a: Alpha shape parameter (>0)
-        b: Beta shape parameter (>0)
+    Parameters
+    ----------
+    a
+        Alpha shape parameter (>0)
+    b
+        Beta shape parameter (>0)
 
     """
 
@@ -87,9 +94,12 @@ class Beta:
     def sample(self, num: int, rng: np.random.Generator | None = None) -> Array:
         """Generate random samples from the beta distribution.
 
-        Args:
-            num: Number of samples to generate
-            rng: Random number generator
+        Parameters
+        ----------
+        num
+            Number of samples to generate
+        rng
+            Random number generator
 
         """
         if rng is None:
@@ -101,9 +111,12 @@ class Beta:
 class Uniform:
     """Uniform distribution for parameters with simple bounds.
 
-    Args:
-        lower_bound: Minimum value
-        upper_bound: Maximum value
+    Parameters
+    ----------
+    lower_bound
+        Minimum value
+    upper_bound
+        Maximum value
 
     """
 
@@ -113,9 +126,12 @@ class Uniform:
     def sample(self, num: int, rng: np.random.Generator | None = None) -> Array:
         """Generate random samples from the uniform distribution.
 
-        Args:
-            num: Number of samples to generate
-            rng: Random number generator
+        Parameters
+        ----------
+        num
+            Number of samples to generate
+        rng
+            Random number generator
 
         """
         if rng is None:
@@ -127,9 +143,12 @@ class Uniform:
 class LogUniform:
     """LogUniform distribution for parameters with simple bounds.
 
-    Args:
-        lower_bound: Minimum value
-        upper_bound: Maximum value
+    Parameters
+    ----------
+    lower_bound
+        Minimum value
+    upper_bound
+        Maximum value
 
     """
 
@@ -139,9 +158,12 @@ class LogUniform:
     def sample(self, num: int, rng: np.random.Generator | None = None) -> Array:
         """Generate random samples from the loguniform distribution.
 
-        Args:
-            num: Number of samples to generate
-            rng: Random number generator
+        Parameters
+        ----------
+        num
+            Number of samples to generate
+        rng
+            Random number generator
 
         """
         if rng is None:
@@ -158,9 +180,12 @@ class LogUniform:
 class Normal:
     """Normal (Gaussian) distribution for unbounded parameters.
 
-    Args:
-        loc: Mean of the distribution
-        scale: Standard deviation
+    Parameters
+    ----------
+    loc
+        Mean of the distribution
+    scale
+        Standard deviation
 
     """
 
@@ -170,9 +195,12 @@ class Normal:
     def sample(self, num: int, rng: np.random.Generator | None = None) -> Array:
         """Generate random samples from the normal distribution.
 
-        Args:
-            num: Number of samples to generate
-            rng: Random number generator
+        Parameters
+        ----------
+        num
+            Number of samples to generate
+        rng
+            Random number generator
 
         """
         if rng is None:
@@ -184,10 +212,14 @@ class Normal:
 class LogNormal:
     """Log-normal distribution for strictly positive parameters.
 
-    Args:
-        mean: Mean of the underlying normal distribution
-        sigma: Standard deviation of the underlying normal distribution
-        seed: Random seed for reproducibility
+    Parameters
+    ----------
+    mean
+        Mean of the underlying normal distribution
+    sigma
+        Standard deviation of the underlying normal distribution
+    seed
+        Random seed for reproducibility
 
     """
 
@@ -197,9 +229,12 @@ class LogNormal:
     def sample(self, num: int, rng: np.random.Generator | None = None) -> Array:
         """Generate random samples from the log-normal distribution.
 
-        Args:
-            num: Number of samples to generate
-            rng: Random number generator
+        Parameters
+        ----------
+        num
+            Number of samples to generate
+        rng
+            Random number generator
 
         """
         if rng is None:
@@ -211,10 +246,14 @@ class LogNormal:
 class Skewnorm:
     """Skewed normal distribution for asymmetric parameter distributions.
 
-    Args:
-        loc: Mean of the distribution
-        scale: Standard deviation
-        a: Skewness parameter
+    Parameters
+    ----------
+    loc
+        Mean of the distribution
+    scale
+        Standard deviation
+    a
+        Skewness parameter
 
     """
 
@@ -229,9 +268,12 @@ class Skewnorm:
     ) -> Array:
         """Generate random samples from the skewed normal distribution.
 
-        Args:
-            num: Number of samples to generate
-            rng: The random generator argument is unused but required for API compatibility
+        Parameters
+        ----------
+        num
+            Number of samples to generate
+        rng
+            The random generator argument is unused but required for API compatibility
 
         """
         return cast(
@@ -243,10 +285,14 @@ class Skewnorm:
 class GaussianKde:
     """Representation of a kernel-density estimate using Gaussian kernels.
 
-    Args:
-        mean: Mean of the underlying normal distribution
-        sigma: Standard deviation of the underlying normal distribution
-        seed: Random seed for reproducibility
+    Parameters
+    ----------
+    mean
+        Mean of the underlying normal distribution
+    sigma
+        Standard deviation of the underlying normal distribution
+    seed
+        Random seed for reproducibility
 
     """
 
@@ -256,8 +302,10 @@ class GaussianKde:
     def from_data(cls, data: Array | pd.Series) -> GaussianKde:
         """Create a GaussianKde object from a data array.
 
-        Args:
-            data: Array of data points
+        Parameters
+        ----------
+        data
+            Array of data points
 
         """
         return cls(stats.gaussian_kde(data))
@@ -269,7 +317,20 @@ class GaussianKde:
         n: int = 1000,
         ax: Axes | None = None,
     ) -> FigAx:
-        """Plot the kernel-density estimate."""
+        """Plot the kernel-density estimate.
+
+        Parameters
+        ----------
+        xmin
+            Minimum x value for the plot range.
+        xmax
+            Maximum x value for the plot range.
+        n
+            Number of points to evaluate the KDE at.
+        ax
+            Matplotlib axes to plot on. If None, creates a new figure.
+
+        """
         fig, ax = _default_fig_ax(ax=ax, grid=True, figsize=(5, 3))
 
         x = np.geomspace(xmin, xmax, n)
@@ -289,9 +350,12 @@ class GaussianKde:
     ) -> Array:
         """Generate random samples from the kde.
 
-        Args:
-            num: Number of samples to generate
-            rng: Random number generator. Unused but required for API compatibility
+        Parameters
+        ----------
+        num
+            Number of samples to generate
+        rng
+            Random number generator. Unused but required for API compatibility
 
         """
         return cast(Array, self.kde.resample(num)[0])
@@ -304,7 +368,8 @@ def sample(
 ) -> pd.DataFrame:
     """Generate samples from the specified distributions.
 
-    Examples:
+    Examples
+    --------
         >>> sample({"beta": Beta(a=1.0, b=1.0),
         ...         "uniform": Uniform(lower_bound=0.0, upper_bound=1.0),
         ...         "normal": Normal(loc=1.0, scale=0.1),
@@ -315,10 +380,14 @@ def sample(
             0  0.253043  0.682496  1.067891    2.798020  1.216259
             1  0.573357  0.139752  1.006758    2.895416  1.129373
 
-    Args:
-        parameters: Dictionary mapping parameter names to distribution objects.
-        n: Number of samples to generate.
-        rng: Random number generator.
+    Parameters
+    ----------
+    parameters
+        Dictionary mapping parameter names to distribution objects.
+    n
+        Number of samples to generate.
+    rng
+        Random number generator.
 
     Returns: DataFrame containing the generated samples.
 

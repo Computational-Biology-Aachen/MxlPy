@@ -42,7 +42,19 @@ class SymbolicModel:
 
 
 def to_symbolic_model(model: Model) -> SymbolicModel:
-    """Convert model into symbolic representation."""
+    """Convert model into symbolic representation.
+
+    Parameters
+    ----------
+    model
+        Model to convert
+
+    Returns
+    -------
+    SymbolicModel
+        Symbolic representation with sympy variables, parameters and equations
+
+    """
     cache = model._create_cache()  # noqa: SLF001
     initial_conditions = model.get_initial_conditions()
 

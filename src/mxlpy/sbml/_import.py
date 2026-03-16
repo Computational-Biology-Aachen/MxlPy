@@ -29,6 +29,19 @@ if TYPE_CHECKING:
 
 
 def free_symbols(expr: sympy.Expr) -> list[str]:
+    """Extract free symbol names from a sympy expression.
+
+    Parameters
+    ----------
+    expr
+        Sympy expression to extract symbols from
+
+    Returns
+    -------
+    list[str]
+        Names of the free symbols in the expression
+
+    """
     return [i.name for i in expr.free_symbols if isinstance(i, sympy.Symbol)]
 
 
@@ -90,6 +103,21 @@ def _codegen(name: str, model: pysbml.transform.data.Model) -> Path:
 
 
 def import_from_path(module_name: str, file_path: Path) -> Callable[[], Model]:
+    """Import a model factory function from a generated Python file.
+
+    Parameters
+    ----------
+    module_name
+        Name to register the module under in sys.modules
+    file_path
+        Path to the Python file to import
+
+    Returns
+    -------
+    Callable[[], Model]
+        The ``create_model`` function from the imported module
+
+    """
     spec = util.spec_from_file_location(module_name, file_path)
     assert spec is not None  # noqa: S101
     module = util.module_from_spec(spec)
@@ -101,6 +129,19 @@ def import_from_path(module_name: str, file_path: Path) -> Callable[[], Model]:
 
 
 def valid_filename(value: str) -> str:
+    """Sanitise a string into a valid Python module filename.
+
+    Parameters
+    ----------
+    value
+        Raw string to sanitise
+
+    Returns
+    -------
+    str
+        Sanitised filename prefixed with ``mb_``
+
+    """
     value = (
         unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     )
@@ -112,11 +153,15 @@ def valid_filename(value: str) -> str:
 def read(file: Path) -> Model:
     """Import a metabolic model from an SBML file.
 
-    Args:
-        file: Path to the SBML file to import.
+    Parameters
+    ----------
+    file
+        Path to the SBML file to import.
 
-    Returns:
-        Model: Imported model instance.
+    Returns
+    -------
+    Model
+        Imported model instance.
 
     """
     model = pysbml.load_and_transform_model(file)

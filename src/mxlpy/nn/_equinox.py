@@ -48,49 +48,161 @@ type LossFn = Callable[[eqx.Module, Array, Array], Array]
 
 @eqx.filter_jit
 def mean_error(model: eqx.Module, inp: Array, true: Array) -> Array:
-    """Calculate mean error."""
+    """Calculate mean error.
+
+    Parameters
+    ----------
+    model
+        Neural network model.
+    inp
+        Input features.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    Array
+        Mean error scalar.
+
+    """
     pred = jax.vmap(model)(inp)  # type: ignore
     return jnp.mean(pred - true)
 
 
 @eqx.filter_jit
 def mean_squared_error(model: eqx.Module, inp: Array, true: Array) -> Array:
-    """Calculate mean squared error."""
+    """Calculate mean squared error.
+
+    Parameters
+    ----------
+    model
+        Neural network model.
+    inp
+        Input features.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    Array
+        Mean squared error scalar.
+
+    """
     pred = jax.vmap(model)(inp)  # type: ignore
     return jnp.mean(jnp.square(pred - true))
 
 
 @eqx.filter_jit
 def rms_error(model: eqx.Module, inp: Array, true: Array) -> Array:
-    """Calculate root mean square error."""
+    """Calculate root mean square error.
+
+    Parameters
+    ----------
+    model
+        Neural network model.
+    inp
+        Input features.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    Array
+        Root mean square error scalar.
+
+    """
     pred = jax.vmap(model)(inp)  # type: ignore
     return jnp.sqrt(jnp.mean(jnp.square(pred - true)))
 
 
 @eqx.filter_jit
 def mean_abs_error(model: eqx.Module, inp: Array, true: Array) -> Array:
-    """Calculate mean absolute error."""
+    """Calculate mean absolute error.
+
+    Parameters
+    ----------
+    model
+        Neural network model.
+    inp
+        Input features.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    Array
+        Mean absolute error scalar.
+
+    """
     pred = jax.vmap(model)(inp)  # type: ignore
     return jnp.mean(jnp.abs(pred - true))
 
 
 @eqx.filter_jit
 def mean_absolute_percentage(model: eqx.Module, inp: Array, true: Array) -> Array:
-    """Calculate mean absolute percentag error."""
+    """Calculate mean absolute percentage error.
+
+    Parameters
+    ----------
+    model
+        Neural network model.
+    inp
+        Input features.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    Array
+        Mean absolute percentage error scalar.
+
+    """
     pred = jax.vmap(model)(inp)  # type: ignore
     return 100 * jnp.mean(jnp.abs((true - pred) / pred))
 
 
 @eqx.filter_jit
 def mean_squared_logarithmic(model: eqx.Module, inp: Array, true: Array) -> Array:
-    """Calculate root mean square error between model and data."""
+    """Calculate mean squared logarithmic error.
+
+    Parameters
+    ----------
+    model
+        Neural network model.
+    inp
+        Input features.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    Array
+        Mean squared logarithmic error scalar.
+
+    """
     pred = jax.vmap(model)(inp)  # type: ignore
     return jnp.mean(jnp.square(jnp.log(pred + 1) - jnp.log(true + 1)))
 
 
 @eqx.filter_jit
 def cosine_similarity(model: eqx.Module, inp: Array, true: Array) -> Array:
-    """Calculate root mean square error between model and data."""
+    """Calculate negative cosine similarity.
+
+    Parameters
+    ----------
+    model
+        Neural network model.
+    inp
+        Input features.
+    true
+        Ground truth target values.
+
+    Returns
+    -------
+    Array
+        Negative cosine similarity scalar.
+
+    """
     pred = jax.vmap(model)(inp)  # type: ignore
     return -jnp.sum(jnp.linalg.norm(pred, 2) * jnp.linalg.norm(true, 2))
 
@@ -111,18 +223,29 @@ def train(
 ) -> pd.Series:
     """Train the neural network using mini-batch gradient descent.
 
-    Args:
-        model: Neural network model to train.
-        features: Input features as a tensor.
-        targets: Target values as a tensor.
-        epochs: Number of training epochs.
-        optimizer: Optimizer for training.
-        device: torch device
-        batch_size: Size of mini-batches for training.
-        loss_fn: Loss function
+    Parameters
+    ----------
+    model
+        Neural network model to train.
+    features
+        Input features as a tensor.
+    targets
+        Target values as a tensor.
+    epochs
+        Number of training epochs.
+    optimizer
+        Optimizer for training.
+    device
+        torch device
+    batch_size
+        Size of mini-batches for training.
+    loss_fn
+        Loss function
 
-    Returns:
-        pd.Series: Series containing the training loss history.
+    Returns
+    -------
+    pd.Series
+        Series containing the training loss history.
 
     """
     losses = {}
@@ -146,6 +269,25 @@ def train(
         x: Array,
         y: Array,
     ) -> tuple[eqx.Module, Array, Array]:
+        """Perform a single optimisation step.
+
+        Parameters
+        ----------
+        model
+            Neural network model.
+        opt_state
+            Current optimizer state.
+        x
+            Input batch.
+        y
+            Target batch.
+
+        Returns
+        -------
+        tuple[eqx.Module, Array, Array]
+            Updated model, optimizer state, and loss value.
+
+        """
         loss_value, grads = eqx.filter_value_and_grad(loss_fn)(model, x, y)
         updates, opt_state = optimizer.update(
             grads, opt_state, eqx.filter(model, eqx.is_array)
@@ -175,10 +317,13 @@ def train(
 class MLP(eqx.Module):
     """Multilayer Perceptron (MLP) for surrogate modeling and neural posterior estimation.
 
-    Attributes:
-        net: Sequential neural network model.
+    Attributes
+    ----------
+    net
+        Sequential neural network model.
 
-    Methods:
+    Methods
+    -------
         forward: Forward pass through the neural network.
 
     """
@@ -193,11 +338,16 @@ class MLP(eqx.Module):
     ) -> None:
         """Initializes the MLP with the given number of inputs and list of (hidden) layers.
 
-        Args:
-            n_inputs: The number of input features.
-            neurons_per_layer: Number of neurons per layer
-            n_outputs: A list containing the number of neurons in hidden and output layer.
-            key: jax.random.PRNGKey(SEED) for initial parameters
+        Parameters
+        ----------
+        n_inputs
+            The number of input features.
+        neurons_per_layer
+            Number of neurons per layer
+        n_outputs
+            A list containing the number of neurons in hidden and output layer.
+        key
+            jax.random.PRNGKey(SEED) for initial parameters
 
         For instance, MLP(10, layers = [50, 50, 10]) initializes a neural network with the following architecture:
         - Linear layer with `n_inputs` inputs and 50 outputs
@@ -221,10 +371,13 @@ class MLP(eqx.Module):
     def __call__(self, x: Array) -> Array:
         """Forward pass through the neural network.
 
-        Args:
-            x: Input tensor.
+        Parameters
+        ----------
+        x
+            Input tensor.
 
-        Returns:
+        Returns
+        -------
             Output tensor.
 
         """
@@ -249,11 +402,16 @@ class LSTM(eqx.Module):
     ) -> None:
         """Initializes the LSTM neural network model.
 
-        Args:
-            n_inputs (int): Number of input features.
-            n_outputs (int): Number of output features.
-            n_hidden (int): Number of hidden units in the LSTM layer.
-            key (Array): JAX random key for initialization.
+        Parameters
+        ----------
+        n_inputs : int
+            Number of input features.
+        n_outputs : int
+            Number of output features.
+        n_hidden : int
+            Number of hidden units in the LSTM layer.
+        key : Array
+            JAX random key for initialization.
 
         """
         k1, k2 = jax.random.split(key, 2)
@@ -270,12 +428,17 @@ class LSTM(eqx.Module):
     ) -> Array:
         """Forward pass through the LSTM network.
 
-        Args:
-            x: Input tensor of shape (seq_len, batch_size, n_inputs).
-            h: Optional initial hidden state (batch_size, n_hidden).
-            c: Optional initial cell state (batch_size, n_hidden).
+        Parameters
+        ----------
+        x
+            Input tensor of shape (seq_len, batch_size, n_inputs).
+        h
+            Optional initial hidden state (batch_size, n_hidden).
+        c
+            Optional initial cell state (batch_size, n_hidden).
 
-        Returns:
+        Returns
+        -------
             Output tensor of shape (seq_len, batch_size, n_outputs).
 
         """

@@ -60,13 +60,20 @@ def _normalise_protocol_index(protocol: pd.DataFrame) -> pd.DataFrame:
 class Simulator:
     """Simulator class for running simulations on a metabolic model.
 
-    Attributes:
-        model: Model instance to simulate.
-        y0: Initial conditions for the simulation.
-        integrator: Integrator protocol to use for the simulation.
-        variables: List of DataFrames containing concentration results.
-        dependent: List of DataFrames containing argument values.
-        simulation_parameters: List of dictionaries containing simulation parameters.
+    Attributes
+    ----------
+    model
+        Model instance to simulate.
+    y0
+        Initial conditions for the simulation.
+    integrator
+        Integrator protocol to use for the simulation.
+    variables
+        List of DataFrames containing concentration results.
+    dependent
+        List of DataFrames containing argument values.
+    simulation_parameters
+        List of dictionaries containing simulation parameters.
 
     """
 
@@ -98,13 +105,19 @@ class Simulator:
     ) -> None:
         """Initialize the Simulator.
 
-        Args:
-            model: The model to be simulated.
-            y0: Initial conditions for the model variables.
-                If None, the initial conditions are obtained from the model.
-            integrator: The integrator to use for the simulation.
-            use_jacobian: Whether to use the Jacobian for the simulation.
-            test_run (bool, optional): If True, performs a test run for better error messages
+        Parameters
+        ----------
+        model
+            The model to be simulated.
+        y0
+            Initial conditions for the model variables.
+            If None, the initial conditions are obtained from the model.
+        integrator
+            The integrator to use for the simulation.
+        use_jacobian
+            Whether to use the Jacobian for the simulation.
+        test_run : bool, optional
+            If True, performs a test run for better error messages
 
         """
         self.model = model
@@ -164,12 +177,16 @@ class Simulator:
     def update_parameter(self, parameter: str, value: float) -> Self:
         """Updates the value of a specified parameter in the model.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).update_parameter("k1", 0.1)
 
-        Args:
-            parameter: The name of the parameter to update.
-            value: The new value to set for the parameter.
+        Parameters
+        ----------
+        parameter
+            The name of the parameter to update.
+        value
+            The new value to set for the parameter.
 
         """
         self.model.update_parameter(parameter, value)
@@ -178,12 +195,15 @@ class Simulator:
     def update_parameters(self, parameters: dict[str, float]) -> Self:
         """Updates the model parameters with the provided dictionary of parameters.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).update_parameters({"k1": 0.1, "k2": 0.2})
 
-        Args:
-            parameters: A dictionary where the keys are parameter names
-                        and the values are the new parameter values.
+        Parameters
+        ----------
+        parameters
+            A dictionary where the keys are parameter names
+            and the values are the new parameter values.
 
         """
         self.model.update_parameters(parameters)
@@ -192,12 +212,16 @@ class Simulator:
     def scale_parameter(self, parameter: str, factor: float) -> Self:
         """Scales the value of a specified parameter in the model.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).scale_parameter("k1", 0.1)
 
-        Args:
-            parameter: The name of the parameter to scale.
-            factor: The factor by which to scale the parameter.
+        Parameters
+        ----------
+        parameter
+            The name of the parameter to scale.
+        factor
+            The factor by which to scale the parameter.
 
         """
         self.model.scale_parameter(parameter, factor)
@@ -206,12 +230,15 @@ class Simulator:
     def scale_parameters(self, parameters: dict[str, float]) -> Self:
         """Scales the values of specified parameters in the model.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).scale_parameters({"k1": 0.1, "k2": 0.2})
 
-        Args:
-            parameters: A dictionary where the keys are parameter names
-                        and the values are the scaling factors.
+        Parameters
+        ----------
+        parameters
+            A dictionary where the keys are parameter names
+            and the values are the scaling factors.
 
         """
         self.model.scale_parameters(parameters)
@@ -220,12 +247,16 @@ class Simulator:
     def update_variable(self, variable: str, value: float) -> Self:
         """Updates the value of a specified value in the simulation.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).update_variable("k1", 0.1)
 
-        Args:
-            variable: name of the model variable
-            value: new value
+        Parameters
+        ----------
+        variable
+            name of the model variable
+        value
+            new value
 
         """
         return self.update_variables({variable: value})
@@ -233,11 +264,14 @@ class Simulator:
     def update_variables(self, variables: dict[str, float]) -> Self:
         """Updates the value of a specified value in the simulation.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).update_variables({"k1": 0.1})
 
-        Args:
-            variables: {variable: value} pairs
+        Parameters
+        ----------
+        variables
+            {variable: value} pairs
 
         """
         sim_variables = self.variables
@@ -265,9 +299,12 @@ class Simulator:
     ) -> None:
         """Handle simulation results.
 
-        Args:
-            result: time course of simulation
-            skipfirst: Whether to skip the first row of results.
+        Parameters
+        ----------
+        result
+            time course of simulation
+        skipfirst
+            Whether to skip the first row of results.
 
         """
         match result.value:
@@ -304,19 +341,25 @@ class Simulator:
     ) -> Self:
         """Simulate the model.
 
-        Examples:
+        Examples
+        --------
             >>> s.simulate(t_end=100)
             >>> s.simulate(t_end=100, steps=100)
 
         You can either supply only a terminal time point, or additionally also the
         number of steps for which values should be returned.
 
-        Args:
-            t_end: Terminal time point for the simulation.
-            steps: Number of steps for the simulation.
+        Parameters
+        ----------
+        t_end
+            Terminal time point for the simulation.
+        steps
+            Number of steps for the simulation.
 
-        Returns:
-            Self: The Simulator instance with updated results.
+        Returns
+        -------
+        Self
+            The Simulator instance with updated results.
 
         """
         if len(self._errors) > 0:
@@ -340,19 +383,26 @@ class Simulator:
     def simulate_time_course(self, time_points: ArrayLike) -> Self:
         """Simulate the model over a given set of time points.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).simulate_time_course([1, 2, 3])
 
         You can either supply only a terminal time point, or additionally also the
         number of steps or exact time points for which values should be returned.
 
-        Args:
-            t_end: Terminal time point for the simulation.
-            steps: Number of steps for the simulation.
-            time_points: Exact time points for which values should be returned.
+        Parameters
+        ----------
+        t_end
+            Terminal time point for the simulation.
+        steps
+            Number of steps for the simulation.
+        time_points
+            Exact time points for which values should be returned.
 
-        Returns:
-            Self: The Simulator instance with updated results.
+        Returns
+        -------
+        Self
+            The Simulator instance with updated results.
 
         """
         if len(self._errors) > 0:
@@ -391,17 +441,22 @@ class Simulator:
     ) -> Self:
         """Simulate the model over a given protocol.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).simulate_over_protocol(
             ...     protocol,
             ...     time_points_per_step=10
             ... )
 
-        Args:
-            protocol: DataFrame containing the protocol.
-            time_points_per_step: Number of time points per step.
+        Parameters
+        ----------
+        protocol
+            DataFrame containing the protocol.
+        time_points_per_step
+            Number of time points per step.
 
-        Returns:
+        Returns
+        -------
             The Simulator instance with updated results.
 
         """
@@ -431,22 +486,29 @@ class Simulator:
     ) -> Self:
         """Simulate the model over a given protocol.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).simulate_over_protocol(
             ...     protocol,
             ...     time_points=np.array([1.0, 2.0, 3.0], dtype=float),
             ... )
 
-        Args:
-            protocol: DataFrame containing the protocol.
-            time_points: Array of time points for which to return the simulation values.
-            time_points_as_relative: Interpret time points as relative time
+        Parameters
+        ----------
+        protocol
+            DataFrame containing the protocol.
+        time_points
+            Array of time points for which to return the simulation values.
+        time_points_as_relative
+            Interpret time points as relative time
 
-        Notes:
+        Notes
+        -----
             This function will return **both** the control points of the protocol as well
             as the time points supplied in case they don't match.
 
-        Returns:
+        Returns
+        -------
             The Simulator instance with updated results.
 
         """
@@ -502,7 +564,8 @@ class Simulator:
     ) -> Self:
         """Simulate the model to steady state.
 
-        Examples:
+        Examples
+        --------
             >>> Simulator(model).simulate_to_steady_state()
             >>> Simulator(model).simulate_to_steady_state(tolerance=1e-8)
             >>> Simulator(model).simulate_to_steady_state(rel_norm=True)
@@ -510,12 +573,17 @@ class Simulator:
         You can either supply only a terminal time point, or additionally also the
         number of steps or exact time points for which values should be returned.
 
-        Args:
-            tolerance: Tolerance for the steady-state calculation.
-            rel_norm: Whether to use relative norm for the steady-state calculation.
+        Parameters
+        ----------
+        tolerance
+            Tolerance for the steady-state calculation.
+        rel_norm
+            Whether to use relative norm for the steady-state calculation.
 
-        Returns:
-            Self: The Simulator instance with updated results.
+        Returns
+        -------
+        Self
+            The Simulator instance with updated results.
 
         """
         if len(self._errors) > 0:
@@ -533,7 +601,8 @@ class Simulator:
     def get_result(self) -> Result[Simulation]:
         """Get result of the simulation.
 
-        Examples:
+        Examples
+        --------
             >>> variables, fluxes = Simulator(model).simulate().get_result()
             >>> variables
             Time            ATP      NADPH

@@ -16,14 +16,19 @@ def default_tmp_dir(tmp_dir: Path | None, *, remove_old_cache: bool) -> Path:
     If `tmp_dir` is None, it defaults to the user's home directory under ".cache/mxlpy".
     Optionally removes old cache if specified.
 
-    Args:
-        tmp_dir (Path | None): The temporary directory path. If None, defaults to
-                               Path.home() / ".cache" / "mxlpy".
-        remove_old_cache (bool): If True, removes the old cache directory if it exists.
-                                 Defaults to False.
+    Parameters
+    ----------
+    tmp_dir : Path | None
+        The temporary directory path. If None, defaults to
+        Path.home() / ".cache" / "mxlpy".
+    remove_old_cache : bool
+        If True, removes the old cache directory if it exists.
+        Defaults to False.
 
-    Returns:
-        Path: The path to the temporary directory.
+    Returns
+    -------
+    Path
+        The path to the temporary directory.
 
     """
     if tmp_dir is None:

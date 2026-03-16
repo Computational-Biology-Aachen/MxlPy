@@ -32,16 +32,25 @@ __all__ = [
 class Assimulo(AbstractIntegrator):
     """Assimulo integrator for solving ODEs.
 
-    Attributes:
-        rhs: Right-hand side function of the ODE.
-        y0: Initial conditions.
-        atol: Absolute tolerance for the solver.
-        rtol: Relative tolerance for the solver.
-        maxnef: Maximum number of error failures.
-        maxncf: Maximum number of convergence failures.
-        verbosity: Verbosity level of the solver.
+    Attributes
+    ----------
+    rhs
+        Right-hand side function of the ODE.
+    y0
+        Initial conditions.
+    atol
+        Absolute tolerance for the solver.
+    rtol
+        Relative tolerance for the solver.
+    maxnef
+        Maximum number of error failures.
+    maxncf
+        Maximum number of convergence failures.
+    verbosity
+        Verbosity level of the solver.
 
-    Methods:
+    Methods
+    -------
         integrate: Integrate the ODE system.
 
     """
@@ -88,13 +97,19 @@ class Assimulo(AbstractIntegrator):
     ) -> Result[TimeCourse]:
         """Integrate the ODE system.
 
-        Args:
-            t_end: Terminal time point for the integration.
-            steps: Number of steps for the integration.
-            time_points: Time points for the integration.
+        Parameters
+        ----------
+        t_end
+            Terminal time point for the integration.
+        steps
+            Number of steps for the integration.
+        time_points
+            Time points for the integration.
 
-        Returns:
-            np.ndarray: Array of integrated values.
+        Returns
+        -------
+        np.ndarray
+            Array of integrated values.
 
         """
         if steps is None:
@@ -117,11 +132,15 @@ class Assimulo(AbstractIntegrator):
     ) -> Result[TimeCourse]:
         """Integrate the ODE system over a time course.
 
-        Args:
-            time_points: Time points for the integration.
+        Parameters
+        ----------
+        time_points
+            Time points for the integration.
 
-        Returns:
-            tuple[ArrayLike | None, ArrayLike | None]: Tuple containing the time points and the integrated values.
+        Returns
+        -------
+        tuple[ArrayLike | None, ArrayLike | None]
+            Tuple containing the time points and the integrated values.
 
         """
         try:
@@ -144,13 +163,19 @@ class Assimulo(AbstractIntegrator):
     ) -> Result[TimeCourse]:
         """Integrate the ODE system to steady state.
 
-        Args:
-            tolerance: Tolerance for determining steady state.
-            rel_norm: Whether to use relative normalization.
-            t_max: Maximum time point for the integration (default: 1,000,000,000).
+        Parameters
+        ----------
+        tolerance
+            Tolerance for determining steady state.
+        rel_norm
+            Whether to use relative normalization.
+        t_max
+            Maximum time point for the integration (default: 1,000,000,000).
 
-        Returns:
-            tuple[float | None, ArrayLike | None]: Tuple containing the final time point and the integrated values at steady state.
+        Returns
+        -------
+        tuple[float | None, ArrayLike | None]
+            Tuple containing the final time point and the integrated values at steady state.
 
         """
         self.reset()

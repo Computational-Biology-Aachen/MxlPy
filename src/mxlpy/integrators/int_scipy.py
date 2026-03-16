@@ -27,15 +27,23 @@ __all__ = [
 class Scipy(AbstractIntegrator):
     """Scipy integrator for solving ODEs.
 
-    Attributes:
-        rhs: Right-hand side function of the ODE.
-        y0: Initial conditions.
-        atol: Absolute tolerance for the solver.
-        rtol: Relative tolerance for the solver.
-        t0: Initial time point.
-        _y0_orig: Original initial conditions.
+    Attributes
+    ----------
+    rhs
+        Right-hand side function of the ODE.
+    y0
+        Initial conditions.
+    atol
+        Absolute tolerance for the solver.
+    rtol
+        Relative tolerance for the solver.
+    t0
+        Initial time point.
+    _y0_orig
+        Original initial conditions.
 
-    Methods:
+    Methods
+    -------
         __post_init__: Initialize the Scipy integrator.
         reset: Reset the integrator.
         integrate: Integrate the ODE system.
@@ -74,13 +82,19 @@ class Scipy(AbstractIntegrator):
     ) -> Result[TimeCourse]:
         """Integrate the ODE system.
 
-        Args:
-            t_end: Terminal time point for the integration.
-            steps: Number of steps for the integration.
-            time_points: Array of time points for the integration.
+        Parameters
+        ----------
+        t_end
+            Terminal time point for the integration.
+        steps
+            Number of steps for the integration.
+        time_points
+            Array of time points for the integration.
 
-        Returns:
-            tuple[ArrayLike | None, ArrayLike | None]: Tuple containing the time points and the integrated values.
+        Returns
+        -------
+        tuple[ArrayLike | None, ArrayLike | None]
+            Tuple containing the time points and the integrated values.
 
         """
         # Scipy counts the total amount of return points rather than steps as assimulo
@@ -97,11 +111,15 @@ class Scipy(AbstractIntegrator):
     ) -> Result[TimeCourse]:
         """Integrate the ODE system over a time course.
 
-        Args:
-            time_points: Time points for the integration.
+        Parameters
+        ----------
+        time_points
+            Time points for the integration.
 
-        Returns:
-            tuple[ArrayLike, ArrayLike]: Tuple containing the time points and the integrated values.
+        Returns
+        -------
+        tuple[ArrayLike, ArrayLike]
+            Tuple containing the time points and the integrated values.
 
         """
         if time_points[0] != self.t0:
@@ -137,15 +155,23 @@ class Scipy(AbstractIntegrator):
     ) -> Result[TimeCourse]:
         """Integrate the ODE system to steady state.
 
-        Args:
-            tolerance: Tolerance for determining steady state.
-            rel_norm: Whether to use relative normalization.
-            step_size: Step size for the integration (default: 100).
-            max_steps: Maximum number of steps for the integration (default: 1,000).
-            integrator: Name of the integrator to use (default: "lsoda").
+        Parameters
+        ----------
+        tolerance
+            Tolerance for determining steady state.
+        rel_norm
+            Whether to use relative normalization.
+        step_size
+            Step size for the integration (default: 100).
+        max_steps
+            Maximum number of steps for the integration (default: 1,000).
+        integrator
+            Name of the integrator to use (default: "lsoda").
 
-        Returns:
-            tuple[float | None, ArrayLike | None]: Tuple containing the final time point and the integrated values at steady state.
+        Returns
+        -------
+        tuple[float | None, ArrayLike | None]
+            Tuple containing the final time point and the integrated values at steady state.
 
         """
         self.reset()

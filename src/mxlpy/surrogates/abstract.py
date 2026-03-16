@@ -28,7 +28,19 @@ class SurrogateProtocol(Protocol):
     def predict(
         self, args: dict[str, float | pd.Series | pd.DataFrame]
     ) -> dict[str, float]:
-        """Predict outputs based on input data."""
+        """Predict outputs based on input data.
+
+        Parameters
+        ----------
+        args
+            Mapping of input names to their values.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapping of output names to predicted values.
+
+        """
         ...
 
     def calculate_inpl(
@@ -36,7 +48,16 @@ class SurrogateProtocol(Protocol):
         name: str,
         args: dict[str, float | pd.Series | pd.DataFrame],
     ) -> None:
-        """Predict outputs based on input data."""
+        """Predict outputs and update args in-place.
+
+        Parameters
+        ----------
+        name
+            Name of the surrogate.
+        args
+            Mapping of input names to their values, updated in-place with predictions.
+
+        """
         ...
 
 
@@ -44,11 +65,15 @@ class SurrogateProtocol(Protocol):
 class AbstractSurrogate:
     """Abstract base class for surrogate models.
 
-    Attributes:
-        inputs: List of input variable names.
-        stoichiometries: Dictionary mapping reaction names to stoichiometries.
+    Attributes
+    ----------
+    inputs
+        List of input variable names.
+    stoichiometries
+        Dictionary mapping reaction names to stoichiometries.
 
-    Methods:
+    Methods
+    -------
         predict: Abstract method to predict outputs based on input data.
 
     """
@@ -65,14 +90,35 @@ class AbstractSurrogate:
     def predict(
         self, args: dict[str, float | pd.Series | pd.DataFrame]
     ) -> dict[str, float]:
-        """Predict outputs based on input data."""
+        """Predict outputs based on input data.
+
+        Parameters
+        ----------
+        args
+            Mapping of input names to their values.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapping of output names to predicted values.
+
+        """
 
     def calculate_inpl(
         self,
         name: str,  # noqa: ARG002, for API compatibility
         args: dict[str, float | pd.Series | pd.DataFrame],
     ) -> None:
-        """Predict outputs based on input data."""
+        """Predict outputs and update args in-place.
+
+        Parameters
+        ----------
+        name
+            Name of the surrogate.
+        args
+            Mapping of input names to their values, updated in-place with predictions.
+
+        """
         args |= self.predict(args=args)
 
 
@@ -86,7 +132,19 @@ class MockSurrogate(AbstractSurrogate):
         self,
         args: dict[str, float | pd.Series | pd.DataFrame],
     ) -> dict[str, float]:
-        """Predict outputs based on input data."""
+        """Predict outputs based on input data.
+
+        Parameters
+        ----------
+        args
+            Mapping of input names to their values.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapping of output names to predicted values.
+
+        """
         return dict(
             zip(
                 self.outputs,

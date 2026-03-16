@@ -36,11 +36,37 @@ class Surrogate(AbstractSurrogate):
     model: keras.Model
 
     def predict_raw(self, y: Array) -> Array:
+        """Predict raw output from the Keras model.
+
+        Parameters
+        ----------
+        y
+            Input data as a numpy array.
+
+        Returns
+        -------
+        Array
+            Raw model prediction as a numpy array.
+
+        """
         return np.atleast_1d(np.squeeze(self.model.predict(y)))
 
     def predict(
         self, args: dict[str, float | pd.Series | pd.DataFrame]
     ) -> dict[str, float]:
+        """Predict outputs based on input data.
+
+        Parameters
+        ----------
+        args
+            Mapping of input names to their values.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapping of output names to predicted values.
+
+        """
         return dict(
             zip(
                 self.outputs,
@@ -80,6 +106,21 @@ class Trainer:
         self.losses = []
 
     def train(self, epochs: int, batch_size: int | None = None) -> Self:
+        """Train the surrogate model.
+
+        Parameters
+        ----------
+        epochs
+            Number of training epochs.
+        batch_size
+            Size of mini-batches for training. None for full-batch.
+
+        Returns
+        -------
+        Self
+            The trainer instance for method chaining.
+
+        """
         losses = _train(
             model=self.model,
             features=self.features,
@@ -103,6 +144,23 @@ class Trainer:
         surrogate_outputs: list[str] | None = None,
         surrogate_stoichiometries: dict[str, dict[str, float | Derived]] | None = None,
     ) -> Surrogate:
+        """Create a surrogate from the trained model.
+
+        Parameters
+        ----------
+        surrogate_args
+            Names of input arguments for the surrogate.
+        surrogate_outputs
+            Names of output arguments from the surrogate.
+        surrogate_stoichiometries
+            Mapping of reaction names to stoichiometry dicts.
+
+        Returns
+        -------
+        Surrogate
+            Configured surrogate model.
+
+        """
         return Surrogate(
             model=self.model,
             args=surrogate_args if surrogate_args is not None else [],

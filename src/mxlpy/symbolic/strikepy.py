@@ -373,7 +373,21 @@ def _create_onx(
 
 
 def strike_goldd(model: StrikepyModel, options: Options | None = None) -> Result:
-    """Run Strike-Goldd algorithm."""
+    """Run Strike-Goldd algorithm.
+
+    Parameters
+    ----------
+    model
+        Strikepy model containing states, parameters, equations and outputs
+    options
+        Algorithm options, or None to use defaults
+
+    Returns
+    -------
+    Result
+        Identifiability and observability results
+
+    """
     options = Options() if options is None else options
 
     # Check if the size of nnzDerU and nnzDerW are appropriate
@@ -581,7 +595,21 @@ def strike_goldd(model: StrikepyModel, options: Options | None = None) -> Result
 
 
 def check_identifiability(model: SymbolicModel, outputs: list[sympy.Symbol]) -> Result:
-    """Check identifiability of model."""
+    """Check identifiability of model.
+
+    Parameters
+    ----------
+    model
+        Symbolic model to analyse
+    outputs
+        List of symbols representing measured outputs
+
+    Returns
+    -------
+    Result
+        Identifiability and observability results
+
+    """
     strike_model = StrikepyModel(
         states=list(model.variables.values()),
         pars=list(model.parameters.values()),
