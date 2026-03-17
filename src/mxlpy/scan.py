@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 from wadler_lindig import pformat
 
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.parallel import Cache, parallelise
 from mxlpy.simulation import Simulation
 from mxlpy.simulator import Simulator
@@ -94,6 +95,7 @@ class SteadyStateWorker(Protocol):
         rel_norm: bool,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
+        oscillation_detector: OscillationDetector | None,
     ) -> Simulation:
         """Call the worker function."""
         ...
@@ -152,6 +154,7 @@ def _steady_state_worker(
     rel_norm: bool,
     integrator: IntegratorType | None,
     y0: dict[str, float] | None,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
 ) -> Simulation:
     """Simulate the model to steady state and return concentrations and fluxes.
 
@@ -165,6 +168,8 @@ def _steady_state_worker(
         Whether to use relative normalization.
     integrator
         Function producing an integrator for the simulation.
+    oscillation_detector
+        Callable for oscillation detection, or ``None`` to disable.
 
     Returns
     -------
@@ -175,7 +180,10 @@ def _steady_state_worker(
     try:
         res = (
             Simulator(model, integrator=integrator, y0=y0)
-            .simulate_to_steady_state(rel_norm=rel_norm)
+            .simulate_to_steady_state(
+                rel_norm=rel_norm,
+                oscillation_detector=oscillation_detector,
+            )
             .get_result()
         )
     except ZeroDivisionError:
@@ -420,6 +428,7 @@ def steady_state(
     cache: Cache | None = None,
     worker: SteadyStateWorker = _steady_state_worker,
     integrator: IntegratorType | None = None,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
 ) -> SteadyStateScan:
     """Get steady-state results over supplied values.
 
@@ -440,7 +449,11 @@ def steady_state(
     worker
         Worker function to use for the simulation.
     integrator
-        Integrator function to use for steady state calculation
+        Integrator function to use for steady state calculation.
+    oscillation_detector
+        Callable for oscillation detection passed to each worker.  Pass
+        :func:`~mxlpy.integrators.utils.no_oscillation_detection` to
+        disable.  Default: :func:`~mxlpy.integrators.utils.detect_oscillations`.
 
     Returns
     -------
@@ -481,6 +494,7 @@ def steady_state(
                 rel_norm=rel_norm,
                 integrator=integrator,
                 y0=None,
+                oscillation_detector=oscillation_detector,
             ),
             model=model,
         ),

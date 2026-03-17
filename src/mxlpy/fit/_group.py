@@ -20,6 +20,7 @@ from mxlpy.fit.residuals import (
     time_course_residual,
 )
 from mxlpy.integrators import IntegratorType
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
 from mxlpy.model import Model
 from mxlpy.simulator import _normalise_protocol_index
@@ -41,6 +42,7 @@ def _wrap_steady_state(
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
 ) -> Result[Fit]:
     return steady_state(
         model=model,
@@ -54,6 +56,7 @@ def _wrap_steady_state(
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
+        oscillation_detector=oscillation_detector,
     )
 
 
@@ -135,6 +138,7 @@ def group_steady_state(
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
 ) -> GroupFit:
     """Fit model parameters to steady-state experimental data.
 
@@ -196,6 +200,7 @@ def group_steady_state(
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
+                    oscillation_detector=oscillation_detector,
                 ),
                 inputs=list(_iterrows(p0)),
                 timeout=timeout,

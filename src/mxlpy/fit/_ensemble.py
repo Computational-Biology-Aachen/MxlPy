@@ -18,6 +18,7 @@ from mxlpy.fit.residuals import (
     time_course_residual,
 )
 from mxlpy.integrators import IntegratorType
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
 from mxlpy.model import Model
 from mxlpy.simulator import _normalise_protocol_index
@@ -42,6 +43,7 @@ def ensemble_steady_state(
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
 ) -> EnsembleFit:
     """Fit model ensemble parameters to steady-state experimental data.
 
@@ -106,6 +108,7 @@ def ensemble_steady_state(
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
+                    oscillation_detector=oscillation_detector,
                 ),
                 inputs=list(enumerate(ensemble)),
                 timeout=timeout,

@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import copy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import scipy.integrate as spi
 
-from mxlpy.integrators.abstract import AbstractIntegrator, TimeCourse
+from mxlpy.integrators.abstract import (
+    AbstractIntegrator,
+    TimeCourse,
+)
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.types import ArrayLike, IntegrationFailure, NoSteadyState, Result
 
 if TYPE_CHECKING:
@@ -150,6 +153,7 @@ class Scipy(AbstractIntegrator):
         *,
         tolerance: float,
         rel_norm: bool,
+        oscillation_detector: OscillationDetector | None = detect_oscillations,
         step_size: int = 100,
         max_steps: int = 1000,
     ) -> Result[TimeCourse]:
@@ -161,12 +165,16 @@ class Scipy(AbstractIntegrator):
             Tolerance for determining steady state.
         rel_norm
             Whether to use relative normalization.
+        oscillation_detector
+            Callable that analyses each trajectory segment and returns an
+            :class:`~mxlpy.types.OscillationDetected` exception when
+            oscillatory behaviour is found, or ``None`` otherwise.  Pass
+            :func:`no_oscillation_detection` to disable detection entirely.
+            Default: :func:`detect_oscillations` (autocorrelation-based).
         step_size
             Step size for the integration (default: 100).
         max_steps
             Maximum number of steps for the integration (default: 1,000).
-        integrator
-            Name of the integrator to use (default: "lsoda").
 
         Returns
         -------
@@ -176,24 +184,47 @@ class Scipy(AbstractIntegrator):
         """
         self.reset()
 
-        # If rhs returns a tuple, we get weird errors, so we need
-        # to wrap this in a list for some reason
-        integ = spi.ode(lambda t, x: list(self.rhs(t, x)), jac=self.jacobian)
-        integ.set_integrator(name=self.method)
-        integ.set_initial_value(self.y0)
+        y1 = np.array(self.y0, dtype=float)
+        t0 = self.t0
 
-        t = self.t0 + step_size
-        y1 = copy.deepcopy(self.y0)
         for _ in range(max_steps):
-            y2 = integ.integrate(t)
+            t_end = t0 + step_size
+            # No t_eval: solver returns all internal steps, giving a dense
+            # trajectory that is later used for oscillation detection.
+            res = spi.solve_ivp(
+                fun=self.rhs,
+                y0=y1,
+                t_span=(t0, t_end),
+                method=self.method,
+                atol=self.atol,
+                rtol=self.rtol,
+                jac=self.jacobian,
+            )
+            if not res.success:
+                return Result(IntegrationFailure())
+
+            y2 = res.y[:, -1]
             diff = (y2 - y1) / y1 if rel_norm else y2 - y1
+
             if np.linalg.norm(diff, ord=2) < tolerance:
                 return Result(
                     TimeCourse(
-                        time=np.array([t], dtype=float),
+                        time=np.array([t_end], dtype=float),
                         values=np.array([y2], dtype=float),
                     )
                 )
+
+            # Not converging - check the dense trajectory from this step for
+            # oscillatory behaviour and return early if detected.
+            if oscillation_detector is not None:
+                hist = res.y.T  # (N_internal, n_vars)
+                var_names = [str(i) for i in range(hist.shape[1])]
+                if (
+                    osc := oscillation_detector(hist, var_names, times=res.t)
+                ) is not None:
+                    return Result(osc)
+
             y1 = y2
-            t += step_size
+            t0 = t_end
+
         return Result(NoSteadyState())

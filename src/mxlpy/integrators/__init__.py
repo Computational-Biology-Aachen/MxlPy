@@ -10,6 +10,12 @@ import contextlib
 
 from .abstract import IntegratorProtocol, IntegratorType
 from .int_scipy import Scipy
+from .utils import (
+    OscillationDetector,
+    detect_oscillations,
+    detect_oscillations_scipy,
+    no_oscillation_detection,
+)
 
 # Assimulo is optional dependency
 try:
@@ -29,5 +35,9 @@ __all__ = [
     "Diffrax",
     "IntegratorProtocol",
     "IntegratorType",
+    "OscillationDetector",
     "Scipy",
+    "detect_oscillations",
+    "detect_oscillations_scipy",
+    "no_oscillation_detection",
 ]

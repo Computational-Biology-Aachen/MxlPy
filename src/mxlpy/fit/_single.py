@@ -16,6 +16,7 @@ from mxlpy.fit.residuals import (
     time_course_residual,
 )
 from mxlpy.integrators import IntegratorType
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.minimizers.abstract import (
     Bounds,
     LossFn,
@@ -43,6 +44,7 @@ def steady_state(
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
 ) -> Result[Fit]:
     """Fit model parameters to steady-state experimental data.
 
@@ -75,6 +77,9 @@ def steady_state(
         Whether to copy the model to avoid overwriting the state
     standard_scale
         Whether to apply standard scale to data and prediction
+    oscillation_detector
+        Callable for oscillation detection during SS simulation, or ``None``
+        to disable.  Default: :func:`~mxlpy.integrators.utils.detect_oscillations`.
 
     Returns
     -------
@@ -98,6 +103,7 @@ def steady_state(
             p_names=[i for i in p0 if i in p_names],
             v_names=[i for i in p0 if i in v_names],
             standard_scale=standard_scale,
+            oscillation_detector=oscillation_detector,
         ),
     )
     match minimizer(fn, p0, {} if bounds is None else bounds).value:

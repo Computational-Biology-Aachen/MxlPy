@@ -9,6 +9,7 @@ from typing import Protocol
 
 import numpy as np
 
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.types import Array, ArrayLike, Result, Rhs
 
 __all__ = [
@@ -106,6 +107,7 @@ class AbstractIntegrator(ABC):
         *,
         tolerance: float,
         rel_norm: bool,
+        oscillation_detector: OscillationDetector | None = detect_oscillations,
     ) -> Result[TimeCourse]:
         """Integrate the system to steady state.
 
@@ -115,6 +117,12 @@ class AbstractIntegrator(ABC):
             Convergence tolerance for steady-state detection.
         rel_norm
             Whether to use relative normalization for the convergence check.
+        oscillation_detector
+            Callable that analyses a trajectory segment and returns an
+            :class:`~mxlpy.types.OscillationDetected` exception when
+            oscillatory behaviour is found, or ``None`` otherwise.  Pass
+            :func:`no_oscillation_detection` to disable detection entirely.
+            Default: :func:`detect_oscillations` (autocorrelation-based).
 
         Returns
         -------
@@ -189,6 +197,7 @@ class IntegratorProtocol(Protocol):
         *,
         tolerance: float,
         rel_norm: bool,
+        oscillation_detector: OscillationDetector | None = detect_oscillations,
     ) -> Result[TimeCourse]:
         """Integrate the system to steady state.
 
@@ -198,6 +207,12 @@ class IntegratorProtocol(Protocol):
             Convergence tolerance for steady-state detection.
         rel_norm
             Whether to use relative normalization for the convergence check.
+        oscillation_detector
+            Callable that analyses a trajectory segment and returns an
+            :class:`~mxlpy.types.OscillationDetected` exception when
+            oscillatory behaviour is found, or ``None`` otherwise.  Pass
+            :func:`no_oscillation_detection` to disable detection entirely.
+            Default: :func:`detect_oscillations` (autocorrelation-based).
 
         Returns
         -------
@@ -292,6 +307,7 @@ class MockIntegrator(AbstractIntegrator):
         *,
         tolerance: float,  # noqa: ARG002
         rel_norm: bool,  # noqa: ARG002
+        oscillation_detector: OscillationDetector | None = detect_oscillations,  # noqa: ARG002
     ) -> Result[TimeCourse]:
         """Integrate the system to steady state.
 
@@ -301,6 +317,8 @@ class MockIntegrator(AbstractIntegrator):
             Convergence tolerance for steady-state detection.
         rel_norm
             Whether to use relative normalization for the convergence check.
+        oscillation_detector
+            Ignored by the mock integrator.
 
         Returns
         -------

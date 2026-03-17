@@ -134,6 +134,7 @@ def joint_steady_state(
                 p_names=[j for j in p0 if j in p_names],
                 v_names=[j for j in p0 if j in v_names],
                 standard_scale=standard_scale,
+                oscillation_detector=i.oscillation_detector,
             )
         )
 

@@ -24,6 +24,8 @@ __all__ = [
     "MixedSettings",
 ]
 
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
+
 if TYPE_CHECKING:
     from mxlpy.integrators.abstract import IntegratorType
     from mxlpy.minimizers.abstract import LossFn
@@ -60,6 +62,7 @@ class FitSettings:
     integrator: IntegratorType | None = None
     loss_fn: LossFn | None = None
     protocol: pd.DataFrame | None = None
+    oscillation_detector: OscillationDetector | None = detect_oscillations
 
 
 @dataclass
@@ -73,6 +76,7 @@ class MixedSettings:
     integrator: IntegratorType | None = None
     loss_fn: LossFn | None = None
     protocol: pd.DataFrame | None = None
+    oscillation_detector: OscillationDetector | None = detect_oscillations
 
 
 @dataclass
@@ -89,6 +93,7 @@ class _Settings:
     standard_scale: bool
     protocol: pd.DataFrame | None = None
     residual_fn: FitResidual | None = None
+    oscillation_detector: OscillationDetector | None = detect_oscillations
 
     @cached_property
     def mean(self) -> pd.Series | float:

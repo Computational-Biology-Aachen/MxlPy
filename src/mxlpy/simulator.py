@@ -21,9 +21,10 @@ from wadler_lindig import pformat
 
 from mxlpy.integrators import DefaultIntegrator
 from mxlpy.integrators.abstract import TimeCourse
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.simulation import Simulation
 from mxlpy.symbolic import to_symbolic_model
-from mxlpy.types import IntegrationFailure, Result
+from mxlpy.types import IntegrationFailure, OscillationDetected, Result
 
 if TYPE_CHECKING:
     from mxlpy.integrators import IntegratorProtocol, IntegratorType
@@ -561,6 +562,7 @@ class Simulator:
         tolerance: float = 1e-6,
         *,
         rel_norm: bool = False,
+        oscillation_detector: OscillationDetector | None = detect_oscillations,
     ) -> Self:
         """Simulate the model to steady state.
 
@@ -569,6 +571,10 @@ class Simulator:
             >>> Simulator(model).simulate_to_steady_state()
             >>> Simulator(model).simulate_to_steady_state(tolerance=1e-8)
             >>> Simulator(model).simulate_to_steady_state(rel_norm=True)
+            >>> from mxlpy.integrators.utils import no_oscillation_detection
+            >>> Simulator(model).simulate_to_steady_state(
+            ...     oscillation_detector=no_oscillation_detection
+            ... )
 
         You can either supply only a terminal time point, or additionally also the
         number of steps or exact time points for which values should be returned.
@@ -579,6 +585,16 @@ class Simulator:
             Tolerance for the steady-state calculation.
         rel_norm
             Whether to use relative norm for the steady-state calculation.
+        oscillation_detector
+            Callable that analyses trajectory segments for oscillatory
+            behaviour and returns :class:`~mxlpy.types.OscillationDetected`
+            when oscillations are found, or ``None`` otherwise.  Pass
+            :func:`~mxlpy.integrators.utils.no_oscillation_detection` to
+            disable detection entirely, or
+            :func:`~mxlpy.integrators.utils.detect_oscillations_scipy` for a
+            peak-finding based alternative.
+            Default: :func:`~mxlpy.integrators.utils.detect_oscillations`
+            (autocorrelation-based).
 
         Returns
         -------
@@ -589,13 +605,23 @@ class Simulator:
         if len(self._errors) > 0:
             return self
 
-        self._handle_simulation_results(
-            self.integrator.integrate_to_steady_state(
-                tolerance=tolerance,
-                rel_norm=rel_norm,
-            ),
-            skipfirst=False,
+        result = self.integrator.integrate_to_steady_state(
+            tolerance=tolerance,
+            rel_norm=rel_norm,
+            oscillation_detector=oscillation_detector,
         )
+
+        # Resolve integer-index placeholders to actual variable names.
+        # Integrators do not know variable names, so they store string indices
+        # ("0", "1", …) which the simulator maps to model variable names here.
+        if isinstance(result.value, OscillationDetected):
+            var_names = self.model.get_variable_names()
+            osc = result.value
+            osc.oscillating_species = [
+                var_names[int(idx)] for idx in osc.oscillating_species
+            ]
+
+        self._handle_simulation_results(result, skipfirst=False)
         return self
 
     def get_result(self) -> Result[Simulation]:

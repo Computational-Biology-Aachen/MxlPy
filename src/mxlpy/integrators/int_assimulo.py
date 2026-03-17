@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
-from mxlpy.integrators.abstract import AbstractIntegrator, TimeCourse
+from mxlpy.integrators.abstract import (
+    AbstractIntegrator,
+    TimeCourse,
+)
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.types import NoSteadyState, Result
 
 with contextlib.redirect_stderr(open(os.devnull, "w")):  # noqa: PTH123
@@ -159,7 +163,9 @@ class Assimulo(AbstractIntegrator):
         *,
         tolerance: float,
         rel_norm: bool,
+        oscillation_detector: OscillationDetector | None = detect_oscillations,
         t_max: float = 1_000_000_000,
+        max_detect_samples: int = 1000,
     ) -> Result[TimeCourse]:
         """Integrate the ODE system to steady state.
 
@@ -169,8 +175,19 @@ class Assimulo(AbstractIntegrator):
             Tolerance for determining steady state.
         rel_norm
             Whether to use relative normalization.
+        oscillation_detector
+            Callable that analyses each trajectory segment and returns an
+            :class:`~mxlpy.types.OscillationDetected` exception when
+            oscillatory behaviour is found, or ``None`` otherwise.  Pass
+            :func:`no_oscillation_detection` to disable detection entirely.
+            Default: :func:`detect_oscillations` (autocorrelation-based).
         t_max
             Maximum time point for the integration (default: 1,000,000,000).
+        max_detect_samples
+            Maximum number of trajectory samples forwarded to the oscillation
+            detector.  When a segment's trajectory is longer than this, it is
+            uniformly downsampled before analysis to bound memory use and
+            computation time.  Default: 1,000.
 
         Returns
         -------
@@ -182,6 +199,8 @@ class Assimulo(AbstractIntegrator):
 
         try:
             for t_end in np.geomspace(1000, t_max, 3):
+                t: np.ndarray  # (N,)
+                y: np.ndarray  # (N, n_vars)
                 t, y = self.integrator.simulate(t_end)
                 diff = (y[-1] - y[-2]) / y[-1] if rel_norm else y[-1] - y[-2]
                 if np.linalg.norm(diff, ord=2) < tolerance:
@@ -191,6 +210,21 @@ class Assimulo(AbstractIntegrator):
                             values=np.array([y[-1]], dtype=float),
                         )
                     )
+
+                # Not converging - check the full trajectory from this segment
+                # for oscillatory behaviour and return early if detected.
+                if oscillation_detector is not None:
+                    stride = max(1, len(y) // max_detect_samples)
+                    var_names = [str(i) for i in range(y.shape[1])]
+                    if (
+                        osc := oscillation_detector(
+                            y[::stride],
+                            var_names,
+                            times=t[::stride],
+                        )
+                    ) is not None:
+                        return Result(osc)
         except CVodeError as e:
             return Result(e)
+
         return Result(NoSteadyState())

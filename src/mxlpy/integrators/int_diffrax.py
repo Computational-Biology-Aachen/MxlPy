@@ -16,7 +16,11 @@ from diffrax import (
     diffeqsolve,
 )
 
-from mxlpy.integrators.abstract import AbstractIntegrator, TimeCourse
+from mxlpy.integrators.abstract import (
+    AbstractIntegrator,
+    TimeCourse,
+)
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.types import ArrayLike, NoSteadyState, Result
 
 __all__ = ["Diffrax"]
@@ -126,7 +130,9 @@ class Diffrax(AbstractIntegrator):
         *,
         tolerance: float,
         rel_norm: bool,
+        oscillation_detector: OscillationDetector | None = detect_oscillations,
         t_max: float = 1_000_000_000,
+        n_time_points: int = 1000,
     ) -> Result[TimeCourse]:
         """Integrate the ODE system to steady state.
 
@@ -136,8 +142,18 @@ class Diffrax(AbstractIntegrator):
             Tolerance for determining steady state.
         rel_norm
             Whether to use relative normalization.
+        oscillation_detector
+            Callable that analyses each trajectory segment and returns an
+            :class:`~mxlpy.types.OscillationDetected` exception when
+            oscillatory behaviour is found, or ``None`` otherwise.  Pass
+            :func:`no_oscillation_detection` to disable detection entirely.
+            Default: :func:`detect_oscillations` (autocorrelation-based).
         t_max
             Maximum time point for the integration (default: 1,000,000,000).
+        n_time_points
+            Number of evenly-spaced evaluation points per integration segment.
+            A higher value improves oscillation detection accuracy at the cost
+            of more solver evaluations.  Default: 1,000.
 
         Returns
         -------
@@ -148,7 +164,7 @@ class Diffrax(AbstractIntegrator):
         t_start = 0.0
         for t_end in np.geomspace(1000, t_max, 3):
             res = self.integrate_time_course(
-                time_points=np.linspace(t_start, t_end, 1000, dtype=float)
+                time_points=np.linspace(t_start, t_end, n_time_points, dtype=float)
             )
             match res.value:
                 case TimeCourse(t, y):
@@ -160,6 +176,21 @@ class Diffrax(AbstractIntegrator):
                                 values=np.array([y[-1]], dtype=float),
                             )
                         )
+
+                    # Not converging - check the trajectory from this segment.
+                    # Ensure shape is (N, n_vars): transpose if first axis is
+                    # smaller than the second (variables stored as rows).
+                    if oscillation_detector is not None:
+                        values = np.asarray(y, dtype=float)
+                        times = np.asarray(t, dtype=float)
+                        if values.shape[0] < values.shape[1]:
+                            values = values.T
+                        var_names = [str(i) for i in range(values.shape[1])]
+                        if (
+                            osc := oscillation_detector(values, var_names, times=times)
+                        ) is not None:
+                            return Result(osc)
+
                 case _:
                     return Result(res.value)
             t_start = t_end

@@ -24,6 +24,7 @@ import pandas as pd
 from wadler_lindig import pformat
 
 from mxlpy import mca, scan
+from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.mca import ResponseCoefficientsByPars
 from mxlpy.parallel import Cache, parallelise
 from mxlpy.scan import (
@@ -131,6 +132,7 @@ def steady_state(
     rel_norm: bool = False,
     worker: SteadyStateWorker = _steady_state_worker,
     integrator: IntegratorType | None = None,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
 ) -> SteadyStateScan:
     """Monte-carlo scan of steady states.
 
@@ -152,6 +154,9 @@ def steady_state(
         Worker function for steady-state simulation.
     integrator
         Integrator function to use for simulation.
+    oscillation_detector
+        Callable for oscillation detection.  Default:
+        :func:`~mxlpy.integrators.utils.detect_oscillations`.
 
     Examples
     --------
@@ -184,6 +189,7 @@ def steady_state(
                 rel_norm=rel_norm,
                 integrator=integrator,
                 y0=None,
+                oscillation_detector=oscillation_detector,
             ),
             model=model,
         ),

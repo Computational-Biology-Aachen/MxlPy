@@ -40,6 +40,7 @@ __all__ = [
     "IntegrationFailure",
     "NoSteadyState",
     "Option",
+    "OscillationDetected",
     "Param",
     "Parameter",
     "RateFn",
@@ -90,6 +91,43 @@ class NoSteadyState(Exception):
     def __init__(self) -> None:
         """Initialise."""
         super().__init__(self.message)
+
+
+class OscillationDetected(Exception):
+    """Raised when oscillatory behaviour is detected during steady-state search.
+
+    Attributes
+    ----------
+    oscillating_species
+        Names of the variables exhibiting oscillatory behaviour.
+    period
+        Estimated oscillation period in simulation time units, or ``None``
+        if it could not be determined.
+
+    """
+
+    message: str = "Oscillatory behaviour detected; no steady state exists."
+    oscillating_species: list[str]
+    period: float | None
+
+    def __init__(
+        self,
+        oscillating_species: list[str],
+        period: float | None = None,
+    ) -> None:
+        """Initialise.
+
+        Parameters
+        ----------
+        oscillating_species
+            Names (or index strings) of the variables identified as oscillating.
+        period
+            Estimated oscillation period, or ``None`` if undetermined.
+
+        """
+        super().__init__(self.message)
+        self.oscillating_species = oscillating_species
+        self.period = period
 
 
 class FitFailure(Exception):

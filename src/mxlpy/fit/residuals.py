@@ -46,7 +46,9 @@ def steady_state_residual(
             model,
             integrator=settings.integrator,
         )
-        .simulate_to_steady_state()
+        .simulate_to_steady_state(
+            oscillation_detector=settings.oscillation_detector,
+        )
         .get_result()
     )
     match val := res.value:

@@ -71,6 +71,7 @@ from .symbolic import SymbolicModel, to_symbolic_model
 from .types import (
     Derived,
     InitialAssignment,
+    OscillationDetected,
     Parameter,
     Variable,
 )
@@ -109,6 +110,7 @@ __all__ = [
     "LinearLabelMapper",
     "MinimizerProtocol",
     "Model",
+    "OscillationDetected",
     "Parameter",
     "Scipy",
     "Simulation",
