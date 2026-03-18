@@ -62,7 +62,7 @@ from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
 from .mc import Cache
 from .minimizers.abstract import AbstractMinimizer, MinimizerProtocol
-from .model import Model
+from .model import Conflict, Model, UnitInference
 from .npe.abstract import AbstractEstimator, EstimatorProtocol
 from .simulation import Simulation
 from .simulator import Simulator
@@ -100,6 +100,7 @@ __all__ = [
     "AbstractSurrogate",
     "Assimulo",
     "Cache",
+    "Conflict",
     "DefaultIntegrator",
     "Derived",
     "Diffrax",
@@ -117,6 +118,7 @@ __all__ = [
     "Simulator",
     "SurrogateProtocol",
     "SymbolicModel",
+    "UnitInference",
     "Variable",
     "cartesian_product",
     "compare",
