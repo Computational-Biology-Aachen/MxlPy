@@ -15,25 +15,6 @@ repos:
         language: system
         entry: uvx --from nbconvert jupyter-nbconvert --ClearOutputPreprocessor.enabled=True --inplace
 
-  - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.7.2
-    hooks:
-      - id: uv-lock
-        name: uv-lock
-        stages: [pre-commit]
-        always_run: True
-
-  - repo: local
-    hooks:
-      - id: pixi lock
-        name: pixi lock
-        stages: [pre-commit]
-        language: system
-        pass_filenames: false
-        entry: pixi lock
-        files: ^(.*/)?(pixi\.lock|pyproject\.toml)$
-        always_run: True
-
   - repo: https://github.com/aio-libs/sort-all
     rev: v1.3.0
     hooks:

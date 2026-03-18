@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import multiprocessing
 import pickle
-import sys
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-import pebble
+from loky import ProcessPoolExecutor
 from tqdm import tqdm
 
 if TYPE_CHECKING:
@@ -147,9 +147,6 @@ def parallelise[K: Hashable, Tin, Tout](
     if cache is not None:
         cache.tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    if sys.platform in ["win32", "cygwin"]:
-        parallel = False
-
     worker: Callable[[K, Tin], tuple[K, Tout]] = partial(
         _load_or_run,
         fn=fn,
@@ -163,25 +160,24 @@ def parallelise[K: Hashable, Tin, Tout](
             multiprocessing.cpu_count() if max_workers is None else max_workers
         )
 
-        with (
-            tqdm(
-                total=len(inputs),
-                disable=disable_tqdm,
-                desc=tqdm_desc,
-            ) as pbar,
-            pebble.ProcessPool(max_workers=max_workers) as pool,
-        ):
-            future = pool.map(worker, inputs, timeout=timeout)
-            it = future.result()
-            while True:
-                try:
-                    key, value = next(it)
-                    pbar.update(1)
-                    results.append((key, value))
-                except StopIteration:
-                    break
-                except TimeoutError:
-                    pbar.update(1)
+        pool = ProcessPoolExecutor(max_workers=max_workers)
+        with tqdm(
+            total=len(inputs),
+            disable=disable_tqdm,
+            desc=tqdm_desc,
+        ) as pbar:
+            try:
+                futures = [pool.submit(worker, inp) for inp in inputs]
+                for future in futures:
+                    try:
+                        key, value = future.result(timeout=timeout)
+                        pbar.update(1)
+                        results.append((key, value))
+                    except FuturesTimeoutError:
+                        future.cancel()
+                        pbar.update(1)
+            finally:
+                pool.shutdown(wait=False, kill_workers=True)
     else:
         results = list(
             tqdm(
@@ -218,8 +214,6 @@ def parallelise_keyless[Tin, Tout](
         Function to execute in parallel. Takes a single input and returns a result.
     inputs
         Collection of (key, input) tuples to process.
-    cache
-        Optional cache to store and retrieve results.
     parallel
         Whether to execute in parallel (default: True).
     max_workers
@@ -237,9 +231,6 @@ def parallelise_keyless[Tin, Tout](
         Dictionary mapping inputs to their corresponding outputs.
 
     """
-    if sys.platform in ["win32", "cygwin"]:
-        parallel = False
-
     results: list[Tout]
     if parallel:
         results = []
@@ -247,25 +238,24 @@ def parallelise_keyless[Tin, Tout](
             multiprocessing.cpu_count() if max_workers is None else max_workers
         )
 
-        with (
-            tqdm(
-                total=len(inputs),
-                disable=disable_tqdm,
-                desc=tqdm_desc,
-            ) as pbar,
-            pebble.ProcessPool(max_workers=max_workers) as pool,
-        ):
-            future = pool.map(fn, inputs, timeout=timeout)
-            it = future.result()
-            while True:
-                try:
-                    value = next(it)
-                    pbar.update(1)
-                    results.append(value)
-                except StopIteration:
-                    break
-                except TimeoutError:
-                    pbar.update(1)
+        pool = ProcessPoolExecutor(max_workers=max_workers)
+        with tqdm(
+            total=len(inputs),
+            disable=disable_tqdm,
+            desc=tqdm_desc,
+        ) as pbar:
+            try:
+                futures = [pool.submit(fn, inp) for inp in inputs]
+                for future in futures:
+                    try:
+                        value = future.result(timeout=timeout)
+                        pbar.update(1)
+                        results.append(value)
+                    except FuturesTimeoutError:
+                        future.cancel()
+                        pbar.update(1)
+            finally:
+                pool.shutdown(wait=False, kill_workers=True)
     else:
         results = list(
             tqdm(
