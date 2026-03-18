@@ -62,7 +62,7 @@ from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
 from .mc import Cache
 from .minimizers.abstract import AbstractMinimizer, MinimizerProtocol
-from .model import Conflict, Model, UnitInference
+from .model import Model
 from .npe.abstract import AbstractEstimator, EstimatorProtocol
 from .simulation import Simulation
 from .simulator import Simulator
@@ -75,6 +75,7 @@ from .types import (
     Parameter,
     Variable,
 )
+from .unit_inference import Conflict, UnitInference
 
 with contextlib.suppress(ImportError):
     from .integrators import Assimulo
