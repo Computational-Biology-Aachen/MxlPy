@@ -14,6 +14,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Software Development",
   "Topic :: Scientific/Engineering",
   "Operating System :: Microsoft :: Windows",
@@ -25,7 +26,7 @@ classifiers = [
 description = "A package to build metabolic models"
 keywords = ["modelling", "ode", "metabolic"]
 license = "MIT"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12"
 maintainers = [
   { name = "Marvin van Aalst", email = "marvin.vanaalst@gmail.com" },
 ]
@@ -42,7 +43,7 @@ dependencies = [
   "numpy>=2.1.2",
   "pandas>=2.2.3",
   "parameteriser>=0.1.0",
-  "pebble>=5.0.7",
+  "loky>=3.4",
   "pysbml>=0.3.0",
   "python-libsbml>=5.20.4",
   "salib>=1.5.1",

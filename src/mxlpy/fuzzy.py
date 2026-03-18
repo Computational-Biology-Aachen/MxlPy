@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import multiprocessing
-import sys
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from functools import partial
 from math import ceil
@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Self
 
 import numpy as np
 import pandas as pd
-import pebble
+from loky import ProcessPoolExecutor
 from tqdm import tqdm, trange
 
 from mxlpy.simulation import Simulation
@@ -150,9 +150,6 @@ def thompson_sampling(
         Whether to execute in parallel.
 
     """
-    if sys.platform in ["win32", "cygwin"]:
-        parallel = False
-
     max_workers = multiprocessing.cpu_count() if max_workers is None else max_workers
     worker = partial(_thompson_worker, model=model, data=data)
 
@@ -164,24 +161,21 @@ def thompson_sampling(
         # FIXME: think about whether this is ok to do. Thompson sampling is state-
         # dependent. We are breaking up that state a bit by chunking the approach
         # Is that fine to do?
-        with (
-            tqdm(total=n, disable=disable_tqdm) as pbar,
-            pebble.ProcessPool(max_workers=max_workers) as pool,
-        ):
-            for _ in range(ceil(n / max_workers)):
-                future = pool.map(
-                    worker,
-                    [state.sample() for _ in range(max_workers)],
-                    timeout=timeout,
-                )
-                it = future.result()
-                while True:
-                    try:
-                        idxs, pred = next(it)
-                        state.update(idxs, pred, data=data, rtol=rtol)
-                        pbar.update(1)
-                    except StopIteration:
-                        break
-                    except TimeoutError:
-                        pbar.update(1)
+        pool = ProcessPoolExecutor(max_workers=max_workers)
+        with tqdm(total=n, disable=disable_tqdm) as pbar:
+            try:
+                for _ in range(ceil(n / max_workers)):
+                    futures = [
+                        pool.submit(worker, state.sample()) for _ in range(max_workers)
+                    ]
+                    for future in futures:
+                        try:
+                            idxs, pred = future.result(timeout=timeout)
+                            state.update(idxs, pred, data=data, rtol=rtol)
+                            pbar.update(1)
+                        except FuturesTimeoutError:
+                            future.cancel()
+                            pbar.update(1)
+            finally:
+                pool.shutdown(wait=False, kill_workers=True)
     return state

@@ -6,11 +6,12 @@
 
 import multiprocessing
 from collections.abc import Callable
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from copy import deepcopy
 from functools import partial
 
 import numpy as np
-import pebble
+from loky import ProcessPoolExecutor
 
 from mxlpy.fit import losses
 from mxlpy.fit.abstract import (
@@ -45,21 +46,16 @@ def _sum_of_residuals(
     updates: dict[str, float],
     residual_fn: FitResidual,
     fits: list[_Settings],
-    pool: pebble.ProcessPool,
+    pool: ProcessPoolExecutor,
 ) -> float:
-    future = pool.map(
-        partial(_unpacked, fn=residual_fn),
-        [(updates, i) for i in fits],
-        timeout=None,
-    )
+    futures = [
+        pool.submit(partial(_unpacked, fn=residual_fn), (updates, i)) for i in fits
+    ]
     error = 0.0
-    it = future.result()
-    while True:
+    for future in futures:
         try:
-            error += next(it)
-        except StopIteration:
-            break
-        except TimeoutError:
+            error += future.result()
+        except FuturesTimeoutError:
             return np.inf
     return error
 
@@ -138,7 +134,7 @@ def joint_steady_state(
             )
         )
 
-    with pebble.ProcessPool(
+    with ProcessPoolExecutor(
         max_workers=(
             multiprocessing.cpu_count() if max_workers is None else max_workers
         )
@@ -227,7 +223,7 @@ def joint_time_course(
             )
         )
 
-    with pebble.ProcessPool(
+    with ProcessPoolExecutor(
         max_workers=(
             multiprocessing.cpu_count() if max_workers is None else max_workers
         )
@@ -320,7 +316,7 @@ def joint_protocol_time_course(
             )
         )
 
-    with pebble.ProcessPool(
+    with ProcessPoolExecutor(
         max_workers=(
             multiprocessing.cpu_count() if max_workers is None else max_workers
         )
