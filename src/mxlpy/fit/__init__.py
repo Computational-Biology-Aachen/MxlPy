@@ -46,6 +46,7 @@ from mxlpy.carousel import (
 )
 from mxlpy.minimizers import (
     Bounds,
+    FixedNMinimizer,
     GlobalScipyMinimizer,
     LocalScipyMinimizer,
     LossFn,
@@ -93,6 +94,7 @@ __all__: list[str] = [
     "EnsembleFit",
     "Fit",
     "FitSettings",
+    "FixedNMinimizer",
     "GlobalScipyMinimizer",
     "JointFit",
     "LocalScipyMinimizer",
