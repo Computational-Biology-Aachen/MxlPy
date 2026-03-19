@@ -84,6 +84,30 @@ class JaxExport:
         """
         return jnp.array([self.initial_conditions[n] for n in self.variable_names])
 
+    def __call__(self, t: Any, y: Any, args: Any) -> Any:
+        """Call the RHS — makes JaxExport usable as a Diffrax ODETerm vector field.
+
+        Parameters
+        ----------
+        t
+            Current time.
+        y
+            State vector (JAX array of shape ``(n_vars,)``).
+        args
+            Parameter array (or ``(params, surrogates)`` tuple for UDE models).
+
+        Returns
+        -------
+        jnp.ndarray
+            Derivatives ``dy/dt`` of shape ``(n_vars,)``.
+
+        Examples
+        --------
+        >>> dydt = export(0.0, export.get_y0(), export.get_args())
+
+        """
+        return self.rhs(t, y, args)
+
     def get_args(self, **overrides: float) -> Any:
         """Return kinetic parameters as a JAX array.
 
