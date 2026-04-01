@@ -1,0 +1,127 @@
+# MxlPy — Visualization (`mxlpy.plot`)
+
+[← back to main reference](llms.txt)
+
+All plotting functions work with `pd.DataFrame` inputs (the natural output of simulations, scans, and MCA). Axes are created separately and passed in, keeping figure management explicit.
+
+## Axes helpers
+
+```python
+from mxlpy import plot
+
+fig, ax = plot.one_axes()              # single axes, figsize=(12,5)
+fig, (ax1, ax2) = plot.two_axes()     # two side-by-side axes
+fig, axs = plot.grid_layout(n_plots=6)  # auto-arranged grid
+```
+
+## Line plots (time courses)
+
+```python
+# Basic time-course
+fig, ax = plot.one_axes()
+plot.lines(variables, ax=ax)
+ax.set(xlabel="time / a.u.", ylabel="concentration / a.u.")
+plot.show()
+
+# Select subset of columns
+plot.lines(variables[["x", "y"]], ax=ax)
+
+# Grouped lines (e.g. from a scan with MultiIndex columns)
+plot.lines_grouped(result, groupby="k1", ax=ax)
+
+# Auto-detect grouping from MultiIndex
+plot.line_autogrouped(result, ax=ax)
+```
+
+> Time course with mean ± std band (e.g. from Monte Carlo)
+
+```python
+fig, ax = plot.one_axes()
+plot.line_mean_std(mc_result, groupby="time", ax=ax)
+plot.show()
+```
+
+## Bar plots (steady-state)
+
+```python
+# Single steady-state
+fig, ax = plot.one_axes()
+plot.bars(variables, ax=ax)
+ax.set(xlabel="Variable", ylabel="Concentration / a.u.")
+plot.show()
+
+# Multiple steady-states grouped
+plot.bars_grouped(result, groupby="k1", ax=ax)
+
+# Auto-arrange multiple groups as subplots
+fig, axs = plot.bars_autogrouped(result)
+```
+
+## Protocol shading
+
+Shade the background of a time-course plot to show when a protocol parameter was active:
+
+```python
+from mxlpy import make_protocol, plot
+
+protocol = make_protocol([
+    (10, {"light": 0.0}),
+    (10, {"light": 1.0}),
+    (10, {"light": 0.0}),
+])
+
+fig, ax = plot.one_axes()
+plot.lines(variables, ax=ax)
+plot.shade_protocol(protocol["light"], ax=ax, alpha=0.15)
+ax.set(xlabel="time / a.u.", ylabel="concentration / a.u.")
+plot.show()
+```
+
+## Heatmaps (MCA / scans)
+
+```python
+from mxlpy import mca, plot
+
+rc = mca.response_coefficients(model)
+
+fig, ax = plot.one_axes()
+plot.heatmap(rc.concentrations, ax=ax)
+ax.set(title="Concentration control coefficients")
+plot.show()
+
+# From a 2D-indexed DataFrame (e.g. scan over two parameters)
+plot.heatmap_from_2d_idx(result, ax=ax)
+
+# Multiple heatmaps in a grid
+fig, axs = plot.heatmaps_from_2d_idx(result)
+```
+
+## Violin plots (distributions)
+
+```python
+# From Monte Carlo result
+fig, ax = plot.one_axes()
+plot.violins(mc_result[["x", "y"]], ax=ax)
+plot.show()
+
+# From 2D-indexed data
+plot.violins_from_2d_idx(mc_result, ax=ax)
+```
+
+## 2D trajectories (phase-plane)
+
+```python
+fig, ax = plot.one_axes()
+plot.trajectories_2d(variables[["x", "y"]], ax=ax)
+ax.set(xlabel="x", ylabel="y")
+plot.show()
+```
+
+## Axes formatting utilities
+
+```python
+plot.add_grid(ax)                       # add light grid
+plot.rotate_xlabels(ax, angle=45)       # rotate x tick labels
+plot.reset_prop_cycle(ax)               # reset color cycle
+plot.context("talk")                    # seaborn context: paper/notebook/talk/poster
+```
