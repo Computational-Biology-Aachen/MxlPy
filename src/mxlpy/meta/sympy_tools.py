@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 import sympy
-from sympy.printing import jscode, julia_code, rust_code
-from sympy.printing.pycode import pycode
 
 from mxlpy.meta.source_tools import fn_to_sympy
 from mxlpy.types import Derived
@@ -17,6 +15,7 @@ if TYPE_CHECKING:
 __all__ = [
     "list_of_symbols",
     "stoichiometries_to_sympy",
+    "sympy_to_inline_c",
     "sympy_to_inline_js",
     "sympy_to_inline_julia",
     "sympy_to_inline_py",
@@ -64,7 +63,24 @@ def sympy_to_inline_py(expr: sympy.Expr) -> str:
     'x**2 + 2*x + 1'
 
     """
-    return cast(str, pycode(expr, fully_qualified_modules=True, full_prec=False))
+    return cast(str, sympy.pycode(expr, fully_qualified_modules=True, full_prec=False))
+
+
+def sympy_to_inline_c(expr: sympy.Expr) -> str:
+    """Create C99 code from sympy expression.
+
+    Parameters
+    ----------
+    expr
+        Sympy expression to convert
+
+    Returns
+    -------
+    str
+        C99 code string
+
+    """
+    return cast(str, sympy.ccode(expr, full_prec=False))
 
 
 def sympy_to_inline_js(expr: sympy.Expr) -> str:
@@ -81,7 +97,7 @@ def sympy_to_inline_js(expr: sympy.Expr) -> str:
         JavaScript code string
 
     """
-    return cast(str, jscode(expr, full_prec=False))
+    return cast(str, sympy.jscode(expr, full_prec=False))
 
 
 def sympy_to_inline_rust(expr: sympy.Expr) -> str:
@@ -98,7 +114,7 @@ def sympy_to_inline_rust(expr: sympy.Expr) -> str:
         Rust code string
 
     """
-    return cast(str, rust_code(expr, full_prec=False))
+    return cast(str, sympy.rust_code(expr, full_prec=False))
 
 
 def sympy_to_inline_julia(expr: sympy.Expr) -> str:
@@ -115,7 +131,41 @@ def sympy_to_inline_julia(expr: sympy.Expr) -> str:
         Julia code string
 
     """
-    return cast(str, julia_code(expr, full_prec=False))
+    return cast(str, sympy.julia_code(expr, full_prec=False))
+
+
+def sympy_to_inline_matlab(expr: sympy.Expr) -> str:
+    """Create Julia code from sympy expression.
+
+    Parameters
+    ----------
+    expr
+        Sympy expression to convert
+
+    Returns
+    -------
+    str
+        Julia code string
+
+    """
+    return cast(str, sympy.octave_code(expr, full_prec=False))
+
+
+def sympy_to_inline_cxx(expr: sympy.Expr) -> str:
+    """Create Julia code from sympy expression.
+
+    Parameters
+    ----------
+    expr
+        Sympy expression to convert
+
+    Returns
+    -------
+    str
+        Julia code string
+
+    """
+    return cast(str, sympy.cxxcode(expr, full_prec=False))
 
 
 def sympy_to_python_fn(
@@ -153,7 +203,7 @@ def sympy_to_python_fn(
     fn_args = ", ".join(f"{i}: float" for i in args)
 
     return f"""def {fn_name}({fn_args}) -> float:
-    return {pycode(expr, fully_qualified_modules=True, full_prec=False)}
+    return {sympy.pycode(expr, fully_qualified_modules=True, full_prec=False)}
     """.replace("math.factorial", "scipy.special.factorial")
 
 

@@ -9,8 +9,11 @@ from mxlpy.meta.sympy_tools import (
     fn_to_sympy,
     list_of_symbols,
     stoichiometries_to_sympy,
+    sympy_to_inline_c,
+    sympy_to_inline_cxx,
     sympy_to_inline_js,
     sympy_to_inline_julia,
+    sympy_to_inline_matlab,
     sympy_to_inline_py,
     sympy_to_inline_rust,
 )
@@ -23,7 +26,10 @@ if TYPE_CHECKING:
     from mxlpy.model import Model
 
 __all__ = [
+    "generate_model_code_c",
+    "generate_model_code_cpp",
     "generate_model_code_jl",
+    "generate_model_code_matlab",
     "generate_model_code_py",
     "generate_model_code_rs",
     "generate_model_code_ts",
@@ -45,6 +51,8 @@ def _generate_model_code(
     imports: list[str] | None = None,
     end: str | None = None,
     free_parameters: list[str] | None = None,
+    variables_formatter: Callable[[list[str]], str] | None = None,
+    return_formatter: Callable[[list[str]], str] | None = None,
 ) -> str:
     source: list[str] = []
     # Model components
@@ -60,7 +68,10 @@ def _generate_model_code(
         source.append(model_fn.format(n=len(variables)))
 
     if len(variables) > 0:
-        source.append(variables_template.format(", ".join(variables)))
+        if variables_formatter is not None:
+            source.append(variables_formatter(list(variables.keys())))
+        else:
+            source.append(variables_template.format(", ".join(variables)))
 
     # Parameters
     if free_parameters is not None:
@@ -123,8 +134,11 @@ def _generate_model_code(
 
     # Return
     ret_order = [i for i in variables if i in diff_eqs]
-    ret = ", ".join(f"d{i}dt" for i in ret_order) if len(diff_eqs) > 0 else "()"
-    source.append(return_template.format(ret))
+    if return_formatter is not None:
+        source.append(return_formatter(ret_order))
+    else:
+        ret = ", ".join(f"d{i}dt" for i in ret_order) if len(diff_eqs) > 0 else "()"
+        source.append(return_template.format(ret))
 
     if end is not None:
         source.append(end)
@@ -137,6 +151,8 @@ def generate_model_code_py(
     model: Model,
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
+    *,
+    typed: bool = True,
 ) -> str:
     """Transform the model into a python function, inlining the function calls.
 
@@ -172,7 +188,7 @@ def generate_model_code_py(
         sized=False,
         model_fn=model_fn,
         variables_template="    {} = variables",
-        assignment_template="    {k}: float = {v}",
+        assignment_template="    {k}: float = {v}" if typed else "    {k} = {v}",
         sympy_inline_fn=sympy_to_inline_py,
         return_template="    return {}",
         end=None,
@@ -298,12 +314,154 @@ def generate_model_code_jl(
     return _generate_model_code(
         model,
         imports=None,
+        sized=False,
+        model_fn=model_fn,
+        variables_template="    {} = variables",
+        assignment_template="    {k} = {v}",
+        sympy_inline_fn=sympy_to_inline_julia,
+        return_template="    return [{}]",
+        end="end",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_code_c(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model into a C99 function, inlining the function calls.
+
+    The generated function writes derivatives into an output pointer ``dydt``
+    rather than returning an array, since C does not support returning arrays.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        C99 source code of the generated model function
+
+    """
+    if free_parameters is None:
+        model_fn = "void model(double t, const double *variables, double *dydt) {"
+    else:
+        args_typed = ", ".join(f"double {k}" for k in free_parameters)
+        model_fn = f"void model(double t, const double *variables, double *dydt, {args_typed}) {{"
+
+    return _generate_model_code(
+        model,
+        imports=["#include <math.h>", ""],
+        sized=False,
+        model_fn=model_fn,
+        variables_template="",  # unused — variables_formatter takes over
+        assignment_template="    double {k} = {v};",
+        sympy_inline_fn=sympy_to_inline_c,
+        return_template="",  # unused — return_formatter takes over
+        end="}",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+        variables_formatter=lambda vs: "\n".join(
+            f"    double {v} = variables[{i}];" for i, v in enumerate(vs)
+        ),
+        return_formatter=lambda ret_vars: "\n".join(
+            f"    dydt[{i}] = d{v}dt;" for i, v in enumerate(ret_vars)
+        ),
+    )
+
+
+def generate_model_code_cpp(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model into a c++ function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        C++ source code of the generated model function
+
+    """
+    if free_parameters is None:
+        model_fn = "std::array<double, {n}> model(double time, const std::array<double, {n}>& variables) {{"
+    else:
+        args_typed = ", ".join(f"double {k}" for k in free_parameters)
+        model_fn = f"std::array<double, {{n}}> model(double time, const std::array<double, {{n}}>& variables, {args_typed}) {{{{"
+
+    return _generate_model_code(
+        model,
         sized=True,
         model_fn=model_fn,
-        variables_template="    {} = *variables",
-        assignment_template="    k = {v}",
-        sympy_inline_fn=sympy_to_inline_julia,
-        return_template="    return {}",
+        variables_template="    const auto [{}] = variables;",
+        assignment_template="    double {k} = {v};",
+        sympy_inline_fn=sympy_to_inline_cxx,
+        return_template="    return {{{}}};",
+        imports=[
+            "#include <array>",
+            "#include <cmath>",
+            "",
+        ],
+        end="}",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_code_matlab(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model into a MATLAB/Octave function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        MATLAB/Octave source code of the generated model function
+
+    """
+    if free_parameters is None:
+        model_fn = "function dydt = model(t, variables)"
+    else:
+        args = ", ".join(k for k in free_parameters)
+        model_fn = f"function dydt = model(t, variables, {args})"
+
+    return _generate_model_code(
+        model,
+        imports=None,
+        sized=False,
+        model_fn=model_fn,
+        variables_template="    [{}] = num2cell(variables){{:}};",
+        assignment_template="    {k} = {v};",
+        sympy_inline_fn=sympy_to_inline_matlab,
+        return_template="    dydt = [{}]';",
         end="end",
         free_parameters=free_parameters,
         custom_fns={} if custom_fns is None else custom_fns,
