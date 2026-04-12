@@ -1,0 +1,196 @@
+# MxlPy — Advanced Features
+
+[← back to main reference](llms.txt)
+
+## SBML import / export (`mxlpy.sbml`)
+
+```python
+from mxlpy import sbml
+
+# Import an SBML file into a Model
+model = sbml.read("path/to/model.xml")
+
+# Export a Model to SBML
+sbml.write(model, "path/to/output.xml")
+```
+
+---
+
+## Model comparison (`mxlpy.compare`)
+
+Compare simulations of two models side-by-side (e.g. before/after refactoring, or two hypotheses):
+
+> Steady-state comparison
+
+```python
+from mxlpy import compare
+
+cmp = compare.steady_states(model_a, model_b)
+print(cmp.variables)   # pd.DataFrame: variable values from both models
+print(cmp.fluxes)      # pd.DataFrame: flux values from both models
+cmp.plot_variables()
+cmp.plot_fluxes()
+```
+
+> Time-course comparison
+
+```python
+import numpy as np
+
+time_points = np.linspace(0, 100, 300)
+cmp = compare.time_courses(model_a, model_b, time_points=time_points)
+cmp.plot_variables()
+```
+
+> Protocol comparison
+
+```python
+from mxlpy import make_protocol
+
+protocol = make_protocol([(10, {"k1": 1.0}), (10, {"k1": 3.0})])
+cmp = compare.protocol_time_courses(model_a, model_b, protocol=protocol)
+cmp.plot_variables()
+```
+
+---
+
+## Symbolic analysis (`mxlpy.symbolic`)
+
+Convert a `Model` to a symbolic representation using SymPy for analytical inspection and identifiability analysis.
+
+> Convert to symbolic model
+
+```python
+from mxlpy import to_symbolic_model
+
+sym_model = to_symbolic_model(model)
+# sym_model exposes SymPy expressions for ODEs and derived quantities
+```
+
+> Structural identifiability analysis (requires StrikeGOLDD)
+
+```python
+from mxlpy import symbolic
+
+result = symbolic.check_identifiability(model, observed=["x", "y"])
+```
+
+---
+
+## Neural network surrogates (`mxlpy.surrogates`, `mxlpy.nn`)
+
+Surrogates replace expensive sub-models with trained neural networks while preserving the ODE interface.
+
+> Add a pre-trained surrogate to a model
+
+```python
+# surrogate must implement SurrogateProtocol
+model.add_surrogate(
+    name="v_surrogate",
+    surrogate=trained_surrogate,
+    args=["s", "p", "vmax"],
+    outputs=["v_fwd", "v_rev"],
+    stoichiometries={"v_fwd": {"s": -1, "p": 1}, "v_rev": {"s": 1, "p": -1}},
+)
+```
+
+> Update or remove a surrogate
+
+```python
+model.update_surrogate("v_surrogate", surrogate=new_surrogate, args=["s", "p"])
+model.remove_surrogate("v_surrogate")
+```
+
+Available backends (lazy-loaded):
+- `mxlpy.nn` — PyTorch (default), Keras, Equinox (JAX-based)
+- `mxlpy.npe` — Neural Posterior Estimation (amortized Bayesian inference)
+
+---
+
+## Parallel execution and caching
+
+Scans, MC, and fitting all support parallelization via `pebble` + `dill`. Provide a `Cache` object to persist results to disk.
+
+```python
+from mxlpy import scan, Cache, cartesian_product
+
+cache = Cache(path="./results/scan_cache")
+parameters = cartesian_product({"k1": [0.5, 1.0, 2.0], "k2": [0.1, 1.0]})
+
+result = scan.steady_state(model, parameters=parameters, cache=cache)
+# Second call with same parameters loads from disk instead of recomputing
+```
+
+---
+
+## Readouts and initial assignments
+
+> Readout: an observable quantity computed from variables/parameters but not part of the ODE
+
+```python
+from mxlpy.fns import add
+
+model.add_readout("total", add, args=["x", "y"])
+# Appears in simulation results alongside variables
+```
+
+> Initial assignment: compute initial conditions symbolically
+
+```python
+model.add_variables({"atp": 1.0, "adp": 0.0})
+model.add_parameters({"adenine_total": 5.0})
+# adp_0 = adenine_total - atp_0  evaluated once before integration
+from mxlpy.fns import moiety_1s
+model.add_initial_assignment("adp", moiety_1s, args=["atp", "adenine_total"])
+```
+
+---
+
+## Utility functions
+
+> Generate parameter combinations for scans
+
+```python
+from mxlpy import cartesian_product
+
+# Returns pd.DataFrame with one row per combination
+params = cartesian_product({
+    "k1": [0.5, 1.0, 2.0],
+    "k2": [0.1, 1.0, 5.0],
+})
+# 9 rows (3 × 3)
+```
+
+> Inspect model structure
+
+```python
+model.get_variable_names()         # list[str]
+model.get_parameter_names()        # list[str]
+model.get_reaction_names()         # list[str]
+model.get_parameter_values()       # dict[str, float]
+model.get_initial_conditions()     # dict[str, float]
+model.get_unused_parameters()      # set[str] — parameters not referenced by any fn
+model.get_stoichiometries()        # pd.DataFrame: reactions × variables
+```
+
+> Evaluate model at a point
+
+```python
+# RHS at current initial conditions and t=0
+rhs = model.get_right_hand_side(model.get_initial_conditions(), time=0.0)
+
+# All fluxes at given variable values
+import pandas as pd
+vars_df = pd.DataFrame({"x": [1.0, 0.8], "y": [0.5, 0.6]})
+fluxes_df = model.get_fluxes(vars_df)
+```
+
+> `make_variable_static` / `make_parameter_dynamic`
+
+```python
+# Remove a variable from the ODE (clamp it to a fixed value)
+model.make_variable_static("atp", value=2.0)
+
+# Promote a parameter to a dynamic variable (add it to the ODE)
+model.make_parameter_dynamic("k_enz", initial_value=1.0, stoichiometries={"v_synthesis": 1})
+```
