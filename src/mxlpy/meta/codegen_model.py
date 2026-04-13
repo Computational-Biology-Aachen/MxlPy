@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import sympy
 
@@ -204,6 +204,51 @@ def _generate_model_code(
     return "\n".join(source)
 
 
+def _collect_transitive_deps(
+    requested: set[str],
+    derived: dict[str, Any],
+    reactions: dict[str, Any],
+    readouts: dict[str, Any],
+    leaf_names: set[str],
+) -> set[str]:
+    """BFS to find all component names needed to compute requested outputs.
+
+    Parameters
+    ----------
+    requested
+        Names of the desired output components
+    derived
+        All dynamic derived values in the model
+    reactions
+        All reactions in the model
+    readouts
+        All readouts in the model
+    leaf_names
+        Names that are already available (variables, parameters, "time")
+
+    Returns
+    -------
+    set[str]
+        All component names (including intermediates) required to compute
+        every name in ``requested``
+
+    """
+    all_computable: dict[str, Any] = {**derived, **reactions, **readouts}
+    needed: set[str] = set()
+    queue = [n for n in requested if n in all_computable]
+    while queue:
+        name = queue.pop()
+        if name in needed:
+            continue
+        needed.add(name)
+        queue.extend(
+            dep
+            for dep in all_computable[name].args
+            if dep not in leaf_names and dep not in needed and dep in all_computable
+        )
+    return needed
+
+
 def _generate_components_code(
     model: Model,
     *,
@@ -217,28 +262,54 @@ def _generate_components_code(
     imports: list[str] | None = None,
     end: str | None = None,
     free_parameters: list[str] | None = None,
+    outputs: list[str] | None = None,
 ) -> str:
     source: list[str] = []
-    # Model components
     variables = model.get_initial_conditions()
     parameters = model.get_parameter_values()
+    derived_raw = model.get_raw_derived()
+    reactions_raw = model.get_raw_reactions()
+    readouts_raw = model.get_raw_readouts()
+    # _cache is populated as a side-effect of the get_raw_* calls above
+    if (cache_obj := model._cache) is None:  # noqa: SLF001
+        cache_obj = model._create_cache()  # noqa: SLF001
+
+    all_component_names = set(derived_raw) | set(reactions_raw) | set(readouts_raw)
+
+    if outputs is not None:
+        unknown = set(outputs) - all_component_names
+        if unknown:
+            msg = f"Unknown output components: {sorted(unknown)}"
+            raise ValueError(msg)
+        leaf_names = set(variables) | set(parameters) | {"time"}
+        needed = _collect_transitive_deps(
+            set(outputs), derived_raw, reactions_raw, readouts_raw, leaf_names
+        )
+    else:
+        needed = all_component_names
+
+    # Use dyn_order from cache for correct topological ordering of derived + reactions.
+    # dyn_order interleaves derived and reactions so each component appears after
+    # all its dependencies, regardless of insertion order.
+    ordered_dyn = [n for n in cache_obj.dyn_order if n in needed]
+    ordered_readouts = [k for k in readouts_raw if k in needed]
 
     # Build sanitized name map for all model component names
     all_names = (
         list(variables)
         + list(parameters)
-        + list(model.get_raw_derived())
-        + list(model.get_raw_reactions())
-        + list(model.get_raw_readouts())
+        + list(derived_raw)
+        + list(reactions_raw)
+        + list(readouts_raw)
     )
     name_map = {n: _to_valid_identifier(n) for n in all_names}
     sanitized_names = list(name_map.values())
     if len(sanitized_names) != len(set(sanitized_names)):
-        _LOGGER.warning(
+        msg = (
             "Name sanitization produced duplicate identifiers — "
             "rename model components to avoid collisions."
         )
-    # Sympy substitution list: replace symbols with original names by sanitized ones
+        raise ValueError(msg)
     sym_subs = [
         (sympy.Symbol(orig), sympy.Symbol(san))
         for orig, san in name_map.items()
@@ -256,7 +327,6 @@ def _generate_components_code(
     if len(variables) > 0:
         source.append(variables_formatter([name_map[v] for v in variables]))
 
-    # Parameters
     if free_parameters is not None:
         for key in free_parameters:
             parameters.pop(key)
@@ -268,51 +338,44 @@ def _generate_components_code(
             )
         )
 
-    returns = []
-
-    # Derived
-    for name, derived in model.get_raw_derived().items():
-        expr = custom_fns.get(name)
-        if expr is None:
-            expr = fn_to_sympy(
-                derived.fn,
-                origin=name,
-                model_args=list_of_symbols(derived.args),
-            )
-        if expr is None:
-            msg = f"Unable to parse fn for derived value '{name}'"
-            raise ValueError(msg)
-        if sym_subs:
-            expr = cast(sympy.Expr, expr.subs(sym_subs))
-        source.append(
-            assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
-        )
-        returns.append(name_map[name])
-
-    # Reactions
-    for name, rxn in model.get_raw_reactions().items():
-        expr = custom_fns.get(name)
-        if expr is None:
-            try:
+    # Derived and reactions in correct topological order
+    for name in ordered_dyn:
+        if name in derived_raw:
+            component = derived_raw[name]
+            expr = custom_fns.get(name)
+            if expr is None:
                 expr = fn_to_sympy(
-                    rxn.fn,
+                    component.fn,
                     origin=name,
-                    model_args=list_of_symbols(rxn.args),
+                    model_args=list_of_symbols(component.args),
                 )
-            except KeyError:
-                _LOGGER.warning("Failed to parse %s", name)
-        if expr is None:
-            msg = f"Unable to parse fn for reaction value '{name}'"
-            raise ValueError(msg)
+            if expr is None:
+                msg = f"Unable to parse fn for derived value '{name}'"
+                raise ValueError(msg)
+        else:
+            component = reactions_raw[name]
+            expr = custom_fns.get(name)
+            if expr is None:
+                try:
+                    expr = fn_to_sympy(
+                        component.fn,
+                        origin=name,
+                        model_args=list_of_symbols(component.args),
+                    )
+                except KeyError:
+                    _LOGGER.warning("Failed to parse %s", name)
+            if expr is None:
+                msg = f"Unable to parse fn for reaction value '{name}'"
+                raise ValueError(msg)
         if sym_subs:
             expr = cast(sympy.Expr, expr.subs(sym_subs))
         source.append(
             assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
         )
-        returns.append(name_map[name])
 
-    # Readouts
-    for name, readout in model.get_raw_readouts().items():
+    # Readouts always come after derived + reactions
+    for name in ordered_readouts:
+        readout = readouts_raw[name]
         expr = custom_fns.get(name)
         if expr is None:
             expr = fn_to_sympy(
@@ -328,15 +391,19 @@ def _generate_components_code(
         source.append(
             assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
         )
-        returns.append(name_map[name])
 
-    # Return
+    # Return only the explicitly requested outputs (in requested order),
+    # or everything when outputs is None (maintaining emission order).
+    if outputs is not None:
+        returns = [name_map[n] for n in outputs]
+    else:
+        returns = [name_map[n] for n in ordered_dyn + ordered_readouts]
+
     source.append(return_formatter(returns))
 
     if end is not None:
         source.append(end)
 
-    # print(source)
     return "\n".join(source)
 
 
@@ -396,6 +463,7 @@ def generate_model_components_py(
     model: Model,
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
+    outputs: list[str] | None = None,
     *,
     typed: bool = True,
 ) -> str:
@@ -409,6 +477,9 @@ def generate_model_components_py(
         Optional custom sympy expressions to substitute for functions
     free_parameters
         Optional list of parameter names to expose as function arguments
+    outputs
+        Optional subset of component names to emit. All transitive dependencies
+        are included automatically. When None all components are emitted.
 
     Returns
     -------
@@ -436,6 +507,7 @@ def generate_model_components_py(
         return_formatter=lambda vs: f"    return {', '.join(vs) or '()'}",
         end=None,
         free_parameters=free_parameters,
+        outputs=outputs,
         custom_fns={} if custom_fns is None else custom_fns,
     )
 
@@ -489,6 +561,7 @@ def generate_model_components_ts(
     model: Model,
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
+    outputs: list[str] | None = None,
 ) -> str:
     """Transform the model components into a TypeScript function, inlining the function calls.
 
@@ -500,6 +573,9 @@ def generate_model_components_ts(
         Optional custom sympy expressions to substitute for functions
     free_parameters
         Optional list of parameter names to expose as function arguments
+    outputs
+        Optional subset of component names to emit. All transitive dependencies
+        are included automatically. When None all components are emitted.
 
     Returns
     -------
@@ -524,6 +600,7 @@ def generate_model_components_ts(
         return_formatter=lambda vs: f"    return [{', '.join(vs) or '()'}];",
         end="};",
         free_parameters=free_parameters,
+        outputs=outputs,
         custom_fns={} if custom_fns is None else custom_fns,
     )
 
@@ -577,6 +654,7 @@ def generate_model_components_rs(
     model: Model,
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
+    outputs: list[str] | None = None,
 ) -> str:
     """Transform the model components into a Rust function, inlining the function calls.
 
@@ -588,6 +666,9 @@ def generate_model_components_rs(
         Optional custom sympy expressions to substitute for functions
     free_parameters
         Optional list of parameter names to expose as function arguments
+    outputs
+        Optional subset of component names to emit. All transitive dependencies
+        are included automatically. When None all components are emitted.
 
     Returns
     -------
@@ -597,9 +678,13 @@ def generate_model_components_rs(
     """
     n_vars = len(model.get_initial_conditions())
     n_out = (
-        len(model.get_raw_derived())
-        + len(model.get_raw_reactions())
-        + len(model.get_raw_readouts())
+        len(outputs)
+        if outputs is not None
+        else (
+            len(model.get_raw_derived())
+            + len(model.get_raw_reactions())
+            + len(model.get_raw_readouts())
+        )
     )
     if free_parameters is None:
         model_fn = f"fn components(time: f64, variables: &[f64; {n_vars}]) -> [f64; {n_out}] {{"
@@ -618,6 +703,7 @@ def generate_model_components_rs(
         return_formatter=lambda vs: f"    return [{', '.join(vs) or '()'}]",
         end="}",
         free_parameters=free_parameters,
+        outputs=outputs,
         custom_fns={} if custom_fns is None else custom_fns,
     )
 
@@ -671,6 +757,7 @@ def generate_model_components_jl(
     model: Model,
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
+    outputs: list[str] | None = None,
 ) -> str:
     """Transform the model components into a Julia function, inlining the function calls.
 
@@ -682,6 +769,9 @@ def generate_model_components_jl(
         Optional custom sympy expressions to substitute for functions
     free_parameters
         Optional list of parameter names to expose as function arguments
+    outputs
+        Optional subset of component names to emit. All transitive dependencies
+        are included automatically. When None all components are emitted.
 
     Returns
     -------
@@ -706,6 +796,7 @@ def generate_model_components_jl(
         return_formatter=lambda vs: f"    return [{', '.join(vs) or '()'}]",
         end="end",
         free_parameters=free_parameters,
+        outputs=outputs,
         custom_fns={} if custom_fns is None else custom_fns,
     )
 
@@ -766,6 +857,7 @@ def generate_model_components_c(
     model: Model,
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
+    outputs: list[str] | None = None,
 ) -> str:
     """Transform the model components into a C99 function, inlining the function calls.
 
@@ -780,6 +872,9 @@ def generate_model_components_c(
         Optional custom sympy expressions to substitute for functions
     free_parameters
         Optional list of parameter names to expose as function arguments
+    outputs
+        Optional subset of component names to emit. All transitive dependencies
+        are included automatically. When None all components are emitted.
 
     Returns
     -------
@@ -810,6 +905,7 @@ def generate_model_components_c(
         ),
         end="}",
         free_parameters=free_parameters,
+        outputs=outputs,
         custom_fns={} if custom_fns is None else custom_fns,
     )
 
@@ -869,6 +965,7 @@ def generate_model_components_cpp(
     model: Model,
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
+    outputs: list[str] | None = None,
 ) -> str:
     """Transform the model components into a C++ function, inlining the function calls.
 
@@ -880,6 +977,9 @@ def generate_model_components_cpp(
         Optional custom sympy expressions to substitute for functions
     free_parameters
         Optional list of parameter names to expose as function arguments
+    outputs
+        Optional subset of component names to emit. All transitive dependencies
+        are included automatically. When None all components are emitted.
 
     Returns
     -------
@@ -889,9 +989,13 @@ def generate_model_components_cpp(
     """
     n_vars = len(model.get_initial_conditions())
     n_out = (
-        len(model.get_raw_derived())
-        + len(model.get_raw_reactions())
-        + len(model.get_raw_readouts())
+        len(outputs)
+        if outputs is not None
+        else (
+            len(model.get_raw_derived())
+            + len(model.get_raw_reactions())
+            + len(model.get_raw_readouts())
+        )
     )
     if free_parameters is None:
         model_fn = f"std::array<double, {n_out}> components(double time, const std::array<double, {n_vars}>& variables) {{"
@@ -916,6 +1020,7 @@ def generate_model_components_cpp(
         return_formatter=lambda vs: f"    return {{{', '.join(vs) or '()'}}};",
         end="}",
         free_parameters=free_parameters,
+        outputs=outputs,
         custom_fns={} if custom_fns is None else custom_fns,
     )
 
@@ -971,6 +1076,7 @@ def generate_model_components_matlab(
     model: Model,
     custom_fns: dict[str, sympy.Expr] | None = None,
     free_parameters: list[str] | None = None,
+    outputs: list[str] | None = None,
 ) -> str:
     """Transform the model components into a MATLAB/Octave function, inlining the function calls.
 
@@ -982,6 +1088,9 @@ def generate_model_components_matlab(
         Optional custom sympy expressions to substitute for functions
     free_parameters
         Optional list of parameter names to expose as function arguments
+    outputs
+        Optional subset of component names to emit. All transitive dependencies
+        are included automatically. When None all components are emitted.
 
     Returns
     -------
@@ -1008,5 +1117,6 @@ def generate_model_components_matlab(
         return_formatter=lambda vs: f"    out = [{', '.join(vs) or '()'}];",
         end="end",
         free_parameters=free_parameters,
+        outputs=outputs,
         custom_fns={} if custom_fns is None else custom_fns,
     )
