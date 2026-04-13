@@ -108,6 +108,8 @@ venv.bak/
 # temporary files and folders
 *temp*
 tmp
+src/mxlbricks
+
 # pixi environments
 .pixi
 *.egg-info
