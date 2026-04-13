@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import builtins
 import importlib
 import inspect
 import logging
@@ -20,6 +21,8 @@ from wadler_lindig import pformat
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from sympy.core.function import Function
+
 __all__ = [
     "Context",
     "KNOWN_CONSTANTS",
@@ -32,6 +35,63 @@ __all__ = [
 
 _LOGGER = logging.getLogger(__name__)
 PARSE_ERROR = sympy.Symbol("ERROR")
+
+
+def _sympy_log10(x: sympy.Expr) -> Function:
+    return sympy.log(x, 10)  # type: ignore
+
+
+def _sympy_log2(x: sympy.Expr) -> Function:
+    return sympy.log(x, 2)  # type: ignore
+
+
+def _sympy_log1p(x: sympy.Expr) -> sympy.Expr:
+    return sympy.log(1 + x)  # type: ignore
+
+
+def _sympy_exp2(x: sympy.Expr) -> sympy.Expr:
+    return sympy.Pow(2, x)  # type: ignore
+
+
+def _sympy_expm1(x: sympy.Expr) -> sympy.Expr:
+    return sympy.exp(x) - 1  # type: ignore
+
+
+def _sympy_degrees(x: sympy.Expr) -> sympy.Expr:
+    return x * 180 / sympy.pi  # type: ignore
+
+
+def _sympy_hypot(x: sympy.Expr, y: sympy.Expr) -> sympy.Expr:
+    return sympy.sqrt(x**2 + y**2)  # type: ignore
+
+
+def _sympy_isqrt(x: sympy.Expr) -> sympy.Expr:
+    return sympy.floor(sympy.sqrt(x))
+
+
+def _sympy_ldexp(x: sympy.Expr, i: sympy.Expr) -> sympy.Expr:
+    return x * sympy.Pow(2, i)  # type: ignore
+
+
+def _sympy_copysign(x: sympy.Expr, y: sympy.Expr) -> sympy.Expr:
+    return sympy.Abs(x) * sympy.sign(y)  # type: ignore
+
+
+def _sympy_perm(n: sympy.Expr, k: sympy.Expr) -> sympy.Expr:
+    return sympy.FallingFactorial(n, k)  # type: ignore
+
+
+def _sympy_square(x: sympy.Expr) -> sympy.Expr:
+    return sympy.Pow(x, 2)
+
+
+def _sympy_subtract(x: sympy.Expr, y: sympy.Expr) -> sympy.Expr:
+    return x - y  # type: ignore
+
+
+def _sympy_true_divide(x: sympy.Expr, y: sympy.Expr) -> sympy.Expr:
+    return x / y  # type: ignore
+
 
 KNOWN_CONSTANTS: dict[float, sympy.Float] = {
     math.e: sympy.E,
@@ -64,41 +124,41 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     math.atanh: sympy.atanh,
     math.cbrt: sympy.cbrt,
     math.ceil: sympy.ceiling,
-    # math.comb: sympy.comb,
-    # math.copysign: sympy.copysign,
+    math.comb: sympy.binomial,
+    math.copysign: _sympy_copysign,
     math.cos: sympy.cos,
     math.cosh: sympy.cosh,
-    # math.degrees: sympy.degrees,
-    # math.dist: sympy.dist,
+    math.degrees: _sympy_degrees,
+    # math.dist: no scalar sympy equivalent
     math.erf: sympy.erf,
     math.erfc: sympy.erfc,
     math.exp: sympy.exp,
-    # math.exp2: sympy.exp2,
-    # math.expm1: sympy.expm1,
-    # math.fabs: sympy.fabs,
+    math.exp2: _sympy_exp2,
+    math.expm1: _sympy_expm1,
+    math.fabs: sympy.Abs,
     math.factorial: sympy.factorial,
     math.floor: sympy.floor,
-    # math.fmod: sympy.fmod,
-    # math.frexp: sympy.frexp,
-    # math.fsum: sympy.fsum,
+    math.fmod: sympy.Mod,
+    # math.frexp: returns tuple, no sympy equivalent
+    # math.fsum: takes iterable, no sympy equivalent
     math.gamma: sympy.gamma,
     math.gcd: sympy.gcd,
-    # math.hypot: sympy.hypot,
-    # math.isclose: sympy.isclose,
-    # math.isfinite: sympy.isfinite,
-    # math.isinf: sympy.isinf,
-    # math.isnan: sympy.isnan,
-    # math.isqrt: sympy.isqrt,
+    math.hypot: _sympy_hypot,
+    # math.isclose: boolean, no sympy equivalent
+    # math.isfinite: boolean, no sympy equivalent
+    # math.isinf: boolean, no sympy equivalent
+    # math.isnan: boolean, no sympy equivalent
+    math.isqrt: _sympy_isqrt,
     math.lcm: sympy.lcm,
-    # math.ldexp: sympy.ldexp,
-    # math.lgamma: sympy.lgamma,
+    math.ldexp: _sympy_ldexp,
+    math.lgamma: sympy.loggamma,
     math.log: sympy.log,
-    # math.log10: sympy.log10,
-    # math.log1p: sympy.log1p,
-    # math.log2: sympy.log2,
-    # math.modf: sympy.modf,
-    # math.nextafter: sympy.nextafter,
-    # math.perm: sympy.perm,
+    math.log10: _sympy_log10,
+    math.log1p: _sympy_log1p,
+    math.log2: _sympy_log2,
+    # math.modf: returns tuple, no sympy equivalent
+    # math.nextafter: float-specific, no sympy equivalent
+    math.perm: _sympy_perm,
     math.pow: sympy.Pow,
     math.prod: sympy.prod,
     math.radians: sympy.rad,
@@ -106,11 +166,11 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     math.sin: sympy.sin,
     math.sinh: sympy.sinh,
     math.sqrt: sympy.sqrt,
-    # math.sumprod: sympy.sumprod,
+    # math.sumprod: takes iterables, no sympy equivalent
     math.tan: sympy.tan,
     math.tanh: sympy.tanh,
     math.trunc: sympy.trunc,
-    # math.ulp: sympy.ulp,
+    # math.ulp: float-specific, no sympy equivalent
     # numpy
     np.abs: sympy.Abs,
     np.acos: sympy.acos,
@@ -145,6 +205,7 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     np.less: sympy.LessThan,
     np.less_equal: sympy.Le,
     np.log: sympy.log,
+    np.log10: _sympy_log10,
     np.maximum: sympy.maximum,
     np.minimum: sympy.minimum,
     np.mod: sympy.Mod,
@@ -154,13 +215,13 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     np.sin: sympy.sin,
     np.sinh: sympy.sinh,
     np.sqrt: sympy.sqrt,
-    # np.square: sympy.square,
-    # np.subtract: sympy., # Add(x, -1 * y)
+    np.square: _sympy_square,
+    np.subtract: _sympy_subtract,
     np.tan: sympy.tan,
     np.tanh: sympy.tanh,
-    # np.true_divide: sympy.true_divide,
+    np.true_divide: _sympy_true_divide,
     np.trunc: sympy.trunc,
-    # np.vecdot: sympy.vecdot,
+    # np.vecdot: vector operation, no scalar sympy equivalent
 }
 
 
@@ -710,6 +771,7 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
             fn_name = str(id)
             fns = (
                 dict(inspect.getmembers(ctx.parent_module, predicate=callable))
+                | dict(inspect.getmembers(builtins, predicate=callable))
                 | ctx.fns
             )
             py_fn = fns.get(fn_name)
@@ -745,7 +807,10 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
         return None
 
     if (fn := KNOWN_FNS.get(py_fn)) is not None:
-        return sympy.Float(fn(*model_args))  # type: ignore
+        result = fn(*model_args)  # type: ignore
+        if isinstance(result, (int, float)):
+            return sympy.Float(result)
+        return cast(sympy.Expr, result)
 
     return fn_to_sympy(
         py_fn,

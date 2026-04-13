@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, cast
+
+import sympy
 
 from mxlpy.meta.sympy_tools import (
     fn_to_sympy,
@@ -21,8 +24,6 @@ from mxlpy.meta.sympy_tools import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    import sympy
-
     from mxlpy.model import Model
 
 __all__ = [
@@ -33,9 +34,40 @@ __all__ = [
     "generate_model_code_py",
     "generate_model_code_rs",
     "generate_model_code_ts",
+    "generate_model_components_c",
+    "generate_model_components_cpp",
+    "generate_model_components_jl",
+    "generate_model_components_matlab",
+    "generate_model_components_py",
+    "generate_model_components_rs",
+    "generate_model_components_ts",
 ]
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _to_valid_identifier(name: str) -> str:
+    """Convert an arbitrary string to a valid identifier.
+
+    Uses C99 identifier rules ([a-zA-Z_][a-zA-Z0-9_]*), which are the
+    strictest common denominator across all supported target languages
+    (C, C++, Rust, TypeScript, Julia, MATLAB/Octave, Python).
+
+    Parameters
+    ----------
+    name
+        Original component name from the model
+
+    Returns
+    -------
+    str
+        Sanitized identifier safe for use in all target languages
+
+    """
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
+    if sanitized and sanitized[0].isdigit():
+        sanitized = "_" + sanitized
+    return sanitized or "_"
 
 
 def _generate_model_code(
@@ -43,21 +75,40 @@ def _generate_model_code(
     *,
     sized: bool,
     model_fn: str,
-    variables_template: str,
     assignment_template: str,
     sympy_inline_fn: Callable[[sympy.Expr], str],
-    return_template: str,
+    variables_formatter: Callable[[list[str]], str],
+    return_formatter: Callable[[list[str]], str],
     custom_fns: dict[str, sympy.Expr],
     imports: list[str] | None = None,
     end: str | None = None,
     free_parameters: list[str] | None = None,
-    variables_formatter: Callable[[list[str]], str] | None = None,
-    return_formatter: Callable[[list[str]], str] | None = None,
 ) -> str:
     source: list[str] = []
     # Model components
     variables = model.get_initial_conditions()
     parameters = model.get_parameter_values()
+
+    # Build sanitized name map for all model component names
+    all_names = (
+        list(variables)
+        + list(parameters)
+        + list(model.get_raw_derived())
+        + list(model.get_raw_reactions())
+    )
+    name_map = {n: _to_valid_identifier(n) for n in all_names}
+    sanitized_names = list(name_map.values())
+    if len(sanitized_names) != len(set(sanitized_names)):
+        _LOGGER.warning(
+            "Name sanitization produced duplicate identifiers — "
+            "rename model components to avoid collisions."
+        )
+    # Sympy substitution list: replace symbols with original names by sanitized ones
+    sym_subs = [
+        (sympy.Symbol(orig), sympy.Symbol(san))
+        for orig, san in name_map.items()
+        if orig != san
+    ]
 
     if imports is not None:
         source.extend(imports)
@@ -68,10 +119,7 @@ def _generate_model_code(
         source.append(model_fn.format(n=len(variables)))
 
     if len(variables) > 0:
-        if variables_formatter is not None:
-            source.append(variables_formatter(list(variables.keys())))
-        else:
-            source.append(variables_template.format(", ".join(variables)))
+        source.append(variables_formatter([name_map[v] for v in variables]))
 
     # Parameters
     if free_parameters is not None:
@@ -80,7 +128,8 @@ def _generate_model_code(
     if len(parameters) > 0:
         source.append(
             "\n".join(
-                assignment_template.format(k=k, v=v) for k, v in parameters.items()
+                assignment_template.format(k=name_map[k], v=v)
+                for k, v in parameters.items()
             )
         )
 
@@ -96,7 +145,11 @@ def _generate_model_code(
         if expr is None:
             msg = f"Unable to parse fn for derived value '{name}'"
             raise ValueError(msg)
-        source.append(assignment_template.format(k=name, v=sympy_inline_fn(expr)))
+        if sym_subs:
+            expr = cast(sympy.Expr, expr.subs(sym_subs))
+        source.append(
+            assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
+        )
 
     # Reactions
     for name, rxn in model.get_raw_reactions().items():
@@ -113,7 +166,11 @@ def _generate_model_code(
         if expr is None:
             msg = f"Unable to parse fn for reaction value '{name}'"
             raise ValueError(msg)
-        source.append(assignment_template.format(k=name, v=sympy_inline_fn(expr)))
+        if sym_subs:
+            expr = cast(sympy.Expr, expr.subs(sym_subs))
+        source.append(
+            assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
+        )
 
     # Diff eqs
     diff_eqs = {}
@@ -123,8 +180,12 @@ def _generate_model_code(
 
     for variable, stoich in diff_eqs.items():
         expr = stoichiometries_to_sympy(origin=variable, stoichs=stoich)
+        if sym_subs:
+            expr = cast(sympy.Expr, expr.subs(sym_subs))
         source.append(
-            assignment_template.format(k=f"d{variable}dt", v=sympy_inline_fn(expr))
+            assignment_template.format(
+                k=f"d{name_map[variable]}dt", v=sympy_inline_fn(expr)
+            )
         )
 
     # Surrogates
@@ -134,11 +195,143 @@ def _generate_model_code(
 
     # Return
     ret_order = [i for i in variables if i in diff_eqs]
-    if return_formatter is not None:
-        source.append(return_formatter(ret_order))
+    source.append(return_formatter([name_map[v] for v in ret_order]))
+
+    if end is not None:
+        source.append(end)
+
+    # print(source)
+    return "\n".join(source)
+
+
+def _generate_components_code(
+    model: Model,
+    *,
+    sized: bool,
+    model_fn: str,
+    assignment_template: str,
+    sympy_inline_fn: Callable[[sympy.Expr], str],
+    variables_formatter: Callable[[list[str]], str],
+    return_formatter: Callable[[list[str]], str],
+    custom_fns: dict[str, sympy.Expr],
+    imports: list[str] | None = None,
+    end: str | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    source: list[str] = []
+    # Model components
+    variables = model.get_initial_conditions()
+    parameters = model.get_parameter_values()
+
+    # Build sanitized name map for all model component names
+    all_names = (
+        list(variables)
+        + list(parameters)
+        + list(model.get_raw_derived())
+        + list(model.get_raw_reactions())
+        + list(model.get_raw_readouts())
+    )
+    name_map = {n: _to_valid_identifier(n) for n in all_names}
+    sanitized_names = list(name_map.values())
+    if len(sanitized_names) != len(set(sanitized_names)):
+        _LOGGER.warning(
+            "Name sanitization produced duplicate identifiers — "
+            "rename model components to avoid collisions."
+        )
+    # Sympy substitution list: replace symbols with original names by sanitized ones
+    sym_subs = [
+        (sympy.Symbol(orig), sympy.Symbol(san))
+        for orig, san in name_map.items()
+        if orig != san
+    ]
+
+    if imports is not None:
+        source.extend(imports)
+
+    if not sized:
+        source.append(model_fn)
     else:
-        ret = ", ".join(f"d{i}dt" for i in ret_order) if len(diff_eqs) > 0 else "()"
-        source.append(return_template.format(ret))
+        source.append(model_fn.format(n=len(variables)))
+
+    if len(variables) > 0:
+        source.append(variables_formatter([name_map[v] for v in variables]))
+
+    # Parameters
+    if free_parameters is not None:
+        for key in free_parameters:
+            parameters.pop(key)
+    if len(parameters) > 0:
+        source.append(
+            "\n".join(
+                assignment_template.format(k=name_map[k], v=v)
+                for k, v in parameters.items()
+            )
+        )
+
+    returns = []
+
+    # Derived
+    for name, derived in model.get_raw_derived().items():
+        expr = custom_fns.get(name)
+        if expr is None:
+            expr = fn_to_sympy(
+                derived.fn,
+                origin=name,
+                model_args=list_of_symbols(derived.args),
+            )
+        if expr is None:
+            msg = f"Unable to parse fn for derived value '{name}'"
+            raise ValueError(msg)
+        if sym_subs:
+            expr = cast(sympy.Expr, expr.subs(sym_subs))
+        source.append(
+            assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
+        )
+        returns.append(name_map[name])
+
+    # Reactions
+    for name, rxn in model.get_raw_reactions().items():
+        expr = custom_fns.get(name)
+        if expr is None:
+            try:
+                expr = fn_to_sympy(
+                    rxn.fn,
+                    origin=name,
+                    model_args=list_of_symbols(rxn.args),
+                )
+            except KeyError:
+                _LOGGER.warning("Failed to parse %s", name)
+        if expr is None:
+            msg = f"Unable to parse fn for reaction value '{name}'"
+            raise ValueError(msg)
+        if sym_subs:
+            expr = cast(sympy.Expr, expr.subs(sym_subs))
+        source.append(
+            assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
+        )
+        returns.append(name_map[name])
+
+    # Readouts
+    for name, readout in model.get_raw_readouts().items():
+        expr = custom_fns.get(name)
+        if expr is None:
+            expr = fn_to_sympy(
+                readout.fn,
+                origin=name,
+                model_args=list_of_symbols(readout.args),
+            )
+        if expr is None:
+            msg = f"Unable to parse fn for readout value '{name}'"
+            raise ValueError(msg)
+        if sym_subs:
+            expr = cast(sympy.Expr, expr.subs(sym_subs))
+        source.append(
+            assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
+        )
+        returns.append(name_map[name])
+
+    # Return
+    source.append(return_formatter(returns))
 
     if end is not None:
         source.append(end)
@@ -176,7 +369,7 @@ def generate_model_code_py(
             "def model(time: float, variables: Iterable[float]) -> Iterable[float]:"
         )
     else:
-        args = ", ".join(f"{k}: float" for k in free_parameters)
+        args = ", ".join(f"{_to_valid_identifier(k)}: float" for k in free_parameters)
         model_fn = f"def model(time: float, variables: Iterable[float], {args}) -> Iterable[float]:"
 
     return _generate_model_code(
@@ -187,10 +380,60 @@ def generate_model_code_py(
         ],
         sized=False,
         model_fn=model_fn,
-        variables_template="    {} = variables",
         assignment_template="    {k}: float = {v}" if typed else "    {k} = {v}",
         sympy_inline_fn=sympy_to_inline_py,
-        return_template="    return {}",
+        variables_formatter=lambda vs: f"    {', '.join(vs)} = variables",
+        return_formatter=lambda vs: (
+            f"    return {', '.join(f'd{v}dt' for v in vs) or '()'}"
+        ),
+        end=None,
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_components_py(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+    *,
+    typed: bool = True,
+) -> str:
+    """Transform the model components into a python function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        Python source code of the generated model function
+
+    """
+    if free_parameters is None:
+        model_fn = "def components(time: float, variables: Iterable[float]) -> Iterable[float]:"
+    else:
+        args = ", ".join(f"{_to_valid_identifier(k)}: float" for k in free_parameters)
+        model_fn = f"def components(time: float, variables: Iterable[float], {args}) -> Iterable[float]:"
+
+    return _generate_components_code(
+        model,
+        imports=[
+            "import math\n",
+            "from collections.abc import Iterable\n",
+        ],
+        sized=False,
+        model_fn=model_fn,
+        assignment_template="    {k}: float = {v}" if typed else "    {k} = {v}",
+        sympy_inline_fn=sympy_to_inline_py,
+        variables_formatter=lambda vs: f"    {', '.join(vs)} = variables",
+        return_formatter=lambda vs: f"    return {', '.join(vs) or '()'}",
         end=None,
         free_parameters=free_parameters,
         custom_fns={} if custom_fns is None else custom_fns,
@@ -222,7 +465,7 @@ def generate_model_code_ts(
     if free_parameters is None:
         model_fn = "function model(time: number, variables: number[]) {"
     else:
-        args = ", ".join(f"{k}: number" for k in free_parameters)
+        args = ", ".join(f"{_to_valid_identifier(k)}: number" for k in free_parameters)
         model_fn = f"function model(time: number, variables: number[], {args}) {{"
 
     return _generate_model_code(
@@ -230,10 +473,55 @@ def generate_model_code_ts(
         imports=[],
         sized=False,
         model_fn=model_fn,
-        variables_template="    let [{}] = variables;",
         assignment_template="    let {k}: number = {v};",
         sympy_inline_fn=sympy_to_inline_js,
-        return_template="    return [{}];",
+        variables_formatter=lambda vs: f"    let [{', '.join(vs)}] = variables;",
+        return_formatter=lambda vs: (
+            f"    return [{', '.join(f'd{v}dt' for v in vs) or '()'}];"
+        ),
+        end="};",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_components_ts(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model components into a TypeScript function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        TypeScript source code of the generated model components function
+
+    """
+    if free_parameters is None:
+        model_fn = "function components(time: number, variables: number[]) {"
+    else:
+        args = ", ".join(f"{_to_valid_identifier(k)}: number" for k in free_parameters)
+        model_fn = f"function components(time: number, variables: number[], {args}) {{"
+
+    return _generate_components_code(
+        model,
+        imports=[],
+        sized=False,
+        model_fn=model_fn,
+        assignment_template="    let {k}: number = {v};",
+        sympy_inline_fn=sympy_to_inline_js,
+        variables_formatter=lambda vs: f"    let [{', '.join(vs)}] = variables;",
+        return_formatter=lambda vs: f"    return [{', '.join(vs) or '()'}];",
         end="};",
         free_parameters=free_parameters,
         custom_fns={} if custom_fns is None else custom_fns,
@@ -265,7 +553,7 @@ def generate_model_code_rs(
     if free_parameters is None:
         model_fn = "fn model(time: f64, variables: &[f64; {n}]) -> [f64; {n}] {{"
     else:
-        args = ", ".join(f"{k}: f64" for k in free_parameters)
+        args = ", ".join(f"{_to_valid_identifier(k)}: f64" for k in free_parameters)
         model_fn = f"fn model(time: f64, variables: &[f64; {{n}}], {args}) -> [f64; {{n}}] {{{{"
 
     return _generate_model_code(
@@ -273,10 +561,61 @@ def generate_model_code_rs(
         imports=None,
         sized=True,
         model_fn=model_fn,
-        variables_template="    let [{}] = *variables;",
         assignment_template="    let {k}: f64 = {v};",
         sympy_inline_fn=sympy_to_inline_rust,
-        return_template="    return [{}]",
+        variables_formatter=lambda vs: f"    let [{', '.join(vs)}] = *variables;",
+        return_formatter=lambda vs: (
+            f"    return [{', '.join(f'd{v}dt' for v in vs) or '()'}]"
+        ),
+        end="}",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_components_rs(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model components into a Rust function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        Rust source code of the generated model components function
+
+    """
+    n_vars = len(model.get_initial_conditions())
+    n_out = (
+        len(model.get_raw_derived())
+        + len(model.get_raw_reactions())
+        + len(model.get_raw_readouts())
+    )
+    if free_parameters is None:
+        model_fn = f"fn components(time: f64, variables: &[f64; {n_vars}]) -> [f64; {n_out}] {{"
+    else:
+        args = ", ".join(f"{_to_valid_identifier(k)}: f64" for k in free_parameters)
+        model_fn = f"fn components(time: f64, variables: &[f64; {n_vars}], {args}) -> [f64; {n_out}] {{"
+
+    return _generate_components_code(
+        model,
+        imports=None,
+        sized=False,
+        model_fn=model_fn,
+        assignment_template="    let {k}: f64 = {v};",
+        sympy_inline_fn=sympy_to_inline_rust,
+        variables_formatter=lambda vs: f"    let [{', '.join(vs)}] = *variables;",
+        return_formatter=lambda vs: f"    return [{', '.join(vs) or '()'}]",
         end="}",
         free_parameters=free_parameters,
         custom_fns={} if custom_fns is None else custom_fns,
@@ -308,7 +647,7 @@ def generate_model_code_jl(
     if free_parameters is None:
         model_fn = "function model(time, variables)"
     else:
-        args = ", ".join(f"{k}" for k in free_parameters)
+        args = ", ".join(_to_valid_identifier(k) for k in free_parameters)
         model_fn = f"function model(time, variables, {args})"
 
     return _generate_model_code(
@@ -316,10 +655,55 @@ def generate_model_code_jl(
         imports=None,
         sized=False,
         model_fn=model_fn,
-        variables_template="    {} = variables",
         assignment_template="    {k} = {v}",
         sympy_inline_fn=sympy_to_inline_julia,
-        return_template="    return [{}]",
+        variables_formatter=lambda vs: f"    {', '.join(vs)} = variables",
+        return_formatter=lambda vs: (
+            f"    return [{', '.join(f'd{v}dt' for v in vs) or '()'}]"
+        ),
+        end="end",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_components_jl(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model components into a Julia function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        Julia source code of the generated model components function
+
+    """
+    if free_parameters is None:
+        model_fn = "function components(time, variables)"
+    else:
+        args = ", ".join(_to_valid_identifier(k) for k in free_parameters)
+        model_fn = f"function components(time, variables, {args})"
+
+    return _generate_components_code(
+        model,
+        imports=None,
+        sized=False,
+        model_fn=model_fn,
+        assignment_template="    {k} = {v}",
+        sympy_inline_fn=sympy_to_inline_julia,
+        variables_formatter=lambda vs: f"    {', '.join(vs)} = variables",
+        return_formatter=lambda vs: f"    return [{', '.join(vs) or '()'}]",
         end="end",
         free_parameters=free_parameters,
         custom_fns={} if custom_fns is None else custom_fns,
@@ -354,7 +738,9 @@ def generate_model_code_c(
     if free_parameters is None:
         model_fn = "void model(double t, const double *variables, double *dydt) {"
     else:
-        args_typed = ", ".join(f"double {k}" for k in free_parameters)
+        args_typed = ", ".join(
+            f"double {_to_valid_identifier(k)}" for k in free_parameters
+        )
         model_fn = f"void model(double t, const double *variables, double *dydt, {args_typed}) {{"
 
     return _generate_model_code(
@@ -362,19 +748,69 @@ def generate_model_code_c(
         imports=["#include <math.h>", ""],
         sized=False,
         model_fn=model_fn,
-        variables_template="",  # unused — variables_formatter takes over
         assignment_template="    double {k} = {v};",
         sympy_inline_fn=sympy_to_inline_c,
-        return_template="",  # unused — return_formatter takes over
-        end="}",
-        free_parameters=free_parameters,
-        custom_fns={} if custom_fns is None else custom_fns,
         variables_formatter=lambda vs: "\n".join(
             f"    double {v} = variables[{i}];" for i, v in enumerate(vs)
         ),
-        return_formatter=lambda ret_vars: "\n".join(
-            f"    dydt[{i}] = d{v}dt;" for i, v in enumerate(ret_vars)
+        return_formatter=lambda vs: "\n".join(
+            f"    dydt[{i}] = d{v}dt;" for i, v in enumerate(vs)
         ),
+        end="}",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_components_c(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model components into a C99 function, inlining the function calls.
+
+    The generated function writes derived values and reaction rates into an
+    output pointer ``out`` rather than returning an array.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        C99 source code of the generated model components function
+
+    """
+    if free_parameters is None:
+        model_fn = "void components(double t, const double *variables, double *out) {"
+    else:
+        args_typed = ", ".join(
+            f"double {_to_valid_identifier(k)}" for k in free_parameters
+        )
+        model_fn = f"void components(double t, const double *variables, double *out, {args_typed}) {{"
+
+    return _generate_components_code(
+        model,
+        imports=["#include <math.h>", ""],
+        sized=False,
+        model_fn=model_fn,
+        assignment_template="    double {k} = {v};",
+        sympy_inline_fn=sympy_to_inline_c,
+        variables_formatter=lambda vs: "\n".join(
+            f"    double {v} = variables[{i}];" for i, v in enumerate(vs)
+        ),
+        return_formatter=lambda vs: "\n".join(
+            f"    out[{i}] = {v};" for i, v in enumerate(vs)
+        ),
+        end="}",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
     )
 
 
@@ -403,22 +839,81 @@ def generate_model_code_cpp(
     if free_parameters is None:
         model_fn = "std::array<double, {n}> model(double time, const std::array<double, {n}>& variables) {{"
     else:
-        args_typed = ", ".join(f"double {k}" for k in free_parameters)
+        args_typed = ", ".join(
+            f"double {_to_valid_identifier(k)}" for k in free_parameters
+        )
         model_fn = f"std::array<double, {{n}}> model(double time, const std::array<double, {{n}}>& variables, {args_typed}) {{{{"
 
     return _generate_model_code(
         model,
         sized=True,
         model_fn=model_fn,
-        variables_template="    const auto [{}] = variables;",
         assignment_template="    double {k} = {v};",
         sympy_inline_fn=sympy_to_inline_cxx,
-        return_template="    return {{{}}};",
+        variables_formatter=lambda vs: f"    const auto [{', '.join(vs)}] = variables;",
+        return_formatter=lambda vs: (
+            f"    return {{{', '.join(f'd{v}dt' for v in vs) or '()'}}};"
+        ),
         imports=[
             "#include <array>",
             "#include <cmath>",
             "",
         ],
+        end="}",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_components_cpp(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model components into a C++ function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        C++ source code of the generated model components function
+
+    """
+    n_vars = len(model.get_initial_conditions())
+    n_out = (
+        len(model.get_raw_derived())
+        + len(model.get_raw_reactions())
+        + len(model.get_raw_readouts())
+    )
+    if free_parameters is None:
+        model_fn = f"std::array<double, {n_out}> components(double time, const std::array<double, {n_vars}>& variables) {{"
+    else:
+        args_typed = ", ".join(
+            f"double {_to_valid_identifier(k)}" for k in free_parameters
+        )
+        model_fn = f"std::array<double, {n_out}> components(double time, const std::array<double, {n_vars}>& variables, {args_typed}) {{"
+
+    return _generate_components_code(
+        model,
+        imports=[
+            "#include <array>",
+            "#include <cmath>",
+            "",
+        ],
+        sized=False,
+        model_fn=model_fn,
+        assignment_template="    double {k} = {v};",
+        sympy_inline_fn=sympy_to_inline_cxx,
+        variables_formatter=lambda vs: f"    const auto [{', '.join(vs)}] = variables;",
+        return_formatter=lambda vs: f"    return {{{', '.join(vs) or '()'}}};",
         end="}",
         free_parameters=free_parameters,
         custom_fns={} if custom_fns is None else custom_fns,
@@ -450,7 +945,7 @@ def generate_model_code_matlab(
     if free_parameters is None:
         model_fn = "function dydt = model(t, variables)"
     else:
-        args = ", ".join(k for k in free_parameters)
+        args = ", ".join(_to_valid_identifier(k) for k in free_parameters)
         model_fn = f"function dydt = model(t, variables, {args})"
 
     return _generate_model_code(
@@ -458,10 +953,59 @@ def generate_model_code_matlab(
         imports=None,
         sized=False,
         model_fn=model_fn,
-        variables_template="    [{}] = num2cell(variables){{:}};",
         assignment_template="    {k} = {v};",
         sympy_inline_fn=sympy_to_inline_matlab,
-        return_template="    dydt = [{}]';",
+        variables_formatter=lambda vs: (
+            f"    [{', '.join(vs)}] = num2cell(variables){{:}};"
+        ),
+        return_formatter=lambda vs: (
+            f"    dydt = [{', '.join(f'd{v}dt' for v in vs) or '()'}]';"
+        ),
+        end="end",
+        free_parameters=free_parameters,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+
+
+def generate_model_components_matlab(
+    model: Model,
+    custom_fns: dict[str, sympy.Expr] | None = None,
+    free_parameters: list[str] | None = None,
+) -> str:
+    """Transform the model components into a MATLAB/Octave function, inlining the function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for
+    custom_fns
+        Optional custom sympy expressions to substitute for functions
+    free_parameters
+        Optional list of parameter names to expose as function arguments
+
+    Returns
+    -------
+    str
+        MATLAB/Octave source code of the generated model components function
+
+    """
+    if free_parameters is None:
+        model_fn = "function out = components(t, variables)"
+    else:
+        args = ", ".join(_to_valid_identifier(k) for k in free_parameters)
+        model_fn = f"function out = components(t, variables, {args})"
+
+    return _generate_components_code(
+        model,
+        imports=None,
+        sized=False,
+        model_fn=model_fn,
+        assignment_template="    {k} = {v};",
+        sympy_inline_fn=sympy_to_inline_matlab,
+        variables_formatter=lambda vs: (
+            f"    [{', '.join(vs)}] = num2cell(variables){{:}};"
+        ),
+        return_formatter=lambda vs: f"    out = [{', '.join(vs) or '()'}];",
         end="end",
         free_parameters=free_parameters,
         custom_fns={} if custom_fns is None else custom_fns,
