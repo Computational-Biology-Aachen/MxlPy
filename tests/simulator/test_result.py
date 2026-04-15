@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from mxlpy.simulation import Simulation, _normalise_split_results
@@ -40,6 +41,35 @@ def test_normalise_split_results() -> None:
     assert len(normalized) == 2
     assert normalized[0].iloc[0, 0] == 0.1  # 1.0 / 10.0
     assert normalized[1].iloc[0, 0] == 0.25  # 5.0 / 20.0
+
+
+def test_normalise_split_results_mismatched_dimensions() -> None:
+    """_normalise_split_results with len(normalise) != len(results) returns [].
+
+    This is a latent bug in the fallback branch: ``results`` is reassigned to
+    ``[]`` before being iterated, so the loop body never runs and the function
+    silently returns an empty list instead of raising.  This test documents
+    the current (broken) behavior so a future fix is intentional.
+    """
+    df1 = pd.DataFrame({"A": [1.0, 2.0]})
+    df2 = pd.DataFrame({"A": [3.0, 4.0]})
+    df3 = pd.DataFrame({"A": [5.0, 6.0]})
+    results = [df1, df2, df3]  # length 3
+
+    # normalise length 2 does not match length 3 → falls into the broken branch
+    normalise = np.array([1.0, 2.0])  # length 2
+    out = _normalise_split_results(results, normalise=normalise)
+    # Bug: returns [] instead of a 3-element list or raising ValueError
+    assert out == []
+
+
+def test_normalise_split_results_scalar_zero() -> None:
+    """Dividing by scalar zero produces inf/NaN columns (not a Python exception)."""
+    df1 = pd.DataFrame({"A": [1.0, 2.0]})
+    out = _normalise_split_results([df1], normalise=0.0)
+    assert len(out) == 1
+    # Division by zero with floats → inf, not ZeroDivisionError
+    assert not np.isfinite(out[0]["A"].iloc[0])
 
 
 def test_variables() -> None:
