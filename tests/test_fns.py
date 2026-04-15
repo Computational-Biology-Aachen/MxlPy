@@ -188,3 +188,44 @@ def test_diffusion_1s_1p() -> None:
     assert diffusion_1s_1p(10.0, 5.0, 2.0) == -10.0
     assert diffusion_1s_1p(5.0, 5.0, 2.0) == 0.0
     assert diffusion_1s_1p(5.0, 10.0, 0.0) == 0.0
+
+
+###############################################################################
+# Edge cases
+###############################################################################
+
+
+def test_michaelis_menten_1s_zero_substrate_and_km() -> None:
+    """s=0 and km=0 simultaneously: 0/0 raises ZeroDivisionError.
+
+    Formula: s * vmax / (s + km).  When both are zero the denominator is zero.
+    The existing tests cover (s=0, km>0) and (s>0, km=0) separately but not
+    the simultaneous case.
+    """
+    with pytest.raises(ZeroDivisionError):
+        michaelis_menten_1s(0.0, 5.0, 0.0)
+
+
+def test_michaelis_menten_2s_zero_both_substrates() -> None:
+    """s1=0 and s2=0: denominator collapses to zero → ZeroDivisionError.
+
+    Formula: vmax * s1 * s2 / (s1*s2 + km1*s2 + km2*s1).
+    With s1=s2=0 every term in the denominator is zero.
+    """
+    with pytest.raises(ZeroDivisionError):
+        michaelis_menten_2s(0.0, 0.0, 5.0, 1.0, 1.0)
+
+
+def test_mass_action_1s_negative_concentration() -> None:
+    """Negative concentration returns a negative rate (no guard).
+
+    This is mathematically valid but physically impossible.  The function
+    makes no non-negativity assertion.  Documenting the behavior prevents
+    silent surprise when an integrator steps below zero.
+    """
+    assert mass_action_1s(-1.0, 2.0) == pytest.approx(-2.0)
+
+
+def test_moiety_1s_negative_result() -> None:
+    """x1 > total gives negative moiety value; no guard is applied."""
+    assert moiety_1s(15.0, 10.0) == pytest.approx(-5.0)
