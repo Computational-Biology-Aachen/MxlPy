@@ -10,6 +10,8 @@ from .codegen_model import (
     generate_model_code_ts,
 )
 from .codegen_mxlpy import generate_mxlpy_code
+from .codegen_mxlpy_raw import generate_mxlpy_code_raw
+from .codegen_mxlweb import generate_mxlweb_page
 
 __all__ = [
     "generate_latex_code",
@@ -18,5 +20,7 @@ __all__ = [
     "generate_model_code_rs",
     "generate_model_code_ts",
     "generate_mxlpy_code",
+    "generate_mxlpy_code_raw",
+    "generate_mxlweb_page",
     "to_tex_export",
 ]

@@ -1,4 +1,13 @@
 from mxlpy import Derived, Model, fns
+from mxlpy.surrogates import qss
+
+
+def qss_two_outputs(v1: float, p1: float) -> tuple[float, float]:
+    return v1 * p1, v1 + p1
+
+
+def qss_single_output(v1: float) -> tuple[float]:
+    return (v1 * 2.0,)
 
 
 def m_1v_0p_0d_0r() -> Model:
@@ -169,5 +178,38 @@ def m_derived_stoichiometry() -> Model:
             stoichiometry={
                 "v1": Derived(fn=fns.one_div, args=["v1"]),
             },
+        )
+    )
+
+
+def m_1v_1p_0d_0r_1qss() -> Model:
+    return (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_parameter("p1", 1.0)
+        .add_surrogate(
+            "qss1",
+            qss.Surrogate(
+                model=qss_two_outputs,
+                args=["v1", "p1"],
+                outputs=["out1", "out2"],
+                stoichiometries={"r1": {"v1": -1.0}},
+            ),
+        )
+    )
+
+
+def m_1v_0p_0d_0r_1qss() -> Model:
+    return (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_surrogate(
+            "qss1",
+            qss.Surrogate(
+                model=qss_single_output,
+                args=["v1"],
+                outputs=["out1"],
+                stoichiometries={"r1": {"v1": -1.0}},
+            ),
         )
     )

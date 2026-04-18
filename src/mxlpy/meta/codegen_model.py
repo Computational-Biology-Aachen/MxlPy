@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import sympy
 
+from mxlpy.meta.source_tools import fn_to_sympy_outputs
 from mxlpy.meta.sympy_tools import (
     fn_to_sympy,
     list_of_symbols,
@@ -88,13 +89,20 @@ def _generate_model_code(
     # Model components
     variables = model.get_initial_conditions()
     parameters = model.get_parameter_values()
+    derived_raw = model.get_raw_derived()
+    reactions_raw = model.get_raw_reactions()
+    surrogates_raw = model.get_raw_surrogates()
 
-    # Build sanitized name map for all model component names
+    # Build sanitized name map including surrogate output names so sym_subs covers them
+    surrogate_output_names = [
+        out for sur in surrogates_raw.values() for out in sur.outputs
+    ]
     all_names = (
         list(variables)
         + list(parameters)
-        + list(model.get_raw_derived())
-        + list(model.get_raw_reactions())
+        + list(derived_raw)
+        + list(reactions_raw)
+        + surrogate_output_names
     )
     name_map = {n: _to_valid_identifier(n) for n in all_names}
     sanitized_names = list(name_map.values())
@@ -109,6 +117,23 @@ def _generate_model_code(
         for orig, san in name_map.items()
         if orig != san
     ]
+
+    # Pre-compute surrogate sympy exprs so we can interleave them correctly
+    sur_exprs: dict[str, list[sympy.Expr] | None] = {}
+    for sur_name, surrogate in surrogates_raw.items():
+        sur_fn = getattr(surrogate, "model", None) or getattr(surrogate, "fn", None)
+        if not callable(sur_fn):
+            _LOGGER.warning("Skipping surrogate '%s': no callable model/fn", sur_name)
+            sur_exprs[sur_name] = None
+            continue
+        exprs = fn_to_sympy_outputs(sur_fn, sur_name, list_of_symbols(surrogate.args))
+        if exprs is None or len(exprs) != len(surrogate.outputs):
+            _LOGGER.warning(
+                "Skipping surrogate '%s': cannot convert to sympy", sur_name
+            )
+            sur_exprs[sur_name] = None
+            continue
+        sur_exprs[sur_name] = exprs
 
     if imports is not None:
         source.extend(imports)
@@ -133,8 +158,47 @@ def _generate_model_code(
             )
         )
 
-    # Derived
-    for name, derived in model.get_raw_derived().items():
+    # Emit derived, reactions, and surrogates in dependency order.
+    # Before each derived/reaction, flush any surrogate whose args are now satisfied.
+    diff_eqs: dict[str, dict[str, Any]] = {}
+    available: set[str] = set(variables) | set(parameters) | {"time"}
+    emitted_surrogates: set[str] = set()
+
+    def _flush_ready_surrogates() -> None:
+        # Greedy: keep emitting surrogates whose args are all available
+        progress = True
+        while progress:
+            progress = False
+            for sur_name, surrogate in surrogates_raw.items():
+                if sur_name in emitted_surrogates:
+                    continue
+                if not all(arg in available for arg in surrogate.args):
+                    continue
+                emitted_surrogates.add(sur_name)
+                progress = True
+                exprs = sur_exprs[sur_name]
+                if exprs is None:
+                    continue
+                for output_name, out_expr in zip(surrogate.outputs, exprs, strict=True):
+                    final_expr = (
+                        cast(sympy.Expr, out_expr.subs(sym_subs))
+                        if sym_subs
+                        else out_expr
+                    )
+                    source.append(
+                        assignment_template.format(
+                            k=name_map[output_name], v=sympy_inline_fn(final_expr)
+                        )
+                    )
+                    available.add(output_name)
+                    if output_name in surrogate.stoichiometries:
+                        for var_name, factor in surrogate.stoichiometries[
+                            output_name
+                        ].items():
+                            diff_eqs.setdefault(var_name, {})[output_name] = factor
+
+    for name, derived in derived_raw.items():
+        _flush_ready_surrogates()
         expr = custom_fns.get(name)
         if expr is None:
             expr = fn_to_sympy(
@@ -150,9 +214,10 @@ def _generate_model_code(
         source.append(
             assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
         )
+        available.add(name)
 
-    # Reactions
-    for name, rxn in model.get_raw_reactions().items():
+    for name, rxn in reactions_raw.items():
+        _flush_ready_surrogates()
         expr = custom_fns.get(name)
         if expr is None:
             try:
@@ -171,27 +236,22 @@ def _generate_model_code(
         source.append(
             assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
         )
-
-    # Diff eqs
-    diff_eqs = {}
-    for rxn_name, rxn in model.get_raw_reactions().items():
+        available.add(name)
         for var_name, factor in rxn.stoichiometry.items():
-            diff_eqs.setdefault(var_name, {})[rxn_name] = factor
+            diff_eqs.setdefault(var_name, {})[name] = factor
+
+    # Emit any surrogates whose args only became satisfied after all derived+reactions
+    _flush_ready_surrogates()
 
     for variable, stoich in diff_eqs.items():
-        expr = stoichiometries_to_sympy(origin=variable, stoichs=stoich)
+        stoich_expr = stoichiometries_to_sympy(origin=variable, stoichs=stoich)
         if sym_subs:
-            expr = cast(sympy.Expr, expr.subs(sym_subs))
+            stoich_expr = cast(sympy.Expr, stoich_expr.subs(sym_subs))
         source.append(
             assignment_template.format(
-                k=f"d{name_map[variable]}dt", v=sympy_inline_fn(expr)
+                k=f"d{name_map[variable]}dt", v=sympy_inline_fn(stoich_expr)
             )
         )
-
-    # Surrogates
-    if len(model._surrogates) > 0:  # noqa: SLF001
-        msg = "Generating code for Surrogates not yet supported."
-        _LOGGER.warning(msg)
 
     # Return
     ret_order = [i for i in variables if i in diff_eqs]
@@ -270,11 +330,20 @@ def _generate_components_code(
     derived_raw = model.get_raw_derived()
     reactions_raw = model.get_raw_reactions()
     readouts_raw = model.get_raw_readouts()
+    surrogates_raw = model.get_raw_surrogates()
     # _cache is populated as a side-effect of the get_raw_* calls above
     if (cache_obj := model._cache) is None:  # noqa: SLF001
         cache_obj = model._create_cache()  # noqa: SLF001
 
-    all_component_names = set(derived_raw) | set(reactions_raw) | set(readouts_raw)
+    surrogate_output_names_all = [
+        out for sur in surrogates_raw.values() for out in sur.outputs
+    ]
+    all_component_names = (
+        set(derived_raw)
+        | set(reactions_raw)
+        | set(readouts_raw)
+        | set(surrogate_output_names_all)
+    )
 
     if outputs is not None:
         unknown = set(outputs) - all_component_names
@@ -285,22 +354,24 @@ def _generate_components_code(
         needed = _collect_transitive_deps(
             set(outputs), derived_raw, reactions_raw, readouts_raw, leaf_names
         )
+        # Also include surrogate outputs explicitly requested
+        needed_surrogate_outputs = set(outputs) & set(surrogate_output_names_all)
     else:
         needed = all_component_names
+        needed_surrogate_outputs = set(surrogate_output_names_all)
 
     # Use dyn_order from cache for correct topological ordering of derived + reactions.
-    # dyn_order interleaves derived and reactions so each component appears after
-    # all its dependencies, regardless of insertion order.
     ordered_dyn = [n for n in cache_obj.dyn_order if n in needed]
     ordered_readouts = [k for k in readouts_raw if k in needed]
 
-    # Build sanitized name map for all model component names
+    # Build sanitized name map including surrogate output names for correct sym_subs
     all_names = (
         list(variables)
         + list(parameters)
         + list(derived_raw)
         + list(reactions_raw)
         + list(readouts_raw)
+        + surrogate_output_names_all
     )
     name_map = {n: _to_valid_identifier(n) for n in all_names}
     sanitized_names = list(name_map.values())
@@ -315,6 +386,23 @@ def _generate_components_code(
         for orig, san in name_map.items()
         if orig != san
     ]
+
+    # Pre-compute surrogate sympy exprs
+    sur_exprs: dict[str, list[sympy.Expr] | None] = {}
+    for sur_name, surrogate in surrogates_raw.items():
+        sur_fn = getattr(surrogate, "model", None) or getattr(surrogate, "fn", None)
+        if not callable(sur_fn):
+            _LOGGER.warning("Skipping surrogate '%s': no callable model/fn", sur_name)
+            sur_exprs[sur_name] = None
+            continue
+        exprs = fn_to_sympy_outputs(sur_fn, sur_name, list_of_symbols(surrogate.args))
+        if exprs is None or len(exprs) != len(surrogate.outputs):
+            _LOGGER.warning(
+                "Skipping surrogate '%s': cannot convert to sympy", sur_name
+            )
+            sur_exprs[sur_name] = None
+            continue
+        sur_exprs[sur_name] = exprs
 
     if imports is not None:
         source.extend(imports)
@@ -338,8 +426,45 @@ def _generate_components_code(
             )
         )
 
-    # Derived and reactions in correct topological order
+    # Emit derived, reactions, and surrogates interleaved in dependency order.
+    # Surrogates are flushed as soon as all their args are available.
+    available: set[str] = set(variables) | set(parameters) | {"time"}
+    emitted_surrogates: set[str] = set()
+    emitted_surrogate_outputs: list[str] = []
+
+    def _flush_ready_surrogates() -> None:
+        progress = True
+        while progress:
+            progress = False
+            for sur_name, surrogate in surrogates_raw.items():
+                if sur_name in emitted_surrogates:
+                    continue
+                if not all(arg in available for arg in surrogate.args):
+                    continue
+                emitted_surrogates.add(sur_name)
+                progress = True
+                exprs = sur_exprs[sur_name]
+                if exprs is None:
+                    continue
+                for output_name, out_expr in zip(surrogate.outputs, exprs, strict=True):
+                    if output_name not in needed_surrogate_outputs:
+                        available.add(output_name)
+                        continue
+                    final_expr = (
+                        cast(sympy.Expr, out_expr.subs(sym_subs))
+                        if sym_subs
+                        else out_expr
+                    )
+                    source.append(
+                        assignment_template.format(
+                            k=name_map[output_name], v=sympy_inline_fn(final_expr)
+                        )
+                    )
+                    available.add(output_name)
+                    emitted_surrogate_outputs.append(name_map[output_name])
+
     for name in ordered_dyn:
+        _flush_ready_surrogates()
         if name in derived_raw:
             component = derived_raw[name]
             expr = custom_fns.get(name)
@@ -372,8 +497,12 @@ def _generate_components_code(
         source.append(
             assignment_template.format(k=name_map[name], v=sympy_inline_fn(expr))
         )
+        available.add(name)
 
-    # Readouts always come after derived + reactions
+    # Flush remaining surrogates (those only depending on derived/reactions)
+    _flush_ready_surrogates()
+
+    # Readouts always come after derived + reactions + surrogates
     for name in ordered_readouts:
         readout = readouts_raw[name]
         expr = custom_fns.get(name)
@@ -397,7 +526,9 @@ def _generate_components_code(
     if outputs is not None:
         returns = [name_map[n] for n in outputs]
     else:
-        returns = [name_map[n] for n in ordered_dyn + ordered_readouts]
+        returns = [
+            name_map[n] for n in ordered_dyn + ordered_readouts
+        ] + emitted_surrogate_outputs
 
     source.append(return_formatter(returns))
 

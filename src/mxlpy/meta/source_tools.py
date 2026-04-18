@@ -29,6 +29,7 @@ __all__ = [
     "KNOWN_FNS",
     "PARSE_ERROR",
     "fn_to_sympy",
+    "fn_to_sympy_outputs",
     "get_fn_ast",
     "get_fn_source",
 ]
@@ -408,6 +409,133 @@ def fn_to_sympy(
         _LOGGER.warning(msg)
         _LOGGER.debug("", exc_info=e)
         return None
+
+
+def fn_to_sympy_outputs(
+    fn: Callable,
+    origin: str,
+    model_args: list[sympy.Symbol | sympy.Expr] | None = None,
+) -> list[sympy.Expr] | None:
+    """Convert a (possibly multi-output) function to a list of sympy expressions.
+
+    Like :func:`fn_to_sympy` but returns one expression per return value.
+    Single-output functions return a one-element list.  Tuple-returning
+    functions return one element per tuple component.
+
+    Parameters
+    ----------
+    fn
+        The function to convert
+    origin
+        Name of the original caller. Used for error messages.
+    model_args
+        Optional list of sympy symbols to substitute for function arguments
+
+    Returns
+    -------
+    list[sympy.Expr] | None
+        List of sympy expressions, one per output, or None on failure
+
+    """
+    try:
+        fn_def = get_fn_ast(fn)
+        fn_args = [str(arg.arg) for arg in fn_def.args.args]
+
+        ctx = Context(
+            symbols={name: sympy.Symbol(name) for name in fn_args},
+            caller=fn,
+            parent_module=inspect.getmodule(fn),
+            origin=origin,
+            modules={},
+            fns={},
+        )
+
+        exprs = _handle_fn_body_outputs(fn_def.body, ctx)
+        if exprs is None:
+            return None
+
+        if model_args is not None and len(model_args):
+            subs = dict(zip(fn_args, model_args, strict=True))
+            exprs = [cast(sympy.Expr, e.subs(subs)) for e in exprs]
+
+    except (TypeError, ValueError, NotImplementedError) as e:
+        msg = f"Failed parsing function of {origin}"
+        _LOGGER.warning(msg)
+        _LOGGER.debug("", exc_info=e)
+        return None
+    else:
+        return exprs
+
+
+def _handle_fn_body_outputs(
+    body: list[ast.stmt], ctx: Context
+) -> list[sympy.Expr] | None:
+    """Process a function body and return one sympy expr per output.
+
+    Handles assignments (to build up context) and a final ``return``.
+    Tuple returns produce one expression per element; scalar returns produce
+    a one-element list.  Piecewise / if-else functions are not supported.
+    """
+    for node in body:
+        if isinstance(node, ast.Assign):
+            if isinstance(node.targets[0], ast.Tuple):
+                target_elements = node.targets[0].elts
+                if isinstance(node.value, ast.Tuple):
+                    for target, value_expr in zip(
+                        target_elements, node.value.elts, strict=True
+                    ):
+                        if isinstance(target, ast.Name):
+                            expr = _handle_expr(value_expr, ctx)
+                            if expr is None:
+                                return None
+                            ctx.symbols[target.id] = expr
+            else:
+                if not isinstance(target := node.targets[0], ast.Name):
+                    msg = "Only single variable assignments are supported"
+                    raise TypeError(msg)
+                value = _handle_expr(node.value, ctx)
+                if value is None:
+                    return None
+                ctx.symbols[target.id] = value
+
+        elif isinstance(node, ast.Return):
+            if node.value is None:
+                return None
+            if isinstance(node.value, ast.Tuple):
+                result: list[sympy.Expr] = []
+                for elt in node.value.elts:
+                    expr = _handle_expr(elt, ctx)
+                    if expr is None:
+                        return None
+                    result.append(cast(sympy.Expr, expr))
+                return result
+            expr = _handle_expr(node.value, ctx)
+            if expr is None:
+                return None
+            return [cast(sympy.Expr, expr)]
+
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                name = alias.name
+                ctx.modules[name] = importlib.import_module(name)
+
+        elif isinstance(node, ast.ImportFrom):
+            package = cast(str, node.module)
+            module = importlib.import_module(package)
+            contents = dict(inspect.getmembers(module))
+            for alias in node.names:
+                name = alias.name
+                el = contents[name]
+                if isinstance(el, float):
+                    ctx.symbols[name] = sympy.Float(el)
+                elif callable(el):
+                    ctx.fns[name] = el
+                elif isinstance(el, ModuleType):
+                    ctx.modules[name] = el
+                else:
+                    _LOGGER.debug("Skipping import %s", node)
+
+    return None
 
 
 def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
