@@ -54,7 +54,7 @@ def _generate_isotope_labels(base_name: str, num_labels: int) -> list[str]:
     """
     if num_labels > 0:
         return [f"{base_name}__{i}" for i in range(num_labels)]
-    msg = f"Compound {base_name} must have labels"
+    msg = f"Compound '{base_name}' requires at least 1 label position, got {num_labels}"
     raise ValueError(msg)
 
 
@@ -87,7 +87,8 @@ def _unpack_stoichiometries(
     products = {}
     for k, v in stoichiometries.items():
         if isinstance(v, Derived):
-            raise NotImplementedError
+            msg = f"Derived stoichiometry for species '{k}' is not supported in linear label maps — use a plain float coefficient instead"
+            raise NotImplementedError(msg)
 
         if v < 0:
             substrates[k] = int(-v)
@@ -191,7 +192,7 @@ def _add_label_influx_or_efflux(
 
     # Broken labelmap
     if (diff := len(labelmap) - len(substrates)) < 0:
-        msg = f"Labelmap 'missing' {abs(diff)} label(s)"
+        msg = f"Labelmap has {len(labelmap)} entries but reaction needs {len(substrates)} — missing {abs(diff)} label(s)"
         raise ValueError(msg)
     return substrates, products
 

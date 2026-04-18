@@ -37,12 +37,12 @@ def _fn_to_source(fn: Callable, fn_name: str, args: list[str]) -> str:
         raw = inspect.getsource(fn)
     except OSError:
         if _dill is None:
-            msg = f"Cannot retrieve source for '{fn_name}': dill not installed"
+            msg = f"Cannot retrieve source for '{fn_name}': inspect.getsource() failed and dill is not installed — install dill ('pip install dill') to support dynamically-defined functions"
             raise ValueError(msg) from None
         try:
             raw = _dill.source.getsource(fn)
         except OSError as exc:
-            msg = f"Cannot retrieve source for '{fn_name}'"
+            msg = f"Cannot retrieve source for '{fn_name}': both inspect.getsource() and dill.source.getsource() failed — the function may be defined in a REPL or via exec()"
             raise ValueError(msg) from exc
 
     source = textwrap.dedent(raw)
@@ -61,7 +61,7 @@ def _lambda_to_def(source: str, fn_name: str, args: list[str]) -> str:
         None,
     )
     if lambda_node is None:
-        msg = f"Could not find lambda in source for '{fn_name}'"
+        msg = f"Could not find a lambda expression in the source of '{fn_name}' — the source may belong to a different statement or the lambda is not at module scope"
         raise ValueError(msg)
 
     # orig_params = [arg.arg for arg in lambda_node.args.args]

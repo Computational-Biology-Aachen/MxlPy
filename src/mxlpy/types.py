@@ -151,7 +151,7 @@ class Option[T]:
     def unwrap_or_err(self) -> T:
         """Obtain value if Ok, else raise exception."""
         if (value := self.value) is None:
-            msg = "Unexpected `None`"
+            msg = "Option contains None — use .default(fn) to provide a fallback value instead of .unwrap_or_err()"
             raise ValueError(msg)
         return value
 

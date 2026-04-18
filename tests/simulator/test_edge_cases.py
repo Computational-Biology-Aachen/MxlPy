@@ -30,19 +30,19 @@ def get_model() -> Model:
 def test_simulate_backwards_time() -> None:
     """simulate(5) after simulate(10) must raise, not silently succeed."""
     sim = Simulator(get_model()).simulate(10, steps=10)
-    with pytest.raises(ValueError, match="larger than previous"):
+    with pytest.raises(ValueError, match="must be greater than"):
         sim.simulate(5)
 
 
 def test_simulate_negative_t_end() -> None:
     """simulate(-1) on fresh simulator: t_end=-1 <= prior_t_end=0, must raise."""
-    with pytest.raises(ValueError, match="larger than previous"):
+    with pytest.raises(ValueError, match="must be greater than"):
         Simulator(get_model()).simulate(-1)
 
 
 def test_simulate_zero_t_end() -> None:
     """simulate(0) on fresh simulator: equal to prior_t_end=0, must raise."""
-    with pytest.raises(ValueError, match="larger than previous"):
+    with pytest.raises(ValueError, match="must be greater than"):
         Simulator(get_model()).simulate(0)
 
 

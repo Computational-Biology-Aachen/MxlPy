@@ -373,7 +373,7 @@ class Simulator:
             0.0 if (variables := self.variables) is None else variables[-1].index[-1]
         )
         if t_end <= prior_t_end:
-            msg = "End time point has to be larger than previous end time point"
+            msg = f"t_end={t_end} must be greater than the last simulated time point ({prior_t_end}). Call reset() to restart the simulation from t=0."
             raise ValueError(msg)
 
         self._handle_simulation_results(
@@ -419,7 +419,7 @@ class Simulator:
             0.0 if (variables := self.variables) is None else variables[-1].index[-1]
         )
         if time_points[-1] <= prior_t_end:
-            msg = "End time point has to be larger than previous end time point"
+            msg = f"Final time point {time_points[-1]} must be greater than the last simulated time point ({prior_t_end}). Call reset() to restart the simulation from t=0."
             raise ValueError(msg)
 
         # Remove points which are smaller than previous t_end
@@ -533,7 +533,7 @@ class Simulator:
 
         # Error handling
         if time_points[-1] <= t_start:
-            msg = "End time point has to be larger than previous end time point"
+            msg = f"Final time point {time_points[-1]} must be greater than the protocol start time ({t_start}). Call reset() to restart the simulation from t=0."
             raise ValueError(msg)
 
         larger = time_points > protocol.index[-1]
