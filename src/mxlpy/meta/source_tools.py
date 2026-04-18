@@ -342,7 +342,7 @@ def get_fn_ast(fn: Callable) -> ast.FunctionDef:
     """
     tree = ast.parse(textwrap.dedent(get_fn_source(fn)))
     if not isinstance(fn_def := tree.body[0], ast.FunctionDef):
-        msg = "Not a function"
+        msg = f"Expected a function definition but got {type(fn_def).__name__} — pass a named function, not a class or bare expression"
         raise TypeError(msg)
     return fn_def
 
@@ -491,7 +491,7 @@ def _handle_fn_body_outputs(
                             ctx.symbols[target.id] = expr
             else:
                 if not isinstance(target := node.targets[0], ast.Name):
-                    msg = "Only single variable assignments are supported"
+                    msg = f"Only simple 'x = expr' assignments are supported in rate functions — got {type(target).__name__} assignment target at line {node.lineno}"
                     raise TypeError(msg)
                 value = _handle_expr(node.value, ctx)
                 if value is None:
@@ -572,7 +572,7 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
 
         elif isinstance(node, ast.Return):
             if (value := node.value) is None:
-                msg = "Return value cannot be None"
+                msg = "Bare 'return' with no value is not supported in rate functions — return a float expression"
                 raise ValueError(msg)
 
             expr = _handle_expr(value, ctx)
@@ -604,7 +604,7 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
             else:
                 # Regular single assignment
                 if not isinstance(target := node.targets[0], ast.Name):
-                    msg = "Only single variable assignments are supported"
+                    msg = f"Only simple 'x = expr' assignments are supported in rate functions — got {type(target).__name__} assignment target at line {node.lineno}"
                     raise TypeError(msg)
                 target_name = target.id
                 value = _handle_expr(node.value, ctx)
@@ -645,7 +645,7 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
             target_name = node.targets[0].id
             return ctx.symbols[target_name]
 
-    msg = "No return value found in function body"
+    msg = "Rate function has no return statement — add 'return <float_expr>' at the end of the function"
     raise ValueError(msg)
 
 
@@ -662,7 +662,7 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
     if isinstance(node, ast.Constant):
         if isinstance(val := node.value, (float, int)):
             return sympy.Float(val)
-        msg = "Can only use float values"
+        msg = f"Non-numeric constant {node.value!r} (type {type(node.value).__name__!r}) not supported in rate functions — only int/float literals are allowed"
         raise NotImplementedError(msg)
     if isinstance(node, ast.Call):
         return _handle_call(node, ctx=ctx)
@@ -707,7 +707,7 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
         if_false = _handle_expr(node.orelse, ctx)
         return sympy.Piecewise((if_true, condition), (if_false, True))
 
-    msg = f"Expression type {type(node).__name__} not implemented"
+    msg = f"Expression type {type(node).__name__!r} is not supported in symbolic conversion — simplify the rate function to use only arithmetic operators and supported math functions"
     raise NotImplementedError(msg)
 
 
@@ -734,7 +734,7 @@ def _handle_unaryop(node: ast.UnaryOp, ctx: Context) -> sympy.Expr:
         case ast.USub():
             return -left
         case _:
-            msg = f"Operation {type(node.op).__name__} not implemented"
+            msg = f"Unary operator {type(node.op).__name__!r} is not supported — only +x and -x are allowed in rate functions"
             raise NotImplementedError(msg)
 
 
@@ -761,7 +761,7 @@ def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
         case ast.FloorDiv():
             return left // right
         case _:
-            msg = f"Operation {type(node.op).__name__} not implemented"
+            msg = f"Binary operator {type(node.op).__name__!r} is not supported in rate functions — allowed: +, -, *, /, **, %, //"
             raise NotImplementedError(msg)
 
 
@@ -853,7 +853,8 @@ def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
 
             module = modules.get(levels[-1])
         case _:
-            raise NotImplementedError
+            msg = f"Unsupported attribute access pattern in rate function: {ast.dump(node.value)[:100]!r}"
+            raise NotImplementedError(msg)
 
     # Fall-back to absolute import
     if module is None:
@@ -929,7 +930,8 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
             fns = dict(inspect.getmembers(module, predicate=callable))
             py_fn = fns.get(fn_name)
         case _:
-            raise NotImplementedError
+            msg = f"Unsupported function call pattern in rate function: {ast.dump(node.func)[:100]!r}"
+            raise NotImplementedError(msg)
 
     if py_fn is None:
         return None

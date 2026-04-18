@@ -572,7 +572,7 @@ class Model:
             if name in self._parameters or name in self._derived:
                 all_parameter_values[name] = cast(float, dependent[name])
             else:
-                msg = "Unknown target for static derived variable."
+                msg = f"Internal error: '{name}' appears in static_order but is not a parameter, variable, or derived — this is a bug in dependency sorting"
                 raise KeyError(msg)
 
         self._cache = ModelCache(
@@ -624,11 +624,12 @@ class Model:
 
         """
         if name == "time":
-            msg = "time is a protected variable for time"
+            msg = "'time' is a reserved identifier — it represents the simulation time and cannot be used as a parameter, variable, derived, or reaction name"
             raise KeyError(msg)
 
         if name in self._ids:
-            msg = f"Model already contains {ctx} called '{name}'"
+            existing_ctx = self._ids[name]
+            msg = f"Name '{name}' already exists as a {existing_ctx} — cannot add it as a {ctx}. Each name must be unique across all model components."
             raise NameError(msg)
         self._ids[name] = ctx
 
@@ -889,7 +890,7 @@ class Model:
 
         """
         if name not in self._parameters:
-            msg = f"{name!r} not found in parameters"
+            msg = f"Parameter {name!r} not found. Available parameters: {sorted(self._parameters)}"
             raise KeyError(msg)
 
         parameter = self._parameters[name]
@@ -1030,7 +1031,7 @@ class Model:
                             target = True
                             stoich[name] = value
                 if not target:
-                    msg = f"Reaction '{rxn_name}' not found in reactions or surrogates"
+                    msg = f"Reaction '{rxn_name}' not found. Available reactions: {sorted(self._reactions)}, surrogates: {sorted(self._surrogates)}"
                     raise KeyError(msg)
 
         return self
@@ -1324,7 +1325,7 @@ class Model:
 
         """
         if name not in self._variables:
-            msg = f"'{name}' not found in variables"
+            msg = f"Variable {name!r} not found. Available variables: {sorted(self._variables)}"
             raise KeyError(msg)
 
         variable = self._variables[name]
@@ -2140,7 +2141,7 @@ class Model:
 
         """
         if name not in self._surrogates:
-            msg = f"Surrogate '{name}' not found in model"
+            msg = f"Surrogate {name!r} not found. Available surrogates: {sorted(self._surrogates)}"
             raise KeyError(msg)
 
         if surrogate is None:
@@ -2865,7 +2866,8 @@ class Model:
                 elif (var := self._variables.get(arg)) is not None:
                     unit_per_arg[sympy.Symbol(arg)] = var.unit
                 else:
-                    raise NotImplementedError
+                    msg = f"Argument '{arg}' in reaction '{name}' is neither a parameter nor a variable — unit checking only supports parameters and variables"
+                    raise NotImplementedError(msg)
 
             symbolic_fn = fn_to_sympy(
                 rxn.fn,

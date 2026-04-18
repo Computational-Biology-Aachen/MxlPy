@@ -230,7 +230,7 @@ def _fn_to_mxlweb(
     """
     expr = fn_to_sympy(fn, origin=name, model_args=list_of_symbols(args))  # type: ignore[arg-type]
     if expr is None:
-        msg = f"Cannot convert fn for '{name}' to sympy"
+        msg = f"Cannot convert '{name}' to a sympy expression — the function may use unsupported constructs (closures, side effects, non-arithmetic operations)"
         raise ValueError(msg)
     if sym_subs:
         expr = cast(sympy.Expr, expr.subs(sym_subs))

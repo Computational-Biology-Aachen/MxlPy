@@ -76,7 +76,7 @@ class IdentifierReplacer(ast.NodeTransformer):
     def __init__(self, mapping: dict[str, str]) -> None:
         self.mapping = mapping
 
-    def visit_Name(self, node: ast.Name) -> ast.Name:
+    def visit_Name(self, node: ast.Name) -> ast.Name:  # noqa: N802
         """Replace identifier names using the mapping.
 
         Parameters
@@ -97,7 +97,7 @@ class IdentifierReplacer(ast.NodeTransformer):
 
 
 class DocstringRemover(ast.NodeTransformer):
-    def visit_Expr(self, node: ast.Expr) -> ast.Expr | None:
+    def visit_Expr(self, node: ast.Expr) -> ast.Expr | None:  # noqa: N802
         """Remove docstring expression nodes.
 
         Parameters
@@ -127,7 +127,8 @@ def _convert_unaryop(node: ast.UnaryOp) -> libsbml.ASTNode:
         case ast.Not():
             op = libsbml.AST_LOGICAL_NOT
         case _:
-            raise NotImplementedError(type(node.op))
+            msg = f"Unary operator {type(node.op).__name__!r} is not supported in SBML export — supported: USub, Not"
+            raise NotImplementedError(msg)
 
     sbml_node = libsbml.ASTNode(op)
     sbml_node.addChild(operand)
@@ -152,7 +153,8 @@ def _convert_binop(node: ast.BinOp) -> libsbml.ASTNode:
         case ast.FloorDiv():
             op = libsbml.AST_FUNCTION_QUOTIENT
         case _:
-            raise NotImplementedError(type(node.op))
+            msg = f"Binary operator {type(node.op).__name__!r} is not supported in SBML export — supported: Mult, Add, Sub, Div, Pow, FloorDiv"
+            raise NotImplementedError(msg)
 
     sbml_node = libsbml.ASTNode(op)
     sbml_node.addChild(left)
@@ -178,7 +180,7 @@ def _convert_attribute(node: ast.Attribute) -> libsbml.ASTNode:
             sbml_node.setValue(np.nan)
             return sbml_node
 
-    msg = f"{parent}.{attr}"
+    msg = f"Attribute '{parent}.{attr}' is not supported in SBML export — supported attributes: math/np/numpy.{{e, pi, inf, nan}}"
     raise NotImplementedError(msg)
 
 
@@ -266,7 +268,7 @@ def _convert_call(node: ast.Call) -> libsbml.ASTNode:
     if isinstance(func, ast.Attribute):
         return _convert_library_call(node)
 
-    msg = f"Unknown call type: {type(func)}"
+    msg = f"Unsupported function call type {type(func).__name__!r} in SBML export — only direct calls (fn(...)) and attribute calls (module.fn(...)) are supported"
     raise NotImplementedError(msg)
 
 
@@ -290,7 +292,8 @@ def _convert_compare(node: ast.Compare) -> libsbml.ASTNode:
         case ast.GtE():
             op = libsbml.AST_RELATIONAL_GEQ
         case _:
-            raise NotImplementedError(type(node.ops[0]))
+            msg = f"Comparison operator {type(node.ops[0]).__name__!r} is not supported in SBML export — supported: Eq, NotEq, Lt, LtE, Gt, GtE"
+            raise NotImplementedError(msg)
 
     sbml_node = libsbml.ASTNode(op)
     sbml_node.addChild(left)
@@ -302,7 +305,7 @@ def _convert_node(node: ast.stmt | ast.expr) -> libsbml.ASTNode:
     match node:
         case ast.Return(value):
             if value is None:
-                msg = "Model function cannot return `None`"
+                msg = "Rate/derived function has a bare 'return' with no value — SBML export requires functions to return a float expression"
                 raise ValueError(msg)
             return _convert_node(value)
         case ast.UnaryOp():
@@ -324,7 +327,8 @@ def _convert_node(node: ast.stmt | ast.expr) -> libsbml.ASTNode:
         case ast.Compare():
             return _convert_compare(node)
         case _:
-            raise NotImplementedError(type(node))
+            msg = f"AST node type {type(node).__name__!r} is not supported in SBML export — simplify the rate function to use only arithmetic and supported math functions"
+            raise NotImplementedError(msg)
 
 
 def _handle_body(stmts: list[ast.stmt]) -> libsbml.ASTNode:
@@ -593,7 +597,7 @@ def _create_sbml_reactions(
                     sref.setId(_convert_id_to_sbml(id_=reference, prefix="CPD"))
                     sref.setSpecies(_convert_id_to_sbml(id_=compound_id, prefix="CPD"))
                 case _:
-                    msg = f"Stoichiometry type {type(factor)} not supported"
+                    msg = f"Stoichiometry coefficient for '{compound_id}' has unsupported type {type(factor).__name__!r} — expected float or Derived"
                     raise NotImplementedError(msg)
         for compound_id in rxn.get_modifiers(model):
             sref = sbml_rxn.createModifier()
