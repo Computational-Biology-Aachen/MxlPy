@@ -81,4 +81,7 @@ We support the [llms.txt](https://llmstxt.org/) convention for making documentat
 `MxlPy` is part of a larger family of tools that are designed with a similar set of abstractions. Check them out!
 
 - [MxlBricks](https://github.com/Computational-Biology-Aachen/mxl-bricks) is built on top of `MxlPy` to build mechanistic models composed of pre-defined reactions (bricks)
+- [MxlModels](https://github.com/Computational-Biology-Aachen/mxl-models) supplies flat, single-file versions of MxlBricks models for easy inspection
 - [MxlWeb](https://github.com/Computational-Biology-Aachen/mxl-web) brings simulation of mechanistic models to the browser!
+- [pysbml](https://github.com/Computational-Biology-Aachen/pysbml) simplifies SBML models for import/export with MxlPy
+- [Parameteriser](https://gitlab.com/marvin.vanaalst/parameteriser) looks up kinetic parameters from BRENDA and other databases
