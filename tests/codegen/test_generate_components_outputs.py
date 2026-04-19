@@ -7,7 +7,6 @@ import pytest
 from mxlpy import Model, fns
 from mxlpy.meta.codegen_model import generate_model_components_py
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
@@ -20,7 +19,9 @@ def _model_1v_1p_1d_1r() -> Model:
         .add_variable("v1", 1.0)
         .add_parameter("p1", 1.0)
         .add_derived("d1", fn=fns.add, args=["v1", "p1"])
-        .add_reaction("r1", fn=fns.mass_action_1s, args=["v1", "d1"], stoichiometry={"v1": -1.0})
+        .add_reaction(
+            "r1", fn=fns.mass_action_1s, args=["v1", "d1"], stoichiometry={"v1": -1.0}
+        )
     )
 
 
@@ -31,7 +32,9 @@ def _model_2d_1r() -> Model:
         .add_variable("v1", 1.0)
         .add_derived("d1", fn=fns.constant, args=["v1"])
         .add_derived("d2", fn=fns.constant, args=["d1"])
-        .add_reaction("r1", fn=fns.mass_action_1s, args=["v1", "d2"], stoichiometry={"v1": -1.0})
+        .add_reaction(
+            "r1", fn=fns.mass_action_1s, args=["v1", "d2"], stoichiometry={"v1": -1.0}
+        )
     )
 
 
@@ -45,8 +48,12 @@ def _model_with_readout() -> Model:
         Model()
         .add_variables({"v1": 1.0, "v2": 2.0})
         .add_parameter("k", 0.1)
-        .add_reaction("r1", fn=fns.mass_action_1s, args=["k", "v1"], stoichiometry={"v1": -1.0})
-        .add_reaction("r2", fn=fns.mass_action_1s, args=["k", "v2"], stoichiometry={"v2": -1.0})
+        .add_reaction(
+            "r1", fn=fns.mass_action_1s, args=["k", "v1"], stoichiometry={"v1": -1.0}
+        )
+        .add_reaction(
+            "r2", fn=fns.mass_action_1s, args=["k", "v2"], stoichiometry={"v2": -1.0}
+        )
         .add_readout("ro1", fn=ratio, args=["r1", "r2"])
     )
 
@@ -75,7 +82,9 @@ def test_outputs_single_reaction_no_intermediate_deps() -> None:
         Model()
         .add_variable("v1", 1.0)
         .add_parameter("k", 0.5)
-        .add_reaction("r1", fn=fns.mass_action_1s, args=["k", "v1"], stoichiometry={"v1": -1.0})
+        .add_reaction(
+            "r1", fn=fns.mass_action_1s, args=["k", "v1"], stoichiometry={"v1": -1.0}
+        )
     )
     lines = generate_model_components_py(m, outputs=["r1"]).split("\n")
     assert "    r1: float = k*v1" in lines
@@ -88,7 +97,9 @@ def test_outputs_single_reaction_no_intermediate_deps() -> None:
 
 
 def test_outputs_single_derived() -> None:
-    lines = generate_model_components_py(_model_1v_1p_1d_1r(), outputs=["d1"]).split("\n")
+    lines = generate_model_components_py(_model_1v_1p_1d_1r(), outputs=["d1"]).split(
+        "\n"
+    )
     assert "    d1: float = p1 + v1" in lines
     assert "    return d1" in lines
     # r1 must NOT be emitted
@@ -102,7 +113,9 @@ def test_outputs_single_derived() -> None:
 
 def test_outputs_reaction_pulls_in_derived_dep() -> None:
     """Requesting r1 must also emit d1 as an intermediate."""
-    lines = generate_model_components_py(_model_1v_1p_1d_1r(), outputs=["r1"]).split("\n")
+    lines = generate_model_components_py(_model_1v_1p_1d_1r(), outputs=["r1"]).split(
+        "\n"
+    )
     # d1 is a dep — it must appear before r1
     assert "    d1: float = p1 + v1" in lines
     assert "    r1: float = d1*v1" in lines
@@ -146,7 +159,9 @@ def test_outputs_intermediate_dep_not_in_return() -> None:
 
 def test_outputs_readout_pulls_in_reaction_deps() -> None:
     """Requesting ro1 must emit r1 and r2 as intermediates."""
-    lines = generate_model_components_py(_model_with_readout(), outputs=["ro1"]).split("\n")
+    lines = generate_model_components_py(_model_with_readout(), outputs=["ro1"]).split(
+        "\n"
+    )
     assert any("r1: float" in ln for ln in lines)
     assert any("r2: float" in ln for ln in lines)
     assert any("ro1: float" in ln for ln in lines)
@@ -163,13 +178,17 @@ def test_outputs_readout_pulls_in_reaction_deps() -> None:
 
 
 def test_outputs_multiple_returns_in_requested_order() -> None:
-    lines = generate_model_components_py(_model_1v_1p_1d_1r(), outputs=["d1", "r1"]).split("\n")
+    lines = generate_model_components_py(
+        _model_1v_1p_1d_1r(), outputs=["d1", "r1"]
+    ).split("\n")
     assert "    return d1, r1" in lines
 
 
 def test_outputs_multiple_reversed_order() -> None:
     """Return order follows the outputs list, not emission order."""
-    lines = generate_model_components_py(_model_1v_1p_1d_1r(), outputs=["r1", "d1"]).split("\n")
+    lines = generate_model_components_py(
+        _model_1v_1p_1d_1r(), outputs=["r1", "d1"]
+    ).split("\n")
     assert "    return r1, d1" in lines
 
 
@@ -191,8 +210,12 @@ def test_outputs_independent_reactions_not_emitted() -> None:
         Model()
         .add_variables({"v1": 1.0, "v2": 2.0})
         .add_parameter("k", 0.1)
-        .add_reaction("r1", fn=fns.mass_action_1s, args=["k", "v1"], stoichiometry={"v1": -1.0})
-        .add_reaction("r2", fn=fns.mass_action_1s, args=["k", "v2"], stoichiometry={"v2": -1.0})
+        .add_reaction(
+            "r1", fn=fns.mass_action_1s, args=["k", "v1"], stoichiometry={"v1": -1.0}
+        )
+        .add_reaction(
+            "r2", fn=fns.mass_action_1s, args=["k", "v2"], stoichiometry={"v2": -1.0}
+        )
     )
     lines = generate_model_components_py(m, outputs=["r1"]).split("\n")
     assert any("r1: float" in ln for ln in lines)

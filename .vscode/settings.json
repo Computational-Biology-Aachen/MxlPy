@@ -1,0 +1,47 @@
+{
+    "[python]": {
+        "editor.rulers": [
+            88
+        ]
+    },
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/_minted-main": true,
+        "**/*.aux": true,
+        "**/*.bbl": true,
+        "**/*.bcf": true,
+        "**/*.blg": true,
+        "**/*.dvi": true,
+        "**/*.egg-info": true,
+        "**/*.fdb_latexmk": true,
+        "**/*.fls": true,
+        "**/*.glsdefs": true,
+        "**/*.lof": true,
+        "**/*.log": true,
+        "**/*.lot": true,
+        "**/*.mypy_cache": true,
+        "**/*.out": true,
+        "**/*.pixi": true,
+        "**/*.pytest_cache": true,
+        "**/*.ruff_cache": true,
+        "**/*.run.xml": true,
+        "**/*.synctex.gz": true,
+        "**/*.toc": true,
+        // envs
+        "**/*.venv": true,
+        "**/*dist": true,
+        "**/*synctex(busy)": true
+    },
+    "notebook.output.textLineLimit": 50,
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.terminal.activateEnvironment": false,
+    "ruff.interpreter": [
+        "${workspaceFolder}/.venv/bin/python"
+    ],
+    "terminal.integrated.env.linux": {
+        "UV_PROJECT_ENVIRONMENT": "${workspaceFolder}/.venv"
+    },
+    "terminal.integrated.env.osx": {
+        "UV_PROJECT_ENVIRONMENT": "${workspaceFolder}/.venv"
+    }
+}

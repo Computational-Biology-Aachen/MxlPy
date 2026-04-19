@@ -23,7 +23,6 @@ from mxlpy.meta.codegen_model import (
     generate_model_code_matlab,
 )
 
-
 # ---------------------------------------------------------------------------
 # Unit tests for _to_valid_identifier
 # ---------------------------------------------------------------------------

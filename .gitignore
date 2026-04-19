@@ -102,9 +102,6 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-# vscode
-.vscode/
-
 # temporary files and folders
 *temp*
 tmp
@@ -115,7 +112,7 @@ src/mxlweb
 .pixi
 *.egg-info
 
-# copilot
+# AI config files
 .github/copilot-instructions.md
 .claude
 CLAUDE.md
