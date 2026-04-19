@@ -15,7 +15,7 @@ dev = [
     "pytest-cov>=5.0.0",
     "pytest>=8.3.3",
     "requests>=2.32.3",
-    "ruff>=0.12.9",
+    "ruff>=0.15.11",
     "ssort>=0.13.0",
     "toml-sort>=0.23.1",
 ]
