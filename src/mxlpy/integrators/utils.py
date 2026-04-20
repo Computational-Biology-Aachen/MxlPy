@@ -155,7 +155,7 @@ class DetectOscillations:
     min_lag: int = 2
     autocorr_threshold: float = 0.3
     min_samples: int = 10
-    flat_signal_threshold: float = 1e-10
+    flat_signal_threshold: float = 1e-6
 
     def __call__(
         self,
@@ -269,7 +269,7 @@ class DetectOscillationsScipY:
     min_peaks: int = 2
     min_prominence_factor: float = 0.1
     min_samples: int = 10
-    flat_signal_threshold: float = 1e-10
+    flat_signal_threshold: float = 1e-6
 
     def __call__(
         self,
