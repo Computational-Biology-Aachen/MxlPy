@@ -662,7 +662,10 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
     if isinstance(node, ast.Constant):
         if isinstance(val := node.value, (float, int)):
             return sympy.Float(val)
-        msg = f"Non-numeric constant {node.value!r} (type {type(node.value).__name__!r}) not supported in rate functions — only int/float literals are allowed"
+        msg = (
+            f"Non-numeric constant {node.value!r} (type {type(node.value).__name__!r}) "
+            "not supported in rate functions — only int/float literals are allowed"
+        )
         raise NotImplementedError(msg)
     if isinstance(node, ast.Call):
         return _handle_call(node, ctx=ctx)

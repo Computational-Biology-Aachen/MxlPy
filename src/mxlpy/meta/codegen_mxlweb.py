@@ -10,7 +10,7 @@ import sympy
 from mxlpy.meta.codegen_model import _to_valid_identifier
 from mxlpy.meta.source_tools import fn_to_sympy, fn_to_sympy_outputs
 from mxlpy.meta.sympy_tools import list_of_symbols
-from mxlpy.types import Derived
+from mxlpy.types import Derived, InitialAssignment
 
 if TYPE_CHECKING:
     from mxlpy.model import Model
@@ -269,6 +269,7 @@ def generate_mxlweb_page(
     used: set[str] = set()
     lines: list[str] = []
 
+    variables_raw = model.get_raw_variables()
     variables = model.get_initial_conditions()
     parameters = model.get_parameter_values()
     derived_raw = model.get_raw_derived()
@@ -303,10 +304,33 @@ def generate_mxlweb_page(
         )
 
     var_lines: list[str] = []
-    for k, v in variables.items():
-        var_lines.append(
-            f'      .addVariable("{name_map[k]}", {{ value: {v!r}, texName: {_tex(k)!r} }})'
-        )
+    for k in variables:
+        raw_var = variables_raw[k]
+        if isinstance(raw_var.initial_value, InitialAssignment):
+            try:
+                fn_ts = _fn_to_mxlweb(
+                    raw_var.initial_value.fn,
+                    k,
+                    raw_var.initial_value.args,
+                    used,
+                    sym_subs,
+                )
+                var_lines.append(
+                    f'      .addVariable("{name_map[k]}", {{ value: {fn_ts}, texName: {_tex(k)!r} }})'
+                )
+            except (ValueError, KeyError) as exc:
+                _LOGGER.warning(
+                    "Variable '%s': cannot convert initial assignment, using numeric fallback: %s",
+                    k,
+                    exc,
+                )
+                var_lines.append(
+                    f'      .addVariable("{name_map[k]}", {{ value: {variables[k]!r}, texName: {_tex(k)!r} }})'
+                )
+        else:
+            var_lines.append(
+                f'      .addVariable("{name_map[k]}", {{ value: {variables[k]!r}, texName: {_tex(k)!r} }})'
+            )
 
     assign_lines: list[str] = []
     for k, der in derived_raw.items():
