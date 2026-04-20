@@ -160,7 +160,7 @@ def _codegen_variable(
 
     value = sympy_to_inline_py(init)
     if (unit := var.unit) is not None:
-        return f"        .add_variable({k!r}, value={value}, unit={sympy_to_inline_py(unit)})"
+        return f"        .add_variable({k!r}, value={value}, unit=units.{unit})"
     return f"        .add_variable({k!r}, initial_value={value})"
 
 
@@ -177,7 +177,7 @@ def _codegen_parameter(
 
     value = sympy_to_inline_py(init)
     if (unit := par.unit) is not None:
-        return f"        .add_parameter({k!r}, value={value}, unit={sympy_to_inline_py(unit)})"
+        return f"        .add_parameter({k!r}, value={value}, unit=units.{unit})"
     return f"        .add_parameter({k!r}, value={value})"
 
 
@@ -205,6 +205,9 @@ def generate_mxlpy_code_from_symbolic_repr(
     imports = [] if imports is None else imports
 
     functions: dict[str, tuple[sympy.Expr, list[str]]] = {}
+    has_units = any(v.unit is not None for v in model.variables.values()) or any(
+        p.unit is not None for p in model.parameters.values()
+    )
 
     # Variables
     variable_source = []
@@ -262,9 +265,12 @@ def generate_mxlpy_code_from_symbolic_repr(
         sympy_to_python_fn(fn_name=name, args=args, expr=expr)
         for name, (expr, args) in functions.items()
     )
+    mxlpy_imports = ["Model", "Derived", "InitialAssignment"]
+    if has_units:
+        mxlpy_imports.append("units")
     source = [
         *imports,
-        "from mxlpy import Model, Derived, InitialAssignment\n",
+        f"from mxlpy import {', '.join(mxlpy_imports)}\n",
         functions_source,
         "",
         "def create_model() -> Model:",
