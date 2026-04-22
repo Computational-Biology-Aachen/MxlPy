@@ -15,6 +15,7 @@ from mxlpy.model import MdText
 from mxlpy.units import mmol, second
 
 mmol_per_second = mmol / second
+per_second = 1 / second  # type: ignore
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ def _mass_action_model() -> Model:
     """S → P via v = k * S.  S and k are annotated; P and reaction are not."""
     return (
         Model()
-        .add_parameter("k", 1.0, unit=1 / second)
+        .add_parameter("k", 1.0, unit=per_second)
         .add_variable("S", 1.0, unit=mmol)
         .add_variable("P", 0.0)
         .add_reaction(
@@ -74,7 +75,7 @@ def test_forward_variable_unit_from_reaction() -> None:
 def test_forward_derived_unit() -> None:
     model = (
         Model()
-        .add_parameter("k", 1.0, unit=1 / second)
+        .add_parameter("k", 1.0, unit=per_second)
         .add_variable("S", 1.0, unit=mmol)
         .add_derived("flux", fns.mul, args=["k", "S"])
     )
@@ -113,7 +114,7 @@ def test_backward_parameter_unit_simple() -> None:
     result = model.infer_units(time_unit=second)
     k_unit = result.parameters["k"]
     assert isinstance(k_unit, sympy.Expr)
-    assert k_unit == 1 / second
+    assert k_unit == 1 / second  # type: ignore
 
 
 def test_backward_parameter_additive_returns_none() -> None:
@@ -144,7 +145,7 @@ def test_transitive_derived_unit() -> None:
     """d2 depends on d1 which depends on k and S."""
     model = (
         Model()
-        .add_parameter("k", 1.0, unit=1 / second)
+        .add_parameter("k", 1.0, unit=per_second)
         .add_variable("S", 1.0, unit=mmol)
         .add_variable("P", 0.0)
         .add_derived("d1", fns.mul, args=["k", "S"])  # mmol/s
@@ -225,7 +226,7 @@ def test_all_units_set_returns_existing() -> None:
     rxn_unit = mmol_per_second
     model = (
         Model()
-        .add_parameter("k", 1.0, unit=1 / second)
+        .add_parameter("k", 1.0, unit=per_second)
         .add_variable("S", 1.0, unit=mmol)
         .add_reaction(
             "v1",
@@ -236,7 +237,7 @@ def test_all_units_set_returns_existing() -> None:
         )
     )
     result = model.infer_units(time_unit=second)
-    assert result.parameters["k"] == 1 / second
+    assert result.parameters["k"] == per_second
     assert result.variables["S"] == mmol
     assert result.reactions["v1"] == rxn_unit
 

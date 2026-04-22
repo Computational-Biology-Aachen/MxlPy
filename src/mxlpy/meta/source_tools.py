@@ -8,10 +8,12 @@ import importlib
 import inspect
 import logging
 import math
+import sys
 import textwrap
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import dill
 import numpy as np
@@ -23,11 +25,32 @@ if TYPE_CHECKING:
 
     from sympy.core.function import Function
 
+
+class ExtractedSource(NamedTuple):
+    """Result of extracting function source with dependencies.
+
+    Attributes
+    ----------
+    main_source
+        Source code of the primary function
+    imports
+        Set of import statements needed (e.g., "import numpy as np")
+    dependencies
+        Dict mapping function names to their source code
+    """
+
+    main_source: str
+    imports: set[str]
+    dependencies: dict[str, str]
+
+
 __all__ = [
     "Context",
+    "ExtractedSource",
     "KNOWN_CONSTANTS",
     "KNOWN_FNS",
     "PARSE_ERROR",
+    "fn_to_source",
     "fn_to_sympy",
     "fn_to_sympy_outputs",
     "get_fn_ast",
@@ -314,13 +337,15 @@ def get_fn_source(fn: Callable) -> str:
         return dill.source.getsource(fn)
 
 
-def get_fn_ast(fn: Callable) -> ast.FunctionDef:
+def get_fn_ast(fn: Callable, *, strip_docstring: bool = False) -> ast.FunctionDef:
     """Get the source code of a function as an AST.
 
     Parameters
     ----------
     fn
         The function to convert to AST
+    strip_docstring
+        If True, remove the docstring node from the function body
 
     Returns
     -------
@@ -344,127 +369,15 @@ def get_fn_ast(fn: Callable) -> ast.FunctionDef:
     if not isinstance(fn_def := tree.body[0], ast.FunctionDef):
         msg = f"Expected a function definition but got {type(fn_def).__name__} — pass a named function, not a class or bare expression"
         raise TypeError(msg)
+    if (
+        strip_docstring
+        and fn_def.body
+        and isinstance(fn_def.body[0], ast.Expr)
+        and isinstance(fn_def.body[0].value, ast.Constant)
+        and isinstance(fn_def.body[0].value.value, str)
+    ):
+        fn_def.body = fn_def.body[1:]
     return fn_def
-
-
-def fn_to_sympy(
-    fn: Callable,
-    origin: str,
-    model_args: list[sympy.Symbol | sympy.Expr] | None = None,
-) -> sympy.Expr | None:
-    """Convert a python function to a sympy expression.
-
-    Parameters
-    ----------
-    fn
-        The function to convert
-    origin
-        Name of the original caller. Used for error messages.
-    model_args
-        Optional list of sympy symbols to substitute for function arguments
-
-    Returns
-    -------
-        Sympy expression equivalent to the function
-
-    Examples
-    --------
-        >>> def square_fn(x):
-        ...     return x**2
-        >>> import sympy
-        >>> fn_to_sympy(square_fn)
-        x**2
-        >>> # With model_args
-        >>> y = sympy.Symbol('y')
-        >>> fn_to_sympy(square_fn, [y])
-        y**2
-
-    """
-    try:
-        fn_def = get_fn_ast(fn)
-        fn_args = [str(arg.arg) for arg in fn_def.args.args]
-
-        sympy_expr = _handle_fn_body(
-            fn_def.body,
-            ctx=Context(
-                symbols={name: sympy.Symbol(name) for name in fn_args},
-                caller=fn,
-                parent_module=inspect.getmodule(fn),
-                origin=origin,
-                modules={},
-                fns={},
-            ),
-        )
-        if sympy_expr is None:
-            return None
-        # Evaluated fns and floats from attributes
-        if isinstance(sympy_expr, float):
-            return sympy.Float(sympy_expr)
-        if model_args is not None and len(model_args):
-            sympy_expr = sympy_expr.subs(dict(zip(fn_args, model_args, strict=True)))
-        return cast(sympy.Expr, sympy_expr)
-
-    except (TypeError, ValueError, NotImplementedError) as e:
-        msg = f"Failed parsing function of {origin}"
-        _LOGGER.warning(msg)
-        _LOGGER.debug("", exc_info=e)
-        return None
-
-
-def fn_to_sympy_outputs(
-    fn: Callable,
-    origin: str,
-    model_args: list[sympy.Symbol | sympy.Expr] | None = None,
-) -> list[sympy.Expr] | None:
-    """Convert a (possibly multi-output) function to a list of sympy expressions.
-
-    Like :func:`fn_to_sympy` but returns one expression per return value.
-    Single-output functions return a one-element list.  Tuple-returning
-    functions return one element per tuple component.
-
-    Parameters
-    ----------
-    fn
-        The function to convert
-    origin
-        Name of the original caller. Used for error messages.
-    model_args
-        Optional list of sympy symbols to substitute for function arguments
-
-    Returns
-    -------
-    list[sympy.Expr] | None
-        List of sympy expressions, one per output, or None on failure
-
-    """
-    try:
-        fn_def = get_fn_ast(fn)
-        fn_args = [str(arg.arg) for arg in fn_def.args.args]
-
-        ctx = Context(
-            symbols={name: sympy.Symbol(name) for name in fn_args},
-            caller=fn,
-            parent_module=inspect.getmodule(fn),
-            origin=origin,
-            modules={},
-            fns={},
-        )
-
-        exprs = _handle_fn_body_outputs(fn_def.body, ctx)
-        if exprs is None:
-            return None
-
-        if model_args is not None and len(model_args):
-            subs = dict(zip(fn_args, model_args, strict=True))
-            exprs = [cast(sympy.Expr, e.subs(subs)) for e in exprs]
-
-    except (TypeError, ValueError, NotImplementedError) as e:
-        msg = f"Failed parsing function of {origin}"
-        _LOGGER.warning(msg)
-        _LOGGER.debug("", exc_info=e)
-        return None
-    else:
-        return exprs
 
 
 def _handle_fn_body_outputs(
@@ -950,3 +863,396 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
         origin=ctx.origin,
         model_args=model_args,
     )
+
+
+def _lambda_to_def(source: str, fn_name: str, args: list[str]) -> str:
+    """Convert a lambda expression found in *source* to a named function."""
+    tree = ast.parse(source)
+    lambda_node = next(
+        (node for node in ast.walk(tree) if isinstance(node, ast.Lambda)),
+        None,
+    )
+    if lambda_node is None:
+        msg = f"Could not find a lambda expression in the source of '{fn_name}' — the source may belong to a different statement or the lambda is not at module scope"
+        raise ValueError(msg)
+
+    fn_args = ast.arguments(
+        posonlyargs=[],
+        args=[
+            ast.arg(arg=a, annotation=ast.Name(id="float", ctx=ast.Load()))
+            for a in args
+        ],
+        vararg=None,
+        kwonlyargs=[],
+        kw_defaults=[],
+        kwarg=None,
+        defaults=[],
+    )
+    fn_def = ast.FunctionDef(
+        name=fn_name,
+        args=fn_args,
+        body=[ast.Return(value=lambda_node.body)],
+        decorator_list=[],
+        returns=ast.Name(id="float", ctx=ast.Load()),
+        type_params=[],
+    )
+    ast.fix_missing_locations(fn_def)
+    return ast.unparse(fn_def)
+
+
+def _get_function_source(
+    fn: Callable, fn_name: str, args: list[str], *, strip_docstring: bool = False
+) -> str:
+    """Retrieve source code for a function using inspect or dill.
+
+    Parameters
+    ----------
+    fn
+        The function to extract
+    fn_name
+        Name of the function (for error messages)
+    args
+        Argument names (used when converting lambdas to named functions)
+    strip_docstring
+        If True, remove the docstring from the returned source
+
+    Returns
+    -------
+    Str
+        Dedented source code
+
+    Raises
+    ------
+    ValueError
+        If source cannot be retrieved
+    """
+    try:
+        raw = inspect.getsource(fn)
+    except (OSError, TypeError):
+        if dill is None:
+            msg = (
+                f"Cannot retrieve source for '{fn_name}': "
+                "inspect.getsource() failed and dill is not installed."
+                " Install dill to support dynamically-defined functions"
+            )
+            raise ValueError(msg) from None
+        try:
+            raw = dill.source.getsource(fn)
+        except (OSError, TypeError) as exc:
+            msg = (
+                f"Cannot retrieve source for '{fn_name}': "
+                "both inspect.getsource() and dill.source.getsource() failed"
+                " - the function may be defined in a REPL or via exec()"
+            )
+            raise ValueError(msg) from exc
+
+    source = textwrap.dedent(raw)
+
+    if fn.__name__ == "<lambda>":
+        source = _lambda_to_def(source, fn_name, args)
+
+    if strip_docstring:
+        tree = ast.parse(source)
+        if (
+            tree.body
+            and isinstance(fn_def := tree.body[0], ast.FunctionDef)
+            and fn_def.body
+            and isinstance(fn_def.body[0], ast.Expr)
+            and isinstance(fn_def.body[0].value, ast.Constant)
+            and isinstance(fn_def.body[0].value.value, str)
+        ):
+            fn_def.body = fn_def.body[1:]
+            source = ast.unparse(tree)
+
+    return source
+
+
+def _extract_names_from_source(source: str) -> set[str]:
+    """Extract all referenced names from function source.
+
+    Parameters
+    ----------
+    source
+        Source code string
+
+    Returns
+    -------
+    Set[str]
+        Set of all identifiers referenced in the code
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            names.add(node.id)
+            # For module.function calls, extract the base module name
+        elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            names.add(node.value.id)
+
+    return names
+
+
+def _get_function_module(fn: Callable) -> str | None:
+    """Get the module name where a function is defined.
+
+    Parameters
+    ----------
+    fn
+        The function
+
+    Returns
+    -------
+    Str | None
+        Module name or None if not found
+    """
+    return getattr(fn, "__module__", None)
+
+
+def fn_to_source(
+    fn: Callable,
+    fn_name: str,
+    args: list[str],
+    *,
+    strip_docstring: bool = False,
+) -> ExtractedSource:
+    """Extract function source with recursive dependency discovery.
+
+    Recursively finds and extracts all user-defined functions called by the
+    target function, along with necessary import statements. Avoids infinite
+    recursion by tracking visited functions.
+
+    Parameters
+    ----------
+    fn
+        The function to extract
+    fn_name
+        Name of the function
+
+    Returns
+    -------
+    ExtractedSource
+        Tuple of (main_source, imports, dependencies) where:
+        - main_source: dedented source of the primary function
+        - imports: set of import statements (e.g., "import numpy as np")
+        - dependencies: dict mapping dependency function names to their source
+
+    Raises
+    ------
+    ValueError
+        If source cannot be retrieved for the primary function
+    """
+    main_source = _get_function_source(
+        fn, fn_name, args=args, strip_docstring=strip_docstring
+    )
+    imports: set[str] = set()
+    dependencies: dict[str, str] = {}
+    visited: set[str] = set()
+
+    # Get the module where the main function is defined
+    main_module = _get_function_module(fn)
+
+    def _extract_dependencies(
+        func: Callable, func_name: str, max_depth: int = 10
+    ) -> None:
+        """Recursively extract dependencies.
+
+        Parameters
+        ----------
+        func
+            Function to analyze
+        func_name
+            Name of function
+        max_depth
+            Maximum recursion depth to prevent infinite loops
+        """
+        if max_depth <= 0 or func_name in visited:
+            return
+
+        visited.add(func_name)
+
+        try:
+            source = _get_function_source(
+                func, func_name, [], strip_docstring=strip_docstring
+            )
+        except ValueError:
+            # If we can't get the source, skip this dependency
+            return
+
+        # Extract referenced names
+        referenced_names = _extract_names_from_source(source)
+
+        # Try to find and recurse into called functions
+        func_globals = getattr(func, "__globals__", {})
+
+        for name in referenced_names:
+            if name in visited or name in ("self", "cls"):
+                continue
+
+            if name in func_globals:
+                obj = func_globals[name]
+
+                # Module reference (e.g. `import numpy as np`) — emit import stmt
+                if inspect.ismodule(obj):
+                    mod_name = getattr(obj, "__name__", None)
+                    if mod_name and mod_name not in sys.stdlib_module_names:
+                        if name == mod_name:
+                            imports.add(f"import {mod_name}")
+                        else:
+                            imports.add(f"import {mod_name} as {name}")
+                # Check if it's a user-defined function (not builtin/stdlib)
+                elif callable(obj) and hasattr(obj, "__module__"):
+                    obj_module = obj.__module__
+                    # Only include if it's from the same module or user code
+                    if obj_module == main_module or (
+                        obj_module and not obj_module.startswith("builtins")
+                    ):
+                        try:
+                            dep_source = _get_function_source(
+                                obj, name, [], strip_docstring=strip_docstring
+                            )
+                            if name not in dependencies:
+                                dependencies[name] = dep_source
+                                # Recurse into this dependency
+                                _extract_dependencies(obj, name, max_depth - 1)
+
+                            # Track imports for the dependency module
+                            if obj_module and obj_module not in (
+                                main_module,
+                                "__main__",
+                            ):
+                                imports.add(f"import {obj_module}")
+                        except ValueError:
+                            pass
+
+    # Extract dependencies from the main function
+    _extract_dependencies(fn, fn_name)
+
+    return ExtractedSource(
+        main_source=main_source,
+        imports=imports,
+        dependencies=dependencies,
+    )
+
+
+def fn_to_sympy(
+    fn: Callable,
+    origin: str,
+    model_args: list[sympy.Symbol | sympy.Expr] | None = None,
+) -> sympy.Expr | None:
+    """Convert a python function to a sympy expression.
+
+    Parameters
+    ----------
+    fn
+        The function to convert
+    origin
+        Name of the original caller. Used for error messages.
+    model_args
+        Optional list of sympy symbols to substitute for function arguments
+
+    Returns
+    -------
+        Sympy expression equivalent to the function
+
+    Examples
+    --------
+        >>> def square_fn(x):
+        ...     return x**2
+        >>> import sympy
+        >>> fn_to_sympy(square_fn)
+        x**2
+        >>> # With model_args
+        >>> y = sympy.Symbol('y')
+        >>> fn_to_sympy(square_fn, [y])
+        y**2
+
+    """
+    try:
+        fn_def = get_fn_ast(fn)
+        fn_args = [str(arg.arg) for arg in fn_def.args.args]
+
+        sympy_expr = _handle_fn_body(
+            fn_def.body,
+            ctx=Context(
+                symbols={name: sympy.Symbol(name) for name in fn_args},
+                caller=fn,
+                parent_module=inspect.getmodule(fn),
+                origin=origin,
+                modules={},
+                fns={},
+            ),
+        )
+        if sympy_expr is None:
+            return None
+        # Evaluated fns and floats from attributes
+        if isinstance(sympy_expr, float):
+            return sympy.Float(sympy_expr)
+        if model_args is not None and len(model_args):
+            sympy_expr = sympy_expr.subs(dict(zip(fn_args, model_args, strict=True)))
+        return cast(sympy.Expr, sympy_expr)
+
+    except (TypeError, ValueError, NotImplementedError) as e:
+        msg = f"Failed parsing function of {origin}"
+        _LOGGER.warning(msg)
+        _LOGGER.debug("", exc_info=e)
+        return None
+
+
+def fn_to_sympy_outputs(
+    fn: Callable,
+    origin: str,
+    model_args: list[sympy.Symbol | sympy.Expr] | None = None,
+) -> list[sympy.Expr] | None:
+    """Convert a (possibly multi-output) function to a list of sympy expressions.
+
+    Like :func:`fn_to_sympy` but returns one expression per return value.
+    Single-output functions return a one-element list.  Tuple-returning
+    functions return one element per tuple component.
+
+    Parameters
+    ----------
+    fn
+        The function to convert
+    origin
+        Name of the original caller. Used for error messages.
+    model_args
+        Optional list of sympy symbols to substitute for function arguments
+
+    Returns
+    -------
+    list[sympy.Expr] | None
+        List of sympy expressions, one per output, or None on failure
+
+    """
+    try:
+        fn_def = get_fn_ast(fn)
+        fn_args = [str(arg.arg) for arg in fn_def.args.args]
+
+        ctx = Context(
+            symbols={name: sympy.Symbol(name) for name in fn_args},
+            caller=fn,
+            parent_module=inspect.getmodule(fn),
+            origin=origin,
+            modules={},
+            fns={},
+        )
+
+        exprs = _handle_fn_body_outputs(fn_def.body, ctx)
+        if exprs is None:
+            return None
+
+        if model_args is not None and len(model_args):
+            subs = dict(zip(fn_args, model_args, strict=True))
+            exprs = [cast(sympy.Expr, e.subs(subs)) for e in exprs]
+
+    except (TypeError, ValueError, NotImplementedError) as e:
+        msg = f"Failed parsing function of {origin}"
+        _LOGGER.warning(msg)
+        _LOGGER.debug("", exc_info=e)
+        return None
+    else:
+        return exprs

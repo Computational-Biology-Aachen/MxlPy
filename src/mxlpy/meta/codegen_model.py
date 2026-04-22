@@ -1,9 +1,13 @@
-"""Module to export models as code."""
+"""Generate mxlpy code from a model.
+
+See Also
+--------
+`mxlpy.meta.codegen_mxlpy_raw` for a version that doesn't use SymPy.
+"""
 
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING, Any, cast
 
 import sympy
@@ -21,6 +25,8 @@ from mxlpy.meta.sympy_tools import (
     sympy_to_inline_py,
     sympy_to_inline_rust,
 )
+from mxlpy.meta.utils import _to_valid_identifier
+from mxlpy.types import Derived, Reaction, Readout
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -47,28 +53,99 @@ __all__ = [
 _LOGGER = logging.getLogger(__name__)
 
 
-def _to_valid_identifier(name: str) -> str:
-    """Convert an arbitrary string to a valid identifier.
-
-    Uses C99 identifier rules ([a-zA-Z_][a-zA-Z0-9_]*), which are the
-    strictest common denominator across all supported target languages
-    (C, C++, Rust, TypeScript, Julia, MATLAB/Octave, Python).
+def _collect_transitive_deps(
+    requested: set[str],
+    derived: dict[str, Derived],
+    reactions: dict[str, Reaction],
+    readouts: dict[str, Readout],
+    leaf_names: set[str],
+) -> set[str]:
+    """BFS to find all component names needed to compute requested outputs.
 
     Parameters
     ----------
-    name
-        Original component name from the model
+    requested
+        Names of the desired output components
+    derived
+        All dynamic derived values in the model
+    reactions
+        All reactions in the model
+    readouts
+        All readouts in the model
+    leaf_names
+        Names that are already available (variables, parameters, "time")
 
     Returns
     -------
-    str
-        Sanitized identifier safe for use in all target languages
+    set[str]
+        All component names (including intermediates) required to compute
+        every name in ``requested``
 
     """
-    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
-    if sanitized and sanitized[0].isdigit():
-        sanitized = "_" + sanitized
-    return sanitized or "_"
+    all_computable: dict[str, Derived | Reaction | Readout] = {
+        **derived,
+        **reactions,
+        **readouts,
+    }
+    needed: set[str] = set()
+    queue = [n for n in requested if n in all_computable]
+    while queue:
+        name = queue.pop()
+        if name in needed:
+            continue
+        needed.add(name)
+        queue.extend(
+            dep
+            for dep in all_computable[name].args
+            if dep not in leaf_names and dep not in needed and dep in all_computable
+        )
+    return needed
+
+
+def _sanitize_names(): ...
+
+
+def _flush_ready_surrogates(
+    source,
+    surrogates_raw,
+    emitted_surrogates,
+    available,
+    sur_exprs,
+    sym_subs,
+    name_map,
+    assignment_template,
+    sympy_inline_fn,
+    diff_eqs,
+) -> None:
+    # Greedy: keep emitting surrogates whose args are all available
+    progress = True
+    while progress:
+        progress = False
+        for sur_name, surrogate in surrogates_raw.items():
+            if sur_name in emitted_surrogates:
+                continue
+            if not all(arg in available for arg in surrogate.args):
+                continue
+            emitted_surrogates.add(sur_name)
+            progress = True
+            exprs = sur_exprs[sur_name]
+            if exprs is None:
+                continue
+            for output_name, out_expr in zip(surrogate.outputs, exprs, strict=True):
+                final_expr = (
+                    cast(sympy.Expr, out_expr.subs(sym_subs)) if sym_subs else out_expr
+                )
+                source.append(
+                    assignment_template.format(
+                        k=name_map[output_name], v=sympy_inline_fn(final_expr)
+                    )
+                )
+                available.add(output_name)
+                if output_name in surrogate.stoichiometries:
+                    for var_name, factor in surrogate.stoichiometries[
+                        output_name
+                    ].items():
+                        diff_eqs.setdefault(var_name, {})[output_name] = factor
 
 
 def _generate_model_code(
@@ -164,41 +241,19 @@ def _generate_model_code(
     available: set[str] = set(variables) | set(parameters) | {"time"}
     emitted_surrogates: set[str] = set()
 
-    def _flush_ready_surrogates() -> None:
-        # Greedy: keep emitting surrogates whose args are all available
-        progress = True
-        while progress:
-            progress = False
-            for sur_name, surrogate in surrogates_raw.items():
-                if sur_name in emitted_surrogates:
-                    continue
-                if not all(arg in available for arg in surrogate.args):
-                    continue
-                emitted_surrogates.add(sur_name)
-                progress = True
-                exprs = sur_exprs[sur_name]
-                if exprs is None:
-                    continue
-                for output_name, out_expr in zip(surrogate.outputs, exprs, strict=True):
-                    final_expr = (
-                        cast(sympy.Expr, out_expr.subs(sym_subs))
-                        if sym_subs
-                        else out_expr
-                    )
-                    source.append(
-                        assignment_template.format(
-                            k=name_map[output_name], v=sympy_inline_fn(final_expr)
-                        )
-                    )
-                    available.add(output_name)
-                    if output_name in surrogate.stoichiometries:
-                        for var_name, factor in surrogate.stoichiometries[
-                            output_name
-                        ].items():
-                            diff_eqs.setdefault(var_name, {})[output_name] = factor
-
     for name, derived in derived_raw.items():
-        _flush_ready_surrogates()
+        _flush_ready_surrogates(
+            source,
+            surrogates_raw,
+            emitted_surrogates,
+            available,
+            sur_exprs,
+            sym_subs,
+            name_map,
+            assignment_template,
+            sympy_inline_fn,
+            diff_eqs,
+        )
         expr = custom_fns.get(name)
         if expr is None:
             expr = fn_to_sympy(
@@ -217,7 +272,18 @@ def _generate_model_code(
         available.add(name)
 
     for name, rxn in reactions_raw.items():
-        _flush_ready_surrogates()
+        _flush_ready_surrogates(
+            source,
+            surrogates_raw,
+            emitted_surrogates,
+            available,
+            sur_exprs,
+            sym_subs,
+            name_map,
+            assignment_template,
+            sympy_inline_fn,
+            diff_eqs,
+        )
         expr = custom_fns.get(name)
         if expr is None:
             try:
@@ -241,7 +307,18 @@ def _generate_model_code(
             diff_eqs.setdefault(var_name, {})[name] = factor
 
     # Emit any surrogates whose args only became satisfied after all derived+reactions
-    _flush_ready_surrogates()
+    _flush_ready_surrogates(
+        source,
+        surrogates_raw,
+        emitted_surrogates,
+        available,
+        sur_exprs,
+        sym_subs,
+        name_map,
+        assignment_template,
+        sympy_inline_fn,
+        diff_eqs,
+    )
 
     for variable, stoich in diff_eqs.items():
         stoich_expr = stoichiometries_to_sympy(origin=variable, stoichs=stoich)
@@ -262,51 +339,6 @@ def _generate_model_code(
 
     # print(source)
     return "\n".join(source)
-
-
-def _collect_transitive_deps(
-    requested: set[str],
-    derived: dict[str, Any],
-    reactions: dict[str, Any],
-    readouts: dict[str, Any],
-    leaf_names: set[str],
-) -> set[str]:
-    """BFS to find all component names needed to compute requested outputs.
-
-    Parameters
-    ----------
-    requested
-        Names of the desired output components
-    derived
-        All dynamic derived values in the model
-    reactions
-        All reactions in the model
-    readouts
-        All readouts in the model
-    leaf_names
-        Names that are already available (variables, parameters, "time")
-
-    Returns
-    -------
-    set[str]
-        All component names (including intermediates) required to compute
-        every name in ``requested``
-
-    """
-    all_computable: dict[str, Any] = {**derived, **reactions, **readouts}
-    needed: set[str] = set()
-    queue = [n for n in requested if n in all_computable]
-    while queue:
-        name = queue.pop()
-        if name in needed:
-            continue
-        needed.add(name)
-        queue.extend(
-            dep
-            for dep in all_computable[name].args
-            if dep not in leaf_names and dep not in needed and dep in all_computable
-        )
-    return needed
 
 
 def _generate_components_code(

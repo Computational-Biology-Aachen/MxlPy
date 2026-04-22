@@ -92,6 +92,7 @@ class SymbolicRepr:
     variables: dict[str, SymbolicVariable] = field(default_factory=dict)
     parameters: dict[str, SymbolicParameter] = field(default_factory=dict)
     derived: dict[str, SymbolicFn] = field(default_factory=dict)
+    readouts: dict[str, SymbolicFn] = field(default_factory=dict)
     reactions: dict[str, SymbolicReaction] = field(default_factory=dict)
 
     def __repr__(self) -> str:
@@ -148,7 +149,9 @@ def _to_symbolic_repr(model: Model) -> SymbolicRepr:
 
 
 def _codegen_variable(
-    k: str, var: SymbolicVariable, functions: dict[str, tuple[sympy.Expr, list[str]]]
+    k: str,
+    var: SymbolicVariable,
+    functions: dict[str, tuple[sympy.Expr, list[str]]],
 ) -> str:
     if isinstance(init := var.value, SymbolicFn):
         fn_name = f"init_{init.fn_name}"
@@ -182,7 +185,9 @@ def _codegen_parameter(
 
 
 def generate_mxlpy_code_from_symbolic_repr(
-    model: SymbolicRepr, imports: list[str] | None = None
+    model: SymbolicRepr,
+    model_fn_name: str,
+    imports: list[str] | None = None,
 ) -> str:
     """Generate MxlPy source code from symbolic representation.
 
@@ -273,7 +278,7 @@ def generate_mxlpy_code_from_symbolic_repr(
         f"from mxlpy import {', '.join(mxlpy_imports)}\n",
         functions_source,
         "",
-        "def create_model() -> Model:",
+        f"def {model_fn_name}() -> Model:",
         "    return (",
         "        Model()",
     ]
@@ -289,7 +294,12 @@ def generate_mxlpy_code_from_symbolic_repr(
     return "\n".join(source)
 
 
-def generate_mxlpy_code(model: Model) -> str:
+def generate_mxlpy_code(
+    model: Model,
+    *,
+    model_fn_name: str = "create_model",
+    imports: list[str] | None = None,
+) -> str:
     """Generate a mxlpy model from a model.
 
     Parameters
@@ -303,4 +313,8 @@ def generate_mxlpy_code(model: Model) -> str:
         Python source code that reconstructs the model
 
     """
-    return generate_mxlpy_code_from_symbolic_repr(_to_symbolic_repr(model))
+    return generate_mxlpy_code_from_symbolic_repr(
+        _to_symbolic_repr(model),
+        model_fn_name=model_fn_name,
+        imports=imports,
+    )

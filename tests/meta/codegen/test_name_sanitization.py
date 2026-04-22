@@ -17,11 +17,11 @@ from mxlpy.meta import (
     generate_model_code_ts,
 )
 from mxlpy.meta.codegen_model import (
-    _to_valid_identifier,
     generate_model_code_c,
     generate_model_code_cpp,
     generate_model_code_matlab,
 )
+from mxlpy.meta.utils import _to_valid_identifier
 
 # ---------------------------------------------------------------------------
 # Unit tests for _to_valid_identifier
