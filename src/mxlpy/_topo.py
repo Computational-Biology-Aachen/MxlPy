@@ -5,6 +5,15 @@ from queue import Empty, SimpleQueue
 
 from wadler_lindig import pformat
 
+__all__ = [
+    "CircularDependencyError",
+    "Dependency",
+    "MissingDependenciesError",
+    "get_all_dependencies_of",
+    "sort_all",
+    "sort_dependencies",
+]
+
 
 class CircularDependencyError(Exception):
     """Raised when dependencies cannot be sorted topologically.
@@ -178,7 +187,6 @@ def get_all_dependencies_of(
     leaves: set[str],
     dependees: dict[str, set[str]],
 ):
-
     needed: set[str] = set()
     queue: SimpleQueue[str] = SimpleQueue()
     for name in requested:

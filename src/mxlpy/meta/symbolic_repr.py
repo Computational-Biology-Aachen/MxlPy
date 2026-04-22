@@ -24,11 +24,14 @@ if TYPE_CHECKING:
     from mxlpy.model import Model
 
 __all__ = [
+    "Err",
     "SymbolicFn",
     "SymbolicParameter",
     "SymbolicReaction",
     "SymbolicRepr",
+    "SymbolicSurrogate",
     "SymbolicVariable",
+    "model_to_symbolic_repr",
 ]
 
 _LOGGER = logging.getLogger()
