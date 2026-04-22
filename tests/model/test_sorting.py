@@ -1,7 +1,7 @@
 import pytest
 
 from mxlpy import Model
-from mxlpy.model import CircularDependencyError, MissingDependenciesError
+from mxlpy._topo import CircularDependencyError, MissingDependenciesError
 
 
 def moiety_1(x1: float, tot: float) -> float:

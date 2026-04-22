@@ -102,9 +102,6 @@ def _collect_transitive_deps(
     return needed
 
 
-def _sanitize_names(): ...
-
-
 def _flush_ready_surrogates(
     source,
     surrogates_raw,

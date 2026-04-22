@@ -12,7 +12,6 @@ import inspect
 import itertools as it
 import logging
 from dataclasses import dataclass, field
-from queue import Empty, SimpleQueue
 from typing import TYPE_CHECKING, Self, cast
 
 import numpy as np
@@ -20,7 +19,7 @@ import pandas as pd
 import sympy
 from wadler_lindig import pformat
 
-from mxlpy import fns
+from mxlpy import _topo, fns
 from mxlpy.meta.source_tools import fn_to_sympy
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
@@ -49,7 +48,6 @@ from mxlpy.unit_inference import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
-    from inspect import FullArgSpec
 
     from sympy.physics.units.quantities import Quantity
 
@@ -59,11 +57,8 @@ LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "ArityMismatchError",
-    "CircularDependencyError",
-    "Dependency",
     "Failure",
     "LOGGER",
-    "MissingDependenciesError",
     "Model",
     "ModelCache",
     "TableView",
@@ -148,60 +143,6 @@ class TableView:
         return self.data.to_markdown()
 
 
-@dataclass
-class Dependency:
-    """Container class for building dependency tree."""
-
-    name: str
-    required: set[str]
-    provided: set[str]
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-class MissingDependenciesError(Exception):
-    """Raised when dependencies cannot be sorted topologically.
-
-    This typically indicates circular dependencies in model components.
-    """
-
-    def __init__(self, not_solvable: dict[str, list[str]]) -> None:
-        """Initialise exception."""
-        missing_by_module = "\n".join(f"\t{k}: {v}" for k, v in not_solvable.items())
-        msg = (
-            f"Dependencies cannot be solved. Missing dependencies:\n{missing_by_module}"
-        )
-        super().__init__(msg)
-
-
-class CircularDependencyError(Exception):
-    """Raised when dependencies cannot be sorted topologically.
-
-    This typically indicates circular dependencies in model components.
-    """
-
-    def __init__(
-        self,
-        missing: dict[str, set[str]],
-    ) -> None:
-        """Initialise exception."""
-        missing_by_module = "\n".join(f"\t{k}: {v}" for k, v in missing.items())
-        msg = (
-            f"Exceeded max iterations on sorting dependencies.\n"
-            "Check if there are circular references. "
-            "Missing dependencies:\n"
-            f"{missing_by_module}"
-        )
-        super().__init__(msg)
-
-
-def _get_all_args(argspec: FullArgSpec) -> list[str]:
-    kwonly = [] if argspec.kwonlyargs is None else argspec.kwonlyargs
-    return argspec.args + kwonly
-
-
 def _check_function_arity(function: Callable, arity: int) -> bool:
     """Check if the amount of arguments given fits the argument count of the function."""
     argspec = inspect.getfullargspec(function)
@@ -266,94 +207,6 @@ def _invalidate_cache(method: Callable[Param, RetType]) -> Callable[Param, RetTy
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore
-
-
-def _check_if_is_sortable(
-    available: set[str],
-    elements: list[Dependency],
-) -> None:
-    all_available = available.copy()
-    for dependency in elements:
-        all_available.update(dependency.provided)
-
-    # Check if it can be sorted in the first place
-    not_solvable = {}
-    for dependency in elements:
-        if not dependency.required.issubset(all_available):
-            not_solvable[dependency.name] = sorted(
-                dependency.required.difference(all_available)
-            )
-
-    if not_solvable:
-        raise MissingDependenciesError(not_solvable=not_solvable)
-
-
-def _sort_dependencies(
-    available: set[str],
-    elements: list[Dependency],
-) -> list[str]:
-    """Sort model elements topologically based on their dependencies.
-
-    Parameters
-    ----------
-    available
-        Set of available component names
-    elements
-        List of (name, dependencies, supplier) tuples to sort
-
-    Returns
-    -------
-        List of element names in dependency order
-
-    Raises
-    ------
-    SortError
-        If circular dependencies are detected
-
-    """
-    _check_if_is_sortable(available, elements)
-
-    order = []
-    # FIXME: what is the worst case here?
-    max_iterations = len(elements) ** 2
-    queue: SimpleQueue[Dependency] = SimpleQueue()
-    for dependency in elements:
-        queue.put(dependency)
-
-    last_name = None
-    i = 0
-    while True:
-        try:
-            dependency = queue.get_nowait()
-        except Empty:
-            break
-        if dependency.required.issubset(available):
-            available.update(dependency.provided)
-            order.append(dependency.name)
-
-        else:
-            if last_name == dependency.name:
-                order.append(last_name)
-                break
-            queue.put(dependency)
-            last_name = dependency.name
-        i += 1
-
-        # Failure case
-        if i > max_iterations:
-            unsorted = []
-            while True:
-                try:
-                    unsorted.append(queue.get_nowait().name)
-                except Empty:
-                    break
-
-            mod_to_args: dict[str, set[str]] = {
-                dependency.name: dependency.required for dependency in elements
-            }
-            missing = {k: mod_to_args[k].difference(available) for k in unsorted}
-            raise CircularDependencyError(missing=missing)
-    return order
 
 
 @dataclass(slots=True)
@@ -497,12 +350,14 @@ class Model:
         to_sort = (
             initial_assignments | self._derived | self._reactions | self._surrogates
         )
-        order = _sort_dependencies(
+        order = _topo.sort_dependencies(
             available=available,
             elements=[
-                Dependency(name=k, required=set(v.args), provided={k})
+                _topo.Dependency(name=k, required=set(v.args), provided={k})
                 if not isinstance(v, AbstractSurrogate)
-                else Dependency(name=k, required=set(v.args), provided=set(v.outputs))
+                else _topo.Dependency(
+                    name=k, required=set(v.args), provided=set(v.outputs)
+                )
                 for k, v in to_sort.items()
             ],
         )
