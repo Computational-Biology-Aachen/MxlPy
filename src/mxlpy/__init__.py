@@ -85,10 +85,12 @@ with contextlib.suppress(ImportError):
 if TYPE_CHECKING:
     from mxlpy.types import ArrayLike
 
+    from . import jax as mxl_jax
     from . import nn, npe, surrogates
 else:
     from lazy_import import lazy_module
 
+    mxl_jax = lazy_module("mxlpy.jax")
     nn = lazy_module("mxlpy.nn")
     npe = lazy_module("mxlpy.npe")
     surrogates = lazy_module("mxlpy.surrogates")
@@ -131,6 +133,7 @@ __all__ = [
     "make_protocol",
     "mc",
     "mca",
+    "mxl_jax",
     "nn",
     "npe",
     "plot",
