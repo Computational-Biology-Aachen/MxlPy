@@ -1,3 +1,5 @@
+"""Generate multi-language model code from a symbolic model representation."""
+
 import logging
 from collections.abc import Callable
 from typing import NamedTuple, Protocol, cast
@@ -50,6 +52,8 @@ _LOGGER = logging.getLogger()
 
 
 class NormalizedSymbolicModel(NamedTuple):
+    """Symbolic model normalized into flat assignment lists for code generation."""
+
     body: list[tuple[str, sympy.Expr]]
     extended: list[tuple[str, sympy.Expr]]
     diff_eqs: dict[str, sympy.Expr]
@@ -58,6 +62,8 @@ class NormalizedSymbolicModel(NamedTuple):
 
 
 class Codegen(NamedTuple):
+    """Generated code split into four sections ready for emission."""
+
     imports: str
     model: str
     derived: str
@@ -65,36 +71,80 @@ class Codegen(NamedTuple):
 
 
 class FnDeclTemplate(Protocol):
+    """Protocol for generating a language-specific function declaration string."""
+
     def __call__(
         self,
         name: str,
         args: list[tuple[str, str]],
         return_type: str,
-    ) -> str: ...
+    ) -> str:
+        """Generate a function declaration line.
+
+        Parameters
+        ----------
+        name
+            Function name.
+        args
+            (parameter_name, type_string) pairs.
+        return_type
+            Return type as a Python-domain type string.
+
+        Returns
+        -------
+        str
+            Function declaration in the target language.
+
+        """
+        ...
 
 
 class VariableUnpackingTemplate(Protocol):
-    def __call__(self, variables: list[str]) -> str: ...
+    """Protocol for generating a statement that unpacks the variables array."""
+
+    def __call__(self, variables: list[str]) -> str:
+        """Return a statement that destructures *variables* into named locals."""
+        ...
 
 
 class VariableAssignmentTemplate(Protocol):
-    def __call__(self, name: str, value: str) -> str: ...
+    """Protocol for generating a single variable assignment statement."""
+
+    def __call__(self, name: str, value: str) -> str:
+        """Return an assignment statement ``name = value`` in the target language."""
+        ...
 
 
 class ExprTemplate(Protocol):
-    def __call__(self, expr: sympy.Expr) -> str: ...
+    """Protocol for converting a SymPy expression to an inline code string."""
+
+    def __call__(self, expr: sympy.Expr) -> str:
+        """Render *expr* as an inline expression in the target language."""
+        ...
 
 
 class ListTemplate(Protocol):
-    def __call__(self, elements: list[str]) -> str: ...
+    """Protocol for rendering a list/array literal in the target language."""
+
+    def __call__(self, elements: list[str]) -> str:
+        """Return an array literal containing *elements*."""
+        ...
 
 
 class TupleTemplate(Protocol):
-    def __call__(self, elements: list[str]) -> str: ...
+    """Protocol for rendering a tuple literal in the target language."""
+
+    def __call__(self, elements: list[str]) -> str:
+        """Return a tuple literal containing *elements*."""
+        ...
 
 
 class ReturnTemplate(Protocol):
-    def __call__(self, variables: list[str]) -> str: ...
+    """Protocol for generating a return statement in the target language."""
+
+    def __call__(self, variables: list[str]) -> str:
+        """Return a return statement yielding *variables*."""
+        ...
 
 
 ###############################################################################
@@ -102,7 +152,8 @@ class ReturnTemplate(Protocol):
 ###############################################################################
 
 
-def _get_dependencies_and_leaves(model: Model, requested: set[str]):
+def _get_dependencies_and_leaves(model: Model, requested: set[str]) -> set[str]:
+    """Return all names reachable from *requested* via the model's dependency graph."""
     leaves = (
         {
             k
@@ -138,7 +189,8 @@ def _get_dependencies_and_leaves(model: Model, requested: set[str]):
     return _topo.get_all_dependencies_of(requested, leaves, dependees)
 
 
-def _get_order(self: Model):
+def _get_order(self: Model) -> list[str]:
+    """Return topological sort order of all model components."""
     base_parameter_values: dict[str, float] = {
         k: val
         for k, v in self._parameters.items()
@@ -431,7 +483,27 @@ def generate_mxlweb_code(
     tex_names: dict[str, str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     sliders: dict[str, dict[str, str]] | None = None,
-):
+) -> str:
+    """Generate TypeScript source for the mxlweb browser simulator.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for.
+    tex_names
+        Optional mapping of component names to LaTeX display names.
+    custom_fns
+        Optional custom sympy expressions to substitute for functions.
+    sliders
+        Optional mapping of parameter names to slider config dicts with
+        ``min``, ``max``, and ``step`` keys.
+
+    Returns
+    -------
+    str
+        TypeScript source that constructs a ``ModelBuilder`` for mxlweb.
+
+    """
     sliders = {} if sliders is None else sliders
     custom_fns = {} if custom_fns is None else custom_fns
     tex_names = {} if tex_names is None else tex_names
@@ -651,6 +723,31 @@ def generate_model_code_py(
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     typed: bool = False,
 ) -> Codegen:
+    """Transform the model into Python functions, inlining all function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for.
+    free_parameters
+        Parameter names to expose as extra function arguments rather than
+        inlining their values.
+    derived_to_calculate
+        Subset of derived component names to emit in the ``derived`` function.
+        All transitive dependencies are included automatically. ``None`` emits
+        everything.
+    custom_fns
+        Custom sympy expressions to substitute for named model functions.
+    typed
+        When ``True`` add ``float`` type annotations to local assignments.
+
+    Returns
+    -------
+    Codegen
+        Generated Python source split into imports, model, derived, and inits.
+
+    """
+
     def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:
         return (
             f"def {name}({', '.join(f'{k}: {t}' for k, t in args)}) -> {return_type}:"
@@ -696,6 +793,26 @@ def generate_model_code_ts(
     derived_to_calculate: list[str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
 ) -> Codegen:
+    """Transform the model into TypeScript functions, inlining all function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for.
+    free_parameters
+        Parameter names to expose as extra function arguments.
+    derived_to_calculate
+        Subset of derived component names to emit. ``None`` emits everything.
+    custom_fns
+        Custom sympy expressions to substitute for named model functions.
+
+    Returns
+    -------
+    Codegen
+        Generated TypeScript source split into imports, model, derived, and inits.
+
+    """
+
     def ts_type(t: str) -> str:
         return {
             "float": "number",
@@ -742,6 +859,26 @@ def generate_model_code_jl(
     derived_to_calculate: list[str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
 ) -> Codegen:
+    """Transform the model into Julia functions, inlining all function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for.
+    free_parameters
+        Parameter names to expose as extra function arguments.
+    derived_to_calculate
+        Subset of derived component names to emit. ``None`` emits everything.
+    custom_fns
+        Custom sympy expressions to substitute for named model functions.
+
+    Returns
+    -------
+    Codegen
+        Generated Julia source split into imports, model, derived, and inits.
+
+    """
+
     def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:  # noqa: ARG001
         args_str = ", ".join(k for k, _ in args)
         return f"function {name}({args_str})"
@@ -781,6 +918,28 @@ def generate_model_code_matlab(
     derived_to_calculate: list[str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
 ) -> Codegen:
+    """Transform the model into MATLAB/Octave functions, inlining all function calls.
+
+    The model function uses ``dydt`` as its output variable for compatibility
+    with MATLAB ODE solvers (``ode45``, ``ode15s``, etc.).
+
+    Parameters
+    ----------
+    model
+        Model to generate code for.
+    free_parameters
+        Parameter names to expose as extra function arguments.
+    derived_to_calculate
+        Subset of derived component names to emit. ``None`` emits everything.
+    custom_fns
+        Custom sympy expressions to substitute for named model functions.
+
+    Returns
+    -------
+    Codegen
+        Generated MATLAB source split into imports, model, derived, and inits.
+
+    """
     _fn_context: list[str] = ["model"]
 
     def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:  # noqa: ARG001
@@ -840,6 +999,28 @@ def generate_model_code_rs(
     derived_to_calculate: list[str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
 ) -> Codegen:
+    """Transform the model into Rust functions, inlining all function calls.
+
+    Array sizes are determined at call time and embedded in the function
+    signatures as const generics (e.g. ``[f64; N]``).
+
+    Parameters
+    ----------
+    model
+        Model to generate code for.
+    free_parameters
+        Parameter names to expose as extra function arguments.
+    derived_to_calculate
+        Subset of derived component names to emit. ``None`` emits everything.
+    custom_fns
+        Custom sympy expressions to substitute for named model functions.
+
+    Returns
+    -------
+    Codegen
+        Generated Rust source split into imports, model, derived, and inits.
+
+    """
     _free_pars = [] if free_parameters is None else free_parameters
     _custom_fns = {} if custom_fns is None else custom_fns
     n_vars = len(model.get_initial_conditions())
@@ -912,6 +1093,29 @@ def generate_model_code_cpp(
     derived_to_calculate: list[str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
 ) -> Codegen:
+    """Transform the model into C++17 functions, inlining all function calls.
+
+    Uses ``std::array<double, N>`` for fixed-size arrays and
+    ``std::pair`` for the inits return. Requires ``<array>``, ``<cmath>``,
+    and ``<utility>`` headers (included in ``Codegen.imports``).
+
+    Parameters
+    ----------
+    model
+        Model to generate code for.
+    free_parameters
+        Parameter names to expose as extra function arguments.
+    derived_to_calculate
+        Subset of derived component names to emit. ``None`` emits everything.
+    custom_fns
+        Custom sympy expressions to substitute for named model functions.
+
+    Returns
+    -------
+    Codegen
+        Generated C++ source split into imports, model, derived, and inits.
+
+    """
     _free_pars = [] if free_parameters is None else free_parameters
     _custom_fns = {} if custom_fns is None else custom_fns
     n_vars = len(model.get_initial_conditions())
