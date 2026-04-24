@@ -3,7 +3,6 @@ from collections.abc import Callable
 from typing import NamedTuple, Protocol, cast
 
 import sympy
-from matplotlib.table import CustomCell
 
 from mxlpy import _topo
 from mxlpy.meta.symbolic_repr import (
@@ -31,6 +30,7 @@ __all__ = [
     "VariableAssignmentTemplate",
     "VariableUnpackingTemplate",
     "generate_model_code_py",
+    "generate_mxlweb_code",
 ]
 
 _LOGGER = logging.getLogger()

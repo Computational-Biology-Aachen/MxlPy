@@ -1,5 +1,7 @@
 import re
 
+__all__ = ["valid_identifier", "valid_tex_identifier"]
+
 
 def valid_identifier(name: str) -> str:
     """Convert an arbitrary string to a valid identifier.
