@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import sympy
 from wadler_lindig import pformat
 
-from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols
+from mxlpy.meta.sympy_tools import fn_to_sympy_expr, list_of_symbols
 from mxlpy.types import Derived, RateFn
 
 if TYPE_CHECKING:
@@ -120,7 +120,7 @@ def _fn_to_latex(
     )
     replacements = {k: _name_to_latex(f"_x{i}") for i, k in enumerate(long_names)}
 
-    expr = fn_to_sympy(
+    expr = fn_to_sympy_expr(
         fn,
         origin=origin,
         model_args=list_of_symbols([replacements.get(k, k) for k in tex_names]),
@@ -324,7 +324,7 @@ def _stoichs_to_latex(
                     for i, k in enumerate(long_names, len(replacements))
                 }
             )
-            sympy_fn = fn_to_sympy(
+            sympy_fn = fn_to_sympy_expr(
                 rxn_stoich.fn,
                 origin=rxn_name,
                 model_args=list_of_symbols([replacements.get(k, k) for k in arg_names]),

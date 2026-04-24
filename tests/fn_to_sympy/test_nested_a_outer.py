@@ -29,18 +29,18 @@ def fn_call_l3() -> float:
 
 
 def test_nested_fn_call() -> None:
-    assert source_tools.fn_to_sympy(fn_call_l1, "test") == sympy.Float(1.0)
-    assert source_tools.fn_to_sympy(fn_call_l2, "test") == sympy.Float(2.0)
-    assert source_tools.fn_to_sympy(fn_call_l3, "test") == sympy.Float(3.0)
+    assert source_tools.fn_to_sympy_expr(fn_call_l1, "test") == sympy.Float(1.0)
+    assert source_tools.fn_to_sympy_expr(fn_call_l2, "test") == sympy.Float(2.0)
+    assert source_tools.fn_to_sympy_expr(fn_call_l3, "test") == sympy.Float(3.0)
 
 
 def test_attr() -> None:
-    assert source_tools.fn_to_sympy(attr_l1, "test") == sympy.Float(1.0)
-    assert source_tools.fn_to_sympy(attr_l2, "test") == sympy.Float(2.0)
-    assert source_tools.fn_to_sympy(attr_l3, "test") == sympy.Float(3.0)
+    assert source_tools.fn_to_sympy_expr(attr_l1, "test") == sympy.Float(1.0)
+    assert source_tools.fn_to_sympy_expr(attr_l2, "test") == sympy.Float(2.0)
+    assert source_tools.fn_to_sympy_expr(attr_l3, "test") == sympy.Float(3.0)
 
 
 def test_direct_fn_attr() -> None:
-    assert source_tools.fn_to_sympy(a.fn_a, "test") == sympy.Float(1.0)
-    assert source_tools.fn_to_sympy(a.b.fn_b, "test") == sympy.Float(2.0)
-    assert source_tools.fn_to_sympy(a.b.c.fn_c, "test") == sympy.Float(3.0)
+    assert source_tools.fn_to_sympy_expr(a.fn_a, "test") == sympy.Float(1.0)
+    assert source_tools.fn_to_sympy_expr(a.b.fn_b, "test") == sympy.Float(2.0)
+    assert source_tools.fn_to_sympy_expr(a.b.c.fn_c, "test") == sympy.Float(3.0)

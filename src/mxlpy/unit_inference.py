@@ -10,7 +10,7 @@ import sympy
 from sympy.physics.units.prefixes import Prefix
 from wadler_lindig import pformat
 
-from mxlpy.meta.source_tools import fn_to_sympy
+from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import list_of_symbols
 from mxlpy.types import InitialAssignment
 
@@ -366,7 +366,7 @@ def infer_units(
 
     def get_sym(cache_key: str, fn: ..., args: list[str]) -> sympy.Expr | None:
         if cache_key not in fn_sym_cache:
-            fn_sym_cache[cache_key] = fn_to_sympy(
+            fn_sym_cache[cache_key] = fn_to_sympy_expr(
                 fn, origin=cache_key, model_args=list_of_symbols(args)
             )
         return fn_sym_cache[cache_key]

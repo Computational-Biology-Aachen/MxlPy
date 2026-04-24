@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 import sympy
 from wadler_lindig import pformat
 
-from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols
+from mxlpy.meta.sympy_tools import fn_to_sympy_expr, list_of_symbols
 
 if TYPE_CHECKING:
     from mxlpy.model import Model
@@ -95,7 +95,9 @@ def to_symbolic_model(model: Model) -> SymbolicModel:
     # Insert derived into symbols
     for k, v in model.get_raw_derived().items():
         if (
-            expr := fn_to_sympy(v.fn, origin=k, model_args=[symbols[i] for i in v.args])
+            expr := fn_to_sympy_expr(
+                v.fn, origin=k, model_args=[symbols[i] for i in v.args]
+            )
         ) is None:
             msg = f"Unable to parse derived value '{k}'"
             raise ValueError(msg)
@@ -105,7 +107,9 @@ def to_symbolic_model(model: Model) -> SymbolicModel:
     rxns: dict[str, sympy.Expr] = {}
     for k, v in model.get_raw_reactions().items():
         if (
-            expr := fn_to_sympy(v.fn, origin=k, model_args=[symbols[i] for i in v.args])
+            expr := fn_to_sympy_expr(
+                v.fn, origin=k, model_args=[symbols[i] for i in v.args]
+            )
         ) is None:
             msg = f"Unable to parse reaction '{k}'"
             raise ValueError(msg)
@@ -120,7 +124,7 @@ def to_symbolic_model(model: Model) -> SymbolicModel:
             )
     for cpd, dstoich in cache.dyn_stoich_by_cpds.items():
         for rxn, der in dstoich.items():
-            eqs[cpd] = eqs.get(cpd, sympy.Float(0.0)) + fn_to_sympy(
+            eqs[cpd] = eqs.get(cpd, sympy.Float(0.0)) + fn_to_sympy_expr(
                 der.fn,
                 [symbols[i] for i in der.args] * rxns[rxn],  # type: ignore
             )  # type: ignore

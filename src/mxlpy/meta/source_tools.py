@@ -51,8 +51,8 @@ __all__ = [
     "KNOWN_FNS",
     "PARSE_ERROR",
     "fn_to_source",
-    "fn_to_sympy",
-    "fn_to_sympy_outputs",
+    "fn_to_sympy_expr",
+    "fn_to_sympy_exprs",
     "get_fn_ast",
     "get_fn_source",
 ]
@@ -858,7 +858,7 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
             return sympy.Float(result)
         return cast(sympy.Expr, result)
 
-    return fn_to_sympy(
+    return fn_to_sympy_expr(
         py_fn,
         origin=ctx.origin,
         model_args=model_args,
@@ -1138,7 +1138,7 @@ def fn_to_source(
     )
 
 
-def fn_to_sympy(
+def fn_to_sympy_expr(
     fn: Callable,
     origin: str,
     model_args: list[sympy.Symbol | sympy.Expr] | None = None,
@@ -1202,12 +1202,12 @@ def fn_to_sympy(
         return None
 
 
-def fn_to_sympy_outputs(
+def fn_to_sympy_exprs(
     fn: Callable,
     origin: str,
     model_args: list[sympy.Symbol | sympy.Expr] | None = None,
 ) -> list[sympy.Expr] | None:
-    """Convert a (possibly multi-output) function to a list of sympy expressions.
+    """Convert a multi-output function to a list of sympy expressions.
 
     Like :func:`fn_to_sympy` but returns one expression per return value.
     Single-output functions return a one-element list.  Tuple-returning

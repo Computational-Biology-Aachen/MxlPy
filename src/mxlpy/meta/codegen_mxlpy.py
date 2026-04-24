@@ -10,7 +10,7 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy.meta.sympy_tools import (
-    fn_to_sympy,
+    fn_to_sympy_expr,
     list_of_symbols,
     sympy_to_inline_py,
     sympy_to_python_fn,
@@ -103,7 +103,7 @@ class SymbolicRepr:
 def _fn_to_symbolic_repr(k: str, fn: Callable, model_args: list[str]) -> SymbolicFn:
     fn_name = fn.__name__
     args = cast(list, list_of_symbols(model_args))
-    if (expr := fn_to_sympy(fn, origin=k, model_args=args)) is None:
+    if (expr := fn_to_sympy_expr(fn, origin=k, model_args=args)) is None:
         msg = f"Unable to parse fn for '{k}'"
         raise ValueError(msg)
     return SymbolicFn(fn_name=fn_name, expr=expr, args=model_args)

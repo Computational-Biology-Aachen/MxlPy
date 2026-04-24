@@ -4,7 +4,7 @@ import sympy
 # Utility functions
 ##############################
 from mxlpy.fns import mass_action_1s
-from mxlpy.meta.sympy_tools import fn_to_sympy
+from mxlpy.meta.sympy_tools import fn_to_sympy_expr
 
 
 def power(x: float) -> float:
@@ -33,7 +33,7 @@ def test_unary_plus() -> None:
         return +a
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == a
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == a
 
 
 def test_unary_minus() -> None:
@@ -41,7 +41,7 @@ def test_unary_minus() -> None:
         return -a
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == -a
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == -a
 
 
 def test_binary_add() -> None:
@@ -49,7 +49,7 @@ def test_binary_add() -> None:
         return left + right
 
     left, right = sympy.symbols("left right")
-    assert fn_to_sympy(fn, origin="test", model_args=[left, right]) == left + right
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[left, right]) == left + right
 
 
 def test_binary_sub() -> None:
@@ -57,7 +57,7 @@ def test_binary_sub() -> None:
         return left - right
 
     left, right = sympy.symbols("left right")
-    assert fn_to_sympy(fn, origin="test", model_args=[left, right]) == left - right
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[left, right]) == left - right
 
 
 def test_binary_mul() -> None:
@@ -65,7 +65,7 @@ def test_binary_mul() -> None:
         return left * right
 
     left, right = sympy.symbols("left right")
-    assert fn_to_sympy(fn, origin="test", model_args=[left, right]) == left * right
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[left, right]) == left * right
 
 
 def test_binary_div() -> None:
@@ -73,7 +73,7 @@ def test_binary_div() -> None:
         return left / right
 
     left, right = sympy.symbols("left right")
-    assert fn_to_sympy(fn, origin="test", model_args=[left, right]) == left / right
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[left, right]) == left / right
 
 
 def test_binary_floordiv() -> None:
@@ -81,7 +81,9 @@ def test_binary_floordiv() -> None:
         return left // right
 
     left, right = sympy.symbols("left right")
-    assert fn_to_sympy(fn, origin="test", model_args=[left, right]) == left // right
+    assert (
+        fn_to_sympy_expr(fn, origin="test", model_args=[left, right]) == left // right
+    )
 
 
 def test_binary_pow() -> None:
@@ -89,7 +91,7 @@ def test_binary_pow() -> None:
         return left**right
 
     left, right = sympy.symbols("left right")
-    assert fn_to_sympy(fn, origin="test", model_args=[left, right]) == left**right
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[left, right]) == left**right
 
 
 def test_binary_mod() -> None:
@@ -97,7 +99,7 @@ def test_binary_mod() -> None:
         return left % right
 
     left, right = sympy.symbols("left right")
-    assert fn_to_sympy(fn, origin="test", model_args=[left, right]) == left % right
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[left, right]) == left % right
 
 
 ##############################
@@ -111,7 +113,7 @@ def test_single_assignment() -> None:
         return c  # noqa: RET504
 
     a, b = sympy.symbols("a b")
-    assert fn_to_sympy(fn, origin="test", model_args=[a, b]) == a * b
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a, b]) == a * b
 
 
 def test_two_assignments() -> None:
@@ -121,7 +123,7 @@ def test_two_assignments() -> None:
         return d  # noqa: RET504
 
     a, b = sympy.symbols("a b")
-    assert fn_to_sympy(fn, origin="test", model_args=[a, b]) == a * b
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a, b]) == a * b
 
 
 def test_double_assignment() -> None:
@@ -130,7 +132,7 @@ def test_double_assignment() -> None:
         return c * d
 
     a, b = sympy.symbols("a b")
-    assert fn_to_sympy(fn, origin="test", model_args=[a, b]) == a * b
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a, b]) == a * b
 
 
 def test_condition() -> None:
@@ -140,7 +142,7 @@ def test_condition() -> None:
         return a**2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == sympy.Piecewise(
         (a, a > 1.0),  # type: ignore
         (a**2.0, True),
     )
@@ -154,7 +156,7 @@ def test_condition_2() -> None:
             return a**2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == sympy.Piecewise(
         (a, a > 1.0),  # type: ignore
         (a**2.0, True),
     )
@@ -169,7 +171,7 @@ def test_condition_assignment_single_return() -> None:
         return b
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == sympy.Piecewise(
         (a, a > 1.0),  # type: ignore
         (a**2.0, True),
     )
@@ -185,7 +187,7 @@ def test_condition_elif() -> None:
             return a**2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == sympy.Piecewise(
         (a, (a > 1.0) & (a < 2.0)),  # type: ignore
         (a / 2.0, a > 2.0),  # type: ignore
         (a**2.0, True),
@@ -201,7 +203,7 @@ def test_condition_multiple() -> None:
         return a**2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == sympy.Piecewise(
         (a, (a > 1.0) & (a < 2.0)),  # type: ignore
         (a / 2.0, a > 2.0),  # type: ignore
         (a**2.0, True),
@@ -218,7 +220,7 @@ def test_condition_assignment() -> None:
             return b  # noqa: RET504
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == sympy.Piecewise(
         (a, a > 1.0),  # type: ignore
         (a**2.0, True),
     )
@@ -232,7 +234,7 @@ def test_condition_as_later() -> None:
         return b**2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == sympy.Piecewise(
         (a, a > 1.0),  # type: ignore
         (a**2.0, True),
     )
@@ -243,7 +245,7 @@ def test_conditional_expression() -> None:
         return a if a > 1 else a**2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == sympy.Piecewise(
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == sympy.Piecewise(
         (a, a > 1.0),  # type: ignore
         (a**2.0, True),
     )
@@ -254,7 +256,7 @@ def test_fn_call_power() -> None:
         return power(a) * 2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == a**2.0 * 2.0  # type: ignore
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == a**2.0 * 2.0  # type: ignore
 
 
 def test_fn_call_times() -> None:
@@ -262,7 +264,7 @@ def test_fn_call_times() -> None:
         return times(a) * 2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == a * 2.0 * 2.0  # type: ignore
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == a * 2.0 * 2.0  # type: ignore
 
 
 def test_fn_call_add() -> None:
@@ -270,7 +272,7 @@ def test_fn_call_add() -> None:
         return add(a) * 2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == (a + 2.0) * 2.0  # type: ignore
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == (a + 2.0) * 2.0  # type: ignore
 
 
 def test_fn_call_sub() -> None:
@@ -278,7 +280,7 @@ def test_fn_call_sub() -> None:
         return sub(a) * 2
 
     a = sympy.Symbol("a")
-    assert fn_to_sympy(fn, origin="test", model_args=[a]) == (a - 2.0) * 2.0  # type: ignore
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a]) == (a - 2.0) * 2.0  # type: ignore
 
 
 def test_fn_call_outside_file() -> None:
@@ -286,4 +288,4 @@ def test_fn_call_outside_file() -> None:
         return mass_action_1s(a, b)
 
     a, b = sympy.symbols("a b")
-    assert fn_to_sympy(fn, origin="test", model_args=[a, b]) == a * b
+    assert fn_to_sympy_expr(fn, origin="test", model_args=[a, b]) == a * b

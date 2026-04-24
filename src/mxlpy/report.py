@@ -10,7 +10,7 @@ from typing import cast
 
 import sympy
 
-from mxlpy.meta.sympy_tools import fn_to_sympy, list_of_symbols
+from mxlpy.meta.sympy_tools import fn_to_sympy_expr, list_of_symbols
 from mxlpy.model import Model
 
 __all__ = ["AnalysisFn", "MarkdownReport", "markdown"]
@@ -214,7 +214,7 @@ def markdown(
     derived = []
     for k, v in new_derived.items():
         expr = _latex_view(
-            fn_to_sympy(
+            fn_to_sympy_expr(
                 v.fn,
                 origin=k,
                 model_args=list_of_symbols(v.args),
@@ -224,14 +224,14 @@ def markdown(
 
     for k, (v1, v2) in changed_derived.items():
         expr1 = _latex_view(
-            fn_to_sympy(
+            fn_to_sympy_expr(
                 v1.fn,
                 origin=k,
                 model_args=list_of_symbols(v1.args),
             )
         )
         expr2 = _latex_view(
-            fn_to_sympy(
+            fn_to_sympy_expr(
                 v2.fn,
                 origin=k,
                 model_args=list_of_symbols(v2.args),
@@ -260,7 +260,7 @@ def markdown(
     reactions = []
     for k, v in new_reactions.items():
         expr = _latex_view(
-            fn_to_sympy(
+            fn_to_sympy_expr(
                 v.fn,
                 origin=k,
                 model_args=list_of_symbols(v.args),
@@ -270,14 +270,14 @@ def markdown(
 
     for k, (v1, v2) in changed_reactions.items():
         expr1 = _latex_view(
-            fn_to_sympy(
+            fn_to_sympy_expr(
                 v1.fn,
                 origin=k,
                 model_args=list_of_symbols(v1.args),
             )
         )
         expr2 = _latex_view(
-            fn_to_sympy(
+            fn_to_sympy_expr(
                 v2.fn,
                 origin=k,
                 model_args=list_of_symbols(v2.args),

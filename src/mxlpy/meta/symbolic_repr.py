@@ -9,9 +9,8 @@ from typing import TYPE_CHECKING, Any, cast
 import sympy
 from wadler_lindig import pformat
 
-from mxlpy.meta.source_tools import fn_to_sympy_outputs
+from mxlpy.meta.source_tools import fn_to_sympy_expr, fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import (
-    fn_to_sympy,
     list_of_symbols,
 )
 from mxlpy.surrogates import qss
@@ -127,10 +126,22 @@ def _fn_to_symbolic_repr(
     model_args: list[str],
     *,
     only_warn: bool,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
 ) -> SymbolicFn:
     fn_name = fn.__name__
     args = cast(list, list_of_symbols(model_args))
-    if (expr := fn_to_sympy(fn, origin=k, model_args=args)) is None:
+    if (expr := custom_fns.get(k)) is not None:
+        if isinstance(expr, list):
+            msg = f"Expected a single expr for '{k}' but got multiple"
+            if only_warn:
+                expr = sympy.Float("nan")
+                _LOGGER.warning(msg)
+            else:
+                raise ValueError(msg)
+
+        return SymbolicFn(fn_name=fn_name, expr=expr, args=model_args)
+
+    if (expr := fn_to_sympy_expr(fn, origin=k, model_args=args)) is None:
         msg = f"Unable to parse fn for '{k}'"
         if only_warn:
             expr = sympy.Float("nan")
@@ -147,10 +158,25 @@ def _fns_to_symbolic_reprs(
     outputs: list[str],
     *,
     only_warn: bool,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
 ) -> list[SymbolicFn]:
     fn_name = fn.__name__
     args = cast(list, list_of_symbols(model_args))
-    exprs = fn_to_sympy_outputs(fn, origin=k, model_args=args)
+    exprs = fn_to_sympy_exprs(fn, origin=k, model_args=args)
+    if (exprs := custom_fns.get(k)) is not None:
+        if not isinstance(exprs, list):
+            msg = f"Expected multiple exprs for '{k}' but got a single expr"
+            if only_warn:
+                exprs = [sympy.Float("nan") for i in outputs]
+                _LOGGER.warning(msg)
+            else:
+                raise ValueError(msg)
+
+        return [
+            SymbolicFn(fn_name=f"{fn_name}_{i}", expr=expr, args=model_args)
+            for i, expr in zip(outputs, exprs, strict=True)
+        ]
+
     if exprs is None:
         msg = f"Unable to parse fns for '{k}'"
         if only_warn:
@@ -165,12 +191,23 @@ def _fns_to_symbolic_reprs(
     ]
 
 
-def model_to_symbolic_repr(model: Model, *, only_warn: bool = False) -> SymbolicRepr:
+def model_to_symbolic_repr(
+    model: Model,
+    *,
+    only_warn: bool = False,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> SymbolicRepr:
     sym = SymbolicRepr()
 
     for k, variable in model.get_raw_variables().items():
         sym.variables[k] = SymbolicVariable(
-            value=_fn_to_symbolic_repr(k, val.fn, val.args, only_warn=only_warn)
+            value=_fn_to_symbolic_repr(
+                k,
+                val.fn,
+                val.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            )
             if isinstance(val := variable.initial_value, InitialAssignment)
             else sympy.Float(val),
             unit=cast(Quantity, variable.unit),
@@ -178,20 +215,44 @@ def model_to_symbolic_repr(model: Model, *, only_warn: bool = False) -> Symbolic
 
     for k, parameter in model.get_raw_parameters().items():
         sym.parameters[k] = SymbolicParameter(
-            value=_fn_to_symbolic_repr(k, val.fn, val.args, only_warn=only_warn)
+            value=_fn_to_symbolic_repr(
+                k,
+                val.fn,
+                val.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            )
             if isinstance(val := parameter.value, InitialAssignment)
             else sympy.Float(val),
             unit=cast(Quantity, parameter.unit),
         )
 
     for k, der in model.get_raw_derived().items():
-        sym.derived[k] = _fn_to_symbolic_repr(k, der.fn, der.args, only_warn=only_warn)
+        sym.derived[k] = _fn_to_symbolic_repr(
+            k,
+            der.fn,
+            der.args,
+            only_warn=only_warn,
+            custom_fns=custom_fns,
+        )
 
     for k, rxn in model.get_raw_reactions().items():
         sym.reactions[k] = SymbolicReaction(
-            fn=_fn_to_symbolic_repr(k, rxn.fn, rxn.args, only_warn=only_warn),
+            fn=_fn_to_symbolic_repr(
+                k,
+                rxn.fn,
+                rxn.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            ),
             stoichiometry={
-                k: _fn_to_symbolic_repr(k, v.fn, v.args, only_warn=only_warn)
+                k: _fn_to_symbolic_repr(
+                    k,
+                    v.fn,
+                    v.args,
+                    only_warn=only_warn,
+                    custom_fns=custom_fns,
+                )
                 if isinstance(v, Derived)
                 else sympy.Float(v)
                 for k, v in rxn.stoichiometry.items()
@@ -201,7 +262,12 @@ def model_to_symbolic_repr(model: Model, *, only_warn: bool = False) -> Symbolic
     for k, srg in model.get_raw_surrogates().items():
         if isinstance(srg, qss.Surrogate):
             fns = _fns_to_symbolic_reprs(
-                k, srg.model, srg.args, srg.outputs, only_warn=only_warn
+                k,
+                srg.model,
+                srg.args,
+                srg.outputs,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
             )
 
             sym.surrogates[k] = SymbolicSurrogate(
@@ -209,7 +275,13 @@ def model_to_symbolic_repr(model: Model, *, only_warn: bool = False) -> Symbolic
                 outputs=srg.outputs,
                 stoichiometry={
                     out: {
-                        k: _fn_to_symbolic_repr(k, v.fn, v.args, only_warn=only_warn)
+                        k: _fn_to_symbolic_repr(
+                            k,
+                            v.fn,
+                            v.args,
+                            only_warn=only_warn,
+                            custom_fns=custom_fns,
+                        )
                         if isinstance(v, Derived)
                         else sympy.Float(v)
                         for k, v in stoich.items()
@@ -225,6 +297,12 @@ def model_to_symbolic_repr(model: Model, *, only_warn: bool = False) -> Symbolic
                 raise ValueError(msg)
 
     for k, der in model.get_raw_readouts().items():
-        sym.readouts[k] = _fn_to_symbolic_repr(k, der.fn, der.args, only_warn=only_warn)
+        sym.readouts[k] = _fn_to_symbolic_repr(
+            k,
+            der.fn,
+            der.args,
+            only_warn=only_warn,
+            custom_fns=custom_fns,
+        )
 
     return sym

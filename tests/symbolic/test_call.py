@@ -5,7 +5,7 @@ import sympy
 import mxlpy
 from mxlpy import fns
 from mxlpy.fns import mass_action_1s
-from mxlpy.meta.sympy_tools import fn_to_sympy
+from mxlpy.meta.sympy_tools import fn_to_sympy_expr
 
 
 def using_inner_l1(x: float, y: float) -> float:
@@ -23,7 +23,7 @@ def using_inner_l3(x: float, y: float) -> float:
 def test_call_level1() -> None:
     assert (
         sympy.latex(
-            fn_to_sympy(
+            fn_to_sympy_expr(
                 using_inner_l1,
                 origin="test",
                 model_args=sympy.symbols("x y"),
@@ -36,7 +36,7 @@ def test_call_level1() -> None:
 def test_call_level2() -> None:
     assert (
         sympy.latex(
-            fn_to_sympy(
+            fn_to_sympy_expr(
                 using_inner_l2,
                 origin="test",
                 model_args=sympy.symbols("x y"),
@@ -49,7 +49,7 @@ def test_call_level2() -> None:
 def test_call_level3() -> None:
     assert (
         sympy.latex(
-            fn_to_sympy(
+            fn_to_sympy_expr(
                 using_inner_l3,
                 origin="test",
                 model_args=sympy.symbols("x y"),

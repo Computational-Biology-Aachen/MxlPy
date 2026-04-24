@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import sympy
 
-from mxlpy.meta.source_tools import fn_to_sympy_outputs
+from mxlpy.meta.source_tools import fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import (
-    fn_to_sympy,
+    fn_to_sympy_expr,
     list_of_symbols,
     stoichiometries_to_sympy,
     sympy_to_inline_c,
@@ -154,7 +154,7 @@ def _generate_model_code(
     sympy_inline_fn: Callable[[sympy.Expr], str],
     variables_formatter: Callable[[list[str]], str],
     return_formatter: Callable[[list[str]], str],
-    custom_fns: dict[str, sympy.Expr],
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
     imports: list[str] | None = None,
     end: str | None = None,
     free_parameters: list[str] | None = None,
@@ -200,7 +200,7 @@ def _generate_model_code(
             _LOGGER.warning("Skipping surrogate '%s': no callable model/fn", sur_name)
             sur_exprs[sur_name] = None
             continue
-        exprs = fn_to_sympy_outputs(sur_fn, sur_name, list_of_symbols(surrogate.args))
+        exprs = fn_to_sympy_exprs(sur_fn, sur_name, list_of_symbols(surrogate.args))
         if exprs is None or len(exprs) != len(surrogate.outputs):
             _LOGGER.warning(
                 "Skipping surrogate '%s': cannot convert to sympy", sur_name
@@ -253,7 +253,7 @@ def _generate_model_code(
         )
         expr = custom_fns.get(name)
         if expr is None:
-            expr = fn_to_sympy(
+            expr = fn_to_sympy_expr(
                 derived.fn,
                 origin=name,
                 model_args=list_of_symbols(derived.args),
@@ -284,7 +284,7 @@ def _generate_model_code(
         expr = custom_fns.get(name)
         if expr is None:
             try:
-                expr = fn_to_sympy(
+                expr = fn_to_sympy_expr(
                     rxn.fn,
                     origin=name,
                     model_args=list_of_symbols(rxn.args),
@@ -347,7 +347,7 @@ def _generate_components_code(
     sympy_inline_fn: Callable[[sympy.Expr], str],
     variables_formatter: Callable[[list[str]], str],
     return_formatter: Callable[[list[str]], str],
-    custom_fns: dict[str, sympy.Expr],
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
     imports: list[str] | None = None,
     end: str | None = None,
     free_parameters: list[str] | None = None,
@@ -424,7 +424,7 @@ def _generate_components_code(
             _LOGGER.warning("Skipping surrogate '%s': no callable model/fn", sur_name)
             sur_exprs[sur_name] = None
             continue
-        exprs = fn_to_sympy_outputs(sur_fn, sur_name, list_of_symbols(surrogate.args))
+        exprs = fn_to_sympy_exprs(sur_fn, sur_name, list_of_symbols(surrogate.args))
         if exprs is None or len(exprs) != len(surrogate.outputs):
             _LOGGER.warning(
                 "Skipping surrogate '%s': cannot convert to sympy", sur_name
@@ -498,7 +498,7 @@ def _generate_components_code(
             component = derived_raw[name]
             expr = custom_fns.get(name)
             if expr is None:
-                expr = fn_to_sympy(
+                expr = fn_to_sympy_expr(
                     component.fn,
                     origin=name,
                     model_args=list_of_symbols(component.args),
@@ -511,7 +511,7 @@ def _generate_components_code(
             expr = custom_fns.get(name)
             if expr is None:
                 try:
-                    expr = fn_to_sympy(
+                    expr = fn_to_sympy_expr(
                         component.fn,
                         origin=name,
                         model_args=list_of_symbols(component.args),
@@ -536,7 +536,7 @@ def _generate_components_code(
         readout = readouts_raw[name]
         expr = custom_fns.get(name)
         if expr is None:
-            expr = fn_to_sympy(
+            expr = fn_to_sympy_expr(
                 readout.fn,
                 origin=name,
                 model_args=list_of_symbols(readout.args),
@@ -569,7 +569,7 @@ def _generate_components_code(
 
 def generate_model_code_py(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
     *,
     typed: bool = True,
@@ -621,7 +621,7 @@ def generate_model_code_py(
 
 def generate_model_components_py(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
     outputs: list[str] | None = None,
     *,
@@ -674,7 +674,7 @@ def generate_model_components_py(
 
 def generate_model_code_ts(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
     """Transform the model into a typescript function, inlining the function calls.
@@ -719,7 +719,7 @@ def generate_model_code_ts(
 
 def generate_model_components_ts(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
     outputs: list[str] | None = None,
 ) -> str:
@@ -767,7 +767,7 @@ def generate_model_components_ts(
 
 def generate_model_code_rs(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
     """Transform the model into a rust function, inlining the function calls.
@@ -812,7 +812,7 @@ def generate_model_code_rs(
 
 def generate_model_components_rs(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
     outputs: list[str] | None = None,
 ) -> str:
@@ -870,7 +870,7 @@ def generate_model_components_rs(
 
 def generate_model_code_jl(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
     """Transform the model into a julia function, inlining the function calls.
@@ -915,7 +915,7 @@ def generate_model_code_jl(
 
 def generate_model_components_jl(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
     outputs: list[str] | None = None,
 ) -> str:
@@ -963,7 +963,7 @@ def generate_model_components_jl(
 
 def generate_model_code_c(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
     """Transform the model into a C99 function, inlining the function calls.
@@ -1015,7 +1015,7 @@ def generate_model_code_c(
 
 def generate_model_components_c(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
     outputs: list[str] | None = None,
 ) -> str:
@@ -1072,7 +1072,7 @@ def generate_model_components_c(
 
 def generate_model_code_cpp(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
     """Transform the model into a c++ function, inlining the function calls.
@@ -1123,7 +1123,7 @@ def generate_model_code_cpp(
 
 def generate_model_components_cpp(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
     outputs: list[str] | None = None,
 ) -> str:
@@ -1187,7 +1187,7 @@ def generate_model_components_cpp(
 
 def generate_model_code_matlab(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
 ) -> str:
     """Transform the model into a MATLAB/Octave function, inlining the function calls.
@@ -1234,7 +1234,7 @@ def generate_model_code_matlab(
 
 def generate_model_components_matlab(
     model: Model,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     free_parameters: list[str] | None = None,
     outputs: list[str] | None = None,
 ) -> str:

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 import sympy
 
-from mxlpy.meta.source_tools import fn_to_sympy
+from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.types import Derived
 
 if TYPE_CHECKING:
@@ -139,7 +139,7 @@ def stoichiometries_to_sympy(
 
     for rxn_name, rxn_stoich in stoichs.items():
         if isinstance(rxn_stoich, Derived):
-            sympy_fn = fn_to_sympy(
+            sympy_fn = fn_to_sympy_expr(
                 rxn_stoich.fn,
                 origin=origin,
                 model_args=list_of_symbols(rxn_stoich.args),

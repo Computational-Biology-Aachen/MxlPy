@@ -16,8 +16,8 @@ def fn_call_l1() -> float:
 
 
 def test_nested_fn_call() -> None:
-    assert source_tools.fn_to_sympy(attr_l1, "test") == sympy.Float(3.0)
+    assert source_tools.fn_to_sympy_expr(attr_l1, "test") == sympy.Float(3.0)
 
 
 def test_attr() -> None:
-    assert source_tools.fn_to_sympy(fn_call_l1, "test") == sympy.Float(3.0)
+    assert source_tools.fn_to_sympy_expr(fn_call_l1, "test") == sympy.Float(3.0)

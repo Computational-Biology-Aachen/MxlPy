@@ -139,8 +139,9 @@ def _normalized_symbolic_model(
     model: Model,
     free_parameters: list[str],
     derived_to_calculate: list[str] | None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
 ) -> NormalizedSymbolicModel:
-    sr = model_to_symbolic_repr(model)
+    sr = model_to_symbolic_repr(model, custom_fns=custom_fns)
     order = _get_order(model)
 
     # linearize
@@ -299,7 +300,7 @@ def _generate_model_code(
     list_formatter: ListTemplate,
     imports: list[str],
     name_map: dict[str, str],
-    custom_fns: dict[str, sympy.Expr],
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
 ) -> Codegen:
     extended_returns = (
         list(
@@ -317,6 +318,7 @@ def _generate_model_code(
         model,
         free_parameters=free_parameters,
         derived_to_calculate=derived_to_calculate,
+        custom_fns=custom_fns,
     )
 
     sympy_name_map = {sympy.Symbol(k): sympy.Symbol(v) for k, v in name_map.items()}
@@ -424,7 +426,7 @@ def generate_model_code_py(
     *,
     free_parameters: list[str] | None = None,
     derived_to_calculate: list[str] | None = None,
-    custom_fns: dict[str, sympy.Expr] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     typed: bool = False,
 ):
     def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:

@@ -23,16 +23,16 @@ def exp_library_call() -> float:
 
 
 def test_math_import_attr_l0() -> None:
-    assert source_tools.fn_to_sympy(e_direct, "test") == e
+    assert source_tools.fn_to_sympy_expr(e_direct, "test") == e
 
 
 def test_math_import_attr_l1() -> None:
-    assert source_tools.fn_to_sympy(e_lib, "test") == sympy.E
+    assert source_tools.fn_to_sympy_expr(e_lib, "test") == sympy.E
 
 
 def test_math_import_fn_l0() -> None:
-    assert float(source_tools.fn_to_sympy(exp_direct, "test")) == 1.0  # pyright: ignore[reportArgumentType]
+    assert float(source_tools.fn_to_sympy_expr(exp_direct, "test")) == 1.0  # pyright: ignore[reportArgumentType]
 
 
 def test_math_import_fn_l1() -> None:
-    assert float(source_tools.fn_to_sympy(exp_library_call, "test")) == 1.0  # pyright: ignore[reportArgumentType]
+    assert float(source_tools.fn_to_sympy_expr(exp_library_call, "test")) == 1.0  # pyright: ignore[reportArgumentType]

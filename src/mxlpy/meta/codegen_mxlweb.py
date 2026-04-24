@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 import sympy
 
-from mxlpy.meta.source_tools import fn_to_sympy, fn_to_sympy_outputs
+from mxlpy.meta.source_tools import fn_to_sympy_expr, fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import list_of_symbols, sympy_to_inline_mxlweb
 from mxlpy.meta.utils import _to_valid_identifier
 from mxlpy.types import Derived, InitialAssignment
@@ -50,7 +50,7 @@ def _fn_to_mxlweb(
         TypeScript expression for the MxlWeb AST node
 
     """
-    expr = fn_to_sympy(fn, origin=name, model_args=list_of_symbols(args))  # type: ignore[arg-type]
+    expr = fn_to_sympy_expr(fn, origin=name, model_args=list_of_symbols(args))  # type: ignore[arg-type]
     if expr is None:
         msg = (
             f"Cannot convert '{name}' to a sympy expression - "
@@ -210,7 +210,7 @@ def generate_mode_code_mxlweb(model: Model) -> tuple[str, str]:
             _LOGGER.warning("Skipping surrogate '%s': no callable model/fn", k)
             continue
 
-        exprs = fn_to_sympy_outputs(model_fn, k, list_of_symbols(surrogate.args))
+        exprs = fn_to_sympy_exprs(model_fn, k, list_of_symbols(surrogate.args))
         if exprs is None or len(exprs) != len(surrogate.outputs):
             _LOGGER.warning(
                 "Skipping surrogate '%s': cannot convert to sympy (%d outputs expected, got %s)",

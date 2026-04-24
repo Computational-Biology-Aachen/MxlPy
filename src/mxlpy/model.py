@@ -20,7 +20,7 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy import _topo, fns
-from mxlpy.meta.source_tools import fn_to_sympy
+from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
     stoichiometries_to_sympy,
@@ -516,7 +516,7 @@ class Model:
         for name, el in self._parameters.items():
             if isinstance(init := el.value, InitialAssignment):
                 value_str = _latex_view(
-                    fn_to_sympy(
+                    fn_to_sympy_expr(
                         init.fn,
                         origin=name,
                         model_args=list_of_symbols(init.args),
@@ -933,7 +933,7 @@ class Model:
         for name, el in self._variables.items():
             if isinstance(init := el.initial_value, InitialAssignment):
                 value_str = _latex_view(
-                    fn_to_sympy(
+                    fn_to_sympy_expr(
                         init.fn,
                         origin=name,
                         model_args=list_of_symbols(init.args),
@@ -1290,7 +1290,7 @@ class Model:
         data = [
             {
                 "value": _latex_view(
-                    fn_to_sympy(
+                    fn_to_sympy_expr(
                         el.fn,
                         origin=name,
                         model_args=list_of_symbols(el.args),
@@ -1506,7 +1506,7 @@ class Model:
         data = [
             {
                 "value": _latex_view(
-                    fn_to_sympy(
+                    fn_to_sympy_expr(
                         rxn.fn,
                         origin=name,
                         model_args=list_of_symbols(rxn.args),
@@ -2724,7 +2724,7 @@ class Model:
                     msg = f"Argument '{arg}' in reaction '{name}' is neither a parameter nor a variable — unit checking only supports parameters and variables"
                     raise NotImplementedError(msg)
 
-            symbolic_fn = fn_to_sympy(
+            symbolic_fn = fn_to_sympy_expr(
                 rxn.fn,
                 origin="unit-checking",
                 model_args=list_of_symbols(rxn.args),
