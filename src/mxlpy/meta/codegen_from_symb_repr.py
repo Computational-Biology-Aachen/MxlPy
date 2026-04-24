@@ -13,7 +13,15 @@ from mxlpy.meta.symbolic_repr import (
     SymbolicVariable,
     model_to_symbolic_repr,
 )
-from mxlpy.meta.sympy_tools import sympy_to_inline_mxlweb, sympy_to_inline_py
+from mxlpy.meta.sympy_tools import (
+    sympy_to_inline_cxx,
+    sympy_to_inline_js,
+    sympy_to_inline_julia,
+    sympy_to_inline_matlab,
+    sympy_to_inline_mxlweb,
+    sympy_to_inline_py,
+    sympy_to_inline_rust,
+)
 from mxlpy.meta.utils import valid_identifier, valid_tex_identifier
 from mxlpy.model import Model
 from mxlpy.surrogates.abstract import AbstractSurrogate
@@ -29,7 +37,12 @@ __all__ = [
     "TupleTemplate",
     "VariableAssignmentTemplate",
     "VariableUnpackingTemplate",
+    "generate_model_code_cpp",
+    "generate_model_code_jl",
+    "generate_model_code_matlab",
     "generate_model_code_py",
+    "generate_model_code_rs",
+    "generate_model_code_ts",
     "generate_mxlweb_code",
 ]
 
@@ -672,5 +685,295 @@ def generate_model_code_py(
             "import math",
             "from collections.abc import Iterable",
         ],
+        name_map={name: valid_identifier(name) for name in model.ids},
+    )
+
+
+def generate_model_code_ts(
+    model: Model,
+    *,
+    free_parameters: list[str] | None = None,
+    derived_to_calculate: list[str] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+) -> Codegen:
+    def ts_type(t: str) -> str:
+        return {
+            "float": "number",
+            "Iterable[float]": "number[]",
+            "tuple[Iterable[float], Iterable[float]]": "[number[], number[]]",
+        }.get(t, t)
+
+    def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:
+        args_str = ", ".join(f"{k}: {ts_type(t)}" for k, t in args)
+        return f"function {name}({args_str}): {ts_type(return_type)} {{"
+
+    def variable_unpacking(variables: list[str]) -> str:
+        return f"    const [{', '.join(variables)}] = variables;"
+
+    def list_template(elements: list[str]) -> str:
+        return f"[{', '.join(elements)}]"
+
+    def assignment_template(name: str, value: str) -> str:
+        return f"    const {name}: number = {value};"
+
+    def return_template(variables: list[str]) -> str:
+        return f"    return [{', '.join(variables) or '[]'}];\n}};"
+
+    return _generate_model_code(
+        model,
+        free_parameters=[] if free_parameters is None else free_parameters,
+        fn_template=fn_template,
+        assignment_template=assignment_template,
+        expr_template=sympy_to_inline_js,
+        variable_unpacking=variable_unpacking,
+        derived_to_calculate=derived_to_calculate,
+        list_formatter=list_template,
+        return_formatter=return_template,
+        custom_fns=custom_fns if custom_fns is not None else {},
+        imports=[],
+        name_map={name: valid_identifier(name) for name in model.ids},
+    )
+
+
+def generate_model_code_jl(
+    model: Model,
+    *,
+    free_parameters: list[str] | None = None,
+    derived_to_calculate: list[str] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+) -> Codegen:
+    def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:  # noqa: ARG001
+        args_str = ", ".join(k for k, _ in args)
+        return f"function {name}({args_str})"
+
+    def variable_unpacking(variables: list[str]) -> str:
+        return f"    {', '.join(variables)} = variables"
+
+    def list_template(elements: list[str]) -> str:
+        return f"[{', '.join(elements)}]"
+
+    def assignment_template(name: str, value: str) -> str:
+        return f"    {name} = {value}"
+
+    def return_template(variables: list[str]) -> str:
+        return f"    return [{', '.join(variables) or '()'}]\nend"
+
+    return _generate_model_code(
+        model,
+        free_parameters=[] if free_parameters is None else free_parameters,
+        fn_template=fn_template,
+        assignment_template=assignment_template,
+        expr_template=sympy_to_inline_julia,
+        variable_unpacking=variable_unpacking,
+        derived_to_calculate=derived_to_calculate,
+        list_formatter=list_template,
+        return_formatter=return_template,
+        custom_fns=custom_fns if custom_fns is not None else {},
+        imports=[],
+        name_map={name: valid_identifier(name) for name in model.ids},
+    )
+
+
+def generate_model_code_matlab(
+    model: Model,
+    *,
+    free_parameters: list[str] | None = None,
+    derived_to_calculate: list[str] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+) -> Codegen:
+    _fn_context: list[str] = ["model"]
+
+    def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:  # noqa: ARG001
+        _fn_context[0] = name
+        mat_args = ", ".join("t" if k == "time" else k for k, _ in args)
+        if name == "model":
+            ret_decl = "dydt"
+        elif name == "inits":
+            ret_decl = "[vars, pars]"
+        else:
+            ret_decl = "out"
+        return f"function {ret_decl} = {name}({mat_args})"
+
+    def variable_unpacking(variables: list[str]) -> str:
+        return f"    [{', '.join(variables)}] = num2cell(variables){{:}};"
+
+    def list_template(elements: list[str]) -> str:
+        return f"[{', '.join(elements)}]"
+
+    def assignment_template(name: str, value: str) -> str:
+        return f"    {name} = {value};"
+
+    def return_template(variables: list[str]) -> str:
+        ctx = _fn_context[0]
+        if ctx == "model":
+            return f"    dydt = [{', '.join(variables)}]';\nend"
+        if ctx == "inits":
+            match variables:
+                case [vars_str, pars_str, *_]:
+                    return f"    vars = {vars_str}';\n    pars = {pars_str}';\nend"
+                case [vars_str]:
+                    return f"    vars = {vars_str}';\n    pars = [];\nend"
+                case _:
+                    return "    vars = []';\n    pars = []';\nend"
+        return f"    out = [{', '.join(variables)}];\nend"
+
+    return _generate_model_code(
+        model,
+        free_parameters=[] if free_parameters is None else free_parameters,
+        fn_template=fn_template,
+        assignment_template=assignment_template,
+        expr_template=sympy_to_inline_matlab,
+        variable_unpacking=variable_unpacking,
+        derived_to_calculate=derived_to_calculate,
+        list_formatter=list_template,
+        return_formatter=return_template,
+        custom_fns=custom_fns if custom_fns is not None else {},
+        imports=[],
+        name_map={name: valid_identifier(name) for name in model.ids},
+    )
+
+
+def generate_model_code_rs(
+    model: Model,
+    *,
+    free_parameters: list[str] | None = None,
+    derived_to_calculate: list[str] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+) -> Codegen:
+    _free_pars = [] if free_parameters is None else free_parameters
+    _custom_fns = {} if custom_fns is None else custom_fns
+    n_vars = len(model.get_initial_conditions())
+    n_derived = len(_get_extended_returns(model, derived_to_calculate))
+    _variable_order = list(model.get_initial_conditions())
+    _nsm = _normalized_symbolic_model(
+        model, _free_pars, derived_to_calculate, _custom_fns
+    )
+    n_init_pars = len([i for i, _ in _nsm.inits if i not in _variable_order])
+
+    _fn_context: list[str] = ["model"]
+
+    def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:
+        _fn_context[0] = name
+
+        def rs_type(t: str) -> str:
+            if "Iterable" in t:
+                return f"&[f64; {n_vars}]"
+            return "f64"
+
+        args_str = ", ".join(f"{k}: {rs_type(t)}" for k, t in args)
+        if name == "model":
+            ret_type = f"[f64; {n_vars}]"
+        elif name == "derived":
+            ret_type = f"[f64; {n_derived}]"
+        elif name == "inits":
+            ret_type = f"([f64; {n_vars}], [f64; {n_init_pars}])"
+        else:
+            ret_type = return_type
+        return f"fn {name}({args_str}) -> {ret_type} {{"
+
+    def variable_unpacking(variables: list[str]) -> str:
+        return f"    let [{', '.join(variables)}] = *variables;"
+
+    def list_template(elements: list[str]) -> str:
+        return f"[{', '.join(elements)}]"
+
+    def assignment_template(name: str, value: str) -> str:
+        return f"    let {name}: f64 = {value};"
+
+    def return_template(variables: list[str]) -> str:
+        if _fn_context[0] == "inits":
+            match variables:
+                case [vars_str, pars_str, *_]:
+                    return f"    return ({vars_str}, {pars_str})\n}}"
+                case _:
+                    return f"    return [{', '.join(variables) or '()'}]\n}}"
+        return f"    return [{', '.join(variables) or '()'}]\n}}"
+
+    return _generate_model_code(
+        model,
+        free_parameters=_free_pars,
+        fn_template=fn_template,
+        assignment_template=assignment_template,
+        expr_template=sympy_to_inline_rust,
+        variable_unpacking=variable_unpacking,
+        derived_to_calculate=derived_to_calculate,
+        list_formatter=list_template,
+        return_formatter=return_template,
+        custom_fns=_custom_fns,
+        imports=[],
+        name_map={name: valid_identifier(name) for name in model.ids},
+    )
+
+
+def generate_model_code_cpp(
+    model: Model,
+    *,
+    free_parameters: list[str] | None = None,
+    derived_to_calculate: list[str] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+) -> Codegen:
+    _free_pars = [] if free_parameters is None else free_parameters
+    _custom_fns = {} if custom_fns is None else custom_fns
+    n_vars = len(model.get_initial_conditions())
+    n_derived = len(_get_extended_returns(model, derived_to_calculate))
+    _variable_order = list(model.get_initial_conditions())
+    _nsm = _normalized_symbolic_model(
+        model, _free_pars, derived_to_calculate, _custom_fns
+    )
+    n_init_pars = len([i for i, _ in _nsm.inits if i not in _variable_order])
+
+    _fn_context: list[str] = ["model"]
+
+    def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:
+        _fn_context[0] = name
+
+        def cpp_type(t: str) -> str:
+            if "Iterable" in t:
+                return f"const std::array<double, {n_vars}>&"
+            return "double"
+
+        args_str = ", ".join(f"{cpp_type(t)} {k}" for k, t in args)
+        if name == "model":
+            ret_type = f"std::array<double, {n_vars}>"
+        elif name == "derived":
+            ret_type = f"std::array<double, {n_derived}>"
+        elif name == "inits":
+            ret_type = f"std::pair<std::array<double, {n_vars}>, std::array<double, {n_init_pars}>>"
+        else:
+            ret_type = return_type
+        return f"{ret_type} {name}({args_str}) {{"
+
+    def variable_unpacking(variables: list[str]) -> str:
+        return f"    const auto [{', '.join(variables)}] = variables;"
+
+    def list_template(elements: list[str]) -> str:
+        return f"{{{', '.join(elements)}}}"
+
+    def assignment_template(name: str, value: str) -> str:
+        return f"    double {name} = {value};"
+
+    def return_template(variables: list[str]) -> str:
+        if _fn_context[0] == "inits":
+            match variables:
+                case [vars_str, pars_str, *_]:
+                    return f"    return {{{vars_str}, {pars_str}}};\n}}"
+                case _:
+                    inner = ", ".join(variables)
+                    return f"    return {{{inner}}};\n}}"
+        inner = ", ".join(variables)
+        return f"    return {{{inner}}};\n}}"
+
+    return _generate_model_code(
+        model,
+        free_parameters=_free_pars,
+        fn_template=fn_template,
+        assignment_template=assignment_template,
+        expr_template=sympy_to_inline_cxx,
+        variable_unpacking=variable_unpacking,
+        derived_to_calculate=derived_to_calculate,
+        list_formatter=list_template,
+        return_formatter=return_template,
+        custom_fns=_custom_fns,
+        imports=["#include <array>", "#include <cmath>", "#include <utility>", ""],
         name_map={name: valid_identifier(name) for name in model.ids},
     )
