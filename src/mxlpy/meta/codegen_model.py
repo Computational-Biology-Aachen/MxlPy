@@ -25,7 +25,7 @@ from mxlpy.meta.sympy_tools import (
     sympy_to_inline_py,
     sympy_to_inline_rust,
 )
-from mxlpy.meta.utils import _to_valid_identifier
+from mxlpy.meta.utils import valid_identifier
 from mxlpy.types import Derived, Reaction, Readout
 
 if TYPE_CHECKING:
@@ -178,7 +178,7 @@ def _generate_model_code(
         + list(reactions_raw)
         + surrogate_output_names
     )
-    name_map = {n: _to_valid_identifier(n) for n in all_names}
+    name_map = {n: valid_identifier(n) for n in all_names}
     sanitized_names = list(name_map.values())
     if len(sanitized_names) != len(set(sanitized_names)):
         _LOGGER.warning(
@@ -402,7 +402,7 @@ def _generate_components_code(
         + list(readouts_raw)
         + surrogate_output_names_all
     )
-    name_map = {n: _to_valid_identifier(n) for n in all_names}
+    name_map = {n: valid_identifier(n) for n in all_names}
     sanitized_names = list(name_map.values())
     if len(sanitized_names) != len(set(sanitized_names)):
         msg = (
@@ -596,7 +596,7 @@ def generate_model_code_py(
             "def model(time: float, variables: Iterable[float]) -> Iterable[float]:"
         )
     else:
-        args = ", ".join(f"{_to_valid_identifier(k)}: float" for k in free_parameters)
+        args = ", ".join(f"{valid_identifier(k)}: float" for k in free_parameters)
         model_fn = f"def model(time: float, variables: Iterable[float], {args}) -> Iterable[float]:"
 
     return _generate_model_code(
@@ -650,7 +650,7 @@ def generate_model_components_py(
     if free_parameters is None:
         model_fn = "def components(time: float, variables: Iterable[float]) -> Iterable[float]:"
     else:
-        args = ", ".join(f"{_to_valid_identifier(k)}: float" for k in free_parameters)
+        args = ", ".join(f"{valid_identifier(k)}: float" for k in free_parameters)
         model_fn = f"def components(time: float, variables: Iterable[float], {args}) -> Iterable[float]:"
 
     return _generate_components_code(
@@ -697,7 +697,7 @@ def generate_model_code_ts(
     if free_parameters is None:
         model_fn = "function model(time: number, variables: number[]) {"
     else:
-        args = ", ".join(f"{_to_valid_identifier(k)}: number" for k in free_parameters)
+        args = ", ".join(f"{valid_identifier(k)}: number" for k in free_parameters)
         model_fn = f"function model(time: number, variables: number[], {args}) {{"
 
     return _generate_model_code(
@@ -746,7 +746,7 @@ def generate_model_components_ts(
     if free_parameters is None:
         model_fn = "function components(time: number, variables: number[]) {"
     else:
-        args = ", ".join(f"{_to_valid_identifier(k)}: number" for k in free_parameters)
+        args = ", ".join(f"{valid_identifier(k)}: number" for k in free_parameters)
         model_fn = f"function components(time: number, variables: number[], {args}) {{"
 
     return _generate_components_code(
@@ -790,7 +790,7 @@ def generate_model_code_rs(
     if free_parameters is None:
         model_fn = "fn model(time: f64, variables: &[f64; {n}]) -> [f64; {n}] {{"
     else:
-        args = ", ".join(f"{_to_valid_identifier(k)}: f64" for k in free_parameters)
+        args = ", ".join(f"{valid_identifier(k)}: f64" for k in free_parameters)
         model_fn = f"fn model(time: f64, variables: &[f64; {{n}}], {args}) -> [f64; {{n}}] {{{{"
 
     return _generate_model_code(
@@ -849,7 +849,7 @@ def generate_model_components_rs(
     if free_parameters is None:
         model_fn = f"fn components(time: f64, variables: &[f64; {n_vars}]) -> [f64; {n_out}] {{"
     else:
-        args = ", ".join(f"{_to_valid_identifier(k)}: f64" for k in free_parameters)
+        args = ", ".join(f"{valid_identifier(k)}: f64" for k in free_parameters)
         model_fn = f"fn components(time: f64, variables: &[f64; {n_vars}], {args}) -> [f64; {n_out}] {{"
 
     return _generate_components_code(
@@ -893,7 +893,7 @@ def generate_model_code_jl(
     if free_parameters is None:
         model_fn = "function model(time, variables)"
     else:
-        args = ", ".join(_to_valid_identifier(k) for k in free_parameters)
+        args = ", ".join(valid_identifier(k) for k in free_parameters)
         model_fn = f"function model(time, variables, {args})"
 
     return _generate_model_code(
@@ -942,7 +942,7 @@ def generate_model_components_jl(
     if free_parameters is None:
         model_fn = "function components(time, variables)"
     else:
-        args = ", ".join(_to_valid_identifier(k) for k in free_parameters)
+        args = ", ".join(valid_identifier(k) for k in free_parameters)
         model_fn = f"function components(time, variables, {args})"
 
     return _generate_components_code(
@@ -989,9 +989,7 @@ def generate_model_code_c(
     if free_parameters is None:
         model_fn = "void model(double t, const double *variables, double *dydt) {"
     else:
-        args_typed = ", ".join(
-            f"double {_to_valid_identifier(k)}" for k in free_parameters
-        )
+        args_typed = ", ".join(f"double {valid_identifier(k)}" for k in free_parameters)
         model_fn = f"void model(double t, const double *variables, double *dydt, {args_typed}) {{"
 
     return _generate_model_code(
@@ -1045,9 +1043,7 @@ def generate_model_components_c(
     if free_parameters is None:
         model_fn = "void components(double t, const double *variables, double *out) {"
     else:
-        args_typed = ", ".join(
-            f"double {_to_valid_identifier(k)}" for k in free_parameters
-        )
+        args_typed = ", ".join(f"double {valid_identifier(k)}" for k in free_parameters)
         model_fn = f"void components(double t, const double *variables, double *out, {args_typed}) {{"
 
     return _generate_components_code(
@@ -1095,9 +1091,7 @@ def generate_model_code_cpp(
     if free_parameters is None:
         model_fn = "std::array<double, {n}> model(double time, const std::array<double, {n}>& variables) {{"
     else:
-        args_typed = ", ".join(
-            f"double {_to_valid_identifier(k)}" for k in free_parameters
-        )
+        args_typed = ", ".join(f"double {valid_identifier(k)}" for k in free_parameters)
         model_fn = f"std::array<double, {{n}}> model(double time, const std::array<double, {{n}}>& variables, {args_typed}) {{{{"
 
     return _generate_model_code(
@@ -1160,9 +1154,7 @@ def generate_model_components_cpp(
     if free_parameters is None:
         model_fn = f"std::array<double, {n_out}> components(double time, const std::array<double, {n_vars}>& variables) {{"
     else:
-        args_typed = ", ".join(
-            f"double {_to_valid_identifier(k)}" for k in free_parameters
-        )
+        args_typed = ", ".join(f"double {valid_identifier(k)}" for k in free_parameters)
         model_fn = f"std::array<double, {n_out}> components(double time, const std::array<double, {n_vars}>& variables, {args_typed}) {{"
 
     return _generate_components_code(
@@ -1210,7 +1202,7 @@ def generate_model_code_matlab(
     if free_parameters is None:
         model_fn = "function dydt = model(t, variables)"
     else:
-        args = ", ".join(_to_valid_identifier(k) for k in free_parameters)
+        args = ", ".join(valid_identifier(k) for k in free_parameters)
         model_fn = f"function dydt = model(t, variables, {args})"
 
     return _generate_model_code(
@@ -1261,7 +1253,7 @@ def generate_model_components_matlab(
     if free_parameters is None:
         model_fn = "function out = components(t, variables)"
     else:
-        args = ", ".join(_to_valid_identifier(k) for k in free_parameters)
+        args = ", ".join(valid_identifier(k) for k in free_parameters)
         model_fn = f"function out = components(t, variables, {args})"
 
     return _generate_components_code(

@@ -21,7 +21,7 @@ from mxlpy.meta.codegen_model import (
     generate_model_code_cpp,
     generate_model_code_matlab,
 )
-from mxlpy.meta.utils import _to_valid_identifier
+from mxlpy.meta.utils import valid_identifier
 
 # ---------------------------------------------------------------------------
 # Unit tests for _to_valid_identifier
@@ -45,7 +45,7 @@ from mxlpy.meta.utils import _to_valid_identifier
     ],
 )
 def test_to_valid_identifier(name: str, expected: str) -> None:
-    assert _to_valid_identifier(name) == expected
+    assert valid_identifier(name) == expected
 
 
 # ---------------------------------------------------------------------------

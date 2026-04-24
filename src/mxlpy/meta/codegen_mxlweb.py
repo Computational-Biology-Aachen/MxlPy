@@ -9,7 +9,7 @@ import sympy
 
 from mxlpy.meta.source_tools import fn_to_sympy_expr, fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import list_of_symbols, sympy_to_inline_mxlweb
-from mxlpy.meta.utils import _to_valid_identifier
+from mxlpy.meta.utils import valid_identifier, valid_tex_identifier
 from mxlpy.types import Derived, InitialAssignment
 
 if TYPE_CHECKING:
@@ -106,21 +106,17 @@ def generate_mode_code_mxlweb(model: Model) -> tuple[str, str]:
         + list(reactions_raw)
         + surrogate_output_names
     )
-    name_map = {n: _to_valid_identifier(n) for n in all_names}
+    name_map = {n: valid_identifier(n) for n in all_names}
     sym_subs: list[tuple[sympy.Expr, sympy.Expr]] = [
         (sympy.Symbol(orig), sympy.Symbol(san))
         for orig, san in name_map.items()
         if orig != san
     ]
-
-    def _tex(k: str) -> str:
-        return k.replace("_", r"\_")
-
     # Collect component strings (populates `used` as a side-effect)
     param_lines: list[str] = []
     for k, v in parameters.items():
         param_lines.append(
-            f'      .addParameter("{name_map[k]}", {{ value: {v!r}, texName: {_tex(k)!r}}})'
+            f'      .addParameter("{name_map[k]}", {{ value: {v!r}, texName: {valid_tex_identifier(k)!r}}})'
         )
 
     var_lines: list[str] = []
@@ -136,7 +132,7 @@ def generate_mode_code_mxlweb(model: Model) -> tuple[str, str]:
                     sym_subs,
                 )
                 var_lines.append(
-                    f'      .addVariable("{name_map[k]}", {{ value: {fn_ts}, texName: {_tex(k)!r} }})'
+                    f'      .addVariable("{name_map[k]}", {{ value: {fn_ts}, texName: {valid_tex_identifier(k)!r} }})'
                 )
             except (ValueError, KeyError) as exc:
                 _LOGGER.warning(
@@ -145,11 +141,11 @@ def generate_mode_code_mxlweb(model: Model) -> tuple[str, str]:
                     exc,
                 )
                 var_lines.append(
-                    f'      .addVariable("{name_map[k]}", {{ value: {variables[k]!r}, texName: {_tex(k)!r} }})'
+                    f'      .addVariable("{name_map[k]}", {{ value: {variables[k]!r}, texName: {valid_tex_identifier(k)!r} }})'
                 )
         else:
             var_lines.append(
-                f'      .addVariable("{name_map[k]}", {{ value: {variables[k]!r}, texName: {_tex(k)!r} }})'
+                f'      .addVariable("{name_map[k]}", {{ value: {variables[k]!r}, texName: {valid_tex_identifier(k)!r} }})'
             )
 
     assign_lines: list[str] = []
@@ -160,7 +156,7 @@ def generate_mode_code_mxlweb(model: Model) -> tuple[str, str]:
             _LOGGER.warning("Skipping derived '%s': %s", k, exc)
             continue
         assign_lines.append(
-            f'      .addAssignment("{name_map[k]}", {{ fn: {fn_ts}, texName: {_tex(k)!r}}})'
+            f'      .addAssignment("{name_map[k]}", {{ fn: {fn_ts}, texName: {valid_tex_identifier(k)!r}}})'
         )
 
     rxn_lines: list[str] = []
@@ -199,7 +195,7 @@ def generate_mode_code_mxlweb(model: Model) -> tuple[str, str]:
             f'      .addReaction("{name_map[k]}", {{\n'
             f"        fn: {fn_ts},\n"
             f"        stoichiometry: {stoich_ts},\n"
-            f"        texName: {_tex(k)!r},\n"
+            f"        texName: {valid_tex_identifier(k)!r},\n"
             f"      }})"
         )
 
@@ -272,12 +268,12 @@ def generate_mode_code_mxlweb(model: Model) -> tuple[str, str]:
                     f'      .addReaction("{san_output}", {{\n'
                     f"        fn: {fn_ts},\n"
                     f"        stoichiometry: {rxn_stoich_ts},\n"
-                    f"        texName: {_tex(k)!r},\n"
+                    f"        texName: {valid_tex_identifier(k)!r},\n"
                     f"      }})"
                 )
             else:
                 assign_lines.append(
-                    f'      .addAssignment("{san_output}", {{ fn: {fn_ts}, texName: {_tex(k)!r} }})'
+                    f'      .addAssignment("{san_output}", {{ fn: {fn_ts}, texName: {valid_tex_identifier(k)!r} }})'
                 )
 
     # Build import list from collected class names

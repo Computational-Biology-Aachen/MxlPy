@@ -162,7 +162,6 @@ def _fns_to_symbolic_reprs(
 ) -> list[SymbolicFn]:
     fn_name = fn.__name__
     args = cast(list, list_of_symbols(model_args))
-    exprs = fn_to_sympy_exprs(fn, origin=k, model_args=args)
     if (exprs := custom_fns.get(k)) is not None:
         if not isinstance(exprs, list):
             msg = f"Expected multiple exprs for '{k}' but got a single expr"
@@ -177,7 +176,7 @@ def _fns_to_symbolic_reprs(
             for i, expr in zip(outputs, exprs, strict=True)
         ]
 
-    if exprs is None:
+    if (exprs := fn_to_sympy_exprs(fn, origin=k, model_args=args)) is None:
         msg = f"Unable to parse fns for '{k}'"
         if only_warn:
             exprs = [sympy.Float("nan") for _ in outputs]

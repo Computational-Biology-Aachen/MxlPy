@@ -3,14 +3,19 @@ from collections.abc import Callable
 from typing import NamedTuple, Protocol, cast
 
 import sympy
+from matplotlib.table import CustomCell
 
 from mxlpy import _topo
 from mxlpy.meta.symbolic_repr import (
     SymbolicFn,
+    SymbolicParameter,
+    SymbolicReaction,
+    SymbolicSurrogate,
+    SymbolicVariable,
     model_to_symbolic_repr,
 )
-from mxlpy.meta.sympy_tools import sympy_to_inline_py
-from mxlpy.meta.utils import _to_valid_identifier
+from mxlpy.meta.sympy_tools import sympy_to_inline_mxlweb, sympy_to_inline_py
+from mxlpy.meta.utils import valid_identifier, valid_tex_identifier
 from mxlpy.model import Model
 from mxlpy.surrogates.abstract import AbstractSurrogate
 from mxlpy.types import InitialAssignment
@@ -20,7 +25,6 @@ __all__ = [
     "ExprTemplate",
     "FnDeclTemplate",
     "ListTemplate",
-    "ModelCode",
     "NormalizedSymbolicModel",
     "ReturnTemplate",
     "TupleTemplate",
@@ -45,6 +49,39 @@ class Codegen(NamedTuple):
     model: str
     derived: str
     inits: str
+
+
+class FnDeclTemplate(Protocol):
+    def __call__(
+        self,
+        name: str,
+        args: list[tuple[str, str]],
+        return_type: str,
+    ) -> str: ...
+
+
+class VariableUnpackingTemplate(Protocol):
+    def __call__(self, variables: list[str]) -> str: ...
+
+
+class VariableAssignmentTemplate(Protocol):
+    def __call__(self, name: str, value: str) -> str: ...
+
+
+class ExprTemplate(Protocol):
+    def __call__(self, expr: sympy.Expr) -> str: ...
+
+
+class ListTemplate(Protocol):
+    def __call__(self, elements: list[str]) -> str: ...
+
+
+class TupleTemplate(Protocol):
+    def __call__(self, elements: list[str]) -> str: ...
+
+
+class ReturnTemplate(Protocol):
+    def __call__(self, variables: list[str]) -> str: ...
 
 
 ###############################################################################
@@ -234,57 +271,21 @@ def _normalized_symbolic_model(
     )
 
 
-###############################################################################
-# Generate initial conditions
-###############################################################################
-
-###############################################################################
-# Generate components (derived + readouts)
-###############################################################################
-
-
-###############################################################################
-# Full codegen
-###############################################################################
-
-
-class FnDeclTemplate(Protocol):
-    def __call__(
-        self,
-        name: str,
-        args: list[tuple[str, str]],
-        return_type: str,
-    ) -> str: ...
-
-
-class VariableUnpackingTemplate(Protocol):
-    def __call__(self, variables: list[str]) -> str: ...
-
-
-class VariableAssignmentTemplate(Protocol):
-    def __call__(self, name: str, value: str) -> str: ...
-
-
-class ExprTemplate(Protocol):
-    def __call__(self, expr: sympy.Expr) -> str: ...
-
-
-class ListTemplate(Protocol):
-    def __call__(self, elements: list[str]) -> str: ...
-
-
-class TupleTemplate(Protocol):
-    def __call__(self, elements: list[str]) -> str: ...
-
-
-class ReturnTemplate(Protocol):
-    def __call__(self, variables: list[str]) -> str: ...
-
-
-class ModelCode(NamedTuple):
-    model: str
-    initial_conditions: str
-    derived: str
+def _get_extended_returns(
+    model: Model,
+    derived_to_calculate: list[str] | None,
+) -> list[str]:
+    return (
+        list(
+            model.get_derived_parameter_names()
+            + model.get_derived_variable_names()
+            + model.get_reaction_names()
+            + model.get_surrogate_output_names()
+            + model.get_readout_names()
+        )
+        if derived_to_calculate is None
+        else derived_to_calculate
+    )
 
 
 def _generate_model_code(
@@ -302,17 +303,7 @@ def _generate_model_code(
     name_map: dict[str, str],
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
 ) -> Codegen:
-    extended_returns = (
-        list(
-            model.get_derived_parameter_names()
-            + model.get_derived_variable_names()
-            + model.get_reaction_names()
-            + model.get_surrogate_output_names()
-            + model.get_readout_names()
-        )
-        if derived_to_calculate is None
-        else derived_to_calculate
-    )
+    extended_returns = _get_extended_returns(model, derived_to_calculate)
 
     nsm = _normalized_symbolic_model(
         model,
@@ -421,6 +412,224 @@ def _generate_model_code(
     )
 
 
+def generate_mxlweb_code(
+    model: Model,
+    *,
+    tex_names: dict[str, str] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+    sliders: dict[str, dict[str, str]] | None = None,
+):
+    sliders = {} if sliders is None else sliders
+    custom_fns = {} if custom_fns is None else custom_fns
+    tex_names = {} if tex_names is None else tex_names
+
+    name_map = {name: valid_identifier(name) for name in model.ids}
+    subs = {sympy.Symbol(k): sympy.Symbol(v) for k, v in name_map.items()}
+    sr = model_to_symbolic_repr(model, custom_fns=custom_fns)
+    used: set[str] = set()
+
+    def _gen_slider(k: str) -> str:
+        if (s := sliders.get(k)) is not None:
+            return (
+                f"        slider: {{\n"
+                f'          min: "{s["min"]}",\n'
+                f'          max: "{s["max"]}",\n'
+                f'          step: "{s["step"]}",\n'
+                f"        }},\n"
+            )
+        return ""
+
+    def _gen_var(
+        k: str,
+        el: SymbolicVariable,
+        used: set[str],
+        subs: dict[sympy.Symbol, sympy.Symbol],
+    ) -> str:
+        texName = (
+            valid_tex_identifier(k)
+            if (texName := tex_names.get(k)) is None
+            else texName
+        )
+
+        # FIXME: rewrite mxlweb to only take `Base`
+        # then you can use new Num instead of float
+        if isinstance(var := el.value, SymbolicFn):
+            value = sympy_to_inline_mxlweb(var.expr, used, subs)
+        elif isinstance(var, sympy.Float):
+            value = str(float(var))
+        else:
+            value = sympy_to_inline_mxlweb(var, used, subs)
+
+        return (
+            f'      .addVariable("{name_map[k]}", {{\n'
+            f"        value: {value},\n"
+            f"        texName: {texName!r},\n{_gen_slider(k)}"
+            f"      }})"
+        )
+
+    def _gen_par(
+        k: str,
+        el: SymbolicParameter,
+        used: set[str],
+        subs: dict[sympy.Symbol, sympy.Symbol],
+    ) -> str:
+        texName = (
+            valid_tex_identifier(k)
+            if (texName := tex_names.get(k)) is None
+            else texName
+        )
+
+        # FIXME: rewrite mxlweb to only take `Base`
+        # then you can use new Num instead of float
+        if isinstance(var := el.value, SymbolicFn):
+            value = sympy_to_inline_mxlweb(var.expr, used, subs)
+        elif isinstance(var, sympy.Float):
+            value = str(float(var))
+        else:
+            value = sympy_to_inline_mxlweb(var, used, subs)
+        return (
+            f'      .addParameter("{name_map[k]}", {{\n'
+            f"        value: {value},\n"
+            f"        texName: {texName!r},\n{_gen_slider(k)}"
+            f"      }})"
+        )
+
+    def _gen_der(
+        k: str,
+        el: SymbolicFn,
+        used: set[str],
+        subs: dict[sympy.Symbol, sympy.Symbol],
+    ) -> str:
+        texName = (
+            valid_tex_identifier(k)
+            if (texName := tex_names.get(k)) is None
+            else texName
+        )
+        value = sympy_to_inline_mxlweb(el.expr, used, subs)
+        return (
+            f'      .addAssignment("{name_map[k]}", {{\n'
+            f"        fn: {value},\n"
+            f"        texName: {texName!r},\n"
+            f"      }})"
+        )
+
+    def _gen_rdo(
+        k: str,
+        el: SymbolicFn,
+        used: set[str],
+        subs: dict[sympy.Symbol, sympy.Symbol],
+    ) -> str:
+        # FIXME: add readout to mxlweb
+        texName = (
+            valid_tex_identifier(k)
+            if (texName := tex_names.get(k)) is None
+            else texName
+        )
+        value = sympy_to_inline_mxlweb(el.expr, used, subs)
+        return (
+            f'      .addAssignment("{name_map[k]}", {{\n'
+            f"        fn: {value},\n"
+            f"        texName: {texName!r},\n"
+            f"      }})"
+        )
+
+    def _gen_stoich(
+        k: str,
+        el: sympy.Float | SymbolicFn,
+        used: set[str],
+        subs: dict[sympy.Symbol, sympy.Symbol],
+    ) -> str:
+        value = (
+            sympy_to_inline_mxlweb(el.expr, used, subs)
+            if isinstance(el, SymbolicFn)
+            else sympy_to_inline_mxlweb(el, used, subs)
+        )
+        return f'{{ name: "{name_map[k]}", value: {value} }}'
+
+    def _gen_rxn(
+        k: str,
+        el: SymbolicReaction,
+        used: set[str],
+        subs: dict[sympy.Symbol, sympy.Symbol],
+    ) -> str:
+        texName = (
+            valid_tex_identifier(k)
+            if (texName := tex_names.get(k)) is None
+            else texName
+        )
+        fn = sympy_to_inline_mxlweb(el.fn.expr, used, subs)
+        stoich = f"[{', '.join(_gen_stoich(k, v, used, subs) for k, v in el.stoichiometry.items())}]"
+
+        return (
+            f'      .addReaction("{name_map[k]}", {{\n'
+            f"        fn: {fn},\n"
+            f"        stoichiometry: {stoich},\n"
+            f"        texName: {texName!r},\n"
+            f"      }})"
+        )
+
+    def _gen_srg(
+        el: SymbolicSurrogate,
+        used: set[str],
+        subs: dict[sympy.Symbol, sympy.Symbol],
+    ) -> str:
+        # FIXME: add surrogate to mxlweb
+
+        out = []
+        for o, sfn in zip(el.outputs, el.fns, strict=True):
+            texName = (
+                valid_tex_identifier(o)
+                if (texName := tex_names.get(o)) is None
+                else texName
+            )
+            fn = sympy_to_inline_mxlweb(sfn.expr, used, subs)
+
+            if (ss := el.stoichiometry.get(o)) is not None:
+                stoich = f"[{', '.join(_gen_stoich(k, v, used, subs) for k, v in ss.items())}]"
+                out.append(
+                    f'      .addReaction("{name_map[o]}", {{\n'
+                    f"        fn: {fn},\n"
+                    f"        stoichiometry: {stoich},\n"
+                    f"        texName: {texName!r},\n"
+                    f"      }})"
+                )
+            else:
+                out.append(
+                    f'      .addAssignment("{name_map[o]}", {{\n'
+                    f"        fn: {fn},\n"
+                    f"        texName: {texName!r},\n"
+                    f"      }})"
+                )
+        return "\n".join(out)
+
+    lines = []
+    lines.extend(_gen_par(k, v, used, subs) for k, v in sr.parameters.items())
+    lines.extend(_gen_var(k, v, used, subs) for k, v in sr.variables.items())
+    lines.extend(_gen_der(k, v, used, subs) for k, v in sr.derived.items())
+    lines.extend(_gen_rxn(k, v, used, subs) for k, v in sr.reactions.items())
+    lines.extend(_gen_srg(v, used, subs) for v in sr.surrogates.values())
+    lines.extend(_gen_rdo(k, v, used, subs) for k, v in sr.readouts.items())
+
+    # Build import list from collected class names
+    mathml_import_str = ", ".join(sorted(used))
+    model_builder_str = "\n".join(
+        (
+            "export function initModel(): ModelBuilder {",
+            "    return new ModelBuilder()",
+            "\n".join(lines),
+            "  }",
+        )
+    )
+    return "\n".join(
+        [
+            f'import {{ {mathml_import_str} }} from "$lib/mathml";',
+            'import { ModelBuilder } from "$lib/model-editor/modelBuilder";',
+            "",
+            model_builder_str,
+        ]
+    )
+
+
 def generate_model_code_py(
     model: Model,
     *,
@@ -428,7 +637,7 @@ def generate_model_code_py(
     derived_to_calculate: list[str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     typed: bool = False,
-):
+) -> Codegen:
     def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:
         return (
             f"def {name}({', '.join(f'{k}: {t}' for k, t in args)}) -> {return_type}:"
@@ -463,5 +672,5 @@ def generate_model_code_py(
             "import math",
             "from collections.abc import Iterable",
         ],
-        name_map={name: _to_valid_identifier(name) for name in model.ids},
+        name_map={name: valid_identifier(name) for name in model.ids},
     )

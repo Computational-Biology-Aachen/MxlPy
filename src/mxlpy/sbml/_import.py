@@ -97,6 +97,7 @@ def _codegen(name: str, model: pysbml.transform.data.Model) -> Path:
                     "import math",
                     "import scipy",
                 ],
+                model_fn_name="create_model",
             )
         )
     return path

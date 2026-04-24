@@ -282,7 +282,11 @@ def sympy_to_inline_cxx(expr: sympy.Expr) -> str:
     return cast(str, sympy.cxxcode(expr, full_prec=False))
 
 
-def sympy_to_inline_mxlweb(expr: sympy.Expr, used: set[str]) -> str:
+def sympy_to_inline_mxlweb(
+    expr: sympy.Expr,
+    used: set[str],
+    subs: dict[sympy.Symbol, sympy.Symbol] | None,
+) -> str:
     """Recursively convert a sympy expression to a MxlWeb TypeScript AST string.
 
     Parameters
@@ -298,6 +302,9 @@ def sympy_to_inline_mxlweb(expr: sympy.Expr, used: set[str]) -> str:
         TypeScript expression constructing the equivalent MxlWeb AST node
 
     """
+    if subs is not None:
+        expr = cast(sympy.Expr, expr.subs(subs))
+
     # Numbers
     if isinstance(expr, sympy.Number):
         used.add("Num")
@@ -311,7 +318,7 @@ def sympy_to_inline_mxlweb(expr: sympy.Expr, used: set[str]) -> str:
     # Addition
     if isinstance(expr, sympy.Add):
         used.add("Add")
-        children = ", ".join(sympy_to_inline_mxlweb(a, used) for a in expr.args)
+        children = ", ".join(sympy_to_inline_mxlweb(a, used, subs) for a in expr.args)
         return f"new Add([{children}])"
 
     # Multiplication — handle negation and division
@@ -350,14 +357,14 @@ def sympy_to_inline_mxlweb(expr: sympy.Expr, used: set[str]) -> str:
             )
             d_expr: sympy.Expr = sympy.Mul(*denom) if len(denom) > 1 else denom[0]
             inner: str = (
-                f"new Divide([{sympy_to_inline_mxlweb(n_expr, used)}, "
-                f"{sympy_to_inline_mxlweb(d_expr, used)}])"
+                f"new Divide([{sympy_to_inline_mxlweb(n_expr, used, subs)}, "
+                f"{sympy_to_inline_mxlweb(d_expr, used, subs)}])"
             )
         elif len(numer) == 1:
-            inner = sympy_to_inline_mxlweb(numer[0], used)
+            inner = sympy_to_inline_mxlweb(numer[0], used, subs)
         else:
             used.add("Mul")
-            children = ", ".join(sympy_to_inline_mxlweb(f, used) for f in numer)
+            children = ", ".join(sympy_to_inline_mxlweb(f, used, subs) for f in numer)
             inner = f"new Mul([{children}])"
 
         if coeff.is_negative:
@@ -372,33 +379,35 @@ def sympy_to_inline_mxlweb(expr: sympy.Expr, used: set[str]) -> str:
         if exp == sympy.Rational(1, 2):
             used.add("Sqrt")
             used.add("Num")
-            return f"new Sqrt({sympy_to_inline_mxlweb(base, used)}, new Num(2))"
+            return f"new Sqrt({sympy_to_inline_mxlweb(base, used, subs)}, new Num(2))"
         if exp == sympy.Integer(-1):
             used.add("Divide")
             used.add("Num")
-            return f"new Divide([new Num(1), {sympy_to_inline_mxlweb(base, used)}])"
+            return (
+                f"new Divide([new Num(1), {sympy_to_inline_mxlweb(base, used, subs)}])"
+            )
         used.add("Pow")
-        return f"new Pow({sympy_to_inline_mxlweb(base, used)}, {sympy_to_inline_mxlweb(exp, used)})"
+        return f"new Pow({sympy_to_inline_mxlweb(base, used, subs)}, {sympy_to_inline_mxlweb(exp, used, subs)})"
 
     # Unary functions
     for sympy_type, ts_name in _UNARY_FN_MAP:
         if isinstance(expr, sympy_type):
             used.add(ts_name)
             child = cast(sympy.Expr, expr.args[0])
-            return f"new {ts_name}({sympy_to_inline_mxlweb(child, used)})"
+            return f"new {ts_name}({sympy_to_inline_mxlweb(child, used, subs)})"
 
     # N-ary functions
     if isinstance(expr, sympy.Max):
         used.add("Max")
         children = ", ".join(
-            sympy_to_inline_mxlweb(cast(sympy.Expr, a), used) for a in expr.args
+            sympy_to_inline_mxlweb(cast(sympy.Expr, a), used, subs) for a in expr.args
         )
         return f"new Max([{children}])"
 
     if isinstance(expr, sympy.Min):
         used.add("Min")
         children = ", ".join(
-            sympy_to_inline_mxlweb(cast(sympy.Expr, a), used) for a in expr.args
+            sympy_to_inline_mxlweb(cast(sympy.Expr, a), used, subs) for a in expr.args
         )
         return f"new Min([{children}])"
 
@@ -410,9 +419,9 @@ def sympy_to_inline_mxlweb(expr: sympy.Expr, used: set[str]) -> str:
         for pair in expr.args:
             val = cast(sympy.Expr, pair.args[0])
             cond = cast(sympy.Expr, pair.args[1])
-            pieces.append(sympy_to_inline_mxlweb(val, used))
+            pieces.append(sympy_to_inline_mxlweb(val, used, subs))
             if cond is not sympy.true:
-                pieces.append(sympy_to_inline_mxlweb(cond, used))
+                pieces.append(sympy_to_inline_mxlweb(cond, used, subs))
         return f"new Piecewise([{', '.join(pieces)}])"
 
     # Relational and logical operators
@@ -420,7 +429,8 @@ def sympy_to_inline_mxlweb(expr: sympy.Expr, used: set[str]) -> str:
         if isinstance(expr, sympy_type):
             used.add(ts_name)
             children = ", ".join(
-                sympy_to_inline_mxlweb(cast(sympy.Expr, a), used) for a in expr.args
+                sympy_to_inline_mxlweb(cast(sympy.Expr, a), used, subs)
+                for a in expr.args
             )
             return f"new {ts_name}([{children}])"
 
