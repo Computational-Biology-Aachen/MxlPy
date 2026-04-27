@@ -1,8 +1,8 @@
-def test_model_diff() -> None:
+def test_symbolicmodel_jacobian() -> None:
     # FIXME: implement this
     assert True
 
 
-def test_soft_eq() -> None:
+def test_to_symbolic_model() -> None:
     # FIXME: implement this
     assert True

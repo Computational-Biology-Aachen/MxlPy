@@ -1,8 +1,8 @@
-def test_model_diff() -> None:
+def test_markdown() -> None:
     # FIXME: implement this
     assert True
 
 
-def test_soft_eq() -> None:
+def test_markdownreport_write() -> None:
     # FIXME: implement this
     assert True

@@ -3,6 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+
+pytest.importorskip("torch", exc_type=ImportError)
+
 import torch
 from torch import nn
 

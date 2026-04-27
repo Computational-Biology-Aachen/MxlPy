@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
+
+pytest.importorskip("torch", exc_type=ImportError)
+
 import torch
 from torch import nn
 

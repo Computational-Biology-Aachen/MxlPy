@@ -17,48 +17,6 @@ from mxlpy.linear_label_map import (
 from mxlpy.model import Derived, Model
 
 
-def test_generate_isotope_labels() -> None:
-    """Test generation of isotope labels."""
-    labels = _generate_isotope_labels("A", 3)
-    assert labels == ["A__0", "A__1", "A__2"]
-
-    with pytest.raises(ValueError):
-        _generate_isotope_labels("A", 0)
-
-
-def test_unpack_stoichiometries() -> None:
-    """Test unpacking of stoichiometries."""
-    stoich = {"A": -2, "B": 1, "C": 3}
-    subs, prods = _unpack_stoichiometries(stoich)
-
-    assert subs == {"A": 2}
-    assert prods == {"B": 1, "C": 3}
-
-    with pytest.raises(NotImplementedError):
-        _unpack_stoichiometries({"A": Derived(fn=lambda x: x, args=["A"])})
-
-
-def test_stoichiometry_to_duplicate_list() -> None:
-    """Test conversion of stoichiometry to duplicate list."""
-    stoich = {"A": 2, "B": 1, "C": 3}
-    result = _stoichiometry_to_duplicate_list(stoich)
-
-    assert len(result) == 6
-    assert result.count("A") == 2
-    assert result.count("B") == 1
-    assert result.count("C") == 3
-
-
-def test_map_substrates_to_labelmap() -> None:
-    """Test mapping substrates to label map."""
-    substrates = ["A", "B", "C"]
-    labelmap = [2, 0, 1]
-
-    result = _map_substrates_to_labelmap(substrates, labelmap)
-
-    assert result == ["B", "C", "A"]
-
-
 def test_add_label_influx_or_efflux() -> None:
     """Test adding label influx or efflux."""
     # Test adding efflux
@@ -90,36 +48,13 @@ def test_add_label_influx_or_efflux() -> None:
         _add_label_influx_or_efflux(subs, prods, labelmap)
 
 
-def test_relative_label_flux() -> None:
-    """Test calculation of relative label flux."""
-    result = _relative_label_flux(0.5, 10.0)
-    assert result == 5.0
+def test_generate_isotope_labels() -> None:
+    """Test generation of isotope labels."""
+    labels = _generate_isotope_labels("A", 3)
+    assert labels == ["A__0", "A__1", "A__2"]
 
-
-def test_one_div() -> None:
-    """Test one_div function."""
-    assert _one_div(2.0) == 0.5
-    assert _one_div(4.0) == 0.25
-
-
-def test_neg_one_div() -> None:
-    """Test neg_one_div function."""
-    assert _neg_one_div(2.0) == -0.5
-    assert _neg_one_div(4.0) == -0.25
-
-
-def test_linear_label_mapper_get_isotopomers() -> None:
-    """Test LinearLabelMapper get_isotopomers method."""
-    model = Model()
-    mapper = LinearLabelMapper(model=model, label_variables={"A": 2, "B": 3, "C": 1})
-
-    isotopomers = mapper.get_isotopomers(["A", "C"])
-
-    assert "A" in isotopomers
-    assert "C" in isotopomers
-    assert "B" not in isotopomers
-    assert isotopomers["A"] == ["A__0", "A__1"]
-    assert isotopomers["C"] == ["C__0"]
+    with pytest.raises(ValueError):
+        _generate_isotope_labels("A", 0)
 
 
 def test_linear_label_mapper_build_model() -> None:
@@ -220,3 +155,78 @@ def test_linear_label_mapper_build_model_with_multiple_initial_labels() -> None:
     y0 = label_model.get_initial_conditions()
     assert y0["A__0"] == 0.5
     assert y0["A__1"] == 0.5
+
+
+def test_linear_label_mapper_get_isotopomers() -> None:
+    """Test LinearLabelMapper get_isotopomers method."""
+    model = Model()
+    mapper = LinearLabelMapper(model=model, label_variables={"A": 2, "B": 3, "C": 1})
+
+    isotopomers = mapper.get_isotopomers(["A", "C"])
+
+    assert "A" in isotopomers
+    assert "C" in isotopomers
+    assert "B" not in isotopomers
+    assert isotopomers["A"] == ["A__0", "A__1"]
+    assert isotopomers["C"] == ["C__0"]
+
+
+def test_linearlabelmapper_build_model() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_linearlabelmapper_get_isotopomers() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_map_substrates_to_labelmap() -> None:
+    """Test mapping substrates to label map."""
+    substrates = ["A", "B", "C"]
+    labelmap = [2, 0, 1]
+
+    result = _map_substrates_to_labelmap(substrates, labelmap)
+
+    assert result == ["B", "C", "A"]
+
+
+def test_neg_one_div() -> None:
+    """Test neg_one_div function."""
+    assert _neg_one_div(2.0) == -0.5
+    assert _neg_one_div(4.0) == -0.25
+
+
+def test_one_div() -> None:
+    """Test one_div function."""
+    assert _one_div(2.0) == 0.5
+    assert _one_div(4.0) == 0.25
+
+
+def test_relative_label_flux() -> None:
+    """Test calculation of relative label flux."""
+    result = _relative_label_flux(0.5, 10.0)
+    assert result == 5.0
+
+
+def test_stoichiometry_to_duplicate_list() -> None:
+    """Test conversion of stoichiometry to duplicate list."""
+    stoich = {"A": 2, "B": 1, "C": 3}
+    result = _stoichiometry_to_duplicate_list(stoich)
+
+    assert len(result) == 6
+    assert result.count("A") == 2
+    assert result.count("B") == 1
+    assert result.count("C") == 3
+
+
+def test_unpack_stoichiometries() -> None:
+    """Test unpacking of stoichiometries."""
+    stoich = {"A": -2, "B": 1, "C": 3}
+    subs, prods = _unpack_stoichiometries(stoich)
+
+    assert subs == {"A": 2}
+    assert prods == {"B": 1, "C": 3}
+
+    with pytest.raises(NotImplementedError):
+        _unpack_stoichiometries({"A": Derived(fn=lambda x: x, args=["A"])})

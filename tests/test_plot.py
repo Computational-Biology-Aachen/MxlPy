@@ -76,35 +76,6 @@ def test_add_grid() -> None:
     plt.close(fig)
 
 
-def test_rotate_xlabels() -> None:
-    fig, ax = plt.subplots()
-    ax.set_xticks([0, 1, 2])
-    ax.set_xticklabels(["A", "B", "C"])
-    result = rotate_xlabels(ax, rotation=45, ha="right")
-    assert isinstance(result, Axes)
-    for label in ax.get_xticklabels():
-        assert label.get_rotation() == 45
-        assert label.get_horizontalalignment() == "right"
-    plt.close(fig)
-
-
-def test_two_axes() -> None:
-    fig, axs = two_axes()
-    assert len(axs) == 2
-    for ax in axs:
-        assert isinstance(ax, Axes)
-    plt.close(fig)
-
-
-def test_grid_layout() -> None:
-    fig, axs = grid_layout(5)
-    assert isinstance(fig, Figure)
-    assert len(axs) >= 5
-    for ax in axs:
-        assert isinstance(ax, Axes)
-    plt.close(fig)
-
-
 def test_bars(sample_dataframe: pd.DataFrame) -> None:
     fig, ax = bars(sample_dataframe)
     assert isinstance(fig, Figure)
@@ -114,54 +85,32 @@ def test_bars(sample_dataframe: pd.DataFrame) -> None:
     plt.close(fig)
 
 
-def test_lines_with_dataframe(sample_dataframe: pd.DataFrame) -> None:
-    fig, ax = lines(sample_dataframe)
+def test_bars_autogrouped() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_bars_grouped() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_context() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_grid_labels() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_grid_layout() -> None:
+    fig, axs = grid_layout(5)
     assert isinstance(fig, Figure)
-    assert isinstance(ax, Axes)
-    assert len(ax.lines) == len(sample_dataframe.columns)
-    plt.close(fig)
-
-
-def test_lines_with_series(sample_series: pd.Series) -> None:
-    fig, ax = lines(sample_series)
-    assert isinstance(fig, Figure)
-    assert isinstance(ax, Axes)
-    assert len(ax.lines) == 1
-    plt.close(fig)
-
-
-def test_lines_grouped(sample_dataframe: pd.DataFrame) -> None:
-    dfs = [sample_dataframe[col] for col in sample_dataframe.columns]
-    fig, axs = lines_grouped(dfs)
-    assert isinstance(fig, Figure)
-    plt.close(fig)
-
-
-def test_line_autogrouped(sample_dataframe: pd.DataFrame) -> None:
-    fig, axs = line_autogrouped(sample_dataframe)
-    assert isinstance(fig, Figure)
+    assert len(axs) >= 5
     for ax in axs:
         assert isinstance(ax, Axes)
-    plt.close(fig)
-
-
-def test_line_mean_std(sample_dataframe: pd.DataFrame) -> None:
-    fig, ax = line_mean_std(sample_dataframe)
-    assert isinstance(fig, Figure)
-    assert isinstance(ax, Axes)
-    assert len(ax.lines) == 1
-    assert len(ax.collections) == 1  # For the fill_between
-    plt.close(fig)
-
-
-def test_lines_mean_std_from_2d_idx(multiindex_dataframe: pd.DataFrame) -> None:
-    fig, ax = lines_mean_std_from_2d_idx(multiindex_dataframe)
-    assert isinstance(fig, Figure)
-    assert isinstance(ax, Axes)
-    assert len(ax.lines) == len(multiindex_dataframe.columns)
-    assert len(ax.collections) == len(
-        multiindex_dataframe.columns
-    )  # For the fill_between
     plt.close(fig)
 
 
@@ -193,6 +142,112 @@ def test_heatmap_from_2d_idx(multiindex_dataframe: pd.DataFrame) -> None:
 def test_heatmaps_from_2d_idx(multiindex_dataframe: pd.DataFrame) -> None:
     fig, axs = heatmaps_from_2d_idx(multiindex_dataframe)
     assert isinstance(fig, Figure)
+    plt.close(fig)
+
+
+def test_line_autogrouped(sample_dataframe: pd.DataFrame) -> None:
+    fig, axs = line_autogrouped(sample_dataframe)
+    assert isinstance(fig, Figure)
+    for ax in axs:
+        assert isinstance(ax, Axes)
+    plt.close(fig)
+
+
+def test_line_mean_std(sample_dataframe: pd.DataFrame) -> None:
+    fig, ax = line_mean_std(sample_dataframe)
+    assert isinstance(fig, Figure)
+    assert isinstance(ax, Axes)
+    assert len(ax.lines) == 1
+    assert len(ax.collections) == 1  # For the fill_between
+    plt.close(fig)
+
+
+def test_lines() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_lines_grouped(sample_dataframe: pd.DataFrame) -> None:
+    dfs = [sample_dataframe[col] for col in sample_dataframe.columns]
+    fig, axs = lines_grouped(dfs)
+    assert isinstance(fig, Figure)
+    plt.close(fig)
+
+
+def test_lines_mean_std_from_2d_idx(multiindex_dataframe: pd.DataFrame) -> None:
+    fig, ax = lines_mean_std_from_2d_idx(multiindex_dataframe)
+    assert isinstance(fig, Figure)
+    assert isinstance(ax, Axes)
+    assert len(ax.lines) == len(multiindex_dataframe.columns)
+    assert len(ax.collections) == len(
+        multiindex_dataframe.columns
+    )  # For the fill_between
+    plt.close(fig)
+
+
+def test_lines_with_dataframe(sample_dataframe: pd.DataFrame) -> None:
+    fig, ax = lines(sample_dataframe)
+    assert isinstance(fig, Figure)
+    assert isinstance(ax, Axes)
+    assert len(ax.lines) == len(sample_dataframe.columns)
+    plt.close(fig)
+
+
+def test_lines_with_series(sample_series: pd.Series) -> None:
+    fig, ax = lines(sample_series)
+    assert isinstance(fig, Figure)
+    assert isinstance(ax, Axes)
+    assert len(ax.lines) == 1
+    plt.close(fig)
+
+
+def test_one_axes() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_relative_label_distribution() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_reset_prop_cycle() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_rotate_xlabels() -> None:
+    fig, ax = plt.subplots()
+    ax.set_xticks([0, 1, 2])
+    ax.set_xticklabels(["A", "B", "C"])
+    result = rotate_xlabels(ax, rotation=45, ha="right")
+    assert isinstance(result, Axes)
+    for label in ax.get_xticklabels():
+        assert label.get_rotation() == 45
+        assert label.get_horizontalalignment() == "right"
+    plt.close(fig)
+
+
+def test_shade_protocol() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_show() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_trajectories_2d() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_two_axes() -> None:
+    fig, axs = two_axes()
+    assert len(axs) == 2
+    for ax in axs:
+        assert isinstance(ax, Axes)
     plt.close(fig)
 
 

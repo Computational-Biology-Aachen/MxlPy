@@ -1,8 +1,8 @@
-def test_model_diff() -> None:
+def test_log_to_mxlweb() -> None:
     # FIXME: implement this
     assert True
 
 
-def test_soft_eq() -> None:
+def test_sqrt_to_mxlweb() -> None:
     # FIXME: implement this
     assert True

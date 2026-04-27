@@ -60,6 +60,112 @@ def get_protocol() -> pd.DataFrame:
     )
 
 
+def test_mcsteadystates_combined() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_parameter_elasticities() -> None:
+    res = mc.parameter_elasticities(
+        get_simple_model(),
+        mc_to_scan=get_mc_to_scan(),
+        to_scan=["k0"],
+        variables={"S": 1.0, "P": 0.5},
+    )
+    elasticities = pd.DataFrame(
+        {
+            "k0": {
+                (0, "v0"): 0.9999999999998899,
+                (0, "v1"): 0.0,
+                (0, "v2"): 0.0,
+                (1, "v0"): 0.9999999999998899,
+                (1, "v1"): 0.0,
+                (1, "v2"): 0.0,
+                (2, "v0"): 0.9999999999998899,
+                (2, "v1"): 0.0,
+                (2, "v2"): 0.0,
+            }
+        },
+        dtype=float,
+    )
+    pd.testing.assert_frame_equal(res, elasticities)
+
+
+def test_protocol() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_protocol_time_course() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_response_coefficients() -> None:
+    res = mc.response_coefficients(
+        get_simple_model(),
+        mc_to_scan=get_mc_to_scan(),
+        to_scan=["k0"],
+    )
+    coefs = pd.DataFrame(
+        {
+            "k0": {
+                (0, "S"): 1.000000000001147,
+                (0, "P"): 1.0000000000029587,
+                (1, "S"): 0.999999999984487,
+                (1, "P"): 0.9999999999679767,
+                (2, "S"): 1.0000000000048441,
+                (2, "P"): 1.000000000009868,
+            }
+        },
+        dtype=float,
+    )
+    pd.testing.assert_frame_equal(res.variables, coefs)
+
+
+def test_scan_steady_state() -> None:
+    res = mc.scan_steady_state(
+        get_simple_model(),
+        to_scan=get_to_scan(),
+        mc_to_scan=get_mc_to_scan(),
+    )
+    # args
+    args = pd.DataFrame(
+        {
+            "S": {
+                (0, 1.0): 1.0000000000015183,
+                (0, 1.1): 1.1000000000014485,
+                (0, 1.2): 1.2000000000018252,
+                (1, 1.0): 0.9090909090916395,
+                (1, 1.1): 1.0000000000013443,
+                (1, 1.2): 1.0909090909101535,
+                (2, 1.0): 0.8333333333342008,
+                (2, 1.1): 0.9166666666675458,
+                (2, 1.2): 1.0000000000012899,
+            },
+            "P": {
+                (0, 1.0): 0.5000000000015187,
+                (0, 1.1): 0.5500000000014477,
+                (0, 1.2): 0.6000000000018254,
+                (1, 1.0): 0.4761904761912797,
+                (1, 1.1): 0.5238095238110023,
+                (1, 1.2): 0.5714285714297405,
+                (2, 1.0): 0.45454545454649536,
+                (2, 1.1): 0.5000000000010547,
+                (2, 1.2): 0.5454545454560934,
+            },
+        },
+        dtype=float,
+    )
+    args.index.names = [None, "k0"]
+    pd.testing.assert_frame_equal(
+        res.variables,
+        args,
+        atol=1e-6,
+        rtol=1e-6,
+    )
+
+
 def test_steady_state() -> None:
     res = mc.steady_state(get_simple_model(), mc_to_scan=get_mc_to_scan())
 
@@ -271,49 +377,6 @@ def test_time_course_over_protocol() -> None:
     )
 
 
-def test_scan_steady_state() -> None:
-    res = mc.scan_steady_state(
-        get_simple_model(),
-        to_scan=get_to_scan(),
-        mc_to_scan=get_mc_to_scan(),
-    )
-    # args
-    args = pd.DataFrame(
-        {
-            "S": {
-                (0, 1.0): 1.0000000000015183,
-                (0, 1.1): 1.1000000000014485,
-                (0, 1.2): 1.2000000000018252,
-                (1, 1.0): 0.9090909090916395,
-                (1, 1.1): 1.0000000000013443,
-                (1, 1.2): 1.0909090909101535,
-                (2, 1.0): 0.8333333333342008,
-                (2, 1.1): 0.9166666666675458,
-                (2, 1.2): 1.0000000000012899,
-            },
-            "P": {
-                (0, 1.0): 0.5000000000015187,
-                (0, 1.1): 0.5500000000014477,
-                (0, 1.2): 0.6000000000018254,
-                (1, 1.0): 0.4761904761912797,
-                (1, 1.1): 0.5238095238110023,
-                (1, 1.2): 0.5714285714297405,
-                (2, 1.0): 0.45454545454649536,
-                (2, 1.1): 0.5000000000010547,
-                (2, 1.2): 0.5454545454560934,
-            },
-        },
-        dtype=float,
-    )
-    args.index.names = [None, "k0"]
-    pd.testing.assert_frame_equal(
-        res.variables,
-        args,
-        atol=1e-6,
-        rtol=1e-6,
-    )
-
-
 def test_variable_elasticities() -> None:
     res = mc.variable_elasticities(
         get_simple_model(),
@@ -348,51 +411,3 @@ def test_variable_elasticities() -> None:
         dtype=float,
     )
     pd.testing.assert_frame_equal(res, elasticities)
-
-
-def test_parameter_elasticities() -> None:
-    res = mc.parameter_elasticities(
-        get_simple_model(),
-        mc_to_scan=get_mc_to_scan(),
-        to_scan=["k0"],
-        variables={"S": 1.0, "P": 0.5},
-    )
-    elasticities = pd.DataFrame(
-        {
-            "k0": {
-                (0, "v0"): 0.9999999999998899,
-                (0, "v1"): 0.0,
-                (0, "v2"): 0.0,
-                (1, "v0"): 0.9999999999998899,
-                (1, "v1"): 0.0,
-                (1, "v2"): 0.0,
-                (2, "v0"): 0.9999999999998899,
-                (2, "v1"): 0.0,
-                (2, "v2"): 0.0,
-            }
-        },
-        dtype=float,
-    )
-    pd.testing.assert_frame_equal(res, elasticities)
-
-
-def test_response_coefficients() -> None:
-    res = mc.response_coefficients(
-        get_simple_model(),
-        mc_to_scan=get_mc_to_scan(),
-        to_scan=["k0"],
-    )
-    coefs = pd.DataFrame(
-        {
-            "k0": {
-                (0, "S"): 1.000000000001147,
-                (0, "P"): 1.0000000000029587,
-                (1, "S"): 0.999999999984487,
-                (1, "P"): 0.9999999999679767,
-                (2, "S"): 1.0000000000048441,
-                (2, "P"): 1.000000000009868,
-            }
-        },
-        dtype=float,
-    )
-    pd.testing.assert_frame_equal(res.variables, coefs)

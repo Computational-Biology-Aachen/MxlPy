@@ -11,6 +11,46 @@ from mxlpy.distributions import (
 )
 
 
+def test_beta_sample() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_distribution_sample() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_gaussiankde_from_data() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_gaussiankde_plot() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_gaussiankde_sample() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_lognormal_sample() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_loguniform_sample() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_normal_sample() -> None:
+    # FIXME: implement this
+    assert True
+
+
 def test_sample() -> None:
     samples = sample(
         {
@@ -26,3 +66,13 @@ def test_sample() -> None:
     )
     assert len(samples.index) == 1
     assert len(samples.columns) == 7
+
+
+def test_skewnorm_sample() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_uniform_sample() -> None:
+    # FIXME: implement this
+    assert True

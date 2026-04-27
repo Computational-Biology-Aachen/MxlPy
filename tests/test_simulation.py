@@ -38,3 +38,58 @@ def test_get_producers_and_consumers() -> None:
         res.get_consumers("x", scaled=True),
         pd.DataFrame({"v_out": {0.0: 2.0, 1.0: 4.0}}),
     )
+
+
+def test_simulation_default() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_fluxes() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_get_args() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_get_combined() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_get_consumers() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_get_fluxes() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_get_new_y0() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_get_producers() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_get_right_hand_side() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_get_variables() -> None:
+    # FIXME: implement this
+    assert True
+
+
+def test_simulation_variables() -> None:
+    # FIXME: implement this
+    assert True
