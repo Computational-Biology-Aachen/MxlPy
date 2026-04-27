@@ -427,7 +427,7 @@ class Model:
             if name in self._parameters or name in self._derived:
                 all_parameter_values[name] = cast(float, dependent[name])
             else:
-                msg = f"Internal error: '{name}' appears in static_order but is not a parameter, variable, or derived — this is a bug in dependency sorting"
+                msg = f"Internal error: '{name}' appears in static_order but is not a parameter, variable, or derived - this is a bug in dependency sorting"
                 raise KeyError(msg)
 
         self._cache = ModelCache(
@@ -479,12 +479,12 @@ class Model:
 
         """
         if name == "time":
-            msg = "'time' is a reserved identifier — it represents the simulation time and cannot be used as a parameter, variable, derived, or reaction name"
+            msg = "'time' is a reserved identifier - it represents the simulation time and cannot be used as a parameter, variable, derived, or reaction name"
             raise KeyError(msg)
 
         if name in self._ids:
             existing_ctx = self._ids[name]
-            msg = f"Name '{name}' already exists as a {existing_ctx} — cannot add it as a {ctx}. Each name must be unique across all model components."
+            msg = f"Name '{name}' already exists as a {existing_ctx} - cannot add it as a {ctx}. Each name must be unique across all model components."
             raise NameError(msg)
         self._ids[name] = ctx
 
@@ -2721,7 +2721,7 @@ class Model:
                 elif (var := self._variables.get(arg)) is not None:
                     unit_per_arg[sympy.Symbol(arg)] = var.unit
                 else:
-                    msg = f"Argument '{arg}' in reaction '{name}' is neither a parameter nor a variable — unit checking only supports parameters and variables"
+                    msg = f"Argument '{arg}' in reaction '{name}' is neither a parameter nor a variable - unit checking only supports parameters and variables"
                     raise NotImplementedError(msg)
 
             symbolic_fn = fn_to_sympy_expr(

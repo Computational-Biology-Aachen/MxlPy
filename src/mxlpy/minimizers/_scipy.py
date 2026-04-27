@@ -151,7 +151,7 @@ class GlobalScipyMinimizer(AbstractMinimizer):
         elif self.method == "direct":
             res = direct(res_fn, bounds)
         else:
-            msg = f"Unknown minimizer method {self.method!r} — valid methods: 'basinhopping', 'differential_evolution', 'shgo', 'dual_annealing', 'direct'"
+            msg = f"Unknown minimizer method {self.method!r} - valid methods: 'basinhopping', 'differential_evolution', 'shgo', 'dual_annealing', 'direct'"
             raise NotImplementedError(msg)
         if res.success:
             return Result(

@@ -9,13 +9,12 @@ from typing import TYPE_CHECKING
 import pysbml
 import sympy
 
-from mxlpy.meta.codegen_mxlpy import (
+from mxlpy.meta._via_sym_repr import (
     SymbolicFn,
     SymbolicParameter,
     SymbolicReaction,
     SymbolicRepr,
     SymbolicVariable,
-    generate_mxlpy_code_from_symbolic_repr,
 )
 from mxlpy.paths import default_tmp_dir
 
@@ -48,11 +47,11 @@ def free_symbols(expr: sympy.Expr) -> list[str]:
 def _transform_stoichiometry(
     k: str,
     v: pysbml.transform.data.Expr,
-) -> SymbolicFn | str | sympy.Float:
+) -> SymbolicFn | sympy.Float:
     if isinstance(v, sympy.Float):
         return v
     if isinstance(v, sympy.Symbol):
-        return v.name
+        return SymbolicFn(v.name, expr=v, args=[v.name])
 
     return SymbolicFn(k, expr=v, args=free_symbols(v))
 
@@ -90,16 +89,7 @@ def _codegen(name: str, model: pysbml.transform.data.Model) -> Path:
 
     path = default_tmp_dir(None, remove_old_cache=False) / f"{name}.py"
     with path.open("w+") as f:
-        f.write(
-            generate_mxlpy_code_from_symbolic_repr(
-                sym,
-                imports=[
-                    "import math",
-                    "import scipy",
-                ],
-                model_fn_name="create_model",
-            )
-        )
+        f.write(sym.generate_mxlpy())
     return path
 
 

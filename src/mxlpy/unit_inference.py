@@ -61,7 +61,7 @@ def _same_dim(a: sympy.Expr, b: sympy.Expr) -> bool:
 
     Units that differ only by a scale factor from prefix stripping
     (e.g. ``mmol/s`` vs ``mol/s`` differ by ``milli``) are treated
-    as consistent — the discrepancy is an artefact of how
+    as consistent - the discrepancy is an artefact of how
     ``sympy.solve`` normalises ``Prefix`` objects.
 
     We strip all ``Prefix`` atoms by substituting their ``scale_factor``
@@ -125,9 +125,9 @@ class UnitInference:
 
     Each dict maps component names to one of:
 
-    * ``sympy.Expr`` — a successfully inferred unit
-    * :class:`Conflict` — multiple incompatible unit constraints
-    * ``None`` — insufficient information to infer a unit
+    * ``sympy.Expr`` - a successfully inferred unit
+    * :class:`Conflict` - multiple incompatible unit constraints
+    * ``None`` - insufficient information to infer a unit
 
     Explicitly-set units are included as-is.
 
@@ -508,7 +508,7 @@ def infer_units(
                 inferred = unit_of(sol)  # type: ignore[arg-type]
                 is_first = record(candidate, inferred, f"backward:{comp_name}")
                 if is_first and get_unit(candidate) is not None:
-                    # arg was already known — don't re-trigger propagation
+                    # arg was already known - don't re-trigger propagation
                     pass
                 elif is_first:
                     changed = True

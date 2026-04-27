@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mxlpy.meta.utils import valid_identifier
+from mxlpy.meta._via_sym_repr import valid_identifier
 
 
 @pytest.mark.parametrize(

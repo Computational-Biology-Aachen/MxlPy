@@ -1,21 +1,20 @@
 """Generate multi-language model code from a symbolic model representation."""
 
+from __future__ import annotations
+
 import logging
-from collections.abc import Callable
-from typing import NamedTuple, Protocol, cast
+import re
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
 import sympy
+from wadler_lindig import pformat
 
 from mxlpy import _topo
-from mxlpy.meta.symbolic_repr import (
-    SymbolicFn,
-    SymbolicParameter,
-    SymbolicReaction,
-    SymbolicSurrogate,
-    SymbolicVariable,
-    model_to_symbolic_repr,
-)
+from mxlpy.meta.source_tools import fn_to_sympy_expr, fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import (
+    list_of_symbols,
     sympy_to_inline_cxx,
     sympy_to_inline_js,
     sympy_to_inline_julia,
@@ -24,28 +23,50 @@ from mxlpy.meta.sympy_tools import (
     sympy_to_inline_py,
     sympy_to_inline_rust,
 )
-from mxlpy.meta.utils import valid_identifier, valid_tex_identifier
-from mxlpy.model import Model
+from mxlpy.surrogates import qss
 from mxlpy.surrogates.abstract import AbstractSurrogate
-from mxlpy.types import InitialAssignment
+from mxlpy.types import Derived, InitialAssignment
+from mxlpy.units import Quantity
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from mxlpy.model import Model
+
+_LOGGER = logging.getLogger()
+
 
 __all__ = [
     "Codegen",
     "ExprTemplate",
     "FnDeclTemplate",
+    "LatexCodegen",
     "ListTemplate",
     "NormalizedSymbolicModel",
+    "ReducedSymbolicRepr",
     "ReturnTemplate",
+    "SymbolicFn",
+    "SymbolicParameter",
+    "SymbolicReaction",
+    "SymbolicRepr",
+    "SymbolicSurrogate",
+    "SymbolicVariable",
     "TupleTemplate",
     "VariableAssignmentTemplate",
     "VariableUnpackingTemplate",
+    "generate_latex_diff",
+    "generate_latex_document",
     "generate_model_code_cpp",
     "generate_model_code_jl",
+    "generate_model_code_latex",
     "generate_model_code_matlab",
+    "generate_model_code_mxlweb",
     "generate_model_code_py",
     "generate_model_code_rs",
     "generate_model_code_ts",
-    "generate_mxlweb_code",
+    "model_to_symbolic_repr",
+    "valid_identifier",
+    "valid_tex_identifier",
 ]
 
 _LOGGER = logging.getLogger()
@@ -147,9 +168,649 @@ class ReturnTemplate(Protocol):
         ...
 
 
+@dataclass
+class SymbolicFn:
+    """Container for symbolic fn."""
+
+    fn_name: str
+    expr: sympy.Expr
+    args: list[str]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+
+@dataclass
+class SymbolicVariable:
+    """Container for symbolic variable."""
+
+    value: sympy.Float | SymbolicFn  # initial assignment
+    unit: Quantity | None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, SymbolicVariable):
+            return False
+        if self.value != value.value:  # noqa: SIM103
+            return False
+        return True
+
+
+@dataclass
+class SymbolicParameter:
+    """Container for symbolic par."""
+
+    value: sympy.Float | SymbolicFn  # initial assignment
+    unit: Quantity | None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, SymbolicParameter):
+            return False
+        if self.value != value.value:  # noqa: SIM103
+            return False
+        return True
+
+
+@dataclass
+class SymbolicReaction:
+    """Container for symbolic rxn."""
+
+    fn: SymbolicFn
+    stoichiometry: dict[str, sympy.Float | SymbolicFn]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, SymbolicReaction):
+            return False
+        if self.fn != value.fn:
+            return False
+        if self.stoichiometry != value.stoichiometry:  # noqa: SIM103
+            return False
+        return True
+
+
+@dataclass
+class SymbolicSurrogate:
+    """Container for symbolic rxn."""
+
+    fns: list[SymbolicFn]
+    outputs: list[str]
+    stoichiometry: dict[str, dict[str, sympy.Float | SymbolicFn]]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, SymbolicSurrogate):
+            return False
+        if self.outputs != value.outputs:
+            return False
+        if self.stoichiometry != value.stoichiometry:
+            return False
+        if self.fns != value.fns:  # noqa: SIM103
+            return False
+        return True
+
+
+@dataclass
+class ReducedSymbolicRepr:
+    """Container for symplifiedsymbolic model."""
+
+    variables: dict[str, SymbolicVariable]
+    parameters: dict[str, SymbolicParameter]
+    derived: dict[str, SymbolicFn]
+    reactions: dict[str, SymbolicFn]
+    diffeqs: dict[str, sympy.Expr]
+
+    def difference(self, other: ReducedSymbolicRepr) -> ReducedSymbolicRepr:
+        return ReducedSymbolicRepr(
+            variables={
+                k: v2
+                for k, v2 in other.variables.items()
+                if (v1 := self.variables.get(k)) is None or v1 != v2
+            },
+            parameters={
+                k: v2
+                for k, v2 in other.parameters.items()
+                if (v1 := self.parameters.get(k)) is None or v1 != v2
+            },
+            derived={
+                k: v2
+                for k, v2 in other.derived.items()
+                if (v1 := self.derived.get(k)) is None or v1 != v2
+            },
+            reactions={
+                k: v2
+                for k, v2 in other.reactions.items()
+                if (v1 := self.reactions.get(k)) is None or v1 != v2
+            },
+            diffeqs={
+                k: v2
+                for k, v2 in other.diffeqs.items()
+                if (v1 := self.diffeqs.get(k)) is None or v1 != v2
+            },
+        )
+
+
+@dataclass
+class SymbolicRepr:
+    """Container for symbolic model."""
+
+    variables: dict[str, SymbolicVariable] = field(default_factory=dict)
+    parameters: dict[str, SymbolicParameter] = field(default_factory=dict)
+    derived: dict[str, SymbolicFn] = field(default_factory=dict)
+    readouts: dict[str, SymbolicFn] = field(default_factory=dict)
+    reactions: dict[str, SymbolicReaction] = field(default_factory=dict)
+    surrogates: dict[str, SymbolicSurrogate] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def difference(self, other: SymbolicRepr) -> SymbolicRepr:
+        return SymbolicRepr(
+            variables={
+                k: v2
+                for k, v2 in other.variables.items()
+                if (v1 := self.variables.get(k)) is None or v1 != v2
+            },
+            parameters={
+                k: v2
+                for k, v2 in other.parameters.items()
+                if (v1 := self.parameters.get(k)) is None or v1 != v2
+            },
+            derived={
+                k: v2
+                for k, v2 in other.derived.items()
+                if (v1 := self.derived.get(k)) is None or v1 != v2
+            },
+            readouts={
+                k: v2
+                for k, v2 in other.readouts.items()
+                if (v1 := self.readouts.get(k)) is None or v1 != v2
+            },
+            reactions={
+                k: v2
+                for k, v2 in other.reactions.items()
+                if (v1 := self.reactions.get(k)) is None or v1 != v2
+            },
+            surrogates={
+                k: v2
+                for k, v2 in other.surrogates.items()
+                if (v1 := self.surrogates.get(k)) is None or v1 != v2
+            },
+        )
+
+    def reduce(self) -> ReducedSymbolicRepr:
+        all_derived = self.derived | self.readouts
+        all_reactions = self.reactions
+
+        for srg in self.surrogates.values():
+            for fn, out in zip(srg.fns, srg.outputs, strict=True):
+                if out in srg.stoichiometry:
+                    all_reactions[out] = SymbolicReaction(
+                        fn=fn, stoichiometry=srg.stoichiometry[out]
+                    )
+                else:
+                    all_derived[out] = fn
+
+        diffeqs: dict[str, sympy.Expr] = {i: sympy.Integer(0) for i in self.variables}
+        for rate, rxn in all_reactions.items():
+            for cpd, factor in rxn.stoichiometry.items():
+                if isinstance(factor, SymbolicFn):
+                    diffeqs[cpd] += sympy.Symbol(rate) * factor.expr  # pyright: ignore[reportOperatorIssue]
+                else:
+                    diffeqs[cpd] += sympy.Symbol(rate) * factor  # pyright: ignore[reportOperatorIssue]
+
+        return ReducedSymbolicRepr(
+            variables=self.variables,
+            parameters=self.parameters,
+            derived=all_derived,
+            reactions={k: v.fn for k, v in all_reactions.items()},
+            diffeqs=diffeqs,
+        )
+
+    def generate_mxlpy(self) -> str:
+        """Transform the model into Python functions, inlining all function calls.
+
+        Parameters
+        ----------
+        model
+            Model to generate code for.
+        free_parameters
+            Parameter names to expose as extra function arguments rather than
+            inlining their values.
+        derived_to_calculate
+            Subset of derived component names to emit in the ``derived`` function.
+            All transitive dependencies are included automatically. ``None`` emits
+            everything.
+        custom_fns
+            Custom sympy expressions to substitute for named model functions.
+        typed
+            When ``True`` add ``float`` type annotations to local assignments.
+
+        Returns
+        -------
+        Codegen
+            Generated Python source split into imports, model, derived, and inits.
+
+        """
+        fns: dict[str, SymbolicFn] = {}
+        surr_fns: dict[str, tuple[list[str], list[SymbolicFn]]] = {}
+
+        def _codegen_variable(k: str, el: SymbolicVariable) -> str:
+            val = el.value
+            if isinstance(val, SymbolicFn):
+                fns[val.fn_name] = val
+                return (
+                    "        .add_variable(\n"
+                    f"            {k!r},\n"
+                    f"            initial_value=InitialAssignment(fn={val.fn_name}, args={val.args!r}),\n"
+                    "        )"
+                )
+            return f"        .add_variable({k!r}, initial_value={float(val)!r})"
+
+        def _codegen_parameter(k: str, el: SymbolicParameter) -> str:
+            val = el.value
+            if isinstance(val, SymbolicFn):
+                fns[val.fn_name] = val
+                return (
+                    "        .add_parameter(\n"
+                    f"            {k!r},\n"
+                    f"            initial_value=InitialAssignment(fn={val.fn_name}, args={val.args!r}),\n"
+                    "        )"
+                )
+            return f"        .add_parameter({k!r}, value={float(val)!r})"
+
+        def _codegen_derived(k: str, el: SymbolicFn) -> str:
+            fns[el.fn_name] = el
+            return (
+                "        .add_derived(\n"
+                f"            {k!r},\n"
+                f"            fn={el.fn_name},\n"
+                f"            args={el.args!r},\n"
+                "        )"
+            )
+
+        def _codegen_readout(k: str, el: SymbolicFn) -> str:
+            fns[el.fn_name] = el
+            return (
+                "        .add_readout(\n"
+                f"            {k!r},\n"
+                f"            fn={el.fn_name},\n"
+                f"            args={el.args!r},\n"
+                "        )"
+            )
+
+        def _codegen_reaction(k: str, el: SymbolicReaction) -> str:
+            fns[el.fn.fn_name] = el.fn
+            stoichiometry: list[str] = []
+            for var, stoich in el.stoichiometry.items():
+                if isinstance(stoich, SymbolicFn):
+                    fns[stoich.fn_name] = stoich
+                    stoichiometry.append(
+                        f'"{var}": Derived(fn={stoich.fn_name}, args={stoich.args!r})'
+                    )
+                else:
+                    stoichiometry.append(f'"{var}": {float(stoich)!r}')
+            return (
+                "        .add_reaction(\n"
+                f"            {k!r},\n"
+                f"            fn={el.fn.fn_name},\n"
+                f"            args={el.fn.args!r},\n"
+                f"            stoichiometry={{{', '.join(stoichiometry)}}},\n"
+                "        )"
+            )
+
+        def _codegen_surrogate(k: str, el: SymbolicSurrogate) -> str:
+            fn_name = f"{k}_model"
+            surr_fns[fn_name] = (el.outputs, el.fns)
+            args = el.fns[0].args if el.fns else []
+            stoichiometries: list[str] = []
+            for rxn_name, rxn_stoich in el.stoichiometry.items():
+                rxn_parts: list[str] = []
+                for var, stoich in rxn_stoich.items():
+                    if isinstance(stoich, SymbolicFn):
+                        fns[stoich.fn_name] = stoich
+                        rxn_parts.append(
+                            f'"{var}": Derived(fn={stoich.fn_name}, args={stoich.args!r})'
+                        )
+                    else:
+                        rxn_parts.append(f'"{var}": {float(stoich)!r}')
+                stoichiometries.append(f'"{rxn_name}": {{{", ".join(rxn_parts)}}}')
+            return (
+                "        .add_surrogate(\n"
+                f"            {k!r},\n"
+                "            qss.Surrogate(\n"
+                f"                model={fn_name},\n"
+                f"                args={args!r},\n"
+                f"                outputs={el.outputs!r},\n"
+                f"                stoichiometries={{{', '.join(stoichiometries)}}},\n"
+                "            ),\n"
+                "        )"
+            )
+
+        variables = [_codegen_variable(k, v) for k, v in self.variables.items()]
+        parameters = [_codegen_parameter(k, v) for k, v in self.parameters.items()]
+        derived = [_codegen_derived(k, v) for k, v in self.derived.items()]
+        readouts = [_codegen_readout(k, v) for k, v in self.readouts.items()]
+        reactions = [_codegen_reaction(k, v) for k, v in self.reactions.items()]
+        surrogates = [_codegen_surrogate(k, v) for k, v in self.surrogates.items()]
+
+        def _gen_fn(sf: SymbolicFn) -> str:
+            args_str = ", ".join(f"{a}: float" for a in sf.args)
+            return (
+                f"def {sf.fn_name}({args_str}) -> float:\n"
+                f"    return {sympy_to_inline_py(sf.expr)}"
+            )
+
+        def _gen_surr_fn(
+            fn_name: str, outputs_and_fns: tuple[list[str], list[SymbolicFn]]
+        ) -> str:
+            outputs, sfs = outputs_and_fns
+            args = sfs[0].args if sfs else []
+            args_str = ", ".join(f"{a}: float" for a in args)
+            body = "\n".join(
+                f"    {out} = {sympy_to_inline_py(sf.expr)}"
+                for out, sf in zip(outputs, sfs, strict=True)
+            )
+            ret = ", ".join(outputs)
+            return (
+                f"def {fn_name}({args_str}) -> tuple[float, ...]:\n"
+                f"{body}\n"
+                f"    return {ret}"
+            )
+
+        fn_defs = [
+            *map(_gen_fn, fns.values()),
+            *(_gen_surr_fn(n, v) for n, v in surr_fns.items()),
+        ]
+        fn_block = "\n\n".join(fn_defs)
+
+        builder_lines = (
+            variables + parameters + derived + reactions + surrogates + readouts
+        )
+
+        imports = [
+            "import math",
+            "from mxlpy import Derived, InitialAssignment, Model",
+            *(["from mxlpy.surrogates import qss"] if surrogates else []),
+        ]
+
+        return "\n".join(
+            [
+                *imports,
+                "",
+                fn_block,
+                "",
+                "def create_model() -> Model:",
+                "    return (",
+                "        Model()",
+                "\n".join(builder_lines),
+                "    )",
+            ]
+        )
+
+
 ###############################################################################
-# Utils
+# Building symbolic repr
 ###############################################################################
+
+
+def _fn_to_symbolic_repr(
+    k: str,
+    fn: Callable,
+    model_args: list[str],
+    *,
+    only_warn: bool,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> SymbolicFn:
+    fn_name = fn.__name__
+    args = cast(list, list_of_symbols(model_args))
+    if (expr := custom_fns.get(k)) is not None:
+        if isinstance(expr, list):
+            msg = f"Expected a single expr for '{k}' but got multiple"
+            if only_warn:
+                expr = sympy.Float("nan")
+                _LOGGER.warning(msg)
+            else:
+                raise ValueError(msg)
+
+        return SymbolicFn(fn_name=fn_name, expr=expr, args=model_args)
+
+    if (expr := fn_to_sympy_expr(fn, origin=k, model_args=args)) is None:
+        msg = f"Unable to parse fn for '{k}'"
+        if only_warn:
+            expr = sympy.Float("nan")
+            _LOGGER.warning(msg)
+        else:
+            raise ValueError(msg)
+    return SymbolicFn(fn_name=fn_name, expr=expr, args=model_args)
+
+
+def _fns_to_symbolic_reprs(
+    k: str,
+    fn: Callable,
+    model_args: list[str],
+    outputs: list[str],
+    *,
+    only_warn: bool,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> list[SymbolicFn]:
+    fn_name = fn.__name__
+    args = cast(list, list_of_symbols(model_args))
+    if (exprs := custom_fns.get(k)) is not None:
+        if not isinstance(exprs, list):
+            msg = f"Expected multiple exprs for '{k}' but got a single expr"
+            if only_warn:
+                exprs = [sympy.Float("nan") for i in outputs]
+                _LOGGER.warning(msg)
+            else:
+                raise ValueError(msg)
+
+        return [
+            SymbolicFn(fn_name=f"{fn_name}_{i}", expr=expr, args=model_args)
+            for i, expr in zip(outputs, exprs, strict=True)
+        ]
+
+    if (exprs := fn_to_sympy_exprs(fn, origin=k, model_args=args)) is None:
+        msg = f"Unable to parse fns for '{k}'"
+        if only_warn:
+            exprs = [sympy.Float("nan") for _ in outputs]
+            _LOGGER.warning(msg)
+        else:
+            raise ValueError(msg)
+
+    return [
+        SymbolicFn(fn_name=f"{fn_name}_{i}", expr=expr, args=model_args)
+        for i, expr in zip(outputs, exprs, strict=True)
+    ]
+
+
+def model_to_symbolic_repr(
+    model: Model,
+    *,
+    only_warn: bool = False,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> SymbolicRepr:
+    sym = SymbolicRepr()
+
+    for k, variable in model.get_raw_variables().items():
+        sym.variables[k] = SymbolicVariable(
+            value=_fn_to_symbolic_repr(
+                k,
+                val.fn,
+                val.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            )
+            if isinstance(val := variable.initial_value, InitialAssignment)
+            else sympy.Float(val),
+            unit=cast(Quantity, variable.unit),
+        )
+
+    for k, parameter in model.get_raw_parameters().items():
+        sym.parameters[k] = SymbolicParameter(
+            value=_fn_to_symbolic_repr(
+                k,
+                val.fn,
+                val.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            )
+            if isinstance(val := parameter.value, InitialAssignment)
+            else sympy.Float(val),
+            unit=cast(Quantity, parameter.unit),
+        )
+
+    for k, der in model.get_raw_derived().items():
+        sym.derived[k] = _fn_to_symbolic_repr(
+            k,
+            der.fn,
+            der.args,
+            only_warn=only_warn,
+            custom_fns=custom_fns,
+        )
+
+    for k, rxn in model.get_raw_reactions().items():
+        sym.reactions[k] = SymbolicReaction(
+            fn=_fn_to_symbolic_repr(
+                k,
+                rxn.fn,
+                rxn.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            ),
+            stoichiometry={
+                k: _fn_to_symbolic_repr(
+                    k,
+                    v.fn,
+                    v.args,
+                    only_warn=only_warn,
+                    custom_fns=custom_fns,
+                )
+                if isinstance(v, Derived)
+                else sympy.Float(v)
+                for k, v in rxn.stoichiometry.items()
+            },
+        )
+
+    for k, srg in model.get_raw_surrogates().items():
+        if isinstance(srg, qss.Surrogate):
+            fns = _fns_to_symbolic_reprs(
+                k,
+                srg.model,
+                srg.args,
+                srg.outputs,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            )
+
+            sym.surrogates[k] = SymbolicSurrogate(
+                fns=fns,
+                outputs=srg.outputs,
+                stoichiometry={
+                    out: {
+                        k: _fn_to_symbolic_repr(
+                            k,
+                            v.fn,
+                            v.args,
+                            only_warn=only_warn,
+                            custom_fns=custom_fns,
+                        )
+                        if isinstance(v, Derived)
+                        else sympy.Float(v)
+                        for k, v in stoich.items()
+                    }
+                    for out, stoich in srg.stoichiometries.items()
+                },
+            )
+        else:
+            msg = f"Unsupported surrogate type {type(srg)}."
+            if only_warn:
+                _LOGGER.warning(msg)
+            else:
+                raise ValueError(msg)
+
+    for k, der in model.get_raw_readouts().items():
+        sym.readouts[k] = _fn_to_symbolic_repr(
+            k,
+            der.fn,
+            der.args,
+            only_warn=only_warn,
+            custom_fns=custom_fns,
+        )
+
+    return sym
+
+
+###############################################################################
+# General utils
+###############################################################################
+
+
+def valid_tex_identifier(k: str) -> str:
+    return k.replace("_", r"\_")
+
+
+def valid_identifier(name: str) -> str:
+    """Convert an arbitrary string to a valid identifier.
+
+    Uses C99 identifier rules ([a-zA-Z_][a-zA-Z0-9_]*), which are the
+    strictest common denominator across all supported target languages
+    (C, C++, Rust, TypeScript, Julia, MATLAB/Octave, Python).
+
+    Parameters
+    ----------
+    name
+        Original component name from the model
+
+    Returns
+    -------
+    str
+        Sanitized identifier safe for use in all target languages
+
+    """
+    sanitized = (
+        name.replace(" ", "_")
+        .replace("(", "")
+        .replace(")", "")
+        .replace("[", "")
+        .replace("]", "")
+        .replace(".", "")
+        .replace(",", "")
+        .replace(":", "")
+        .replace(";", "")
+        .replace('"', "")
+        .replace("'", "")
+        .replace("^", "")
+        .replace("|", "")
+        .replace("=", "_eq_")
+        .replace(">", "_lg_")
+        .replace("<", "_sm_")
+        .replace("+", "_plus_")
+        .replace("-", "_minus_")
+        .replace("*", "_star_")
+        .replace("/", "_div_")
+    )
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", sanitized)
+    sanitized = re.sub(r"_+", "_", sanitized)
+    sanitized = sanitized.rstrip("_")
+    if sanitized and sanitized[0].isdigit():
+        sanitized = "_" + sanitized
+    return sanitized or "_"
 
 
 def _get_dependencies_and_leaves(model: Model, requested: set[str]) -> set[str]:
@@ -477,7 +1138,12 @@ def _generate_model_code(
     )
 
 
-def generate_mxlweb_code(
+###############################################################################
+# Actual codegen
+###############################################################################
+
+
+def generate_model_code_mxlweb(
     model: Model,
     *,
     tex_names: dict[str, str] | None = None,
@@ -1181,3 +1847,448 @@ def generate_model_code_cpp(
         imports=["#include <array>", "#include <cmath>", "#include <utility>", ""],
         name_map={name: valid_identifier(name) for name in model.ids},
     )
+
+
+###############################################################################
+# Latex codegen
+# Different to the other ones in that we return each group of elements seperately
+# since there is no need to generate statements in order of execution
+###############################################################################
+
+
+def _sympy_to_latex(expr: sympy.Expr, symbol_names: dict[sympy.Symbol, str]) -> str:
+    return sympy.latex(
+        expr,
+        fold_frac_powers=True,
+        fold_func_brackets=True,
+        fold_short_frac=True,
+        symbol_names=symbol_names,
+        mul_symbol="dot",
+    )
+
+
+def _rename_latex(s: str) -> str:
+    if s[0].isdigit():
+        s = s[1:]
+        if s[0] == "-":
+            s = s[1:]
+    return (
+        s.replace(" ", "_")
+        .replace("(", "")
+        .replace(")", "")
+        .replace("-", "_")
+        .replace("*", "")
+    )
+
+
+def _mathrm(s: str) -> str:
+    return rf"\mathrm{{{s}}}"
+
+
+def _math_name(s: str) -> str:
+    return _mathrm(valid_tex_identifier(_rename_latex(s)))
+
+
+def _lhs(name: str) -> str:
+    return rf"\frac{{d\ {name}}}{{dt}}"
+
+
+def _tex_align_block(rows: list[tuple[str, str]]) -> str:
+    body = " \\\\\n".join(f"  {lhs} &= {rhs}" for lhs, rhs in rows)
+    return f"\\begin{{align*}}\n{body}\n\\end{{align*}}"
+
+
+def _tex_math_table2(
+    headers: tuple[str, str],
+    rows: list[tuple[str, str]],
+    label: str,
+    short_desc: str,
+    long_desc: str,
+) -> str:
+    columns = "|".join(["c"] * 2)
+    tab = "    "
+
+    return "\n".join(
+        [
+            r"\begin{longtable}" + f"{{{columns}}}",
+            tab + " & ".join(headers) + r" \\",
+            tab + r"\hline",
+            tab + r"\endhead",
+        ]
+        + [rf"{tab} ${i}$ & ${j}$ \\" for i, j in rows]
+        + [
+            tab + rf"\caption[{short_desc}]{{{long_desc}}}",
+            tab + rf"\label{{table:{label}}}",
+            r"\end{longtable}",
+        ]
+    )
+
+
+@dataclass
+class LatexCodegen:
+    """Generated code split into four sections ready for emission."""
+
+    parameters: list[tuple[str, str]]
+    variables: list[tuple[str, str]]
+    derived: list[tuple[str, str]]
+    reactions: list[tuple[str, str]]
+    diff_eqs: list[tuple[str, str]]
+
+    def as_default(self) -> tuple[str, str, str, str, str]:
+        return (
+            _tex_math_table2(
+                headers=("Parameter name", "Parameter value"),
+                rows=[(k, v) for k, v in sorted(self.parameters)],
+                label="model-pars",
+                short_desc="Model parameters",
+                long_desc="Model parameters",
+            )
+            if len(self.parameters) > 0
+            else "",
+            _tex_math_table2(
+                headers=("Model name", "Initial concentration"),
+                rows=[(k, v) for k, v in self.variables],
+                label="model-vars",
+                short_desc="Model variables",
+                long_desc="Model variables",
+            )
+            if len(self.variables) > 0
+            else "",
+            _tex_align_block(self.derived) if len(self.derived) > 0 else "",
+            _tex_align_block(self.reactions) if len(self.reactions) > 0 else "",
+            _tex_align_block(self.diff_eqs) if len(self.diff_eqs) > 0 else "",
+        )
+
+    def as_aligned(self) -> tuple[str, str, str, str, str]:
+        return (
+            _tex_align_block(self.parameters),
+            _tex_align_block(self.variables),
+            _tex_align_block(self.derived),
+            _tex_align_block(self.reactions),
+            _tex_align_block(self.diff_eqs),
+        )
+
+    def as_tables(self) -> tuple[str, str, str, str, str]:
+        return (
+            _tex_math_table2(
+                headers=("Parameter name", "Parameter value"),
+                rows=[(k, v) for k, v in sorted(self.parameters)],
+                label="model-pars",
+                short_desc="Model parameters",
+                long_desc="Model parameters",
+            )
+            if len(self.parameters) > 0
+            else "",
+            _tex_math_table2(
+                headers=("Model name", "Initial concentration"),
+                rows=[(k, v) for k, v in self.variables],
+                label="model-vars",
+                short_desc="Model variables",
+                long_desc="Model variables",
+            )
+            if len(self.variables) > 0
+            else "",
+            _tex_math_table2(
+                headers=("Name", "Derived"),
+                rows=[(k, v) for k, v in sorted(self.derived)],
+                label="model-der",
+                short_desc="Model parameters",
+                long_desc="Model parameters",
+            )
+            if len(self.derived) > 0
+            else "",
+            _tex_math_table2(
+                headers=("Name", "Reaction"),
+                rows=[(k, v) for k, v in sorted(self.reactions)],
+                label="model-rxn",
+                short_desc="Model parameters",
+                long_desc="Model parameters",
+            )
+            if len(self.reactions) > 0
+            else "",
+            _tex_math_table2(
+                headers=("Lhs", "Rhs"),
+                rows=[(k, v) for k, v in sorted(self.diff_eqs)],
+                label="model-eqs",
+                short_desc="Model parameters",
+                long_desc="Model parameters",
+            )
+            if len(self.diff_eqs) > 0
+            else "",
+        )
+
+
+def generate_model_code_latex(
+    model: Model,
+    *,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+    gls: dict[str, str] | None = None,
+) -> LatexCodegen:
+    r"""Transform the model into LaTeX equations.
+
+    Unlike the other ``generate_model_code_*`` functions, this does not
+    produce executable code. The ``model`` field contains the full ODE
+    system, ``derived`` contains the computed quantities, and ``inits``
+    contains the initial conditions - each as a LaTeX ``align*`` block.
+
+    Parameters
+    ----------
+    model
+        Model to generate equations for.
+    free_parameters
+        Parameter names to treat as free (excluded from the equation body).
+    derived_to_calculate
+        Subset of derived component names to emit in ``derived``. ``None``
+        emits everything.
+    custom_fns
+        Custom sympy expressions to substitute for named model functions.
+    gls
+        Optional mapping of model component names to custom LaTeX strings,
+        e.g. ``{"km": r"K_m", "vmax": r"V_{\mathrm{max}}"}``.
+
+    Returns
+    -------
+    Codegen
+        ``imports`` - ``\usepackage{amsmath}``
+        ``model`` - ODE system (parameters, rates, differential equations)
+        ``derived`` - computed quantities
+        ``inits`` - initial conditions
+
+    """
+    symbol_names: dict[sympy.Symbol, str] = (
+        {} if gls is None else {sympy.Symbol(orig): tex for orig, tex in gls.items()}
+    )
+
+    rsr = model_to_symbolic_repr(
+        model,
+        custom_fns={} if custom_fns is None else custom_fns,
+        only_warn=True,
+    ).reduce()
+
+    return LatexCodegen(
+        variables=[
+            (
+                _math_name(k),
+                _sympy_to_latex(
+                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
+                    symbol_names,
+                ),
+            )
+            for k, v in rsr.variables.items()
+        ],
+        parameters=[
+            (
+                _math_name(k),
+                _sympy_to_latex(
+                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
+                    symbol_names,
+                ),
+            )
+            for k, v in rsr.parameters.items()
+        ],
+        derived=[
+            (
+                _math_name(k),
+                _sympy_to_latex(
+                    expr.expr,
+                    symbol_names,
+                ),
+            )
+            for k, expr in rsr.derived.items()
+        ],
+        reactions=[
+            (
+                _math_name(k),
+                _sympy_to_latex(
+                    rxn.expr,
+                    symbol_names,
+                ),
+            )
+            for k, rxn in rsr.reactions.items()
+        ],
+        diff_eqs=[
+            (
+                _lhs(_math_name(k)),
+                _sympy_to_latex(
+                    eq,
+                    symbol_names,
+                ),
+            )
+            for k, eq in rsr.diffeqs.items()
+        ],
+    )
+
+
+def generate_latex_diff(
+    old: Model,
+    new: Model,
+    *,
+    show_old: bool = True,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+    gls: dict[str, str] | None = None,
+) -> LatexCodegen:
+    old_repr = model_to_symbolic_repr(
+        old,
+        custom_fns={} if custom_fns is None else custom_fns,
+        only_warn=True,
+    ).reduce()
+    new_repr = model_to_symbolic_repr(
+        new,
+        custom_fns={} if custom_fns is None else custom_fns,
+        only_warn=True,
+    ).reduce()
+
+    rsr = old_repr.difference(new_repr)
+
+    symbol_names: dict[sympy.Symbol, str] = (
+        {} if gls is None else {sympy.Symbol(orig): tex for orig, tex in gls.items()}
+    )
+
+    def _show_diff(key: str, old: str | None, new: str | None) -> tuple[str, str]:
+        if show_old:
+            if old is None:
+                return key, rf"{{\color{{green}} {new}}}"
+            if new is None:
+                return key, rf"\sout{{{old}}}"
+
+            return key, rf"{{\color{{green}} {old}}} {{\color{{green}} {new}}}"
+
+        return key, rf"\sout{{{old}}}" if new is None else new
+
+    variables = sorted(set(old_repr.variables.keys()) | set(new_repr.variables.keys()))
+    parameters = sorted(
+        set(old_repr.parameters.keys()) | set(new_repr.parameters.keys())
+    )
+    derived = sorted(set(old_repr.derived.keys()) | set(new_repr.derived.keys()))
+    reactions = sorted(set(old_repr.reactions.keys()) | set(new_repr.reactions.keys()))
+    diffeqs = sorted(set(old_repr.diffeqs.keys()) | set(new_repr.diffeqs.keys()))
+
+    return LatexCodegen(
+        variables=[
+            _show_diff(
+                valid_tex_identifier(k),
+                _sympy_to_latex(
+                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
+                    symbol_names,
+                )
+                if (v := old_repr.variables.get(k)) is not None
+                else v,
+                _sympy_to_latex(
+                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
+                    symbol_names,
+                )
+                if (v := rsr.variables.get(k)) is not None
+                else v,
+            )
+            for k in variables
+        ],
+        parameters=[
+            _show_diff(
+                valid_tex_identifier(k),
+                _sympy_to_latex(
+                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
+                    symbol_names,
+                )
+                if (v := old_repr.parameters.get(k)) is not None
+                else v,
+                _sympy_to_latex(
+                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
+                    symbol_names,
+                )
+                if (v := rsr.parameters.get(k)) is not None
+                else v,
+            )
+            for k in parameters
+        ],
+        derived=[
+            _show_diff(
+                valid_tex_identifier(k),
+                _sympy_to_latex(v.expr, symbol_names)
+                if (v := old_repr.derived.get(k)) is not None
+                else v,
+                _sympy_to_latex(v.expr, symbol_names)
+                if (v := rsr.derived.get(k)) is not None
+                else v,
+            )
+            for k in derived
+        ],
+        reactions=[
+            _show_diff(
+                valid_tex_identifier(k),
+                _sympy_to_latex(v.expr, symbol_names)
+                if (v := old_repr.reactions.get(k)) is not None
+                else v,
+                _sympy_to_latex(v.expr, symbol_names)
+                if (v := rsr.reactions.get(k)) is not None
+                else v,
+            )
+            for k in reactions
+        ],
+        diff_eqs=[
+            _show_diff(
+                _lhs(valid_tex_identifier(k)),
+                _sympy_to_latex(v, symbol_names)
+                if (v := old_repr.diffeqs.get(k)) is not None
+                else v,
+                _sympy_to_latex(v, symbol_names)
+                if (v := rsr.diffeqs.get(k)) is not None
+                else v,
+            )
+            for k in diffeqs
+        ],
+    )
+
+
+def _subsection_(s: str) -> str:
+    # depth = 2
+    return r"\FloatBarrier" + rf"\subsection*{{{s}}}"
+
+
+def _latex_list_as_sections(rows: Iterable[tuple[str, str]]) -> str:
+    return "\n\n".join(
+        [
+            "\n".join(
+                (
+                    _subsection_(name),
+                    content,
+                )
+            )
+            for name, content in rows
+            if len(content) > 0
+        ]
+    )
+
+
+def generate_latex_document(
+    model: Model,
+    author: str = "mxlpy",
+    title: str = "Model construction",
+) -> str:
+    headers = (
+        "Parameters",
+        "Variables",
+        "Derived",
+        "Reactions",
+        "Differential Equations",
+    )
+    content = _latex_list_as_sections(
+        zip(headers, generate_model_code_latex(model).as_default(), strict=True)
+    )
+    return rf"""\documentclass[fleqn]{{article}}
+\usepackage[english]{{babel}}
+\usepackage[a4paper,top=2cm,bottom=2cm,left=2cm,right=2cm,marginparwidth=1.75cm]{{geometry}}
+\usepackage{{amsmath, amssymb, array, booktabs,
+            breqn, caption, longtable, mathtools, placeins,
+            ragged2e, tabularx, titlesec, titling, xcolor}}
+\newcommand{{\sectionbreak}}{{\clearpage}}
+\setlength{{\parindent}}{{0pt}}
+\allowdisplaybreaks
+
+\title{{{title}}}
+\date{{}} % clear date
+\author{{{author}}}
+\begin{{document}}
+\maketitle
+{content}
+\end{{document}}
+"""

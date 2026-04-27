@@ -44,32 +44,31 @@ mxlweb. The function should be considered volatile and subject to change.
 
 from __future__ import annotations
 
-from .codegen_latex import generate_latex_code, to_tex_export
-from .codegen_model import (
-    generate_model_code_c,
+from ._via_sym_repr import (
+    generate_latex_diff,
+    generate_latex_document,
     generate_model_code_cpp,
     generate_model_code_jl,
+    generate_model_code_latex,
     generate_model_code_matlab,
+    generate_model_code_mxlweb,
     generate_model_code_py,
     generate_model_code_rs,
     generate_model_code_ts,
 )
 from .codegen_mxlpy import generate_mxlpy_code
-from .codegen_mxlpy_raw import generate_mxlpy_code_raw
-from .codegen_mxlweb import generate_mode_code_mxlweb, generate_mxlweb_page
 
 __all__ = [
-    "generate_latex_code",
-    "generate_mode_code_mxlweb",
-    "generate_model_code_c",
+    "generate_latex_diff",
+    "generate_latex_document",
     "generate_model_code_cpp",
     "generate_model_code_jl",
+    "generate_model_code_latex",
     "generate_model_code_matlab",
+    "generate_model_code_mxlweb",
     "generate_model_code_py",
     "generate_model_code_rs",
     "generate_model_code_ts",
     "generate_mxlpy_code",
-    "generate_mxlpy_code_raw",
-    "generate_mxlweb_page",
-    "to_tex_export",
+    "generate_mxlpy_code",
 ]

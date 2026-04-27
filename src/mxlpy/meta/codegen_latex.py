@@ -57,18 +57,6 @@ def default_init[T1, T2](d: dict[T1, T2] | None) -> dict[T1, T2]:
     return {} if d is None else d
 
 
-def _gls(s: str) -> str:
-    return rf"\gls{{{s}}}"
-
-
-def _gls_short(s: str) -> str:
-    return rf"\acrshort{{{s}}}"
-
-
-def _gls_full(s: str) -> str:
-    return rf"\acrlong{{{s}}}"
-
-
 def _gls_short_and_full(s: str) -> str:
     return rf"\acrfull{{{s}}}"
 
@@ -161,41 +149,6 @@ def _label(content: str) -> str:
     return rf"\label{{{content}}}"
 
 
-def _dmath(content: str) -> str:
-    return rf"""\begin{{dmath*}}
-    {content}
-\end{{dmath*}}"""
-
-
-# def _dmath_il(content: str) -> str:
-#     return rf"\begin{{dmath*}}{content}\end{{dmath*}}"
-
-
-def _part(s: str) -> str:
-    # depth = -1
-    return floatbarrier + rf"\part{{{s}}}"
-
-
-def _chapter(s: str) -> str:
-    # depth = 0
-    return floatbarrier + rf"\part{{{s}}}"
-
-
-def _section(s: str) -> str:
-    # depth = 1
-    return floatbarrier + rf"\section{{{s}}}"
-
-
-def _section_(s: str) -> str:
-    # depth = 1
-    return floatbarrier + rf"\section*{{{s}}}"
-
-
-def _subsection(s: str) -> str:
-    # depth = 2
-    return floatbarrier + rf"\subsection{{{s}}}"
-
-
 def _subsection_(s: str) -> str:
     # depth = 2
     return floatbarrier + rf"\subsection*{{{s}}}"
@@ -206,43 +159,12 @@ def _subsubsection(s: str) -> str:
     return floatbarrier + rf"\subsubsection{{{s}}}"
 
 
-def _subsubsection_(s: str) -> str:
-    # depth = 3
-    return floatbarrier + rf"\subsubsection*{{{s}}}"
-
-
-def _paragraph(s: str) -> str:
-    # depth = 4
-    return rf"\paragraph{{{s}}}"
-
-
-def _subparagraph(s: str) -> str:
-    # depth = 5
-    return rf"\subparagraph{{{s}}}"
-
-
-def _math_il(s: str) -> str:
-    return f"${s}$"
-
-
-def _math(s: str) -> str:
-    return f"$${s}$$"
-
-
 def _mathrm(s: str) -> str:
     return rf"\mathrm{{{s}}}"
 
 
-def _bold(s: str) -> str:
-    return rf"\textbf{{{s}}}"
-
-
 def _clearpage() -> str:
     return r"\clearpage"
-
-
-def _latex_list(rows: list[str]) -> str:
-    return "\n\n".join(rows)
 
 
 def _latex_align(items: list[str]) -> str:
@@ -267,21 +189,6 @@ def _latex_list_as_sections(
     )
 
 
-def _latex_list_as_bold(rows: list[tuple[str, str]]) -> str:
-    return "\n\n".join(
-        [
-            "\n".join(
-                (
-                    _bold(_name_to_latex(name)) + r"\\",
-                    content,
-                    r"\vspace{20pt}",
-                )
-            )
-            for name, content in rows
-        ]
-    )
-
-
 def _replacements_in_align(replacements: dict[str, str]) -> str:
     reps = "\n".join(rf"&\qquad {v} :: {k} \\" for k, v in replacements.items())
 
@@ -290,15 +197,7 @@ def _replacements_in_align(replacements: dict[str, str]) -> str:
 
 
 def _diff_eq(name: str) -> str:
-    return rf"\frac{{d\left({name}\right)}}{{dt}}"
-
-
-def _optional_factor(k: str, v: float) -> str:
-    if v == 1:
-        return k
-    if v == -1:
-        return f"-{k}"
-    return f"{v} {cdot} {k}"
+    return rf"\frac{{d{name}}}{{dt}}"
 
 
 def _stoichs_to_latex(

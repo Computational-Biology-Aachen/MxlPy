@@ -133,7 +133,7 @@ def protocol_time_course_residual(
         model.update_variable(p, updates[p])
 
     if (protocol := settings.protocol) is None:
-        msg = "protocol_time_course_residual requires a protocol but settings.protocol is None — set settings.protocol to a DataFrame before fitting"
+        msg = "protocol_time_course_residual requires a protocol but settings.protocol is None - set settings.protocol to a DataFrame before fitting"
         raise ValueError(msg)
 
     res = (

@@ -159,7 +159,7 @@ def test_circular_dependency_no_infinite_loop() -> None:
 
     # circular_b is a direct dep
     assert "circular_b" in result.dependencies
-    # circular_a is the root — visited guard must block re-adding it
+    # circular_a is the root - visited guard must block re-adding it
     assert "circular_a" not in result.dependencies
 
 
@@ -191,7 +191,7 @@ def test_unavailable_source_skipped_gracefully() -> None:
         [],
     )
 
-    # C-extension source is unavailable — must be silently skipped
+    # C-extension source is unavailable - must be silently skipped
     assert "numpy_sin" not in result.dependencies
     assert "sin" not in result.dependencies
 

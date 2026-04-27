@@ -34,8 +34,13 @@ def get_linear_chain_2v() -> Model:
     return (
         Model()
         .add_variables({"x": 1.0, "y": 1.0})
-        .add_parameters({"k1": 1.0, "k2": 2.0, "k3": 1.0})
-        .add_reaction("v1", constant, stoichiometry={"x": 1}, args=["k1"])
+        .add_parameters({"k_in": 1.0, "k2": 2.0, "k_out": 1.0})
+        .add_reaction(
+            "v1",
+            constant,
+            stoichiometry={"x": 1},
+            args=["k_in"],
+        )
         .add_reaction(
             "v2",
             mass_action_1s,
@@ -46,7 +51,7 @@ def get_linear_chain_2v() -> Model:
             "v3",
             mass_action_1s,
             stoichiometry={"y": -1},
-            args=["k3", "y"],
+            args=["k_out", "y"],
         )
     )
 

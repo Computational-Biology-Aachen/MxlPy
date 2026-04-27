@@ -1,203 +1,272 @@
-"""Generate mxlpy code from a model."""
+"""Module to export models as code without the SymPy roundtrip.
+
+See Also
+--------
+mxlpy.meta.codegen_mxlpy
+"""
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-import sympy
-from wadler_lindig import pformat
-
-from mxlpy.meta.sympy_tools import (
-    fn_to_sympy_expr,
-    list_of_symbols,
-    sympy_to_inline_py,
-    sympy_to_python_fn,
-)
-from mxlpy.types import Derived, InitialAssignment
-from mxlpy.units import Quantity
+from mxlpy.meta.source_tools import fn_to_source
+from mxlpy.types import Derived, InitialAssignment, Parameter, Reaction, Variable
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from mxlpy.model import Model
+    from mxlpy.surrogates.abstract import SurrogateProtocol
 
 __all__ = [
-    "SymbolicFn",
-    "SymbolicParameter",
-    "SymbolicReaction",
-    "SymbolicRepr",
-    "SymbolicVariable",
     "generate_mxlpy_code",
-    "generate_mxlpy_code_from_symbolic_repr",
 ]
 
 _LOGGER = logging.getLogger()
 
 
-@dataclass
-class SymbolicFn:
-    """Container for symbolic fn."""
-
-    fn_name: str
-    expr: sympy.Expr
-    args: list[str]
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
+def _fn_name(k: str, fn: Callable) -> str:
+    return fn.__name__ if fn.__name__ != "<lambda>" else k
 
 
-@dataclass
-class SymbolicVariable:
-    """Container for symbolic variable."""
-
-    value: sympy.Float | SymbolicFn  # initial assignment
-    unit: Quantity | None
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-@dataclass
-class SymbolicParameter:
-    """Container for symbolic par."""
-
-    value: sympy.Float | SymbolicFn  # initial assignment
-    unit: Quantity | None
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-@dataclass
-class SymbolicReaction:
-    """Container for symbolic rxn."""
-
-    fn: SymbolicFn
-    stoichiometry: dict[str, sympy.Float | str | SymbolicFn]
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-@dataclass
-class SymbolicRepr:
-    """Container for symbolic model."""
-
-    variables: dict[str, SymbolicVariable] = field(default_factory=dict)
-    parameters: dict[str, SymbolicParameter] = field(default_factory=dict)
-    derived: dict[str, SymbolicFn] = field(default_factory=dict)
-    readouts: dict[str, SymbolicFn] = field(default_factory=dict)
-    reactions: dict[str, SymbolicReaction] = field(default_factory=dict)
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-
-def _fn_to_symbolic_repr(k: str, fn: Callable, model_args: list[str]) -> SymbolicFn:
-    fn_name = fn.__name__
-    args = cast(list, list_of_symbols(model_args))
-    if (expr := fn_to_sympy_expr(fn, origin=k, model_args=args)) is None:
-        msg = f"Unable to parse fn for '{k}'"
-        raise ValueError(msg)
-    return SymbolicFn(fn_name=fn_name, expr=expr, args=model_args)
-
-
-def _to_symbolic_repr(model: Model) -> SymbolicRepr:
-    sym = SymbolicRepr()
-
-    for k, variable in model.get_raw_variables().items():
-        sym.variables[k] = SymbolicVariable(
-            value=_fn_to_symbolic_repr(k, val.fn, val.args)
-            if isinstance(val := variable.initial_value, InitialAssignment)
-            else sympy.Float(val),
-            unit=cast(Quantity, variable.unit),
-        )
-
-    for k, parameter in model.get_raw_parameters().items():
-        sym.parameters[k] = SymbolicParameter(
-            value=_fn_to_symbolic_repr(k, val.fn, val.args)
-            if isinstance(val := parameter.value, InitialAssignment)
-            else sympy.Float(val),
-            unit=cast(Quantity, parameter.unit),
-        )
-
-    for k, der in model.get_raw_derived().items():
-        sym.derived[k] = _fn_to_symbolic_repr(k, der.fn, der.args)
-
-    for k, rxn in model.get_raw_reactions().items():
-        sym.reactions[k] = SymbolicReaction(
-            fn=_fn_to_symbolic_repr(k, rxn.fn, rxn.args),
-            stoichiometry={
-                k: _fn_to_symbolic_repr(k, v.fn, v.args)
-                if isinstance(v, Derived)
-                else sympy.Float(v)
-                for k, v in rxn.stoichiometry.items()
-            },
-        )
-
-    if len(model._surrogates) > 0:  # noqa: SLF001
-        msg = "Generating code for Surrogates not yet supported."
-        _LOGGER.warning(msg)
-    return sym
+def _handle_fn_source(
+    name: str,
+    fn: Callable,
+    args: list[str],
+    functions: dict[str, str],
+    file_imports: set[str],
+    *,
+    strip_docstring: bool,
+) -> str:
+    fn_name = _fn_name(name, fn)
+    extracted = fn_to_source(fn, name, args, strip_docstring=strip_docstring)
+    functions.update(extracted.dependencies)
+    functions[name] = extracted.main_source
+    file_imports.update(extracted.imports)
+    return fn_name
 
 
 def _codegen_variable(
     k: str,
-    var: SymbolicVariable,
-    functions: dict[str, tuple[sympy.Expr, list[str]]],
+    variable: Variable,
+    functions: dict[str, str],
+    file_imports: set[str],
+    *,
+    strip_docstring: bool,
 ) -> str:
-    if isinstance(init := var.value, SymbolicFn):
-        fn_name = f"init_{init.fn_name}"
-        functions[fn_name] = (init.expr, init.args)
-        return f"""        .add_variable(
-            {k!r},
-            initial_value=InitialAssignment(fn={fn_name}, args={init.args!r}),
-        )"""
+    val = variable.initial_value
+    if isinstance(val, InitialAssignment):
+        fn_name = _handle_fn_source(
+            k,
+            val.fn,
+            val.args,
+            functions,
+            file_imports,
+            strip_docstring=strip_docstring,
+        )
+        return (
+            "        .add_variable(\n"
+            f"            {k!r},\n"
+            f"            initial_value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
+            "        )"
+        )
 
-    value = sympy_to_inline_py(init)
-    if (unit := var.unit) is not None:
-        return f"        .add_variable({k!r}, value={value}, unit=units.{unit})"
-    return f"        .add_variable({k!r}, initial_value={value})"
+    # val is float | int
+    return f"        .add_variable({k!r}, initial_value={val!r})"
 
 
 def _codegen_parameter(
-    k: str, par: SymbolicParameter, functions: dict[str, tuple[sympy.Expr, list[str]]]
+    k: str,
+    parameter: Parameter,
+    functions: dict[str, str],
+    file_imports: set[str],
+    *,
+    strip_docstring: bool,
 ) -> str:
-    if isinstance(init := par.value, SymbolicFn):
-        fn_name = f"init_{init.fn_name}"
-        functions[fn_name] = (init.expr, init.args)
-        return f"""        .add_parameter(
-            {k!r},
-            value=InitialAssignment(fn={fn_name}, args={init.args!r}),
-        )"""
+    val = parameter.value
+    if isinstance(val, InitialAssignment):
+        fn_name = _handle_fn_source(
+            k,
+            val.fn,
+            val.args,
+            functions,
+            file_imports,
+            strip_docstring=strip_docstring,
+        )
+        return (
+            "        .add_parameter(\n"
+            f"            {k!r},\n"
+            f"            initial_value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
+            "        )"
+        )
 
-    value = sympy_to_inline_py(init)
-    if (unit := par.unit) is not None:
-        return f"        .add_parameter({k!r}, value={value}, unit=units.{unit})"
-    return f"        .add_parameter({k!r}, value={value})"
+    # val is float | int
+    return f"        .add_parameter({k!r}, value={val!r})"
 
 
-def generate_mxlpy_code_from_symbolic_repr(
-    model: SymbolicRepr,
-    model_fn_name: str,
+def _codegen_derived(
+    k: str,
+    der: Derived,
+    functions: dict[str, str],
+    file_imports: set[str],
+    *,
+    strip_docstring: bool,
+) -> str:
+    fn_name = _handle_fn_source(
+        k,
+        der.fn,
+        der.args,
+        functions,
+        file_imports,
+        strip_docstring=strip_docstring,
+    )
+    return (
+        "        .add_derived(\n"
+        f"            {k!r},\n"
+        f"            fn={fn_name},\n"
+        f"            args={der.args!r},\n"
+        "        )"
+    )
+
+
+def _codegen_reaction(
+    k: str,
+    rxn: Reaction,
+    functions: dict[str, str],
+    file_imports: set[str],
+    *,
+    strip_docstring: bool,
+) -> str:
+    fn_name = _handle_fn_source(
+        k,
+        rxn.fn,
+        rxn.args,
+        functions,
+        file_imports,
+        strip_docstring=strip_docstring,
+    )
+
+    stoichiometry: list[str] = []
+    for var, stoich in rxn.stoichiometry.items():
+        if isinstance(stoich, Derived):
+            stoich_fn_name = _handle_fn_source(
+                var,
+                stoich.fn,
+                stoich.args,
+                functions,
+                file_imports,
+                strip_docstring=strip_docstring,
+            )
+            stoichiometry.append(
+                f'"{var}": Derived(fn={stoich_fn_name}, args={stoich.args!r})'
+            )
+        else:
+            stoichiometry.append(f'"{var}": {stoich!r}')
+    return (
+        "        .add_reaction(\n"
+        f"            {k!r},\n"
+        f"            fn={fn_name},\n"
+        f"            args={rxn.args!r},\n"
+        f"            stoichiometry={{{','.join(stoichiometry)}}},\n"
+        "        )"
+    )
+
+
+def _codegen_surrogate(
+    k: str,
+    surrogate: SurrogateProtocol,
+    functions: dict[str, str],
+    file_imports: set[str],
+    *,
+    strip_docstring: bool,
+) -> str | None:
+    stype = type(surrogate)
+    module = stype.__module__
+
+    if not module.startswith("mxlpy.surrogates."):
+        _LOGGER.warning(
+            "Cannot generate code for surrogate type '%s'", stype.__qualname__
+        )
+        return None
+
+    # mxlpy.surrogates._qss -> 'qss', mxlpy.surrogates.abstract -> 'abstract'
+    raw_submod = module.split(".")[-1]
+    submod = raw_submod.lstrip("_")
+    class_ref = f"{submod}.{stype.__name__}"
+    file_imports.add(f"from mxlpy.surrogates import {submod}")
+
+    # Generate source for callable model (e.g. QSS)
+    surr_model_fn_name = None
+    model_attr = getattr(surrogate, "model", None)
+    if callable(model_attr):
+        try:
+            surr_model_fn_name = _handle_fn_source(
+                k,
+                model_attr,
+                surrogate.args,
+                functions,
+                file_imports,
+                strip_docstring=strip_docstring,
+            )
+        except (ValueError, TypeError, OSError) as exc:
+            _LOGGER.warning(
+                "Cannot extract source for surrogate '%s' model: %s", k, exc
+            )
+
+    # Build constructor kwargs
+    ctor_parts: list[str] = []
+    if surr_model_fn_name is not None:
+        ctor_parts.append(f"model={surr_model_fn_name}")
+    ctor_parts.append(f"args={surrogate.args!r}")
+    ctor_parts.append(f"outputs={surrogate.outputs!r}")
+
+    if surrogate.stoichiometries:
+        stoich_entries: list[str] = []
+        for rxn_name, rxn_stoich in surrogate.stoichiometries.items():
+            rxn_parts: list[str] = []
+            for var, factor in rxn_stoich.items():
+                if isinstance(factor, Derived):
+                    sf_name = _handle_fn_source(
+                        var,
+                        factor.fn,
+                        factor.args,
+                        functions,
+                        file_imports,
+                        strip_docstring=strip_docstring,
+                    )
+                    rxn_parts.append(
+                        f'"{var}": Derived(fn={sf_name}, args={factor.args!r})'
+                    )
+                else:
+                    rxn_parts.append(f'"{var}": {factor!r}')
+            stoich_entries.append(f'"{rxn_name}": {{{",".join(rxn_parts)}}}')
+        ctor_parts.append(f"stoichiometries={{{','.join(stoich_entries)}}}")
+
+    ctor_str = ",\n                ".join(ctor_parts)
+    return (
+        "        .add_surrogate(\n"
+        f"            {k!r},\n"
+        f"            {class_ref}(\n"
+        f"                {ctor_str},\n"
+        "            ),\n"
+        "        )"
+    )
+
+
+def generate_mxlpy_code(
+    model: Model,
+    *,
+    model_fn_name: str = "create_model",
     imports: list[str] | None = None,
+    strip_docstring: bool = True,
 ) -> str:
-    """Generate MxlPy source code from symbolic representation.
-
-    This is both used by MxlPy internally to codegen an existing model again and by the
-    SBML import to generate the file.
+    """Generate MxlPy source code without a symbolic representation round-trip.
 
     Parameters
     ----------
     model
-        Symbolic representation of the model
+        Model
     imports
         Optional list of import statements to include at the top of the file
 
@@ -207,114 +276,97 @@ def generate_mxlpy_code_from_symbolic_repr(
         Python source code that constructs the model using MxlPy API
 
     """
-    imports = [] if imports is None else imports
+    file_imports: set[str] = set() if imports is None else set(imports)
 
-    functions: dict[str, tuple[sympy.Expr, list[str]]] = {}
-    has_units = any(v.unit is not None for v in model.variables.values()) or any(
-        p.unit is not None for p in model.parameters.values()
-    )
+    # Maps fn_name -> source string (last writer wins for shared functions)
+    functions: dict[str, str] = {}
 
     # Variables
     variable_source = []
-    for k, var in model.variables.items():
-        variable_source.append(_codegen_variable(k, var, functions=functions))
+    for k, variable in model.get_raw_variables().items():
+        variable_source.append(
+            _codegen_variable(
+                k,
+                variable,
+                functions,
+                file_imports,
+                strip_docstring=strip_docstring,
+            )
+        )
 
     # Parameters
     parameter_source = []
-    for k, par in model.parameters.items():
-        parameter_source.append(_codegen_parameter(k, par, functions=functions))
+    for k, parameter in model.get_raw_parameters().items():
+        parameter_source.append(
+            _codegen_parameter(
+                k,
+                parameter,
+                functions,
+                file_imports,
+                strip_docstring=strip_docstring,
+            )
+        )
 
     # Derived
     derived_source = []
-    for k, fn in model.derived.items():
-        functions[fn.fn_name] = (fn.expr, fn.args)
+    for k, der in model.get_raw_derived().items():
         derived_source.append(
-            f"""        .add_derived(
-                {k!r},
-                fn={fn.fn_name},
-                args={fn.args},
-            )"""
+            _codegen_derived(
+                k,
+                der,
+                functions,
+                file_imports,
+                strip_docstring=strip_docstring,
+            )
         )
 
     # Reactions
     reactions_source = []
-    for k, rxn in model.reactions.items():
-        fn = rxn.fn
-        functions[fn.fn_name] = (fn.expr, fn.args)
-
-        stoichiometry: list[str] = []
-        for var, stoich in rxn.stoichiometry.items():
-            if isinstance(stoich, SymbolicFn):
-                fn_name = f"{k}_stoich_{stoich.fn_name}"
-                functions[fn_name] = (stoich.expr, stoich.args)
-                stoichiometry.append(
-                    f""""{var}": Derived(fn={fn_name}, args={stoich.args!r})"""
-                )
-            elif isinstance(stoich, str):
-                stoichiometry.append(f""""{var}": {stoich!r}""")
-            else:
-                stoichiometry.append(f""""{var}": {sympy_to_inline_py(stoich)}""")
+    for k, rxn in model.get_raw_reactions().items():
         reactions_source.append(
-            f"""        .add_reaction(
-                "{k}",
-                fn={fn.fn_name},
-                args={fn.args},
-                stoichiometry={{{",".join(stoichiometry)}}},
-            )"""
+            _codegen_reaction(
+                k,
+                rxn,
+                functions,
+                file_imports,
+                strip_docstring=strip_docstring,
+            )
         )
 
     # Surrogates
+    surrogate_source = []
+    for k, surrogate in model.get_raw_surrogates().items():
+        if (
+            gen := _codegen_surrogate(
+                k,
+                surrogate,
+                functions,
+                file_imports,
+                strip_docstring=strip_docstring,
+            )
+        ) is not None:
+            surrogate_source.append(gen)
 
-    # Combine all the sources
-    functions_source = "\n\n".join(
-        sympy_to_python_fn(fn_name=name, args=args, expr=expr)
-        for name, (expr, args) in functions.items()
-    )
-    mxlpy_imports = ["Model", "Derived", "InitialAssignment"]
-    if has_units:
-        mxlpy_imports.append("units")
+    functions_source = "\n\n".join(functions.values())
+    fn_block = "\n" if len(functions) == 0 else f"\n\n{functions_source}\n"
+
     source = [
-        *imports,
-        f"from mxlpy import {', '.join(mxlpy_imports)}\n",
-        functions_source,
-        "",
+        *sorted(file_imports),
+        "from mxlpy import Model, Derived, InitialAssignment",
+        fn_block,
         f"def {model_fn_name}() -> Model:",
         "    return (",
         "        Model()",
     ]
-    if len(variable_source) > 0:
+    if variable_source:
         source.append("\n".join(variable_source))
-    if len(parameter_source) > 0:
+    if parameter_source:
         source.append("\n".join(parameter_source))
-    if len(derived_source) > 0:
+    if derived_source:
         source.append("\n".join(derived_source))
-    if len(reactions_source) > 0:
+    if reactions_source:
         source.append("\n".join(reactions_source))
+    if surrogate_source:
+        source.append("\n".join(surrogate_source))
     source.append("    )")
     return "\n".join(source)
-
-
-def generate_mxlpy_code(
-    model: Model,
-    *,
-    model_fn_name: str = "create_model",
-    imports: list[str] | None = None,
-) -> str:
-    """Generate a mxlpy model from a model.
-
-    Parameters
-    ----------
-    model
-        Model to generate MxlPy source code for
-
-    Returns
-    -------
-    str
-        Python source code that reconstructs the model
-
-    """
-    return generate_mxlpy_code_from_symbolic_repr(
-        _to_symbolic_repr(model),
-        model_fn_name=model_fn_name,
-        imports=imports,
-    )

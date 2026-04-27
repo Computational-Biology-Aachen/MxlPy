@@ -77,7 +77,7 @@ class FixedNMinimizer(AbstractMinimizer):
         Returns
         -------
         Result[OptimisationState]
-            Always succeeds — returns the parameter state after ``n_steps``
+            Always succeeds - returns the parameter state after ``n_steps``
             iterations together with the residual at that point.
 
         """

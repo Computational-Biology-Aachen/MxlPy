@@ -87,7 +87,7 @@ def _unpack_stoichiometries(
     products = {}
     for k, v in stoichiometries.items():
         if isinstance(v, Derived):
-            msg = f"Derived stoichiometry for species '{k}' is not supported in linear label maps — use a plain float coefficient instead"
+            msg = f"Derived stoichiometry for species '{k}' is not supported in linear label maps - use a plain float coefficient instead"
             raise NotImplementedError(msg)
 
         if v < 0:
@@ -192,7 +192,7 @@ def _add_label_influx_or_efflux(
 
     # Broken labelmap
     if (diff := len(labelmap) - len(substrates)) < 0:
-        msg = f"Labelmap has {len(labelmap)} entries but reaction needs {len(substrates)} — missing {abs(diff)} label(s)"
+        msg = f"Labelmap has {len(labelmap)} entries but reaction needs {len(substrates)} - missing {abs(diff)} label(s)"
         raise ValueError(msg)
     return substrates, products
 

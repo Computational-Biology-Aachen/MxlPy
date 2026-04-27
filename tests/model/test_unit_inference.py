@@ -1,4 +1,4 @@
-"""Tests for Model.infer_units() — bidirectional unit constraint propagation."""
+"""Tests for Model.infer_units() - bidirectional unit constraint propagation."""
 
 from __future__ import annotations
 
@@ -121,7 +121,7 @@ def test_backward_parameter_additive_returns_none() -> None:
     """Backward inference via additive terms (Michaelis-Menten km) returns None.
 
     sympy.solve produces a trivial algebraic solution (km=0) which is filtered
-    out.  This is a known limitation — additive constraints require AST-level
+    out.  This is a known limitation - additive constraints require AST-level
     unit analysis beyond what sympy.solve provides.
     """
     model = _mm_model()
@@ -169,7 +169,7 @@ def test_conflict_detection() -> None:
     """Two reactions constrain the same parameter's unit differently.
 
     k is used as a first-order rate constant in v1 (unit 1/s) and as a
-    zero-order flux in v2 (unit mmol/s) — an inconsistent model.
+    zero-order flux in v2 (unit mmol/s) - an inconsistent model.
     """
     model = (
         Model()
@@ -262,7 +262,7 @@ def test_unparseable_function_returns_none() -> None:
 
 
 def test_all_inferred_true_when_all_known() -> None:
-    # k, S are explicit; v1 and P are inferred — all four should be resolved
+    # k, S are explicit; v1 and P are inferred - all four should be resolved
     model = _mass_action_model()
     result = model.infer_units(time_unit=second)
     assert result.all_inferred()

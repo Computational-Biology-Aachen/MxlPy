@@ -321,12 +321,12 @@ def sympy_to_inline_mxlweb(
         children = ", ".join(sympy_to_inline_mxlweb(a, used, subs) for a in expr.args)
         return f"new Add([{children}])"
 
-    # Multiplication — handle negation and division
+    # Multiplication - handle negation and division
     if isinstance(expr, sympy.Mul):
         coeff, rest_factors = expr.as_coeff_mul()
 
         # Separate denominator factors (Pow(x, -n)) from rest_factors first,
-        # then apply sign — this avoids Mul([Divide([Num(1), f]), g]) patterns.
+        # then apply sign - this avoids Mul([Divide([Num(1), f]), g]) patterns.
         numer: list[sympy.Expr] = []
         denom: list[sympy.Expr] = []
         for arg in rest_factors:
