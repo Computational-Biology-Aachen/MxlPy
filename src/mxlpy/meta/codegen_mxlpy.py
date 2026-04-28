@@ -8,10 +8,18 @@ mxlpy.meta.codegen_mxlpy
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from mxlpy.meta.source_tools import fn_to_source
-from mxlpy.types import Derived, InitialAssignment, Parameter, Reaction, Variable
+from mxlpy.types import (
+    Derived,
+    InitialAssignment,
+    Parameter,
+    Reaction,
+    Readout,
+    Variable,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -19,11 +27,16 @@ if TYPE_CHECKING:
     from mxlpy.model import Model
     from mxlpy.surrogates.abstract import SurrogateProtocol
 
-__all__ = [
-    "generate_mxlpy_code",
-]
+__all__ = ["Context", "generate_mxlpy_code"]
 
 _LOGGER = logging.getLogger()
+
+
+@dataclass
+class Context:
+    functions: dict[str, str]
+    mxlpy_imports: set[str]
+    file_imports: set[str]
 
 
 def _fn_name(k: str, fn: Callable) -> str:
@@ -34,25 +47,23 @@ def _handle_fn_source(
     name: str,
     fn: Callable,
     args: list[str],
-    functions: dict[str, str],
-    file_imports: set[str],
     *,
+    ctx: Context,
     strip_docstring: bool,
 ) -> str:
     fn_name = _fn_name(name, fn)
-    extracted = fn_to_source(fn, name, args, strip_docstring=strip_docstring)
-    functions.update(extracted.dependencies)
-    functions[name] = extracted.main_source
-    file_imports.update(extracted.imports)
+    extracted = fn_to_source(fn, fn_name, args, strip_docstring=strip_docstring)
+    ctx.functions.update(extracted.dependencies)
+    ctx.functions[fn_name] = extracted.main_source
+    ctx.file_imports.update(extracted.imports)
     return fn_name
 
 
 def _codegen_variable(
     k: str,
     variable: Variable,
-    functions: dict[str, str],
-    file_imports: set[str],
     *,
+    ctx: Context,
     strip_docstring: bool,
 ) -> str:
     val = variable.initial_value
@@ -61,10 +72,10 @@ def _codegen_variable(
             k,
             val.fn,
             val.args,
-            functions,
-            file_imports,
+            ctx=ctx,
             strip_docstring=strip_docstring,
         )
+        ctx.mxlpy_imports.add("InitialAssignment")
         return (
             "        .add_variable(\n"
             f"            {k!r},\n"
@@ -79,9 +90,8 @@ def _codegen_variable(
 def _codegen_parameter(
     k: str,
     parameter: Parameter,
-    functions: dict[str, str],
-    file_imports: set[str],
     *,
+    ctx: Context,
     strip_docstring: bool,
 ) -> str:
     val = parameter.value
@@ -90,14 +100,14 @@ def _codegen_parameter(
             k,
             val.fn,
             val.args,
-            functions,
-            file_imports,
+            ctx=ctx,
             strip_docstring=strip_docstring,
         )
+        ctx.mxlpy_imports.add("InitialAssignment")
         return (
             "        .add_parameter(\n"
             f"            {k!r},\n"
-            f"            initial_value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
+            f"            value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
             "        )"
         )
 
@@ -108,17 +118,15 @@ def _codegen_parameter(
 def _codegen_derived(
     k: str,
     der: Derived,
-    functions: dict[str, str],
-    file_imports: set[str],
     *,
+    ctx: Context,
     strip_docstring: bool,
 ) -> str:
     fn_name = _handle_fn_source(
         k,
         der.fn,
         der.args,
-        functions,
-        file_imports,
+        ctx=ctx,
         strip_docstring=strip_docstring,
     )
     return (
@@ -133,29 +141,27 @@ def _codegen_derived(
 def _codegen_reaction(
     k: str,
     rxn: Reaction,
-    functions: dict[str, str],
-    file_imports: set[str],
     *,
+    ctx: Context,
     strip_docstring: bool,
 ) -> str:
     fn_name = _handle_fn_source(
         k,
         rxn.fn,
         rxn.args,
-        functions,
-        file_imports,
+        ctx=ctx,
         strip_docstring=strip_docstring,
     )
 
     stoichiometry: list[str] = []
     for var, stoich in rxn.stoichiometry.items():
         if isinstance(stoich, Derived):
+            ctx.mxlpy_imports.add("Derived")
             stoich_fn_name = _handle_fn_source(
                 var,
                 stoich.fn,
                 stoich.args,
-                functions,
-                file_imports,
+                ctx=ctx,
                 strip_docstring=strip_docstring,
             )
             stoichiometry.append(
@@ -176,9 +182,8 @@ def _codegen_reaction(
 def _codegen_surrogate(
     k: str,
     surrogate: SurrogateProtocol,
-    functions: dict[str, str],
-    file_imports: set[str],
     *,
+    ctx: Context,
     strip_docstring: bool,
 ) -> str | None:
     stype = type(surrogate)
@@ -194,7 +199,7 @@ def _codegen_surrogate(
     raw_submod = module.split(".")[-1]
     submod = raw_submod.lstrip("_")
     class_ref = f"{submod}.{stype.__name__}"
-    file_imports.add(f"from mxlpy.surrogates import {submod}")
+    ctx.file_imports.add(f"from mxlpy.surrogates import {submod}")
 
     # Generate source for callable model (e.g. QSS)
     surr_model_fn_name = None
@@ -205,8 +210,7 @@ def _codegen_surrogate(
                 k,
                 model_attr,
                 surrogate.args,
-                functions,
-                file_imports,
+                ctx=ctx,
                 strip_docstring=strip_docstring,
             )
         except (ValueError, TypeError, OSError) as exc:
@@ -231,8 +235,7 @@ def _codegen_surrogate(
                         var,
                         factor.fn,
                         factor.args,
-                        functions,
-                        file_imports,
+                        ctx=ctx,
                         strip_docstring=strip_docstring,
                     )
                     rxn_parts.append(
@@ -250,6 +253,29 @@ def _codegen_surrogate(
         f"            {class_ref}(\n"
         f"                {ctor_str},\n"
         "            ),\n"
+        "        )"
+    )
+
+
+def _codegen_readout(
+    k: str,
+    der: Readout,
+    *,
+    ctx: Context,
+    strip_docstring: bool,
+) -> str:
+    fn_name = _handle_fn_source(
+        k,
+        der.fn,
+        der.args,
+        ctx=ctx,
+        strip_docstring=strip_docstring,
+    )
+    return (
+        "        .add_readout(\n"
+        f"            {k!r},\n"
+        f"            fn={fn_name},\n"
+        f"            args={der.args!r},\n"
         "        )"
     )
 
@@ -276,10 +302,11 @@ def generate_mxlpy_code(
         Python source code that constructs the model using MxlPy API
 
     """
-    file_imports: set[str] = set() if imports is None else set(imports)
-
-    # Maps fn_name -> source string (last writer wins for shared functions)
-    functions: dict[str, str] = {}
+    ctx = Context(
+        functions={},
+        mxlpy_imports={"Model"},
+        file_imports=set() if imports is None else set(imports),
+    )
 
     # Variables
     variable_source = []
@@ -288,8 +315,7 @@ def generate_mxlpy_code(
             _codegen_variable(
                 k,
                 variable,
-                functions,
-                file_imports,
+                ctx=ctx,
                 strip_docstring=strip_docstring,
             )
         )
@@ -301,8 +327,7 @@ def generate_mxlpy_code(
             _codegen_parameter(
                 k,
                 parameter,
-                functions,
-                file_imports,
+                ctx=ctx,
                 strip_docstring=strip_docstring,
             )
         )
@@ -314,8 +339,7 @@ def generate_mxlpy_code(
             _codegen_derived(
                 k,
                 der,
-                functions,
-                file_imports,
+                ctx=ctx,
                 strip_docstring=strip_docstring,
             )
         )
@@ -327,8 +351,7 @@ def generate_mxlpy_code(
             _codegen_reaction(
                 k,
                 rxn,
-                functions,
-                file_imports,
+                ctx=ctx,
                 strip_docstring=strip_docstring,
             )
         )
@@ -340,19 +363,30 @@ def generate_mxlpy_code(
             gen := _codegen_surrogate(
                 k,
                 surrogate,
-                functions,
-                file_imports,
+                ctx=ctx,
                 strip_docstring=strip_docstring,
             )
         ) is not None:
             surrogate_source.append(gen)
 
-    functions_source = "\n\n".join(functions.values())
-    fn_block = "\n" if len(functions) == 0 else f"\n\n{functions_source}\n"
+    # Surrogates
+    readout_source = []
+    for k, ro in model.get_raw_readouts().items():
+        readout_source.append(
+            _codegen_readout(
+                k,
+                ro,
+                ctx=ctx,
+                strip_docstring=strip_docstring,
+            )
+        )
+
+    functions_source = "\n\n".join(ctx.functions.values())
+    fn_block = "\n" if len(ctx.functions) == 0 else f"\n\n{functions_source}\n"
 
     source = [
-        *sorted(file_imports),
-        "from mxlpy import Model, Derived, InitialAssignment",
+        *sorted(ctx.file_imports),
+        f"from mxlpy import {','.join(sorted(ctx.mxlpy_imports))}",
         fn_block,
         f"def {model_fn_name}() -> Model:",
         "    return (",
@@ -368,5 +402,7 @@ def generate_mxlpy_code(
         source.append("\n".join(reactions_source))
     if surrogate_source:
         source.append("\n".join(surrogate_source))
+    if readout_source:
+        source.append("\n".join(readout_source))
     source.append("    )")
     return "\n".join(source)

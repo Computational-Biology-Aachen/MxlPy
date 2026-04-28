@@ -83,13 +83,21 @@ class NormalizedSymbolicModel(NamedTuple):
     free_pars: list[str]
 
 
-class Codegen(NamedTuple):
+@dataclass
+class Codegen:
     """Generated code split into four sections ready for emission."""
 
     imports: str
     model: str
     derived: str
     inits: str
+
+    def full(self) -> str:
+        return "\n\n".join(
+            i
+            for i in (self.imports, self.model, self.derived, self.inits)
+            if len(i) > 0
+        )
 
 
 class FnDeclTemplate(Protocol):
@@ -1517,6 +1525,8 @@ def generate_model_code_jl(
         return f"function {name}({args_str})"
 
     def variable_unpacking(variables: list[str]) -> str:
+        if len(variables) == 0:
+            return ""
         return f"    {', '.join(variables)} = variables"
 
     def list_template(elements: list[str]) -> str:
@@ -2123,6 +2133,9 @@ class LatexCodegen:
     long_name_cutoff: int
     symbol_names: dict[sympy.Symbol, str]
 
+    def full(self) -> str:
+        return "\n\n".join(i for i in self.as_default() if len(i) > 0)
+
     def as_default(self) -> tuple[str, str, str, str, str]:
         return (
             _tex_math_table2(
@@ -2339,6 +2352,9 @@ class DiffLatexCodegen:
     diff_eqs: list[tuple[str, sympy.Expr | None, sympy.Expr | None]]
     long_name_cutoff: int
     symbol_names: dict[sympy.Symbol, str]
+
+    def full(self) -> str:
+        return "\n\n".join(i for i in self.as_default() if len(i) > 0)
 
     def as_default(self) -> tuple[str, str, str, str, str]:
         return (
