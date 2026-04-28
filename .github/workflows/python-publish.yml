@@ -2,7 +2,7 @@ name: Upload Python Package
 
 on:
   release:
-    types: [published]
+    types: [ published ]
   workflow_dispatch: {}
 
 permissions:
@@ -18,10 +18,10 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Set up Python
-        run: uv python install 3.13
+        run: uv python install 3.13.12
 
       - name: Set Python version
-        run: uv venv --python 3.13
+        run: uv venv --python 3.13.12
 
       - name: Build release distribution
         run: uv build
