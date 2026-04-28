@@ -24,6 +24,7 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -44,6 +45,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from wadler_lindig import pformat
 
 from mxlpy.label_map import LabelMapper
+from mxlpy.types import Derived
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Iterator
@@ -79,6 +81,7 @@ __all__ = [
     "lines",
     "lines_grouped",
     "lines_mean_std_from_2d_idx",
+    "network",
     "one_axes",
     "relative_label_distribution",
     "reset_prop_cycle",
@@ -1792,3 +1795,142 @@ def relative_label_distribution(
             ax.legend([f"C{i + 1}" for i in range(len(isos))])
 
     return fig, axs
+
+
+def network(
+    model: Model,
+    *,
+    node_size: float = 500,
+    cofactors: list[str] | None = None,
+    layout: str = "kamada_kawai",
+    ax: Axes | None = None,
+) -> tuple[Figure, Axes]:
+    """Plot reaction network topology as a directed graph.
+
+    Species are shown as circles, reactions as squares. Stoichiometric
+    edges are solid arrows; modifier edges (args not in stoichiometry)
+    are dashed. Cofactor species are rendered as per-reaction copies
+    to avoid visual clutter from high-degree hub nodes.
+
+    Parameters
+    ----------
+    model
+        Model whose topology to visualise.
+    cofactors
+        Species to render as per-reaction copies rather than as a
+        shared hub. Useful for ubiquitous metabolites like ATP or NADH.
+    layout
+        networkx layout algorithm name, e.g. ``"kamada_kawai"``,
+        ``"spring"``, ``"circular"``.
+    ax
+        Axes to draw on. If None, a new figure is created.
+
+    Returns
+    -------
+    tuple[Figure, Axes]
+        Figure and Axes containing the network diagram.
+
+    """
+    cofactor_set = set(cofactors or [])
+    args: dict[str, float] = {
+        **model.get_parameter_values(),
+        **model.get_initial_conditions(),
+    }
+
+    G: nx.DiGraph = nx.DiGraph()
+    species_nodes: list[str] = []
+    reaction_nodes: list[str] = []
+    regular_edges: list[tuple[str, str]] = []
+    modifier_edges: list[tuple[str, str]] = []
+    labels: dict[str, str] = {}
+
+    for name in model.get_variable_names():
+        if name not in cofactor_set:
+            G.add_node(name)
+            species_nodes.append(name)
+            labels[name] = name
+
+    for rxn_name, rxn in model.get_raw_reactions().items():
+        G.add_node(rxn_name)
+        reaction_nodes.append(rxn_name)
+        labels[rxn_name] = rxn_name
+
+        for species, stoich in rxn.stoichiometry.items():
+            try:
+                coeff: float = (
+                    stoich.calculate(args)
+                    if isinstance(stoich, Derived)
+                    else float(stoich)
+                )
+            except (KeyError, TypeError):
+                coeff = 1.0
+
+            if species in cofactor_set:
+                node_id = f"{species}__{rxn_name}"
+                if node_id not in G:
+                    G.add_node(node_id)
+                    species_nodes.append(node_id)
+                    labels[node_id] = species
+            else:
+                node_id = species
+
+            if coeff < 0:
+                regular_edges.append((node_id, rxn_name))
+            else:
+                regular_edges.append((rxn_name, node_id))
+
+        for mod in rxn.get_modifiers(model):
+            if mod in cofactor_set:
+                node_id = f"{mod}__{rxn_name}"
+                if node_id not in G:
+                    G.add_node(node_id)
+                    species_nodes.append(node_id)
+                    labels[node_id] = mod
+            else:
+                node_id = mod
+            modifier_edges.append((node_id, rxn_name))
+
+    G.add_edges_from(regular_edges)
+    G.add_edges_from(modifier_edges)
+
+    layout_fn = getattr(nx, f"{layout}_layout")
+    pos = layout_fn(G)
+
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = cast(Figure, ax.get_figure())
+
+    ax.set_axis_off()
+
+    if species_nodes:
+        nx.draw_networkx_nodes(
+            G,
+            pos,
+            nodelist=species_nodes,
+            node_shape="o",
+            node_color="white",
+            edgecolors="black",
+            ax=ax,
+            node_size=node_size,
+        )
+    if reaction_nodes:
+        nx.draw_networkx_nodes(
+            G,
+            pos,
+            nodelist=reaction_nodes,
+            node_shape="s",
+            node_color="lightgray",
+            edgecolors="black",
+            ax=ax,
+            node_size=node_size,
+        )
+    if regular_edges:
+        nx.draw_networkx_edges(G, pos, edgelist=regular_edges, ax=ax, arrows=True)
+    if modifier_edges:
+        nx.draw_networkx_edges(
+            G, pos, edgelist=modifier_edges, style="dashed", ax=ax, arrows=True
+        )
+    nx.draw_networkx_labels(G, pos, labels=labels, ax=ax)
+
+    return fig, ax

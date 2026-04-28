@@ -31,8 +31,8 @@ def get_model() -> Model:
     return (
         Model()
         .add_variables({"x": 1.0})
-        .add_parameters({"k_in": 1.0, "k_out": 1.0})
-        .add_reaction("v_in", constant, stoichiometry={"x": 1}, args=["k_in"])
+        .add_parameters({"k1": 1.0, "k_out": 1.0})
+        .add_reaction("v_in", constant, stoichiometry={"x": 1}, args=["k1"])
         .add_reaction("v_out", mass_action_1s, stoichiometry={"x": -1}, args=["k_out", "x"])
     )
 ```
@@ -77,8 +77,8 @@ from mxlpy.fns import constant, michaelis_menten_1s
 model = (
     Model()
     .add_variables({"s": 1.0, "p": 0.0})
-    .add_parameters({"k_in": 1.0, "vmax": 2.0, "km": 0.5})
-    .add_reaction("v_in", constant, stoichiometry={"s": 1}, args=["k_in"])
+    .add_parameters({"k1": 1.0, "vmax": 2.0, "km": 0.5})
+    .add_reaction("v_in", constant, stoichiometry={"s": 1}, args=["k1"])
     .add_reaction("v_enzyme", michaelis_menten_1s, stoichiometry={"s": -1, "p": 1}, args=["s", "vmax", "km"])
 )
 ```
