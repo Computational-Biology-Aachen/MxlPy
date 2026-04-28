@@ -367,7 +367,10 @@ def get_fn_ast(fn: Callable, *, strip_docstring: bool = False) -> ast.FunctionDe
     """
     tree = ast.parse(textwrap.dedent(get_fn_source(fn)))
     if not isinstance(fn_def := tree.body[0], ast.FunctionDef):
-        msg = f"Expected a function definition but got {type(fn_def).__name__} - pass a named function, not a class or bare expression"
+        msg = (
+            f"Expected a function definition but got {type(fn_def).__name__} - "
+            "pass a named function, not a class or bare expression"
+        )
         raise TypeError(msg)
     if (
         strip_docstring
@@ -404,7 +407,10 @@ def _handle_fn_body_outputs(
                             ctx.symbols[target.id] = expr
             else:
                 if not isinstance(target := node.targets[0], ast.Name):
-                    msg = f"Only simple 'x = expr' assignments are supported in rate functions - got {type(target).__name__} assignment target at line {node.lineno}"
+                    msg = (
+                        "Only simple 'x = expr' assignments are supported in rate functions"
+                        f" - got {type(target).__name__} assignment target at line {node.lineno}"
+                    )
                     raise TypeError(msg)
                 value = _handle_expr(node.value, ctx)
                 if value is None:
@@ -485,7 +491,10 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
 
         elif isinstance(node, ast.Return):
             if (value := node.value) is None:
-                msg = "Bare 'return' with no value is not supported in rate functions - return a float expression"
+                msg = (
+                    "Bare 'return' with no value is not supported in rate functions"
+                    " - return a float expression"
+                )
                 raise ValueError(msg)
 
             expr = _handle_expr(value, ctx)
@@ -517,7 +526,10 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
             else:
                 # Regular single assignment
                 if not isinstance(target := node.targets[0], ast.Name):
-                    msg = f"Only simple 'x = expr' assignments are supported in rate functions - got {type(target).__name__} assignment target at line {node.lineno}"
+                    msg = (
+                        f"Only simple 'x = expr' assignments are supported in rate functions"
+                        f" - got {type(target).__name__} assignment target at line {node.lineno}"
+                    )
                     raise TypeError(msg)
                 target_name = target.id
                 value = _handle_expr(node.value, ctx)
@@ -623,7 +635,10 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
         if_false = _handle_expr(node.orelse, ctx)
         return sympy.Piecewise((if_true, condition), (if_false, True))
 
-    msg = f"Expression type {type(node).__name__!r} is not supported in symbolic conversion - simplify the rate function to use only arithmetic operators and supported math functions"
+    msg = (
+        f"Expression type {type(node).__name__!r} is not supported in symbolic conversion"
+        " - simplify the rate function to use only arithmetic operators and supported math functions"
+    )
     raise NotImplementedError(msg)
 
 
@@ -650,7 +665,10 @@ def _handle_unaryop(node: ast.UnaryOp, ctx: Context) -> sympy.Expr:
         case ast.USub():
             return -left
         case _:
-            msg = f"Unary operator {type(node.op).__name__!r} is not supported - only +x and -x are allowed in rate functions"
+            msg = (
+                f"Unary operator {type(node.op).__name__!r} is not supported"
+                " - only +x and -x are allowed in rate functions"
+            )
             raise NotImplementedError(msg)
 
 
@@ -677,7 +695,10 @@ def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
         case ast.FloorDiv():
             return left // right
         case _:
-            msg = f"Binary operator {type(node.op).__name__!r} is not supported in rate functions - allowed: +, -, *, /, **, %, //"
+            msg = (
+                f"Binary operator {type(node.op).__name__!r} is not supported in rate functions"
+                " - allowed: +, -, *, /, **, %, //"
+            )
             raise NotImplementedError(msg)
 
 
@@ -873,7 +894,10 @@ def _lambda_to_def(source: str, fn_name: str, args: list[str]) -> str:
         None,
     )
     if lambda_node is None:
-        msg = f"Could not find a lambda expression in the source of '{fn_name}' - the source may belong to a different statement or the lambda is not at module scope"
+        msg = (
+            f"Could not find a lambda expression in the source of '{fn_name}'"
+            " - the source may belong to a different statement or the lambda is not at module scope"
+        )
         raise ValueError(msg)
 
     fn_args = ast.arguments(
@@ -1192,7 +1216,17 @@ def fn_to_sympy_expr(
         if isinstance(sympy_expr, float):
             return sympy.Float(sympy_expr)
         if model_args is not None and len(model_args):
-            sympy_expr = sympy_expr.subs(dict(zip(fn_args, model_args, strict=True)))
+            try:
+                sympy_expr = sympy_expr.subs(
+                    dict(zip(fn_args, model_args, strict=True))
+                )
+            except ValueError as e:
+                _LOGGER.warning("fn name: %s", fn.__name__)
+                _LOGGER.warning(
+                    "\n    fn args: %s \n    model args: %s", fn_args, model_args
+                )
+                raise ValueError from e
+
         return cast(sympy.Expr, sympy_expr)
 
     except (TypeError, ValueError, NotImplementedError) as e:
@@ -1250,7 +1284,7 @@ def fn_to_sympy_exprs(
             exprs = [cast(sympy.Expr, e.subs(subs)) for e in exprs]
 
     except (TypeError, ValueError, NotImplementedError) as e:
-        msg = f"Failed parsing function of {origin}"
+        msg = f"Failed parsing function '{fn.__name__}' of {origin}"
         _LOGGER.warning(msg)
         _LOGGER.debug("", exc_info=e)
         return None

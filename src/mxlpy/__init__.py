@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import contextlib
 import itertools as it
+import logging
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -123,6 +124,7 @@ __all__ = [
     "Variable",
     "cartesian_product",
     "compare",
+    "configure_default_logging",
     "distributions",
     "experimental",
     "fit",
@@ -209,3 +211,18 @@ def make_protocol(steps: list[tuple[float, dict[str, float]]]) -> pd.DataFrame:
     protocol = pd.DataFrame(data).T
     protocol.index.name = "Timedelta"
     return protocol
+
+
+def configure_default_logging(
+    fmt: str = "%(levelname)s:%(name)s:%(message)s",
+    level: logging._Level = logging.DEBUG,
+) -> None:
+    """Create a default logging config."""
+    logger = logging.getLogger("mxlpy")
+    if logger.handlers:
+        return
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(fmt))
+    logger.addHandler(handler)
+    logger.setLevel(level)

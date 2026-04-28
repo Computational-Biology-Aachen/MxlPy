@@ -29,14 +29,19 @@ if TYPE_CHECKING:
 
 __all__ = ["Context", "generate_mxlpy_code"]
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
 class Context:
+    """Various config."""
+
     functions: dict[str, str]
     mxlpy_imports: set[str]
     file_imports: set[str]
+    strip_docstring: bool
+    first: str
+    space: str
 
 
 def _fn_name(k: str, fn: Callable) -> str:
@@ -49,42 +54,29 @@ def _handle_fn_source(
     args: list[str],
     *,
     ctx: Context,
-    strip_docstring: bool,
 ) -> str:
     fn_name = _fn_name(name, fn)
-    extracted = fn_to_source(fn, fn_name, args, strip_docstring=strip_docstring)
+    extracted = fn_to_source(fn, fn_name, args, strip_docstring=ctx.strip_docstring)
     ctx.functions.update(extracted.dependencies)
     ctx.functions[fn_name] = extracted.main_source
     ctx.file_imports.update(extracted.imports)
     return fn_name
 
 
-def _codegen_variable(
-    k: str,
-    variable: Variable,
-    *,
-    ctx: Context,
-    strip_docstring: bool,
-) -> str:
+def _codegen_variable(k: str, variable: Variable, *, ctx: Context) -> str:
     val = variable.initial_value
     if isinstance(val, InitialAssignment):
-        fn_name = _handle_fn_source(
-            k,
-            val.fn,
-            val.args,
-            ctx=ctx,
-            strip_docstring=strip_docstring,
-        )
+        fn_name = _handle_fn_source(k, val.fn, val.args, ctx=ctx)
         ctx.mxlpy_imports.add("InitialAssignment")
         return (
-            "        .add_variable(\n"
-            f"            {k!r},\n"
-            f"            initial_value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
-            "        )"
+            f"{ctx.first}.add_variable(\n"
+            f"{ctx.space}  {k!r},\n"
+            f"{ctx.space}  initial_value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
+            f"{ctx.space})"
         )
 
     # val is float | int
-    return f"        .add_variable({k!r}, initial_value={val!r})"
+    return f"{ctx.first}.add_variable({k!r}, initial_value={val!r})"
 
 
 def _codegen_parameter(
@@ -92,27 +84,20 @@ def _codegen_parameter(
     parameter: Parameter,
     *,
     ctx: Context,
-    strip_docstring: bool,
 ) -> str:
     val = parameter.value
     if isinstance(val, InitialAssignment):
-        fn_name = _handle_fn_source(
-            k,
-            val.fn,
-            val.args,
-            ctx=ctx,
-            strip_docstring=strip_docstring,
-        )
+        fn_name = _handle_fn_source(k, val.fn, val.args, ctx=ctx)
         ctx.mxlpy_imports.add("InitialAssignment")
         return (
-            "        .add_parameter(\n"
-            f"            {k!r},\n"
-            f"            value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
-            "        )"
+            f"{ctx.first}.add_parameter(\n"
+            f"{ctx.space}  {k!r},\n"
+            f"{ctx.space} value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
+            f"{ctx.space})"
         )
 
     # val is float | int
-    return f"        .add_parameter({k!r}, value={val!r})"
+    return f"{ctx.first}.add_parameter({k!r}, value={val!r})"
 
 
 def _codegen_derived(
@@ -120,21 +105,19 @@ def _codegen_derived(
     der: Derived,
     *,
     ctx: Context,
-    strip_docstring: bool,
 ) -> str:
     fn_name = _handle_fn_source(
         k,
         der.fn,
         der.args,
         ctx=ctx,
-        strip_docstring=strip_docstring,
     )
     return (
-        "        .add_derived(\n"
-        f"            {k!r},\n"
-        f"            fn={fn_name},\n"
-        f"            args={der.args!r},\n"
-        "        )"
+        f"{ctx.first}.add_derived(\n"
+        f"{ctx.space}  {k!r},\n"
+        f"{ctx.space}  fn={fn_name},\n"
+        f"{ctx.space}  args={der.args!r},\n"
+        f"{ctx.space})"
     )
 
 
@@ -143,14 +126,12 @@ def _codegen_reaction(
     rxn: Reaction,
     *,
     ctx: Context,
-    strip_docstring: bool,
 ) -> str:
     fn_name = _handle_fn_source(
         k,
         rxn.fn,
         rxn.args,
         ctx=ctx,
-        strip_docstring=strip_docstring,
     )
 
     stoichiometry: list[str] = []
@@ -162,7 +143,6 @@ def _codegen_reaction(
                 stoich.fn,
                 stoich.args,
                 ctx=ctx,
-                strip_docstring=strip_docstring,
             )
             stoichiometry.append(
                 f'"{var}": Derived(fn={stoich_fn_name}, args={stoich.args!r})'
@@ -170,12 +150,12 @@ def _codegen_reaction(
         else:
             stoichiometry.append(f'"{var}": {stoich!r}')
     return (
-        "        .add_reaction(\n"
-        f"            {k!r},\n"
-        f"            fn={fn_name},\n"
-        f"            args={rxn.args!r},\n"
-        f"            stoichiometry={{{','.join(stoichiometry)}}},\n"
-        "        )"
+        f"{ctx.first}.add_reaction(\n"
+        f"{ctx.space}  {k!r},\n"
+        f"{ctx.space}  fn={fn_name},\n"
+        f"{ctx.space}  args={rxn.args!r},\n"
+        f"{ctx.space}  stoichiometry={{{','.join(stoichiometry)}}},\n"
+        f"{ctx.space})"
     )
 
 
@@ -184,7 +164,6 @@ def _codegen_surrogate(
     surrogate: SurrogateProtocol,
     *,
     ctx: Context,
-    strip_docstring: bool,
 ) -> str | None:
     stype = type(surrogate)
     module = stype.__module__
@@ -211,7 +190,6 @@ def _codegen_surrogate(
                 model_attr,
                 surrogate.args,
                 ctx=ctx,
-                strip_docstring=strip_docstring,
             )
         except (ValueError, TypeError, OSError) as exc:
             _LOGGER.warning(
@@ -236,7 +214,6 @@ def _codegen_surrogate(
                         factor.fn,
                         factor.args,
                         ctx=ctx,
-                        strip_docstring=strip_docstring,
                     )
                     rxn_parts.append(
                         f'"{var}": Derived(fn={sf_name}, args={factor.args!r})'
@@ -248,12 +225,12 @@ def _codegen_surrogate(
 
     ctor_str = ",\n                ".join(ctor_parts)
     return (
-        "        .add_surrogate(\n"
-        f"            {k!r},\n"
-        f"            {class_ref}(\n"
-        f"                {ctor_str},\n"
-        "            ),\n"
-        "        )"
+        f"{ctx.first}.add_surrogate(\n"
+        f"{ctx.space}  {k!r},\n"
+        f"{ctx.space}  {class_ref}(\n"
+        f"{ctx.space}    {ctor_str},\n"
+        f"{ctx.space}    ),\n"
+        f"{ctx.space})"
     )
 
 
@@ -262,21 +239,19 @@ def _codegen_readout(
     der: Readout,
     *,
     ctx: Context,
-    strip_docstring: bool,
 ) -> str:
     fn_name = _handle_fn_source(
         k,
         der.fn,
         der.args,
         ctx=ctx,
-        strip_docstring=strip_docstring,
     )
     return (
-        "        .add_readout(\n"
-        f"            {k!r},\n"
-        f"            fn={fn_name},\n"
-        f"            args={der.args!r},\n"
-        "        )"
+        f"{ctx.first}.add_readout(\n"
+        f"{ctx.space}  {k!r},\n"
+        f"{ctx.space}  fn={fn_name},\n"
+        f"{ctx.space}  args={der.args!r},\n"
+        f"{ctx.space})"
     )
 
 
@@ -286,6 +261,8 @@ def generate_mxlpy_code(
     model_fn_name: str = "create_model",
     imports: list[str] | None = None,
     strip_docstring: bool = True,
+    as_assignment: bool = False,
+    docstring: str | None = None,
 ) -> str:
     """Generate MxlPy source code without a symbolic representation round-trip.
 
@@ -306,80 +283,41 @@ def generate_mxlpy_code(
         functions={},
         mxlpy_imports={"Model"},
         file_imports=set() if imports is None else set(imports),
+        first="    m = m" if as_assignment else "        ",
+        space="    " if as_assignment else "        ",
+        strip_docstring=strip_docstring,
     )
 
     # Variables
     variable_source = []
     for k, variable in model.get_raw_variables().items():
-        variable_source.append(
-            _codegen_variable(
-                k,
-                variable,
-                ctx=ctx,
-                strip_docstring=strip_docstring,
-            )
-        )
+        variable_source.append(_codegen_variable(k, variable, ctx=ctx))
 
     # Parameters
     parameter_source = []
     for k, parameter in model.get_raw_parameters().items():
-        parameter_source.append(
-            _codegen_parameter(
-                k,
-                parameter,
-                ctx=ctx,
-                strip_docstring=strip_docstring,
-            )
-        )
+        parameter_source.append(_codegen_parameter(k, parameter, ctx=ctx))
 
     # Derived
     derived_source = []
     for k, der in model.get_raw_derived().items():
-        derived_source.append(
-            _codegen_derived(
-                k,
-                der,
-                ctx=ctx,
-                strip_docstring=strip_docstring,
-            )
-        )
+        derived_source.append(_codegen_derived(k, der, ctx=ctx))
 
     # Reactions
     reactions_source = []
     for k, rxn in model.get_raw_reactions().items():
-        reactions_source.append(
-            _codegen_reaction(
-                k,
-                rxn,
-                ctx=ctx,
-                strip_docstring=strip_docstring,
-            )
-        )
+        reactions_source.append(_codegen_reaction(k, rxn, ctx=ctx))
 
     # Surrogates
     surrogate_source = []
     for k, surrogate in model.get_raw_surrogates().items():
-        if (
-            gen := _codegen_surrogate(
-                k,
-                surrogate,
-                ctx=ctx,
-                strip_docstring=strip_docstring,
-            )
-        ) is not None:
+        if (gen := _codegen_surrogate(k, surrogate, ctx=ctx)) is not None:
             surrogate_source.append(gen)
 
     # Surrogates
     readout_source = []
     for k, ro in model.get_raw_readouts().items():
-        readout_source.append(
-            _codegen_readout(
-                k,
-                ro,
-                ctx=ctx,
-                strip_docstring=strip_docstring,
-            )
-        )
+        readout_source.append(_codegen_readout(k, ro, ctx=ctx))
 
     functions_source = "\n\n".join(ctx.functions.values())
     fn_block = "\n" if len(ctx.functions) == 0 else f"\n\n{functions_source}\n"
@@ -389,9 +327,14 @@ def generate_mxlpy_code(
         f"from mxlpy import {','.join(sorted(ctx.mxlpy_imports))}",
         fn_block,
         f"def {model_fn_name}() -> Model:",
-        "    return (",
-        "        Model()",
     ]
+    if docstring is not None:
+        source.append(f"    {docstring}")
+    if as_assignment:
+        source.append("    m: Model = Model()")
+    else:
+        source.append("    return (")
+        source.append("        Model()")
     if variable_source:
         source.append("\n".join(variable_source))
     if parameter_source:
@@ -404,5 +347,8 @@ def generate_mxlpy_code(
         source.append("\n".join(surrogate_source))
     if readout_source:
         source.append("\n".join(readout_source))
-    source.append("    )")
+    if as_assignment:
+        source.append("    return m  # noqa: RET504")
+    else:
+        source.append("    )")
     return "\n".join(source)
