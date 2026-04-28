@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
     from mxlpy.model import Model
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 __all__ = [
@@ -70,8 +70,6 @@ __all__ = [
     "valid_identifier",
     "valid_tex_identifier",
 ]
-
-_LOGGER = logging.getLogger()
 
 
 class NormalizedSymbolicModel(NamedTuple):
@@ -1136,6 +1134,7 @@ def generate_model_code_mxlweb(
     tex_names: dict[str, str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     sliders: dict[str, dict[str, str]] | None = None,
+    docstring: str | None = None,
 ) -> str:
     """Generate TypeScript source for the mxlweb browser simulator.
 
@@ -1362,7 +1361,7 @@ def generate_model_code_mxlweb(
         [
             f'import {{ {mathml_import_str} }} from "$lib/mathml";',
             'import { ModelBuilder } from "$lib/model-editor/modelBuilder";',
-            "",
+            f"\n{docstring}" if docstring else "",
             model_builder_str,
         ]
     )
