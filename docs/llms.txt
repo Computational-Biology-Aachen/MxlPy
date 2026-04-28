@@ -1,6 +1,6 @@
 # MxlPy
 
-> MxlPy is a Python package for **mechanistic learning** — combining mechanistic modeling (ODEs) with machine learning to deliver explainable, data-informed solutions for systems biology. Models encode real biology; ML augments understanding without replacing it.
+> MxlPy is a Python package for **mechanistic learning** - combining mechanistic modeling (ODEs) with machine learning to deliver explainable, data-informed solutions for systems biology. Models encode real biology; ML augments understanding without replacing it.
 
 ## Docs
 
@@ -17,7 +17,7 @@
 
 ## Core concepts
 
-The `Model` API is a **fluent builder** — every `add_*` / `remove_*` / `update_*` method returns `Self` so calls chain. Rate functions are **pure named functions** from `mxlpy.fns` (never lambdas). Error-returning functions return `Result[T]`; call `.unwrap_or_err()` to extract the value or raise the exception.
+The `Model` API is a **fluent builder** - every `add_*` / `remove_*` / `update_*` method returns `Self` so calls chain. Rate functions are **pure named functions** from `mxlpy.fns` (never lambdas). Error-returning functions return `Result[T]`; call `.unwrap_or_err()` to extract the value or raise the exception.
 
 ## Model construction
 

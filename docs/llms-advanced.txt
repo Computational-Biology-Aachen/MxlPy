@@ -1,4 +1,4 @@
-# MxlPy — Advanced Features
+# MxlPy - Advanced Features
 
 [← back to main reference](llms.txt)
 
@@ -102,8 +102,8 @@ model.remove_surrogate("v_surrogate")
 ```
 
 Available backends (lazy-loaded):
-- `mxlpy.nn` — PyTorch (default), Keras, Equinox (JAX-based)
-- `mxlpy.npe` — Neural Posterior Estimation (amortized Bayesian inference)
+- `mxlpy.nn` - PyTorch (default), Keras, Equinox (JAX-based)
+- `mxlpy.npe` - Neural Posterior Estimation (amortized Bayesian inference)
 
 ---
 
@@ -169,7 +169,7 @@ model.get_parameter_names()        # list[str]
 model.get_reaction_names()         # list[str]
 model.get_parameter_values()       # dict[str, float]
 model.get_initial_conditions()     # dict[str, float]
-model.get_unused_parameters()      # set[str] — parameters not referenced by any fn
+model.get_unused_parameters()      # set[str] - parameters not referenced by any fn
 model.get_stoichiometries()        # pd.DataFrame: reactions × variables
 ```
 

@@ -1,4 +1,4 @@
-# MxlPy — Visualization (`mxlpy.plot`)
+# MxlPy - Visualization (`mxlpy.plot`)
 
 [← back to main reference](llms.txt)
 

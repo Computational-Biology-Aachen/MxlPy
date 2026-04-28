@@ -1,4 +1,4 @@
-# MxlPy — Analysis (Fitting, Scanning, MCA, Monte Carlo)
+# MxlPy - Analysis (Fitting, Scanning, MCA, Monte Carlo)
 
 [← back to main reference](llms.txt)
 
