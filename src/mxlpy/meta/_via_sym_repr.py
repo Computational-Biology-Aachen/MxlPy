@@ -22,6 +22,7 @@ from mxlpy.meta.sympy_tools import (
     sympy_to_inline_mxlweb,
     sympy_to_inline_py,
     sympy_to_inline_rust,
+    sympy_to_python_fn,
 )
 from mxlpy.surrogates import qss
 from mxlpy.surrogates.abstract import AbstractSurrogate
@@ -388,14 +389,20 @@ class SymbolicRepr:
         def _codegen_variable(k: str, el: SymbolicVariable) -> str:
             val = el.value
             if isinstance(val, SymbolicFn):
-                fns[val.fn_name] = val
+                # Guard against SBML going full-retard mode
+                fn_name = val.fn_name
+                if fn_name == k:
+                    fn_name = f"init_{k}"
+                fns[fn_name] = val
                 return (
                     "        .add_variable(\n"
                     f"            {k!r},\n"
-                    f"            initial_value=InitialAssignment(fn={val.fn_name}, args={val.args!r}),\n"
+                    f"            initial_value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
                     "        )"
                 )
-            return f"        .add_variable({k!r}, initial_value={float(val)!r})"
+            return (
+                f"        .add_variable({k!r}, initial_value={sympy_to_inline_py(val)})"
+            )
 
         def _codegen_parameter(k: str, el: SymbolicParameter) -> str:
             val = el.value
@@ -404,10 +411,10 @@ class SymbolicRepr:
                 return (
                     "        .add_parameter(\n"
                     f"            {k!r},\n"
-                    f"            initial_value=InitialAssignment(fn={val.fn_name}, args={val.args!r}),\n"
+                    f"            value=InitialAssignment(fn={val.fn_name}, args={val.args!r}),\n"
                     "        )"
                 )
-            return f"        .add_parameter({k!r}, value={float(val)!r})"
+            return f"        .add_parameter({k!r}, value={sympy_to_inline_py(val)})"
 
         def _codegen_derived(k: str, el: SymbolicFn) -> str:
             fns[el.fn_name] = el
@@ -429,20 +436,24 @@ class SymbolicRepr:
                 "        )"
             )
 
-        def _codegen_reaction(k: str, el: SymbolicReaction) -> str:
+        def _codegen_reaction(rxn_name: str, el: SymbolicReaction) -> str:
             fns[el.fn.fn_name] = el.fn
             stoichiometry: list[str] = []
             for var, stoich in el.stoichiometry.items():
                 if isinstance(stoich, SymbolicFn):
-                    fns[stoich.fn_name] = stoich
+                    stoich_fn_name = stoich.fn_name
+                    # Guard against SBML going full-retard mode
+                    if stoich_fn_name == var:
+                        stoich_fn_name = f"{rxn_name}_stoich_{var}"
+                    fns[stoich_fn_name] = stoich
                     stoichiometry.append(
-                        f'"{var}": Derived(fn={stoich.fn_name}, args={stoich.args!r})'
+                        f'"{var}": Derived(fn={stoich_fn_name}, args={stoich.args!r})'
                     )
                 else:
                     stoichiometry.append(f'"{var}": {float(stoich)!r}')
             return (
                 "        .add_reaction(\n"
-                f"            {k!r},\n"
+                f"            {rxn_name!r},\n"
                 f"            fn={el.fn.fn_name},\n"
                 f"            args={el.fn.args!r},\n"
                 f"            stoichiometry={{{', '.join(stoichiometry)}}},\n"
@@ -458,9 +469,13 @@ class SymbolicRepr:
                 rxn_parts: list[str] = []
                 for var, stoich in rxn_stoich.items():
                     if isinstance(stoich, SymbolicFn):
-                        fns[stoich.fn_name] = stoich
+                        stoich_fn_name = stoich.fn_name
+                        # Guard against SBML going full-retard mode
+                        if stoich_fn_name == var:
+                            stoich_fn_name = f"{rxn_name}_stoich_{var}"
+                        fns[stoich_fn_name] = stoich
                         rxn_parts.append(
-                            f'"{var}": Derived(fn={stoich.fn_name}, args={stoich.args!r})'
+                            f'"{var}": Derived(fn={stoich_fn_name}, args={stoich.args!r})'
                         )
                     else:
                         rxn_parts.append(f'"{var}": {float(stoich)!r}')
@@ -484,13 +499,6 @@ class SymbolicRepr:
         reactions = [_codegen_reaction(k, v) for k, v in self.reactions.items()]
         surrogates = [_codegen_surrogate(k, v) for k, v in self.surrogates.items()]
 
-        def _gen_fn(sf: SymbolicFn) -> str:
-            args_str = ", ".join(f"{a}: float" for a in sf.args)
-            return (
-                f"def {sf.fn_name}({args_str}) -> float:\n"
-                f"    return {sympy_to_inline_py(sf.expr)}"
-            )
-
         def _gen_surr_fn(
             fn_name: str, outputs_and_fns: tuple[list[str], list[SymbolicFn]]
         ) -> str:
@@ -509,7 +517,10 @@ class SymbolicRepr:
             )
 
         fn_defs = [
-            *map(_gen_fn, fns.values()),
+            *(
+                sympy_to_python_fn(fn_name=k, args=v.args, expr=v.expr)
+                for k, v in fns.items()
+            ),
             *(_gen_surr_fn(n, v) for n, v in surr_fns.items()),
         ]
         fn_block = "\n\n".join(fn_defs)
@@ -520,6 +531,7 @@ class SymbolicRepr:
 
         imports = [
             "import math",
+            "import scipy",
             "from mxlpy import Derived, InitialAssignment, Model",
             *(["from mxlpy.surrogates import qss"] if surrogates else []),
         ]

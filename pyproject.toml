@@ -181,6 +181,12 @@ select = ["ALL"]
     "S101",    # assert
     "SLF",
 ]
+"tests/sbml/assets/*" = [
+    "N802",   # lowercase name
+    "N803",   # lowercase name
+    "INP001",
+
+]
 "tmp/*" = [
     "D",    # all of documentation
     "I001", # unsorted imports
