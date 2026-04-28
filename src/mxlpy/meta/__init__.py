@@ -45,6 +45,7 @@ mxlweb. The function should be considered volatile and subject to change.
 from __future__ import annotations
 
 from ._via_sym_repr import (
+    DiffLatexCodegen,
     generate_latex_diff,
     generate_latex_document,
     generate_model_code_cpp,
@@ -59,6 +60,7 @@ from ._via_sym_repr import (
 from .codegen_mxlpy import generate_mxlpy_code
 
 __all__ = [
+    "DiffLatexCodegen",
     "generate_latex_diff",
     "generate_latex_document",
     "generate_model_code_cpp",
@@ -69,6 +71,5 @@ __all__ = [
     "generate_model_code_py",
     "generate_model_code_rs",
     "generate_model_code_ts",
-    "generate_mxlpy_code",
     "generate_mxlpy_code",
 ]

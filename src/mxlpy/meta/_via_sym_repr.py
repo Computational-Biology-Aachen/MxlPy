@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
@@ -29,7 +29,7 @@ from mxlpy.types import Derived, InitialAssignment
 from mxlpy.units import Quantity
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from mxlpy.model import Model
 
@@ -38,6 +38,7 @@ _LOGGER = logging.getLogger()
 
 __all__ = [
     "Codegen",
+    "DiffLatexCodegen",
     "ExprTemplate",
     "FnDeclTemplate",
     "LatexCodegen",
@@ -168,7 +169,7 @@ class ReturnTemplate(Protocol):
         ...
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class SymbolicFn:
     """Container for symbolic fn."""
 
@@ -181,7 +182,7 @@ class SymbolicFn:
         return pformat(self)
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class SymbolicVariable:
     """Container for symbolic variable."""
 
@@ -192,15 +193,8 @@ class SymbolicVariable:
         """Return default representation."""
         return pformat(self)
 
-    def __eq__(self, value: object) -> bool:
-        if not isinstance(value, SymbolicVariable):
-            return False
-        if self.value != value.value:  # noqa: SIM103
-            return False
-        return True
 
-
-@dataclass
+@dataclass(unsafe_hash=True)
 class SymbolicParameter:
     """Container for symbolic par."""
 
@@ -211,15 +205,8 @@ class SymbolicParameter:
         """Return default representation."""
         return pformat(self)
 
-    def __eq__(self, value: object) -> bool:
-        if not isinstance(value, SymbolicParameter):
-            return False
-        if self.value != value.value:  # noqa: SIM103
-            return False
-        return True
 
-
-@dataclass
+@dataclass(unsafe_hash=True)
 class SymbolicReaction:
     """Container for symbolic rxn."""
 
@@ -230,17 +217,8 @@ class SymbolicReaction:
         """Return default representation."""
         return pformat(self)
 
-    def __eq__(self, value: object) -> bool:
-        if not isinstance(value, SymbolicReaction):
-            return False
-        if self.fn != value.fn:
-            return False
-        if self.stoichiometry != value.stoichiometry:  # noqa: SIM103
-            return False
-        return True
 
-
-@dataclass
+@dataclass(unsafe_hash=True)
 class SymbolicSurrogate:
     """Container for symbolic rxn."""
 
@@ -251,17 +229,6 @@ class SymbolicSurrogate:
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
-
-    def __eq__(self, value: object) -> bool:
-        if not isinstance(value, SymbolicSurrogate):
-            return False
-        if self.outputs != value.outputs:
-            return False
-        if self.stoichiometry != value.stoichiometry:
-            return False
-        if self.fns != value.fns:  # noqa: SIM103
-            return False
-        return True
 
 
 @dataclass
@@ -1881,6 +1848,39 @@ def _rename_latex(s: str) -> str:
     )
 
 
+def _shorten_long_symbols(
+    expr: sympy.Expr,
+    cutoff: int,
+    symbol_names: dict[sympy.Symbol, str],
+) -> tuple[sympy.Expr, list[tuple[str, str]]]:
+    """Substitute long unaliased symbol names with short stand-ins.
+
+    For every other ``Symbol`` whose name is at least *cutoff* characters long a
+    short placeholder ``x0``, ``x1``, … is created.
+
+    Returns ``(new_expr, annotations)`` where *annotations* is a list of
+    ``(short_latex, long_latex)`` pairs (empty when nothing was replaced).
+    """
+    subs: dict[sympy.Symbol, sympy.Symbol] = {}
+    annotations: list[tuple[str, str]] = []
+    i = 0
+    for sym in sorted(
+        (s for s in expr.free_symbols if isinstance(s, sympy.Symbol)),
+        key=lambda s: s.name,
+    ):
+        if sym not in symbol_names and len(sym.name) >= cutoff:
+            short = sympy.Symbol(f"x{i}")
+            subs[sym] = short
+            annotations.append((sympy.latex(short), _math_name(sym.name)))
+            i += 1
+    return cast(sympy.Expr, expr.subs(subs)), annotations
+
+
+def _subsection_(s: str) -> str:
+    # depth = 2
+    return r"\FloatBarrier" + rf"\subsection*{{{s}}}"
+
+
 def _mathrm(s: str) -> str:
     return rf"\mathrm{{{s}}}"
 
@@ -1889,50 +1889,239 @@ def _math_name(s: str) -> str:
     return _mathrm(valid_tex_identifier(_rename_latex(s)))
 
 
-def _lhs(name: str) -> str:
+def _tex_lhs(name: str) -> str:
     return rf"\frac{{d\ {name}}}{{dt}}"
 
 
-def _tex_align_block(rows: list[tuple[str, str]]) -> str:
-    body = " \\\\\n".join(f"  {lhs} &= {rhs}" for lhs, rhs in rows)
+def _tex_list_as_sections(rows: Iterable[tuple[str, str]]) -> str:
+    return "\n\n".join(
+        [
+            "\n".join(
+                (
+                    _subsection_(name),
+                    content,
+                )
+            )
+            for name, content in rows
+            if len(content) > 0
+        ]
+    )
+
+
+def _annotation_block(annotations: list[tuple[str, str]]) -> str:
+    """Standalone align* listing symbol abbreviations used in a shortened expression."""
+    rows = [r"  &\quad \mathrm{with}"] + [
+        rf"  &\qquad {s} :: {lg}" for s, lg in annotations
+    ]
+    body = " \\\\\n".join(rows)
     return f"\\begin{{align*}}\n{body}\n\\end{{align*}}"
+
+
+def _render_diff_rhs(
+    old_expr: sympy.Expr | None,
+    new_expr: sympy.Expr | None,
+    long_name_cutoff: int,
+    symbol_names: dict[sympy.Symbol, str],
+) -> tuple[str, list[tuple[str, str]]]:
+    annotations: list[tuple[str, str]] = []
+    if old_expr is None:
+        if new_expr is None:
+            return "", []
+        short, ann = _shorten_long_symbols(new_expr, long_name_cutoff, symbol_names)
+        annotations.extend(ann)
+        return (
+            rf"{{\color{{green}} {_sympy_to_latex(short, symbol_names)}}}",
+            annotations,
+        )
+    if new_expr is None:
+        short, ann = _shorten_long_symbols(old_expr, long_name_cutoff, symbol_names)
+        annotations.extend(ann)
+        return (
+            rf"{{\color{{red}} \stkout{{{_sympy_to_latex(short, symbol_names)}}}}}",
+            annotations,
+        )
+    if old_expr == new_expr:
+        short, ann = _shorten_long_symbols(new_expr, long_name_cutoff, symbol_names)
+        annotations.extend(ann)
+        return _sympy_to_latex(short, symbol_names), annotations
+    short_old, ann_old = _shorten_long_symbols(old_expr, long_name_cutoff, symbol_names)
+    short_new, ann_new = _shorten_long_symbols(new_expr, long_name_cutoff, symbol_names)
+    annotations.extend(ann_old)
+    annotations.extend(ann_new)
+    old_rhs = (
+        rf"{{\color{{red}} \stkout{{{_sympy_to_latex(short_old, symbol_names)}}}}}"
+    )
+    new_rhs = rf"{{\color{{green}} {_sympy_to_latex(short_new, symbol_names)}}}"
+    return f"{old_rhs} {new_rhs}", annotations
+
+
+def _tex_align_block(
+    rows: list[tuple[str, sympy.Expr]],
+    long_name_cutoff: int,
+    symbol_names: dict[sympy.Symbol, str],
+) -> str:
+    parts = []
+    for lhs, expr in rows:
+        short_expr, annotations = _shorten_long_symbols(
+            expr, long_name_cutoff, symbol_names
+        )
+        rhs = _sympy_to_latex(short_expr, symbol_names)
+        if annotations:
+            # Leading \\ terminates the equation row; subsequent lines are
+            # continuation rows in the align* block.
+            rhs += "\\\\\n  " + r"&\quad \mathrm{with}"
+            for s, lg in annotations:
+                rhs += "\\\\\n  " + rf"&\qquad {s} :: {lg}"
+        parts.append(f"  {lhs} &= {rhs}")
+    body = " \\\\\n".join(parts)
+    return f"\\begin{{align*}}\n{body}\n\\end{{align*}}"
+
+
+def _tex_align_block_diff(
+    rows: list[tuple[str, sympy.Expr | None, sympy.Expr | None]],
+    long_name_cutoff: int,
+    symbol_names: dict[sympy.Symbol, str],
+) -> str:
+    parts = []
+    for lhs, old_expr, new_expr in rows:
+        rhs, annotations = _render_diff_rhs(
+            old_expr, new_expr, long_name_cutoff, symbol_names
+        )
+        if annotations:
+            rhs += "\\\\\n  " + r"&\quad \mathrm{with}"
+            for s, lg in annotations:
+                rhs += "\\\\\n  " + rf"&\qquad {s} :: {lg}"
+        parts.append(f"  {lhs} &= {rhs}")
+    body = " \\\\\n".join(parts)
+    return f"\\begin{{align*}}\n{body}\n\\end{{align*}}"
+
+
+def _tex_dmath_blocks(
+    rows: list[tuple[str, sympy.Expr]],
+    long_name_cutoff: int,
+    symbol_names: dict[sympy.Symbol, str],
+) -> str:
+    parts = []
+    for lhs, expr in rows:
+        short_expr, annotations = _shorten_long_symbols(
+            expr, long_name_cutoff, symbol_names
+        )
+        rhs = _sympy_to_latex(short_expr, symbol_names)
+        block = f"\\begin{{dmath*}}\n  {lhs} = {rhs}\n\\end{{dmath*}}"
+        if annotations:
+            block += "\n" + _annotation_block(annotations)
+        parts.append(block)
+    return "\n".join(parts)
+
+
+def _tex_dmath_blocks_diff(
+    rows: list[tuple[str, sympy.Expr | None, sympy.Expr | None]],
+    long_name_cutoff: int,
+    symbol_names: dict[sympy.Symbol, str],
+) -> str:
+    parts = []
+    for lhs, old_expr, new_expr in rows:
+        rhs, annotations = _render_diff_rhs(
+            old_expr, new_expr, long_name_cutoff, symbol_names
+        )
+        block = f"\\begin{{dmath*}}\n  {lhs} = {rhs}\n\\end{{dmath*}}"
+        if annotations:
+            block += "\n" + _annotation_block(annotations)
+        parts.append(block)
+    return "\n".join(parts)
 
 
 def _tex_math_table2(
     headers: tuple[str, str],
-    rows: list[tuple[str, str]],
+    rows: list[tuple[str, sympy.Expr]],
     label: str,
     short_desc: str,
     long_desc: str,
+    long_name_cutoff: int,
+    symbol_names: dict[sympy.Symbol, str],
 ) -> str:
     columns = "|".join(["c"] * 2)
     tab = "    "
+    all_annotations: dict[str, str] = {}
 
-    return "\n".join(
+    def _render(lhs: str, expr: sympy.Expr) -> str:
+        short_expr, annotations = _shorten_long_symbols(
+            expr, long_name_cutoff, symbol_names
+        )
+        all_annotations.update(annotations)
+        return rf"{tab} ${lhs}$ & ${_sympy_to_latex(short_expr, symbol_names)}$ \\"
+
+    table = "\n".join(
         [
             r"\begin{longtable}" + f"{{{columns}}}",
             tab + " & ".join(headers) + r" \\",
             tab + r"\hline",
             tab + r"\endhead",
         ]
-        + [rf"{tab} ${i}$ & ${j}$ \\" for i, j in rows]
+        + [_render(lhs, expr) for lhs, expr in rows]
         + [
             tab + rf"\caption[{short_desc}]{{{long_desc}}}",
             tab + rf"\label{{table:{label}}}",
             r"\end{longtable}",
         ]
     )
+    if all_annotations:
+        table += "\n" + _annotation_block(list(all_annotations.items()))
+    return table
+
+
+def _tex_math_table2_diff(
+    headers: tuple[str, str],
+    rows: list[tuple[str, sympy.Expr | None, sympy.Expr | None]],
+    label: str,
+    short_desc: str,
+    long_desc: str,
+    long_name_cutoff: int,
+    symbol_names: dict[sympy.Symbol, str],
+) -> str:
+    columns = "|".join(["c"] * 2)
+    tab = "    "
+    all_annotations: dict[str, str] = {}
+
+    def _render(
+        lhs: str, old_expr: sympy.Expr | None, new_expr: sympy.Expr | None
+    ) -> str:
+        rhs, annotations = _render_diff_rhs(
+            old_expr, new_expr, long_name_cutoff, symbol_names
+        )
+        all_annotations.update(annotations)
+        return rf"{tab} ${lhs}$ & ${rhs}$ \\"
+
+    table = "\n".join(
+        [
+            r"\begin{longtable}" + f"{{{columns}}}",
+            tab + " & ".join(headers) + r" \\",
+            tab + r"\hline",
+            tab + r"\endhead",
+        ]
+        + [_render(lhs, old, new) for lhs, old, new in rows]
+        + [
+            tab + rf"\caption[{short_desc}]{{{long_desc}}}",
+            tab + rf"\label{{table:{label}}}",
+            r"\end{longtable}",
+        ]
+    )
+    if all_annotations:
+        table += "\n" + _annotation_block(list(all_annotations.items()))
+    return table
 
 
 @dataclass
 class LatexCodegen:
     """Generated code split into four sections ready for emission."""
 
-    parameters: list[tuple[str, str]]
-    variables: list[tuple[str, str]]
-    derived: list[tuple[str, str]]
-    reactions: list[tuple[str, str]]
-    diff_eqs: list[tuple[str, str]]
+    parameters: list[tuple[str, sympy.Expr]]
+    variables: list[tuple[str, sympy.Expr]]
+    derived: list[tuple[str, sympy.Expr]]
+    reactions: list[tuple[str, sympy.Expr]]
+    diff_eqs: list[tuple[str, sympy.Expr]]
+    long_name_cutoff: int
+    symbol_names: dict[sympy.Symbol, str]
 
     def as_default(self) -> tuple[str, str, str, str, str]:
         return (
@@ -1942,6 +2131,8 @@ class LatexCodegen:
                 label="model-pars",
                 short_desc="Model parameters",
                 long_desc="Model parameters",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
             )
             if len(self.parameters) > 0
             else "",
@@ -1951,21 +2142,61 @@ class LatexCodegen:
                 label="model-vars",
                 short_desc="Model variables",
                 long_desc="Model variables",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
             )
             if len(self.variables) > 0
             else "",
-            _tex_align_block(self.derived) if len(self.derived) > 0 else "",
-            _tex_align_block(self.reactions) if len(self.reactions) > 0 else "",
-            _tex_align_block(self.diff_eqs) if len(self.diff_eqs) > 0 else "",
+            _tex_dmath_blocks(
+                self.derived,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if len(self.derived) > 0
+            else "",
+            _tex_dmath_blocks(
+                self.reactions,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if len(self.reactions) > 0
+            else "",
+            _tex_align_block(
+                self.diff_eqs,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if len(self.diff_eqs) > 0
+            else "",
         )
 
     def as_aligned(self) -> tuple[str, str, str, str, str]:
         return (
-            _tex_align_block(self.parameters),
-            _tex_align_block(self.variables),
-            _tex_align_block(self.derived),
-            _tex_align_block(self.reactions),
-            _tex_align_block(self.diff_eqs),
+            _tex_align_block(
+                self.parameters,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
+            _tex_align_block(
+                self.variables,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
+            _tex_align_block(
+                self.derived,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
+            _tex_align_block(
+                self.reactions,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
+            _tex_align_block(
+                self.diff_eqs,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
         )
 
     def as_tables(self) -> tuple[str, str, str, str, str]:
@@ -1976,6 +2207,8 @@ class LatexCodegen:
                 label="model-pars",
                 short_desc="Model parameters",
                 long_desc="Model parameters",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
             )
             if len(self.parameters) > 0
             else "",
@@ -1985,6 +2218,8 @@ class LatexCodegen:
                 label="model-vars",
                 short_desc="Model variables",
                 long_desc="Model variables",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
             )
             if len(self.variables) > 0
             else "",
@@ -1994,6 +2229,8 @@ class LatexCodegen:
                 label="model-der",
                 short_desc="Model parameters",
                 long_desc="Model parameters",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
             )
             if len(self.derived) > 0
             else "",
@@ -2003,6 +2240,8 @@ class LatexCodegen:
                 label="model-rxn",
                 short_desc="Model parameters",
                 long_desc="Model parameters",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
             )
             if len(self.reactions) > 0
             else "",
@@ -2012,6 +2251,8 @@ class LatexCodegen:
                 label="model-eqs",
                 short_desc="Model parameters",
                 long_desc="Model parameters",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
             )
             if len(self.diff_eqs) > 0
             else "",
@@ -2023,6 +2264,7 @@ def generate_model_code_latex(
     *,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     gls: dict[str, str] | None = None,
+    long_name_cutoff: int = 20,
 ) -> LatexCodegen:
     r"""Transform the model into LaTeX equations.
 
@@ -2035,24 +2277,22 @@ def generate_model_code_latex(
     ----------
     model
         Model to generate equations for.
-    free_parameters
-        Parameter names to treat as free (excluded from the equation body).
-    derived_to_calculate
-        Subset of derived component names to emit in ``derived``. ``None``
-        emits everything.
     custom_fns
         Custom sympy expressions to substitute for named model functions.
     gls
         Optional mapping of model component names to custom LaTeX strings,
         e.g. ``{"km": r"K_m", "vmax": r"V_{\mathrm{max}}"}``.
+    long_name_cutoff
+        Symbol names with this many characters or more are replaced by short
+        stand-ins (``x_0``, ``x_1``, …) in the equation body and annotated
+        with a ``where`` clause.  Symbols already renamed via *gls* are
+        never shortened.
 
     Returns
     -------
-    Codegen
-        ``imports`` - ``\usepackage{amsmath}``
-        ``model`` - ODE system (parameters, rates, differential equations)
-        ``derived`` - computed quantities
-        ``inits`` - initial conditions
+    LatexCodegen
+        Structured LaTeX for parameters, variables, derived quantities,
+        reactions, and differential equations.
 
     """
     symbol_names: dict[sympy.Symbol, str] = (
@@ -2069,198 +2309,293 @@ def generate_model_code_latex(
         variables=[
             (
                 _math_name(k),
-                _sympy_to_latex(
-                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
-                    symbol_names,
-                ),
+                expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
             )
             for k, v in rsr.variables.items()
         ],
         parameters=[
             (
                 _math_name(k),
-                _sympy_to_latex(
-                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
-                    symbol_names,
-                ),
+                expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
             )
             for k, v in rsr.parameters.items()
         ],
-        derived=[
-            (
-                _math_name(k),
-                _sympy_to_latex(
-                    expr.expr,
-                    symbol_names,
-                ),
-            )
-            for k, expr in rsr.derived.items()
-        ],
-        reactions=[
-            (
-                _math_name(k),
-                _sympy_to_latex(
-                    rxn.expr,
-                    symbol_names,
-                ),
-            )
-            for k, rxn in rsr.reactions.items()
-        ],
-        diff_eqs=[
-            (
-                _lhs(_math_name(k)),
-                _sympy_to_latex(
-                    eq,
-                    symbol_names,
-                ),
-            )
-            for k, eq in rsr.diffeqs.items()
-        ],
+        derived=[(_math_name(k), expr.expr) for k, expr in rsr.derived.items()],
+        reactions=[(_math_name(k), rxn.expr) for k, rxn in rsr.reactions.items()],
+        diff_eqs=[(_tex_lhs(_math_name(k)), eq) for k, eq in rsr.diffeqs.items()],
+        long_name_cutoff=long_name_cutoff,
+        symbol_names=symbol_names,
     )
+
+
+@dataclass
+class DiffLatexCodegen:
+    """Diff of two models as LaTeX, split into five sections ready for emission."""
+
+    parameters: list[tuple[str, sympy.Expr | None, sympy.Expr | None]]
+    variables: list[tuple[str, sympy.Expr | None, sympy.Expr | None]]
+    derived: list[tuple[str, sympy.Expr | None, sympy.Expr | None]]
+    reactions: list[tuple[str, sympy.Expr | None, sympy.Expr | None]]
+    diff_eqs: list[tuple[str, sympy.Expr | None, sympy.Expr | None]]
+    long_name_cutoff: int
+    symbol_names: dict[sympy.Symbol, str]
+
+    def as_default(self) -> tuple[str, str, str, str, str]:
+        return (
+            _tex_math_table2_diff(
+                headers=("Parameter name", "Parameter value"),
+                rows=sorted(self.parameters, key=lambda x: x[0]),
+                label="model-pars",
+                short_desc="Model parameters",
+                long_desc="Model parameters",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.parameters
+            else "",
+            _tex_math_table2_diff(
+                headers=("Model name", "Initial concentration"),
+                rows=self.variables,
+                label="model-vars",
+                short_desc="Model variables",
+                long_desc="Model variables",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.variables
+            else "",
+            _tex_dmath_blocks_diff(
+                self.derived,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.derived
+            else "",
+            _tex_dmath_blocks_diff(
+                self.reactions,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.reactions
+            else "",
+            _tex_align_block_diff(
+                self.diff_eqs,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.diff_eqs
+            else "",
+        )
+
+    def as_aligned(self) -> tuple[str, str, str, str, str]:
+        return (
+            _tex_align_block_diff(
+                self.parameters,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
+            _tex_align_block_diff(
+                self.variables,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
+            _tex_align_block_diff(
+                self.derived,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
+            _tex_align_block_diff(
+                self.reactions,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
+            _tex_align_block_diff(
+                self.diff_eqs,
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            ),
+        )
+
+    def as_tables(self) -> tuple[str, str, str, str, str]:
+        return (
+            _tex_math_table2_diff(
+                headers=("Parameter name", "Parameter value"),
+                rows=sorted(self.parameters, key=lambda x: x[0]),
+                label="model-pars",
+                short_desc="Model parameters",
+                long_desc="Model parameters",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.parameters
+            else "",
+            _tex_math_table2_diff(
+                headers=("Model name", "Initial concentration"),
+                rows=self.variables,
+                label="model-vars",
+                short_desc="Model variables",
+                long_desc="Model variables",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.variables
+            else "",
+            _tex_math_table2_diff(
+                headers=("Name", "Derived"),
+                rows=sorted(self.derived, key=lambda x: x[0]),
+                label="model-der",
+                short_desc="Model derived",
+                long_desc="Model derived",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.derived
+            else "",
+            _tex_math_table2_diff(
+                headers=("Name", "Reaction"),
+                rows=sorted(self.reactions, key=lambda x: x[0]),
+                label="model-rxn",
+                short_desc="Model reactions",
+                long_desc="Model reactions",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.reactions
+            else "",
+            _tex_math_table2_diff(
+                headers=("Lhs", "Rhs"),
+                rows=sorted(self.diff_eqs, key=lambda x: x[0]),
+                label="model-eqs",
+                short_desc="Model equations",
+                long_desc="Model equations",
+                long_name_cutoff=self.long_name_cutoff,
+                symbol_names=self.symbol_names,
+            )
+            if self.diff_eqs
+            else "",
+        )
 
 
 def generate_latex_diff(
     old: Model,
     new: Model,
     *,
-    show_old: bool = True,
+    only_changes: bool = False,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     gls: dict[str, str] | None = None,
-) -> LatexCodegen:
-    old_repr = model_to_symbolic_repr(
-        old,
-        custom_fns={} if custom_fns is None else custom_fns,
-        only_warn=True,
-    ).reduce()
-    new_repr = model_to_symbolic_repr(
-        new,
-        custom_fns={} if custom_fns is None else custom_fns,
-        only_warn=True,
-    ).reduce()
+    long_name_cutoff: int = 20,
+) -> DiffLatexCodegen:
+    r"""Generate a LaTeX diff between two models.
 
-    rsr = old_repr.difference(new_repr)
+    Removals are shown in red with strikethrough (``\sout``), additions in
+    green.  Requires ``ulem`` and ``xcolor`` in the document preamble (both
+    are included by :func:`generate_latex_document`).
 
+    Parameters
+    ----------
+    old
+        The baseline model.
+    new
+        The updated model.
+    only_changes
+        When ``True`` emit only rows that differ between the two models
+        (additions, removals, and modifications).  When ``False`` (default)
+        emit every row and highlight only the changed ones.
+    custom_fns
+        Custom sympy expressions to substitute for named model functions.
+    gls
+        Optional mapping of component names to custom LaTeX strings.
+    long_name_cutoff
+        Symbol names with this many characters or more are replaced by short
+        stand-ins and annotated with a ``where`` clause.
+
+    Returns
+    -------
+    DiffLatexCodegen
+        Structured diff LaTeX for parameters, variables, derived quantities,
+        reactions, and differential equations.
+
+    """
     symbol_names: dict[sympy.Symbol, str] = (
         {} if gls is None else {sympy.Symbol(orig): tex for orig, tex in gls.items()}
     )
+    _custom = {} if custom_fns is None else custom_fns
 
-    def _show_diff(key: str, old: str | None, new: str | None) -> tuple[str, str]:
-        if show_old:
-            if old is None:
-                return key, rf"{{\color{{green}} {new}}}"
-            if new is None:
-                return key, rf"\sout{{{old}}}"
+    old_rsr = model_to_symbolic_repr(old, custom_fns=_custom, only_warn=True).reduce()
+    new_rsr = model_to_symbolic_repr(new, custom_fns=_custom, only_warn=True).reduce()
 
-            return key, rf"{{\color{{green}} {old}}} {{\color{{green}} {new}}}"
+    def _build_rows(
+        old_items: dict[str, sympy.Expr],
+        new_items: dict[str, sympy.Expr],
+        get_lhs: Callable[[str], str],
+    ) -> list[tuple[str, sympy.Expr | None, sympy.Expr | None]]:
+        rows: list[tuple[str, sympy.Expr | None, sympy.Expr | None]] = []
+        for k, new_expr in new_items.items():
+            old_expr = old_items.get(k)
+            if old_expr is None:
+                rows.append((get_lhs(k), None, new_expr))
+            elif old_expr == new_expr:
+                if not only_changes:
+                    rows.append((get_lhs(k), old_expr, new_expr))
+            else:
+                rows.append((get_lhs(k), old_expr, new_expr))
+        for k, old_expr in old_items.items():
+            if k not in new_items:
+                rows.append((get_lhs(k), old_expr, None))
+        return rows
 
-        return key, rf"\sout{{{old}}}" if new is None else new
+    def _var_exprs(
+        items: dict[str, SymbolicVariable],
+    ) -> dict[str, sympy.Expr]:
+        return {
+            k: v.value.expr if isinstance(v.value, SymbolicFn) else v.value
+            for k, v in items.items()
+        }
 
-    variables = sorted(set(old_repr.variables.keys()) | set(new_repr.variables.keys()))
-    parameters = sorted(
-        set(old_repr.parameters.keys()) | set(new_repr.parameters.keys())
-    )
-    derived = sorted(set(old_repr.derived.keys()) | set(new_repr.derived.keys()))
-    reactions = sorted(set(old_repr.reactions.keys()) | set(new_repr.reactions.keys()))
-    diffeqs = sorted(set(old_repr.diffeqs.keys()) | set(new_repr.diffeqs.keys()))
+    def _par_exprs(
+        items: dict[str, SymbolicParameter],
+    ) -> dict[str, sympy.Expr]:
+        return {
+            k: v.value.expr if isinstance(v.value, SymbolicFn) else v.value
+            for k, v in items.items()
+        }
 
-    return LatexCodegen(
-        variables=[
-            _show_diff(
-                valid_tex_identifier(k),
-                _sympy_to_latex(
-                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
-                    symbol_names,
-                )
-                if (v := old_repr.variables.get(k)) is not None
-                else v,
-                _sympy_to_latex(
-                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
-                    symbol_names,
-                )
-                if (v := rsr.variables.get(k)) is not None
-                else v,
-            )
-            for k in variables
-        ],
-        parameters=[
-            _show_diff(
-                valid_tex_identifier(k),
-                _sympy_to_latex(
-                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
-                    symbol_names,
-                )
-                if (v := old_repr.parameters.get(k)) is not None
-                else v,
-                _sympy_to_latex(
-                    expr.expr if isinstance(expr := v.value, SymbolicFn) else expr,
-                    symbol_names,
-                )
-                if (v := rsr.parameters.get(k)) is not None
-                else v,
-            )
-            for k in parameters
-        ],
-        derived=[
-            _show_diff(
-                valid_tex_identifier(k),
-                _sympy_to_latex(v.expr, symbol_names)
-                if (v := old_repr.derived.get(k)) is not None
-                else v,
-                _sympy_to_latex(v.expr, symbol_names)
-                if (v := rsr.derived.get(k)) is not None
-                else v,
-            )
-            for k in derived
-        ],
-        reactions=[
-            _show_diff(
-                valid_tex_identifier(k),
-                _sympy_to_latex(v.expr, symbol_names)
-                if (v := old_repr.reactions.get(k)) is not None
-                else v,
-                _sympy_to_latex(v.expr, symbol_names)
-                if (v := rsr.reactions.get(k)) is not None
-                else v,
-            )
-            for k in reactions
-        ],
-        diff_eqs=[
-            _show_diff(
-                _lhs(valid_tex_identifier(k)),
-                _sympy_to_latex(v, symbol_names)
-                if (v := old_repr.diffeqs.get(k)) is not None
-                else v,
-                _sympy_to_latex(v, symbol_names)
-                if (v := rsr.diffeqs.get(k)) is not None
-                else v,
-            )
-            for k in diffeqs
-        ],
-    )
+    def _fn_exprs(items: dict[str, SymbolicFn]) -> dict[str, sympy.Expr]:
+        return {k: v.expr for k, v in items.items()}
 
-
-def _subsection_(s: str) -> str:
-    # depth = 2
-    return r"\FloatBarrier" + rf"\subsection*{{{s}}}"
-
-
-def _latex_list_as_sections(rows: Iterable[tuple[str, str]]) -> str:
-    return "\n\n".join(
-        [
-            "\n".join(
-                (
-                    _subsection_(name),
-                    content,
-                )
-            )
-            for name, content in rows
-            if len(content) > 0
-        ]
+    return DiffLatexCodegen(
+        parameters=_build_rows(
+            _par_exprs(old_rsr.parameters),
+            _par_exprs(new_rsr.parameters),
+            _math_name,
+        ),
+        variables=_build_rows(
+            _var_exprs(old_rsr.variables),
+            _var_exprs(new_rsr.variables),
+            _math_name,
+        ),
+        derived=_build_rows(
+            _fn_exprs(old_rsr.derived),
+            _fn_exprs(new_rsr.derived),
+            _math_name,
+        ),
+        reactions=_build_rows(
+            _fn_exprs(old_rsr.reactions),
+            _fn_exprs(new_rsr.reactions),
+            _math_name,
+        ),
+        diff_eqs=_build_rows(
+            old_rsr.diffeqs,
+            new_rsr.diffeqs,
+            lambda k: _tex_lhs(_math_name(k)),
+        ),
+        long_name_cutoff=long_name_cutoff,
+        symbol_names=symbol_names,
     )
 
 
 def generate_latex_document(
-    model: Model,
+    latex: LatexCodegen | DiffLatexCodegen,
     author: str = "mxlpy",
     title: str = "Model construction",
 ) -> str:
@@ -2271,24 +2606,32 @@ def generate_latex_document(
         "Reactions",
         "Differential Equations",
     )
-    content = _latex_list_as_sections(
-        zip(headers, generate_model_code_latex(model).as_default(), strict=True)
+    content = _tex_list_as_sections(
+        zip(
+            headers,
+            latex.as_default(),
+            strict=True,
+        )
     )
-    return rf"""\documentclass[fleqn]{{article}}
-\usepackage[english]{{babel}}
-\usepackage[a4paper,top=2cm,bottom=2cm,left=2cm,right=2cm,marginparwidth=1.75cm]{{geometry}}
-\usepackage{{amsmath, amssymb, array, booktabs,
-            breqn, caption, longtable, mathtools, placeins,
-            ragged2e, tabularx, titlesec, titling, xcolor}}
-\newcommand{{\sectionbreak}}{{\clearpage}}
-\setlength{{\parindent}}{{0pt}}
-\allowdisplaybreaks
-
-\title{{{title}}}
-\date{{}} % clear date
-\author{{{author}}}
-\begin{{document}}
-\maketitle
-{content}
-\end{{document}}
-"""
+    return "\n".join(
+        (
+            r"\documentclass[fleqn]{article}",
+            r"\usepackage[english]{babel}",
+            r"\usepackage[a4paper,top=2cm,bottom=2cm,left=2cm,right=2cm,marginparwidth=1.75cm]{geometry}",
+            r"\usepackage{amsmath, amssymb, array, booktabs,",
+            r"            breqn, caption, longtable, mathtools, placeins,",
+            r"            ragged2e, tabularx, titlesec, titling, ulem, xcolor}",
+            r"\newcommand{\stkout}[1]{\ifmmode\text{\sout{\ensuremath{#1}}}\else\sout{#1}\fi}",
+            r"\newcommand{\sectionbreak}{\clearpage}",
+            r"\setlength{\parindent}{0pt}",
+            r"\allowdisplaybreaks",
+            r"",
+            rf"\title{{{title}}}",
+            r"\date{} % clear date",
+            rf"\author{{{author}}}",
+            r"\begin{document}",
+            r"\maketitle",
+            rf"{content}",
+            r"\end{document}",
+        )
+    )
