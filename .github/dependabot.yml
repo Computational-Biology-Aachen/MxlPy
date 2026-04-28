@@ -5,8 +5,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "sunday"
-      time: "09:00"
+      day: "saturday"
+      time: "05:00"
     assignees:
       - "marvinvanaalst"
     commit-message:
