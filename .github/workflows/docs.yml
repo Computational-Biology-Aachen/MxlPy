@@ -2,7 +2,7 @@ name: documentation
 
 on:
   release:
-    types: [published]
+    types: [ published ]
   workflow_dispatch: {}
 
 permissions:
@@ -25,10 +25,10 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Set up Python
-        run: uv python install 3.13
+        run: uv python install 3.13.12
 
       - name: Set Python version
-        run: uv venv --python 3.13
+        run: uv venv --python 3.13.12
 
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -38,6 +38,8 @@ jobs:
           restore-keys: |
             mkdocs-material-
       - run: uv sync --all-extras --all-groups
-      - run: uv run python -c "import toml;print('VERSION={}'.format(toml.load(open('pyproject.toml'))['project']['version']))" >> $GITHUB_ENV
+      - run: uv run python -c "import
+          toml;print('VERSION={}'.format(toml.load(open('pyproject.toml'))['project']['version']))"
+          >> $GITHUB_ENV
       - run: uv run mike deploy --update-aliases --push ${{ env.VERSION }} latest
       - run: uv run mike set-default --push latest

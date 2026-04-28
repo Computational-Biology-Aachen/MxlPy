@@ -18,12 +18,18 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Set up Python
-        run: uv python install 3.13
+        run: uv python install 3.13.12
 
       - name: Set Python version
-        run: uv venv --python 3.13
+        run: uv venv --python 3.13.12
 
-      - name: Set up environment
+      - name: Set up minimal environment
+        run: uv sync
+
+      - name: Check that import always works
+        run: uv run python -c "import mxlpy"
+
+      - name: Set up maximal environment
         run: uv sync --all-extras --all-groups
 
       - name: Run tests
