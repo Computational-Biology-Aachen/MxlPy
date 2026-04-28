@@ -19,11 +19,13 @@ from mxlpy.plot import (
     lines,
     lines_grouped,
     lines_mean_std_from_2d_idx,
+    network,
     rotate_xlabels,
     two_axes,
     violins,
     violins_from_2d_idx,
 )
+from tests.models import m_2v_1p_1d_1r, m_2v_2p_2d_2r
 
 
 @pytest.fixture
@@ -262,4 +264,25 @@ def test_violins(sample_dataframe: pd.DataFrame) -> None:
 def test_violins_from_2d_idx(multiindex_dataframe: pd.DataFrame) -> None:
     fig, axs = violins_from_2d_idx(multiindex_dataframe)
     assert isinstance(fig, Figure)
+    plt.close(fig)
+
+
+def test_network() -> None:
+    fig, ax = network(m_2v_2p_2d_2r())
+    assert isinstance(fig, Figure)
+    assert isinstance(ax, Axes)
+    plt.close(fig)
+
+
+def test_network_with_cofactors() -> None:
+    fig, ax = network(m_2v_2p_2d_2r(), cofactors=["v1"])
+    assert isinstance(fig, Figure)
+    assert isinstance(ax, Axes)
+    plt.close(fig)
+
+
+def test_network_with_existing_ax() -> None:
+    _fig0, ax0 = plt.subplots()
+    fig, ax = network(m_2v_1p_1d_1r(), ax=ax0)
+    assert ax is ax0
     plt.close(fig)
