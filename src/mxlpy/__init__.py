@@ -75,6 +75,7 @@ from .surrogates.abstract import AbstractSurrogate, SurrogateProtocol
 from .symbolic import SymbolicModel, to_symbolic_model
 from .types import (
     Derived,
+    Event,
     InitialAssignment,
     OscillationDetected,
     Parameter,
@@ -111,6 +112,7 @@ __all__ = [
     "Derived",
     "Diffrax",
     "EstimatorProtocol",
+    "Event",
     "InitialAssignment",
     "IntegratorProtocol",
     "LabelMapper",
