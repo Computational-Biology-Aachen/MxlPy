@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
+    Literal,
     ParamSpec,
     TypeVar,
     cast,
@@ -35,6 +36,7 @@ __all__ = [
     "Array",
     "ArrayLike",
     "Derived",
+    "Event",
     "FitFailure",
     "InitialAssignment",
     "IntegrationFailure",
@@ -415,3 +417,82 @@ class Reaction:
 
         """
         args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
+
+
+@dataclass(kw_only=True, slots=True)
+class Event:
+    """Zero-crossing trigger with state/parameter assignments.
+
+    Parameters
+    ----------
+    trigger_fn
+        Returns a float; the event fires when this value crosses zero.
+    trigger_args
+        Model names passed as positional args to *trigger_fn*.
+    assignments
+        Map from target name to a :class:`Derived` that computes the new value.
+        Use a zero-arg :class:`Derived` for static assignments.
+    direction
+        Which crossing fires the event: ``"rising"`` (negative→positive),
+        ``"falling"`` (positive→negative), or ``"both"``.
+    persistent
+        If ``True`` the event fires every time the trigger crosses zero.
+        If ``False`` it fires once and is disabled for the rest of the simulation.
+
+    Examples
+    --------
+    >>> def at_t5(t: float) -> float:
+    ...     return t - 5.0
+    >>> def set_zero() -> float:
+    ...     return 0.0
+    >>> event = Event(
+    ...     trigger_fn=at_t5,
+    ...     trigger_args=["time"],
+    ...     assignments={"k1": Derived(fn=set_zero, args=[])},
+    ... )
+
+    """
+
+    trigger_fn: RateFn
+    trigger_args: list[str]
+    assignments: dict[str, Derived]
+    direction: Literal["rising", "falling", "both"] = "both"
+    persistent: bool = True
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def evaluate_trigger(self, args: dict[str, Any]) -> float:
+        """Evaluate the trigger function with named args.
+
+        Parameters
+        ----------
+        args
+            Dict containing all named model quantities (variables, parameters, time).
+
+        Returns
+        -------
+        float
+            Sign change means the event fires.
+
+        """
+        return cast(float, self.trigger_fn(*(args[k] for k in self.trigger_args)))
+
+    def apply_assignments(self, args: dict[str, Any]) -> dict[str, float]:
+        """Compute new values for all assignment targets.
+
+        Parameters
+        ----------
+        args
+            Dict containing all named model quantities at the event time.
+
+        Returns
+        -------
+        dict[str, float]
+            Map from target name to its new value.
+
+        """
+        return {
+            name: derived.calculate(args) for name, derived in self.assignments.items()
+        }

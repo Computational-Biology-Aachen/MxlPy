@@ -13,17 +13,19 @@ from mxlpy.integrators.abstract import (
     TimeCourse,
 )
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
-from mxlpy.types import ArrayLike, IntegrationFailure, NoSteadyState, Result
+from mxlpy.types import ArrayLike, Event, IntegrationFailure, NoSteadyState, Result
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mxlpy.types import Rhs
+    from mxlpy.types import Array, Rhs
 
 
 __all__ = [
     "Scipy",
 ]
+
+_DIRECTION: dict[str, int] = {"rising": 1, "falling": -1, "both": 0}
 
 
 @dataclass
@@ -45,13 +47,6 @@ class Scipy(AbstractIntegrator):
     _y0_orig
         Original initial conditions.
 
-    Methods
-    -------
-        __post_init__: Initialize the Scipy integrator.
-        reset: Reset the integrator.
-        integrate: Integrate the ODE system.
-        integrate_to_steady_state: Integrate the ODE system to steady state.
-
     """
 
     rhs: Rhs
@@ -62,20 +57,174 @@ class Scipy(AbstractIntegrator):
     t0: float = 0.0
     method: Literal["RK45", "RK23", "DOP853", "Radau", "BDF", "LSODA"] = "LSODA"
     _y0_orig: tuple[float, ...] = field(default_factory=tuple)
+    _events: dict[str, Event] = field(default_factory=dict)
+    _var_names: list[str] = field(default_factory=list)
+    _param_values: dict[str, float] = field(default_factory=dict)
+    _param_update_callback: Callable[[str, float], None] | None = field(default=None)
 
     def __post_init__(self) -> None:
-        """Create copy of initial state.
-
-        This method creates a copy of the initial state `y0` and stores it in the `_y0_orig` attribute.
-        This is useful for preserving the original initial state for future reference or reset operations.
-
-        """
+        """Create copy of initial state."""
         self._y0_orig = self.y0
 
     def reset(self) -> None:
         """Reset the integrator."""
         self.t0 = 0
         self.y0 = self._y0_orig
+
+    def _build_scipy_event(self, event: Event) -> Callable[[float, Array], float]:
+        """Build a scipy-compatible event callable from an Event.
+
+        Parameters
+        ----------
+        event
+            The event to convert.
+
+        Returns
+        -------
+        Callable
+            A function ``f(t, y) -> float`` with ``.terminal`` and
+            ``.direction`` attributes set for scipy's event API.
+
+        """
+        var_names = self._var_names
+        param_values = self._param_values
+
+        def scipy_event(t: float, y: Array) -> float:
+            args: dict[str, float] = (
+                dict(zip(var_names, y, strict=False)) | param_values | {"time": t}
+            )
+            return event.evaluate_trigger(args)
+
+        scipy_event.terminal = True  # type: ignore[attr-defined]
+        scipy_event.direction = _DIRECTION[event.direction]  # type: ignore[attr-defined]
+        return scipy_event
+
+    def _integrate_with_events(self, time_points: Array) -> Result[TimeCourse]:
+        """Segment-restart integration loop with event handling.
+
+        Parameters
+        ----------
+        time_points
+            Requested output time points (monotonically increasing).
+
+        Returns
+        -------
+        Result[TimeCourse]
+            Concatenated trajectory across all segments.
+
+        """
+        t_end = float(time_points[-1])
+        all_t: list[Array] = []
+        all_y: list[Array] = []
+
+        t_current = self.t0
+        y_current = np.array(self.y0, dtype=float)
+        fired_names: set[str] = set()
+        # Events suppressed for one segment after firing to prevent immediate
+        # re-detection when the trigger is at zero at the restart point.
+        suppressed_once: set[str] = set()
+
+        while t_current < t_end - 1e-12:
+            active = {
+                name: ev
+                for name, ev in self._events.items()
+                if name not in fired_names and name not in suppressed_once
+            }
+            suppressed_once.clear()
+            scipy_events = [self._build_scipy_event(ev) for ev in active.values()]
+
+            mask = time_points > t_current
+            seg_eval = time_points[mask]
+            if len(seg_eval) == 0:
+                break
+            if seg_eval[0] != t_current:
+                seg_eval = np.concatenate([[t_current], seg_eval])
+
+            res = spi.solve_ivp(
+                fun=self.rhs,
+                y0=tuple(y_current),
+                t_span=(t_current, t_end),
+                t_eval=seg_eval,
+                events=scipy_events or None,
+                jac=self.jacobian,
+                atol=self.atol,
+                rtol=self.rtol,
+                method=self.method,
+            )
+
+            if not res.success and res.status != 1:
+                return Result(IntegrationFailure())
+
+            t_seg = np.array(res.t, dtype=float)
+            y_seg = np.array(res.y, dtype=float).T
+
+            start = 1 if all_t else 0
+            if len(t_seg) > start:
+                all_t.append(t_seg[start:])
+                all_y.append(y_seg[start:])
+
+            if res.status != 1:
+                break
+
+            # Find first event that fired
+            t_event = float("inf")
+            fired_idx = -1
+            event_names = list(active.keys())
+            for i, t_arr in enumerate(res.t_events):
+                if len(t_arr) > 0 and float(t_arr[0]) < t_event:
+                    t_event = float(t_arr[0])
+                    fired_idx = i
+
+            if fired_idx == -1:
+                break
+
+            y_at_event = np.array(res.y_events[fired_idx][0], dtype=float)
+            args: dict[str, float] = (
+                dict(zip(self._var_names, y_at_event, strict=False))
+                | self._param_values
+                | {"time": t_event}
+            )
+
+            fired_event = active[event_names[fired_idx]]
+            y_post = y_at_event.copy()
+            for name, derived in fired_event.assignments.items():
+                value = derived.calculate(args)
+                if name in self._var_names:
+                    y_post[self._var_names.index(name)] = value
+                else:
+                    self._param_values[name] = value
+                    if self._param_update_callback is not None:
+                        self._param_update_callback(name, value)
+                args[name] = value
+
+            # Record discontinuity: post-assignment state at event time
+            all_t.append(np.array([t_event], dtype=float))
+            all_y.append(y_post[np.newaxis, :])
+
+            if not fired_event.persistent:
+                fired_names.add(event_names[fired_idx])
+            else:
+                # Suppress this event for the next segment: after firing, the
+                # trigger value is at or near zero and floating-point noise can
+                # cause an immediate spurious re-detection.
+                suppressed_once.add(event_names[fired_idx])
+
+            # Advance slightly past t_event so time-based triggers (t - t0 = 0
+            # at restart) are not immediately re-detected as crossings.
+            eps = 1e-10 * max(t_end - t_event, 1.0)
+            t_current = t_event + eps
+            y_current = y_post
+
+        if not all_t:
+            return Result(IntegrationFailure())
+
+        t_final = np.concatenate(all_t)
+        y_final = np.concatenate(all_y)
+
+        self.t0 = float(t_final[-1])
+        self.y0 = tuple(float(v) for v in y_final[-1])
+
+        return Result(TimeCourse(time=t_final, values=y_final))
 
     def integrate(
         self,
@@ -91,18 +240,14 @@ class Scipy(AbstractIntegrator):
             Terminal time point for the integration.
         steps
             Number of steps for the integration.
-        time_points
-            Array of time points for the integration.
 
         Returns
         -------
-        tuple[ArrayLike | None, ArrayLike | None]
-            Tuple containing the time points and the integrated values.
+        Result[TimeCourse]
+            Integration result containing time points and values.
 
         """
-        # Scipy counts the total amount of return points rather than steps as assimulo
         steps = 100 if steps is None else steps + 1
-
         return self.integrate_time_course(
             time_points=np.linspace(self.t0, t_end, steps, dtype=float)
         )
@@ -121,10 +266,17 @@ class Scipy(AbstractIntegrator):
 
         Returns
         -------
-        tuple[ArrayLike, ArrayLike]
-            Tuple containing the time points and the integrated values.
+        Result[TimeCourse]
+            Integration result containing time points and values.
 
         """
+        time_points = np.asarray(time_points, dtype=float)
+
+        if self._events:
+            if time_points[0] != self.t0:
+                time_points = np.concatenate([[self.t0], time_points])
+            return self._integrate_with_events(time_points)
+
         if time_points[0] != self.t0:
             time_points = np.insert(time_points, 0, self.t0)
 
@@ -178,8 +330,8 @@ class Scipy(AbstractIntegrator):
 
         Returns
         -------
-        tuple[float | None, ArrayLike | None]
-            Tuple containing the final time point and the integrated values at steady state.
+        Result[TimeCourse]
+            Integration result containing the steady-state time and values.
 
         """
         self.reset()
@@ -189,8 +341,6 @@ class Scipy(AbstractIntegrator):
 
         for _ in range(max_steps):
             t_end = t0 + step_size
-            # No t_eval: solver returns all internal steps, giving a dense
-            # trajectory that is later used for oscillation detection.
             res = spi.solve_ivp(
                 fun=self.rhs,
                 y0=y1,
@@ -214,10 +364,8 @@ class Scipy(AbstractIntegrator):
                     )
                 )
 
-            # Not converging - check the dense trajectory from this step for
-            # oscillatory behaviour and return early if detected.
             if oscillation_detector is not None:
-                hist = res.y.T  # (N_internal, n_vars)
+                hist = res.y.T
                 var_names = [str(i) for i in range(hist.shape[1])]
                 if (
                     osc := oscillation_detector(hist, var_names, times=res.t)
