@@ -12,7 +12,7 @@ import inspect
 import itertools as it
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Self, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 import numpy as np
 import pandas as pd
@@ -30,6 +30,7 @@ from mxlpy.surrogates.abstract import AbstractSurrogate, SurrogateProtocol
 from mxlpy.types import (
     Annotation,
     Derived,
+    Event,
     InitialAssignment,
     Parameter,
     Reaction,
@@ -298,6 +299,7 @@ class KineticModelBuilder:
     _surrogates: dict[str, SurrogateProtocol] = field(default_factory=dict)
     _data: dict[str, pd.Series | pd.DataFrame] = field(default_factory=dict)
     _annotations: list[Annotation] = field(default_factory=list)
+    _events: dict[str, Event] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -2138,6 +2140,84 @@ class KineticModelBuilder:
 
         """
         return list(self._readouts)
+
+    @_invalidate_cache
+    def add_event(
+        self,
+        name: str,
+        trigger_fn: RateFn,
+        *,
+        trigger_args: list[str],
+        assignments: dict[str, Derived],
+        direction: Literal["rising", "falling", "both"] = "both",
+        persistent: bool = True,
+    ) -> Self:
+        """Add an event to the model.
+
+        Events are zero-crossing conditions that apply state or parameter
+        assignments when their trigger function changes sign.
+
+        Examples
+        --------
+            >>> def at_t5(t: float) -> float:
+            ...     return t - 5.0
+            >>> def set_zero() -> float:
+            ...     return 0.0
+            >>> model.add_event(
+            ...     "drug_dose",
+            ...     at_t5,
+            ...     trigger_args=["time"],
+            ...     assignments={"k1": Derived(fn=set_zero, args=[])},
+            ... )
+
+        Parameters
+        ----------
+        name
+            Unique name for the event.
+        trigger_fn
+            Function returning a float; event fires on sign change.
+        trigger_args
+            Model names passed as positional args to *trigger_fn*.
+        assignments
+            Map from target name (variable or parameter) to a :class:`Derived`
+            computing the new value.
+        direction
+            Which crossing fires the event: ``"rising"``, ``"falling"``,
+            or ``"both"``.
+        persistent
+            If ``True`` the event can fire multiple times.
+
+        Returns
+        -------
+        Self
+            The model instance (for fluent chaining).
+
+        """
+        self._insert_id(name=name, ctx="event")
+        self._events[name] = Event(
+            trigger_fn=trigger_fn,
+            trigger_args=trigger_args,
+            assignments=assignments,
+            direction=direction,
+            persistent=persistent,
+        )
+        return self
+
+    def get_event_names(self) -> list[str]:
+        """Retrieve the names of all events.
+
+        Examples
+        --------
+            >>> model.get_event_names()
+                ["drug_dose", "feedback_switch"]
+
+        Returns
+        -------
+        list[str]
+            A list containing the names of the events.
+
+        """
+        return list(self._events)
 
     def get_raw_readouts(self, *, as_copy: bool = True) -> dict[str, Readout]:
         """Get copy of readouts in the model.
