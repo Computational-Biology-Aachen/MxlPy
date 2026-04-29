@@ -78,7 +78,7 @@ maintainers = [
 name = "mxlpy"
 readme = "README.md"
 requires-python = ">=3.12"
-version = "0.42.0"
+version = "0.43.0"
 
 [project.optional-dependencies]
 jax = [
