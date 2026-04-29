@@ -1,0 +1,77 @@
+name: Notify Slack on Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send release notification to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          payload=$(jq -n \
+            --arg text "*New Release Published* :tada:" \
+            --arg repo "$REPO" \
+            --arg name "$RELEASE_NAME" \
+            --arg tag "$RELEASE_TAG" \
+            --arg body "$RELEASE_BODY" \
+            --arg url "$RELEASE_URL" \
+            '{
+              text: $text,
+              blocks: [
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: "*New Release Published* :tada:"
+                  }
+                },
+                {
+                  type: "section",
+                  fields: [
+                    { type: "mrkdwn", text: "*Repository:*\n\($repo)" },
+                    { type: "mrkdwn", text: "*Tag:*\n\($tag)" }
+                  ]
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: "*Release:*\n\($name)"
+                  }
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: "*Notes:*\n\($body)"
+                  }
+                },
+                {
+                  type: "actions",
+                  elements: [
+                    {
+                      type: "button",
+                      text: {
+                        type: "plain_text",
+                        text: "View Release"
+                      },
+                      url: $url
+                    }
+                  ]
+                }
+              ]
+            }')
+
+          curl -X POST -H 'Content-type: application/json' \
+            --data "$payload" \
+            "$SLACK_WEBHOOK_URL"
