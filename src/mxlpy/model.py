@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 
     from sympy.physics.units.quantities import Quantity
 
+    from mxlpy.jax._codegen import JaxExport
     from mxlpy.types import Callable, Param, RateFn, RetType
 
 LOGGER = logging.getLogger(__name__)
@@ -2551,6 +2552,41 @@ class Model:
             include_surrogate_fluxes=True,
             include_readouts=False,
         )
+
+    ##########################################################################
+    # JAX export
+    ##########################################################################
+
+    def to_jax(self) -> JaxExport:
+        """Export the model to a JAX-compatible format.
+
+        Converts the mechanistic model into a differentiable ODE RHS using
+        SymPy symbolic expressions and :func:`sympy.lambdify` with JAX.
+        The returned :class:`~mxlpy.jax.JaxExport` is compatible with
+        Diffrax, Equinox, and ``jax.jit`` / ``jax.grad`` / ``jax.vmap``.
+
+        Returns
+        -------
+        JaxExport
+            Differentiable ODE export with helper methods for building
+            initial-condition and parameter arrays.
+
+        Raises
+        ------
+        ValueError
+            If any rate function cannot be parsed symbolically.
+
+        Examples
+        --------
+        >>> export = model.to_jax()
+        >>> y0 = export.get_y0()
+        >>> args = export.get_args()
+        >>> dydt = export(0.0, y0, args)
+
+        """
+        from mxlpy.jax._codegen import to_jax_export
+
+        return to_jax_export(self)
 
     ##########################################################################
     # Get rhs
