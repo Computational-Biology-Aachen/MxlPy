@@ -44,6 +44,7 @@ import pandas as pd
 
 from . import (
     compare,
+    databases,
     distributions,
     experimental,
     fit,
@@ -125,6 +126,7 @@ __all__ = [
     "cartesian_product",
     "compare",
     "configure_default_logging",
+    "databases",
     "distributions",
     "experimental",
     "fit",
