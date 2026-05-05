@@ -105,13 +105,21 @@ Labelled models allow explicitly mapping the transitions between isotopomers var
 ## Mechanistic Learning
 
 Mechanistic learning is the intersection of mechanistic modelling and machine learning.
-*mxlpy* currently supports two such approaches: surrogates and neural posterior estimation.
+*mxlpy* currently supports two such approaches: hybrid models and neural posterior estimation.
+
+**Hybrid models** like universal differential equations (UDEs) combine ordinary differential equations based models with neural differential equations (NDEs).
+
+[Start learning](mxl-ude.ipynb){ .md-button }
+
 **Surrogate models** replace whole parts of a mechanistic model (or even the entire model) with machine learning models.
 
 <img src="assets/surrogate.png" style="max-height: 300px;">
 
 This allows combining together multiple models of arbitrary size, without having to worry about the internal state of each model.
 They are especially useful for improving the description of *boundary effects*, e.g. a dynamic description of downstream consumption.
+
+[Start learning](mxl-surrogate.ipynb){ .md-button }
+
 **Neural posterior estimation** answers the question: **what parameters could have generated the data I measured?**
 Here you use an ODE model and prior knowledge about the parameters of interest to create *synthetic data*.
 You then use the generated synthetic data as the *features* and the input parameters as the *targets* to train an *inverse problem*.
@@ -120,7 +128,7 @@ Once that training is successful, the neural network can now predict the input p
 <img src="assets/npe.png" style="max-height: 175px;">
 
 
-[Start learning](mxl.ipynb){ .md-button }
+[Start learning](mxl-npe.ipynb){ .md-button }
 
 ## Parameterisation
 
