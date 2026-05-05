@@ -67,10 +67,15 @@ __all__ = [
     "generate_model_code_py",
     "generate_model_code_rs",
     "generate_model_code_ts",
+    "join_except_empty",
     "model_to_symbolic_repr",
     "valid_identifier",
     "valid_tex_identifier",
 ]
+
+
+def join_except_empty(els: Iterable[str]) -> str:
+    return "\n".join(i for i in els if i)
 
 
 class NormalizedSymbolicModel(NamedTuple):
@@ -545,7 +550,7 @@ class SymbolicRepr:
             *(["from mxlpy.surrogates import qss"] if surrogates else []),
         ]
 
-        return "\n".join(
+        return join_except_empty(
             [
                 *imports,
                 "",
@@ -1137,7 +1142,7 @@ def _generate_model_code(
 
     flux_args = variable_unpacking([name_map[i] for i in flux_order], target="fluxes")
 
-    model_src = "\n".join(
+    model_src = join_except_empty(
         [
             fn_template(
                 "model",
@@ -1152,7 +1157,7 @@ def _generate_model_code(
             ),
         ]
     )
-    fluxes_src = "\n".join(
+    fluxes_src = join_except_empty(
         [
             fn_template(
                 "fluxes",
@@ -1164,7 +1169,7 @@ def _generate_model_code(
             return_formatter(list_formatter([name_map[x] for x in flux_order])),
         ]
     )
-    nv_src = "\n".join(
+    nv_src = join_except_empty(
         [
             fn_template(
                 "nv",
@@ -1179,7 +1184,7 @@ def _generate_model_code(
             ),
         ]
     )
-    derived_src = "\n".join(
+    derived_src = join_except_empty(
         [
             fn_template(
                 "derived",
@@ -1199,7 +1204,7 @@ def _generate_model_code(
         [name_map[i] for i, _ in nsm.inits if i not in variable_order]
     )
 
-    init_src = "\n".join(
+    init_src = join_except_empty(
         [
             fn_template(
                 "inits",
