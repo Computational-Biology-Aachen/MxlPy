@@ -59,6 +59,7 @@ __all__ = [
     "generate_latex_diff",
     "generate_latex_document",
     "generate_model_code_cpp",
+    "generate_model_code_jax",
     "generate_model_code_jl",
     "generate_model_code_latex",
     "generate_model_code_matlab",
@@ -77,6 +78,7 @@ class NormalizedSymbolicModel(NamedTuple):
 
     body: list[tuple[str, sympy.Expr]]
     extended: list[tuple[str, sympy.Expr]]
+    stoich_terms: list[tuple[str, sympy.Expr]]
     diff_eqs: dict[str, sympy.Expr]
     inits: list[tuple[str, sympy.Expr]]
     free_pars: list[str]
@@ -89,12 +91,21 @@ class Codegen:
     imports: str
     model: str
     derived: str
+    fluxes: str
+    nv: str
     inits: str
 
     def full(self) -> str:
         return "\n\n".join(
             i
-            for i in (self.imports, self.model, self.derived, self.inits)
+            for i in (
+                self.imports,
+                self.model,
+                self.derived,
+                self.fluxes,
+                self.nv,
+                self.inits,
+            )
             if len(i) > 0
         )
 
@@ -131,7 +142,7 @@ class FnDeclTemplate(Protocol):
 class VariableUnpackingTemplate(Protocol):
     """Protocol for generating a statement that unpacks the variables array."""
 
-    def __call__(self, variables: list[str]) -> str:
+    def __call__(self, variables: list[str], target: str) -> str:
         """Return a statement that destructures *variables* into named locals."""
         ...
 
@@ -864,6 +875,7 @@ def _get_order(self: Model) -> list[str]:
         | set(self._data)
         | {"time"}
     )
+
     to_sort = (
         initial_assignments  # wrap this line
         | self._derived
@@ -942,11 +954,17 @@ def _normalized_symbolic_model(
     ##################################
     # Diff eqs
     ##################################
+    stoich_deps_to_search = set()
     diff_eqs: dict[str, sympy.Expr] = {i: sympy.Integer(0) for i in sr.variables}
     for rate, rxn in sr.reactions.items():
         for cpd, factor in rxn.stoichiometry.items():
             if isinstance(factor, SymbolicFn):
                 diff_eqs[cpd] += sympy.Symbol(rate) * factor.expr  # pyright: ignore[reportOperatorIssue]
+                stoich_deps_to_search.update(
+                    s.name
+                    for s in factor.expr.free_symbols
+                    if isinstance(s, sympy.Symbol)
+                )
             else:
                 diff_eqs[cpd] += sympy.Symbol(rate) * factor  # pyright: ignore[reportOperatorIssue]
     for surrogate in sr.surrogates.values():
@@ -954,8 +972,16 @@ def _normalized_symbolic_model(
             for cpd, factor in rxn.items():
                 if isinstance(factor, SymbolicFn):
                     diff_eqs[cpd] += sympy.Symbol(rate) * factor.expr  # pyright: ignore[reportOperatorIssue]
+                    stoich_deps_to_search.update(
+                        s.name
+                        for s in factor.expr.free_symbols
+                        if isinstance(s, sympy.Symbol)
+                    )
                 else:
                     diff_eqs[cpd] += sympy.Symbol(rate) * factor  # pyright: ignore[reportOperatorIssue]
+
+    stoich_deps = deps = _get_dependencies_and_leaves(model, stoich_deps_to_search)
+    stoich_terms = [i for i in linear if i[0] in stoich_deps]
 
     ##################################
     # Initial variables and parameters
@@ -973,6 +999,7 @@ def _normalized_symbolic_model(
         body=linear,
         extended=derived,
         diff_eqs=diff_eqs,
+        stoich_terms=stoich_terms,
         inits=init_eqs,
         free_pars=sorted(
             free_parameters
@@ -1008,11 +1035,18 @@ def _generate_model_code(
     assignment_template: VariableAssignmentTemplate,
     expr_template: ExprTemplate,
     variable_unpacking: VariableUnpackingTemplate,
-    return_formatter: Callable[[list[str]], str],
+    return_formatter: Callable[[str], str],
+    tuple_formatter: ListTemplate,
     list_formatter: ListTemplate,
     imports: list[str],
     name_map: dict[str, str],
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+    unpacked_args: bool = True,
+    # Type signatures
+    arr_type: str,
+    float_type: str,
+    ret_type_inits: str,
+    ret_type_rest: str,
 ) -> Codegen:
     extended_returns = _get_extended_returns(model, derived_to_calculate)
 
@@ -1026,6 +1060,17 @@ def _generate_model_code(
     sympy_name_map = {sympy.Symbol(k): sympy.Symbol(v) for k, v in name_map.items()}
 
     variable_order = list(model.get_initial_conditions())
+    flux_order = model.get_arg_names(
+        include_time=False,
+        include_variables=False,
+        include_parameters=False,
+        include_derived_parameters=False,
+        include_derived_variables=False,
+        include_reactions=True,
+        include_surrogate_variables=False,
+        include_surrogate_fluxes=True,
+        include_readouts=False,
+    )
 
     body_src = "\n".join(
         [
@@ -1043,6 +1088,15 @@ def _generate_model_code(
                 expr_template(cast(sympy.Expr, expr.subs(sympy_name_map))),
             )
             for name, expr in nsm.extended
+        ]
+    )
+    stoich_src = "\n".join(
+        [
+            assignment_template(
+                name_map[name],
+                expr_template(cast(sympy.Expr, expr.subs(sympy_name_map))),
+            )
+            for name, expr in nsm.stoich_terms
         ]
     )
     diff_eq_src = "\n".join(
@@ -1068,22 +1122,61 @@ def _generate_model_code(
     )
 
     _fn_args = [
-        ("time", "float"),
-        ("variables", "Iterable[float]"),
+        ("time", float_type),
+        ("variables", arr_type),
         *((name_map[i], "float") for i in nsm.free_pars),
     ]
+
+    variables = variable_unpacking(
+        [name_map[i] for i in variable_order], target="variables"
+    )
+
+    extra_args = variable_unpacking(
+        [name_map[i] for i in free_parameters], target="args"
+    )
+
+    flux_args = variable_unpacking([name_map[i] for i in flux_order], target="fluxes")
 
     model_src = "\n".join(
         [
             fn_template(
                 "model",
                 _fn_args,
-                "Iterable[float]",
+                ret_type_rest,
             ),
-            variable_unpacking([name_map[i] for i in variable_order]),
+            f"{variables}\n{extra_args}" if not unpacked_args else variables,
             body_src,
             diff_eq_src,
-            return_formatter([f"d{name_map[x]}dt" for x in variable_order]),
+            return_formatter(
+                list_formatter([f"d{name_map[x]}dt" for x in variable_order])
+            ),
+        ]
+    )
+    fluxes_src = "\n".join(
+        [
+            fn_template(
+                "fluxes",
+                _fn_args,
+                ret_type_rest,
+            ),
+            f"{variables}\n{extra_args}" if not unpacked_args else variables,
+            body_src,
+            return_formatter(list_formatter([name_map[x] for x in flux_order])),
+        ]
+    )
+    nv_src = "\n".join(
+        [
+            fn_template(
+                "nv",
+                [("fluxes", arr_type)],
+                ret_type_rest,
+            ),
+            f"{flux_args}\n{extra_args}" if not unpacked_args else flux_args,
+            stoich_src,
+            diff_eq_src,
+            return_formatter(
+                list_formatter([f"d{name_map[x]}dt" for x in variable_order])
+            ),
         ]
     )
     derived_src = "\n".join(
@@ -1091,11 +1184,13 @@ def _generate_model_code(
             fn_template(
                 "derived",
                 _fn_args,
-                "Iterable[float]",
+                ret_type_rest,
             ),
-            variable_unpacking([name_map[i] for i in variable_order]),
+            f"{variables}\n{extra_args}" if not unpacked_args else variables,
             extended_src,
-            return_formatter([name_map[name] for name in extended_returns]),
+            return_formatter(
+                list_formatter([name_map[name] for name in extended_returns])
+            ),
         ]
     )
 
@@ -1108,17 +1203,19 @@ def _generate_model_code(
         [
             fn_template(
                 "inits",
-                [(name_map[k], "float") for k in nsm.free_pars],
-                "tuple[Iterable[float], Iterable[float]]",
+                [(name_map[k], float_type) for k in nsm.free_pars],
+                ret_type_inits,
             ),
             init_src,
-            return_formatter([init_vars, init_pars]),
+            return_formatter(tuple_formatter([init_vars, init_pars])),
         ]
     )
     return Codegen(
         imports="\n".join(imports),
         model=model_src,
+        fluxes=fluxes_src,
         derived=derived_src,
+        nv=nv_src,
         inits=init_src,
     )
 
@@ -1405,19 +1502,24 @@ def generate_model_code_py(
             f"def {name}({', '.join(f'{k}: {t}' for k, t in args)}) -> {return_type}:"
         )
 
-    def variable_unpacking(variables: list[str]) -> str:
-        return f"    {', '.join(variables)} = variables"
+    def variable_unpacking(variables: list[str], target: str) -> str:
+        if len(variables) == 0:
+            return ""
+        return f"    {', '.join(variables)} = {target}"
 
     def list_template(elements: list[str]) -> str:
         return f"[{', '.join(elements)}]"
+
+    def tuple_template(elements: list[str]) -> str:
+        return f"({', '.join(elements)})"
 
     def assignment_template(name: str, value: str) -> str:
         if typed:
             return f"    {name}: float = {value}"
         return f"    {name} = {value}"
 
-    def return_template(variables: list[str]) -> str:
-        return f"    return {', '.join(variables) or '()'}"
+    def return_template(element: str) -> str:
+        return f"    return {element or '()'}"
 
     return _generate_model_code(
         model,
@@ -1428,6 +1530,7 @@ def generate_model_code_py(
         variable_unpacking=variable_unpacking,
         derived_to_calculate=derived_to_calculate,
         list_formatter=list_template,
+        tuple_formatter=tuple_template,
         return_formatter=return_template,
         custom_fns=custom_fns if custom_fns is not None else {},
         imports=[
@@ -1435,6 +1538,96 @@ def generate_model_code_py(
             "from collections.abc import Iterable",
         ],
         name_map={name: valid_identifier(name) for name in model.ids},
+        ret_type_inits="tuple[Iterable[float], Iterable[float]]",
+        ret_type_rest="Iterable[float]",
+        arr_type="Iterable[float]",
+        float_type="float",
+    )
+
+
+def generate_model_code_jax(
+    model: Model,
+    *,
+    parameters_to_fit: list[str] | None = None,
+    free_parameters: list[str] | None = None,
+    derived_to_calculate: list[str] | None = None,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+) -> Codegen:
+    """Transform the model into Python functions, inlining all function calls.
+
+    Parameters
+    ----------
+    model
+        Model to generate code for.
+    free_parameters
+        Parameter names to expose as extra function arguments rather than
+        inlining their values.
+    derived_to_calculate
+        Subset of derived component names to emit in the ``derived`` function.
+        All transitive dependencies are included automatically. ``None`` emits
+        everything.
+    custom_fns
+        Custom sympy expressions to substitute for named model functions.
+    typed
+        When ``True`` add ``float`` type annotations to local assignments.
+
+    Returns
+    -------
+    Codegen
+        Generated Python source split into imports, model, derived, and inits.
+
+    """
+
+    def fn_template(
+        name: str,
+        args: list[tuple[str, str]],  # noqa: ARG001 ; API stability
+        return_type: str,
+    ) -> str:
+        return f"def {name}(ts: jax.Array, variables: jax.Array, args: jax.Array) -> {return_type}:"
+
+    def variable_unpacking(variables: list[str], target: str) -> str:
+        if len(variables) == 0:
+            return ""
+        return f"    {', '.join(variables)} = {target}"
+
+    def list_template(elements: list[str]) -> str:
+        return f"jnp.array([{', '.join(elements)}])"
+
+    def assignment_template(name: str, value: str) -> str:
+        return f"    {name} = {value}"
+
+    def tuple_template(elements: list[str]) -> str:
+        return f"({', '.join(elements)})"
+
+    def return_template(element: str) -> str:
+        return f"    return {element or '()'}"
+
+    free_parameters = [] if free_parameters is None else free_parameters
+    parameters_to_fit = [] if parameters_to_fit is None else parameters_to_fit
+    args = free_parameters + parameters_to_fit
+
+    return _generate_model_code(
+        model,
+        free_parameters=args,
+        fn_template=fn_template,
+        assignment_template=assignment_template,
+        expr_template=sympy_to_inline_py,
+        variable_unpacking=variable_unpacking,
+        derived_to_calculate=derived_to_calculate,
+        list_formatter=list_template,
+        tuple_formatter=tuple_template,
+        return_formatter=return_template,
+        custom_fns=custom_fns if custom_fns is not None else {},
+        imports=[
+            "import jax",
+            "import jax.numpy as jnp",
+        ],
+        name_map={name: valid_identifier(name) for name in model.ids},
+        unpacked_args=False,
+        ret_type_inits="tuple[jax.Array, jax.Array]",
+        ret_type_rest="jax.Array",
+        arr_type="jax.Array",
+        float_type="jax.Array",
     )
 
 
@@ -1465,28 +1658,26 @@ def generate_model_code_ts(
 
     """
 
-    def ts_type(t: str) -> str:
-        return {
-            "float": "number",
-            "Iterable[float]": "number[]",
-            "tuple[Iterable[float], Iterable[float]]": "[number[], number[]]",
-        }.get(t, t)
-
     def fn_template(name: str, args: list[tuple[str, str]], return_type: str) -> str:
-        args_str = ", ".join(f"{k}: {ts_type(t)}" for k, t in args)
-        return f"function {name}({args_str}): {ts_type(return_type)} {{"
+        args_str = ", ".join(f"{k}: {t}" for k, t in args)
+        return f"function {name}({args_str}): {return_type} {{"
 
-    def variable_unpacking(variables: list[str]) -> str:
-        return f"    const [{', '.join(variables)}] = variables;"
+    def variable_unpacking(variables: list[str], target: str) -> str:
+        if len(variables) == 0:
+            return ""
+        return f"    const [{', '.join(variables)}] = {target};"
 
     def list_template(elements: list[str]) -> str:
         return f"[{', '.join(elements)}]"
 
+    def tuple_template(elements: list[str]) -> str:
+        return f"({', '.join(elements)})"
+
     def assignment_template(name: str, value: str) -> str:
         return f"    const {name}: number = {value};"
 
-    def return_template(variables: list[str]) -> str:
-        return f"    return [{', '.join(variables) or '[]'}];\n}};"
+    def return_template(element: str) -> str:
+        return f"    return {element};\n}};"
 
     return _generate_model_code(
         model,
@@ -1497,10 +1688,15 @@ def generate_model_code_ts(
         variable_unpacking=variable_unpacking,
         derived_to_calculate=derived_to_calculate,
         list_formatter=list_template,
+        tuple_formatter=tuple_template,
         return_formatter=return_template,
         custom_fns=custom_fns if custom_fns is not None else {},
         imports=[],
         name_map={name: valid_identifier(name) for name in model.ids},
+        float_type="number",
+        arr_type="number[]",
+        ret_type_inits="[number[], number[]]",
+        ret_type_rest="number[]",
     )
 
 
@@ -1535,19 +1731,22 @@ def generate_model_code_jl(
         args_str = ", ".join(k for k, _ in args)
         return f"function {name}({args_str})"
 
-    def variable_unpacking(variables: list[str]) -> str:
+    def variable_unpacking(variables: list[str], target: str) -> str:
         if len(variables) == 0:
             return ""
-        return f"    {', '.join(variables)} = variables"
+        return f"    {', '.join(variables)} = {target}"
 
     def list_template(elements: list[str]) -> str:
         return f"[{', '.join(elements)}]"
 
+    def tuple_template(elements: list[str]) -> str:
+        return f"({', '.join(elements)})"
+
     def assignment_template(name: str, value: str) -> str:
         return f"    {name} = {value}"
 
-    def return_template(variables: list[str]) -> str:
-        return f"    return [{', '.join(variables) or '()'}]\nend"
+    def return_template(element: str) -> str:
+        return f"    return {element or '()'}\nend"
 
     return _generate_model_code(
         model,
@@ -1558,10 +1757,15 @@ def generate_model_code_jl(
         variable_unpacking=variable_unpacking,
         derived_to_calculate=derived_to_calculate,
         list_formatter=list_template,
+        tuple_formatter=tuple_template,
         return_formatter=return_template,
         custom_fns=custom_fns if custom_fns is not None else {},
         imports=[],
         name_map={name: valid_identifier(name) for name in model.ids},
+        arr_type="Vector{Float64}",
+        float_type="Float64",
+        ret_type_inits="Tuple{Vector{Float64}, Vector{Float64}}",
+        ret_type_rest="Vector{Float64}",
     )
 
 
@@ -1607,28 +1811,31 @@ def generate_model_code_matlab(
             ret_decl = "out"
         return f"function {ret_decl} = {name}({mat_args})"
 
-    def variable_unpacking(variables: list[str]) -> str:
-        return f"    [{', '.join(variables)}] = num2cell(variables){{:}};"
+    def variable_unpacking(variables: list[str], target: str) -> str:
+        if len(variables) == 0:
+            return ""
+        return f"    [{', '.join(variables)}] = num2cell({target}){{:}};"
 
     def list_template(elements: list[str]) -> str:
         return f"[{', '.join(elements)}]"
 
+    def tuple_template(elements: list[str]) -> str:
+        return f"({', '.join(elements)})"
+
     def assignment_template(name: str, value: str) -> str:
         return f"    {name} = {value};"
 
-    def return_template(variables: list[str]) -> str:
+    def return_template(element: str) -> str:
         ctx = _fn_context[0]
         if ctx == "model":
-            return f"    dydt = [{', '.join(variables)}]';\nend"
+            return f"    dydt = {element}';\nend"
         if ctx == "inits":
-            match variables:
-                case [vars_str, pars_str, *_]:
-                    return f"    vars = {vars_str}';\n    pars = {pars_str}';\nend"
-                case [vars_str]:
-                    return f"    vars = {vars_str}';\n    pars = [];\nend"
-                case _:
-                    return "    vars = []';\n    pars = []';\nend"
-        return f"    out = [{', '.join(variables)}];\nend"
+            inner = element[1:-1]
+            split_idx = inner.index("], [")
+            vars_str = inner[: split_idx + 1]
+            pars_str = inner[split_idx + 3 :]
+            return f"    vars = {vars_str}';\n    pars = {pars_str}';\nend"
+        return f"    out = {element};\nend"
 
     return _generate_model_code(
         model,
@@ -1639,10 +1846,15 @@ def generate_model_code_matlab(
         variable_unpacking=variable_unpacking,
         derived_to_calculate=derived_to_calculate,
         list_formatter=list_template,
+        tuple_formatter=tuple_template,
         return_formatter=return_template,
         custom_fns=custom_fns if custom_fns is not None else {},
         imports=[],
         name_map={name: valid_identifier(name) for name in model.ids},
+        arr_type="double[]",
+        float_type="double",
+        ret_type_inits="ignored",
+        ret_type_rest="ignored",
     )
 
 
@@ -1706,8 +1918,13 @@ def generate_model_code_rs(
             ret_type = return_type
         return f"fn {name}({args_str}) -> {ret_type} {{"
 
-    def variable_unpacking(variables: list[str]) -> str:
-        return f"    let [{', '.join(variables)}] = *variables;"
+    def variable_unpacking(variables: list[str], target: str) -> str:
+        if len(variables) == 0:
+            return ""
+        return f"    let [{', '.join(variables)}] = *{target};"
+
+    def tuple_template(elements: list[str]) -> str:
+        return f"({', '.join(elements)})"
 
     def list_template(elements: list[str]) -> str:
         return f"[{', '.join(elements)}]"
@@ -1715,14 +1932,8 @@ def generate_model_code_rs(
     def assignment_template(name: str, value: str) -> str:
         return f"    let {name}: f64 = {value};"
 
-    def return_template(variables: list[str]) -> str:
-        if _fn_context[0] == "inits":
-            match variables:
-                case [vars_str, pars_str, *_]:
-                    return f"    return ({vars_str}, {pars_str})\n}}"
-                case _:
-                    return f"    return [{', '.join(variables) or '()'}]\n}}"
-        return f"    return [{', '.join(variables) or '()'}]\n}}"
+    def return_template(element: str) -> str:
+        return f"    return {element or '()'}\n}}"
 
     return _generate_model_code(
         model,
@@ -1733,10 +1944,15 @@ def generate_model_code_rs(
         variable_unpacking=variable_unpacking,
         derived_to_calculate=derived_to_calculate,
         list_formatter=list_template,
+        tuple_formatter=tuple_template,
         return_formatter=return_template,
         custom_fns=_custom_fns,
         imports=[],
         name_map={name: valid_identifier(name) for name in model.ids},
+        arr_type="Iterable[float]",
+        float_type="f64",
+        ret_type_inits="ignored",
+        ret_type_rest="ignored",
     )
 
 
@@ -1801,25 +2017,22 @@ def generate_model_code_cpp(
             ret_type = return_type
         return f"{ret_type} {name}({args_str}) {{"
 
-    def variable_unpacking(variables: list[str]) -> str:
-        return f"    const auto [{', '.join(variables)}] = variables;"
+    def variable_unpacking(variables: list[str], target: str) -> str:
+        if len(variables) == 0:
+            return ""
+        return f"    const auto [{', '.join(variables)}] = {target};"
 
     def list_template(elements: list[str]) -> str:
+        return f"{{{', '.join(elements)}}}"
+
+    def tuple_template(elements: list[str]) -> str:
         return f"{{{', '.join(elements)}}}"
 
     def assignment_template(name: str, value: str) -> str:
         return f"    double {name} = {value};"
 
-    def return_template(variables: list[str]) -> str:
-        if _fn_context[0] == "inits":
-            match variables:
-                case [vars_str, pars_str, *_]:
-                    return f"    return {{{vars_str}, {pars_str}}};\n}}"
-                case _:
-                    inner = ", ".join(variables)
-                    return f"    return {{{inner}}};\n}}"
-        inner = ", ".join(variables)
-        return f"    return {{{inner}}};\n}}"
+    def return_template(element: str) -> str:
+        return f"    return {element};\n}}"
 
     return _generate_model_code(
         model,
@@ -1830,10 +2043,15 @@ def generate_model_code_cpp(
         variable_unpacking=variable_unpacking,
         derived_to_calculate=derived_to_calculate,
         list_formatter=list_template,
+        tuple_formatter=tuple_template,
         return_formatter=return_template,
         custom_fns=_custom_fns,
         imports=["#include <array>", "#include <cmath>", "#include <utility>", ""],
         name_map={name: valid_identifier(name) for name in model.ids},
+        arr_type="Iterable[float]",
+        float_type="double",
+        ret_type_inits="ignored",
+        ret_type_rest="ignored",
     )
 
 

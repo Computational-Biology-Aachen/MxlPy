@@ -3,7 +3,7 @@
 import operator
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol, Self, cast
 
 import diffrax
 import equinox as eqx
@@ -11,6 +11,9 @@ import jax
 import jax.numpy as jnp
 from jax import lax
 from jaxtyping import PRNGKeyArray, PyTree
+
+from mxlpy.meta._via_sym_repr import generate_model_code_jax
+from mxlpy.model import Model
 
 __all__ = [
     "Anode",
@@ -40,7 +43,7 @@ __all__ = [
 ###############################################################################
 
 type Method = Callable[[], diffrax.AbstractRungeKutta]
-type Rhs = Callable[[PyTree, PyTree, PyTree], PyTree]
+type Rhs = Callable[[PyTree, PyTree, PyTree], jax.Array]
 type Nv = Callable[[PyTree], PyTree]
 type Encoder = Callable[[jax.Array], jax.Array]
 
@@ -491,6 +494,55 @@ class Ode(Base):
         """
         return self.rhs(t, y, jnp.concat((self.pars, args)))
 
+    @classmethod
+    def from_mxlpy(
+        cls,
+        mxlpy_model: Model,
+        parameters_to_fit: list[str] | None = None,
+        free_parameters: list[str] | None = None,
+    ) -> Self:
+        """Construct an :class:`Ode` from an mxlpy :class:`~mxlpy.Model`.
+
+        Generates JAX-compatible RHS code from the model via symbolic code
+        generation, executes it, and initialises the trainable parameter
+        vector from the model's current parameter values.
+
+        Parameters
+        ----------
+        mxlpy_model : Model
+            The mechanistic model to convert.
+        parameters_to_fit : list[str] or None
+            Names of parameters that become trainable (stored in ``pars``).
+            If ``None``, no parameters are made trainable.
+        free_parameters : list[str] or None
+            Names of parameters that are passed as external ``args`` at
+            call time rather than baked into the RHS.  If ``None``, no
+            parameters are treated as free.
+
+        Returns
+        -------
+        Self
+            A new :class:`Ode` instance whose ``rhs`` is the generated JAX
+            function and whose ``pars`` are initialised from the model's
+            current parameter values for the keys in ``parameters_to_fit``.
+        """
+        parameters_to_fit = [] if parameters_to_fit is None else parameters_to_fit
+        free_parameters = [] if free_parameters is None else free_parameters
+        codegen = generate_model_code_jax(
+            mxlpy_model,
+            parameters_to_fit=parameters_to_fit,
+            free_parameters=free_parameters,
+        )
+
+        generated = {}
+
+        exec(codegen.imports, globals(), generated)  # noqa: S102
+        exec(codegen.model, globals(), generated)  # noqa: S102
+
+        model_pars = mxlpy_model.get_parameter_values()
+        pars = jnp.array([model_pars[k] for k in parameters_to_fit])
+        return cls(rhs=generated["model"], pars=pars)
+
 
 class FluxOde(Base):
     """ODE model defined via reaction fluxes and a stoichiometric map.
@@ -507,10 +559,12 @@ class FluxOde(Base):
 
     fluxes: Rhs
     nv: Nv
+    pars: jax.Array  # trainable parameters
 
-    def __init__(self, fluxes: Rhs, nv: Nv) -> None:
+    def __init__(self, fluxes: Rhs, nv: Nv, pars: jax.Array) -> None:
         self.fluxes = fluxes
         self.nv = nv
+        self.pars = pars
 
     def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the ODE right-hand side via fluxes.
@@ -530,6 +584,60 @@ class FluxOde(Base):
             State derivative ``dy/dt``.
         """
         return self.nv(self.fluxes(t, y, args))
+
+    @classmethod
+    def from_mxlpy(
+        cls,
+        mxlpy_model: Model,
+        parameters_to_fit: list[str] | None = None,
+        free_parameters: list[str] | None = None,
+    ) -> Self:
+        """Construct an :class:`Ode` from an mxlpy :class:`~mxlpy.Model`.
+
+        Generates JAX-compatible RHS code from the model via symbolic code
+        generation, executes it, and initialises the trainable parameter
+        vector from the model's current parameter values.
+
+        Parameters
+        ----------
+        mxlpy_model : Model
+            The mechanistic model to convert.
+        parameters_to_fit : list[str] or None
+            Names of parameters that become trainable (stored in ``pars``).
+            If ``None``, no parameters are made trainable.
+        free_parameters : list[str] or None
+            Names of parameters that are passed as external ``args`` at
+            call time rather than baked into the RHS.  If ``None``, no
+            parameters are treated as free.
+
+        Returns
+        -------
+        Self
+            A new :class:`Ode` instance whose ``rhs`` is the generated JAX
+            function and whose ``pars`` are initialised from the model's
+            current parameter values for the keys in ``parameters_to_fit``.
+        """
+        parameters_to_fit = [] if parameters_to_fit is None else parameters_to_fit
+        free_parameters = [] if free_parameters is None else free_parameters
+        codegen = generate_model_code_jax(
+            mxlpy_model,
+            parameters_to_fit=parameters_to_fit,
+            free_parameters=free_parameters,
+        )
+
+        generated = {}
+
+        exec(codegen.imports, globals(), generated)  # noqa: S102
+        exec(codegen.fluxes, globals(), generated)  # noqa: S102
+        exec(codegen.nv, globals(), generated)  # noqa: S102
+
+        model_pars = mxlpy_model.get_parameter_values()
+        pars = jnp.array([model_pars[k] for k in parameters_to_fit])
+        return cls(
+            fluxes=generated["fluxes"],
+            nv=generated["nv"],
+            pars=pars,
+        )
 
 
 ###############################################################################
