@@ -13,6 +13,7 @@ from .linear_chain import (
     get_linear_chain_1v,
     get_linear_chain_2v,
 )
+from .lotka_volterra import create_model as get_lotka_volterra
 from .phase_plane import get_phase_plane
 from .poolman2000 import get_model as get_poolman2000
 from .sir import get_sir, get_sird
@@ -24,6 +25,7 @@ __all__ = [
     "get_lin_chain_two_circles",
     "get_linear_chain_1v",
     "get_linear_chain_2v",
+    "get_lotka_volterra",
     "get_phase_plane",
     "get_poolman2000",
     "get_sir",
