@@ -118,7 +118,7 @@ Mechanistic learning is the intersection of mechanistic modelling and machine le
 This allows combining together multiple models of arbitrary size, without having to worry about the internal state of each model.
 They are especially useful for improving the description of *boundary effects*, e.g. a dynamic description of downstream consumption.
 
-[Start learning](mxl-surrogate.ipynb){ .md-button }
+[Start learning](mxl-surrogates.ipynb){ .md-button }
 
 **Neural posterior estimation** answers the question: **what parameters could have generated the data I measured?**
 Here you use an ODE model and prior knowledge about the parameters of interest to create *synthetic data*.
