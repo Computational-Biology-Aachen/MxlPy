@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import sys
+import types
 import unicodedata
 from importlib import util
 from typing import TYPE_CHECKING
@@ -18,7 +19,12 @@ from mxlpy.meta._via_sym_repr import (
 )
 from mxlpy.paths import default_tmp_dir
 
-__all__ = ["free_symbols", "import_from_path", "read", "valid_filename"]
+__all__ = [
+    "free_symbols",
+    "import_from_path",
+    "read",
+    "valid_filename",
+]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -56,7 +62,7 @@ def _transform_stoichiometry(
     return SymbolicFn(k, expr=v, args=free_symbols(v))
 
 
-def _codegen(name: str, model: pysbml.transform.data.Model) -> Path:
+def _codegen(model: pysbml.transform.data.Model) -> str:
     sym = SymbolicRepr()
     for key, var in model.variables.items():
         sym.variables[key] = SymbolicVariable(
@@ -87,10 +93,7 @@ def _codegen(name: str, model: pysbml.transform.data.Model) -> Path:
                 fn_name=key, expr=der, args=free_symbols(der)
             )
 
-    path = default_tmp_dir(None, remove_old_cache=False) / f"{name}.py"
-    with path.open("w+") as f:
-        f.write(sym.generate_mxlpy())
-    return path
+    return sym.generate_mxlpy()
 
 
 def import_from_path(module_name: str, file_path: Path) -> Callable[[], Model]:
@@ -141,7 +144,7 @@ def valid_filename(value: str) -> str:
     return f"mb_{value}"
 
 
-def read(file: Path) -> Model:
+def read(file: Path, *, via_temp_file: bool = True) -> Model:
     """Import a metabolic model from an SBML file.
 
     Parameters
@@ -157,5 +160,16 @@ def read(file: Path) -> Model:
     """
     model = pysbml.load_and_transform_model(file)
     out_name = valid_filename(file.stem)
-    model_fn = import_from_path(out_name, _codegen(out_name, model))
+    model_code = _codegen(model)
+
+    model_fn: Callable[[], Model]
+    if via_temp_file:
+        path = default_tmp_dir(None, remove_old_cache=False) / f"{out_name}.py"
+        with path.open("w+") as f:
+            f.write(model_code)
+        model_fn = import_from_path(out_name, path)
+    else:
+        module = types.ModuleType(out_name)
+        exec(model_code, module.__dict__)  # noqa: S102
+        model_fn = module.create_model
     return model_fn()

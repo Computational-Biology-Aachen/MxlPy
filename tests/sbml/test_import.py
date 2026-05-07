@@ -77,7 +77,11 @@ def get_files(test: int) -> tuple[Model, dict, pd.DataFrame]:
     sim_settings = get_simulation_settings(path=path, prefix=prefix)
     expected = pd.read_csv(path / f"{prefix}-results.csv", index_col=0).astype(float)
     expected.columns = [i.strip() for i in expected.columns]
-    return read(file=path / f"{prefix}-sbml-l3v2.xml"), sim_settings, expected
+    return (
+        read(file=path / f"{prefix}-sbml-l3v2.xml", via_temp_file=False),
+        sim_settings,
+        expected,
+    )
 
 
 def routine(test: int) -> bool:

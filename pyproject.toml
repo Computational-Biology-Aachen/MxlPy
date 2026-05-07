@@ -13,6 +13,8 @@ dev = [
     "pre-commit>=4.0.1",
     "pyright>=1.1.403",
     "pytest-cov>=5.0.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
     "pytest>=8.3.3",
     "requests>=2.32.3",
     "ruff>=0.15.11",
@@ -81,24 +83,11 @@ requires-python = ">=3.12"
 version = "0.44.0"
 
 [project.optional-dependencies]
-jax = [
-    "diffrax>=0.7.0",
-    "equinox>=0.13",
-    "optax>=0.2.5",
-    "sympy2jax>=0.0.7",
-]
-keras = [
-    "keras>=3.9.2",
-]
-sr = [
-    "pysr>=1.5.9",
-]
-tensorflow = [
-    "tensorflow>=2.19.0",
-]
-torch = [
-    "torch>=2.5.1",
-]
+jax = ["diffrax>=0.7.0", "equinox>=0.13", "optax>=0.2.5", "sympy2jax>=0.0.7"]
+keras = ["keras>=3.9.2"]
+sr = ["pysr>=1.5.9"]
+tensorflow = ["tensorflow>=2.19.0"]
+torch = ["torch>=2.5.1"]
 
 [tool.bandit]
 skips = ["B101", "B301", "B403", "B404", "B603", "B607"]
@@ -120,12 +109,7 @@ exclude = [
     "tests/sbml/assets",
     "tmp",
 ]
-include = [
-    "docs",
-    "src",
-    "tests",
-    'publication-figures',
-]
+include = ["docs", "src", "tests", 'publication-figures']
 pythonVersion = "3.12"
 reportMissingModuleSource = "none"
 strict = []
@@ -183,10 +167,9 @@ select = ["ALL"]
     "SLF",
 ]
 "tests/sbml/assets/*" = [
+    "INP001",
     "N802",   # lowercase name
     "N803",   # lowercase name
-    "INP001",
-
 ]
 "tmp/*" = [
     "D",    # all of documentation
