@@ -27,7 +27,7 @@ jobs:
         run: uv sync --all-extras --all-groups
 
       - name: Run tests
-        run: uv run pytest --disable-warnings --cov --cov-report json tests/
+        run: uv run pytest -n auto --disable-warnings --cov --cov-report json tests/
 
       - name: Get coverage value
         run: python -c "import json;

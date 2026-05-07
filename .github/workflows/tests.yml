@@ -33,4 +33,4 @@ jobs:
         run: uv sync --all-extras --all-groups
 
       - name: Run tests
-        run: uv run pytest --disable-warnings tests/
+        run: uv run pytest -n auto --disable-warnings tests/
