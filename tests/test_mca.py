@@ -7,8 +7,10 @@ import pytest
 
 from mxlpy import Model, fns
 from mxlpy.mca import (
+    SteadyStateStability,
     parameter_elasticities,
     response_coefficients,
+    steady_state_stability,
     variable_elasticities,
 )
 
@@ -180,3 +182,54 @@ def test_variable_elasticities_zero_variable_produces_nan_or_inf() -> None:
     result = variable_elasticities(model, normalized=False)
     # Division by zero → inf or NaN in the S column
     assert not np.isfinite(result["S"].to_numpy()).all()
+
+
+###############################################################################
+# steady_state_stability
+###############################################################################
+
+
+def test_steady_state_stability_returns_correct_type() -> None:
+    ss = {"A": 2.0, "B": 4.0}
+    result = steady_state_stability(linear_chain(), ss)
+    assert isinstance(result, SteadyStateStability)
+    assert isinstance(result.eigenvalues, np.ndarray)
+    assert isinstance(result.spectral_abscissa, float)
+    assert isinstance(result.is_stable, bool)
+    assert isinstance(result.has_oscillatory, bool)
+    assert isinstance(result.classification, str)
+
+
+def test_steady_state_stability_linear_chain_is_stable() -> None:
+    """Open linear chain A→B→sink is unconditionally stable."""
+    ss = {"A": 2.0, "B": 4.0}
+    result = steady_state_stability(linear_chain(), ss)
+    assert result.is_stable
+    assert result.spectral_abscissa < 0
+    assert result.classification in {"stable node", "stable spiral"}
+
+
+def test_steady_state_stability_unstable_model() -> None:
+    """Autocatalytic model dS/dt = k*S has positive eigenvalue → unstable."""
+    model = (
+        Model()
+        .add_variable("S", 1.0)
+        .add_parameter("k", 1.0)
+        .add_reaction(
+            "v1",
+            fn=fns.mass_action_1s,
+            args=["S", "k"],
+            stoichiometry={"S": 1.0},
+        )
+    )
+    result = steady_state_stability(model, {"S": 1.0})
+    assert not result.is_stable
+    assert result.spectral_abscissa > 0
+    assert result.classification in {"unstable node", "unstable spiral", "saddle point"}
+
+
+def test_steady_state_stability_spectral_abscissa_matches_eigenvalues() -> None:
+    ss = {"A": 2.0, "B": 4.0}
+    result = steady_state_stability(linear_chain(), ss)
+    max_real = max(float(ev.real) for ev in result.eigenvalues)
+    assert result.spectral_abscissa == pytest.approx(max_real)
