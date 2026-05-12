@@ -19,16 +19,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pandas as pd
 from wadler_lindig import pformat
 
 from mxlpy.parallel import parallelise
 from mxlpy.scan import _steady_state_worker
+from mxlpy.symbolic.symbolic_model import to_symbolic_model
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from numpy.typing import NDArray
 
     from mxlpy.integrators import IntegratorType
     from mxlpy.model import Model
@@ -36,8 +40,10 @@ if TYPE_CHECKING:
 __all__ = [
     "ResponseCoefficients",
     "ResponseCoefficientsByPars",
+    "SteadyStateStability",
     "parameter_elasticities",
     "response_coefficients",
+    "steady_state_stability",
     "variable_elasticities",
 ]
 
@@ -382,3 +388,88 @@ class ResponseCoefficientsByPars:
     def __iter__(self) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux response coefficients."""
         return iter((self.variables, self.fluxes))
+
+
+###############################################################################
+# Stability analysis
+###############################################################################
+
+
+@dataclass(kw_only=True, slots=True)
+class SteadyStateStability:
+    """Local stability classification of a steady state."""
+
+    eigenvalues: NDArray[np.complexfloating[Any, Any]]
+    spectral_abscissa: float
+    is_stable: bool
+    has_oscillatory: bool
+    classification: str
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+
+def steady_state_stability(
+    model: Model,
+    steady_state: dict[str, float],
+    *,
+    threshold: float = 1e-10,
+) -> SteadyStateStability:
+    """Classify local stability of a steady state via Jacobian eigenvalues.
+
+    Parameters
+    ----------
+    model
+        Model instance.
+    steady_state
+        Steady-state variable concentrations {name: value}.
+    threshold
+        Tolerance for treating real/imaginary parts as zero.
+
+    Returns
+    -------
+    SteadyStateStability
+        Eigenvalues, spectral abscissa, stability flag, oscillatory flag,
+        and a human-readable classification label.
+
+    Examples
+    --------
+        >>> from mxlpy import Simulator
+        >>> ss = Simulator(model).simulate_to_steady_state().get_new_y0()
+        >>> steady_state_stability(model, ss).classification
+        'stable node'
+
+    """
+    sym = to_symbolic_model(model)
+    J_sym = sym.jacobian()
+
+    subs: dict = {s: steady_state[name] for name, s in sym.variables.items()}
+    subs |= {s: sym.parameter_values[name] for name, s in sym.parameters.items()}
+    J_num = np.array(J_sym.subs(subs).tolist(), dtype=complex)
+    eigenvalues = np.linalg.eigvals(J_num)
+
+    real_parts = eigenvalues.real
+    spectral_abscissa = float(real_parts.max())
+    min_real = float(real_parts.min())
+    has_oscillatory = bool(np.any(np.abs(eigenvalues.imag) > threshold))
+    is_stable = spectral_abscissa < -threshold
+
+    if spectral_abscissa < -threshold:
+        classification = "stable spiral" if has_oscillatory else "stable node"
+    elif min_real > threshold:
+        classification = "unstable spiral" if has_oscillatory else "unstable node"
+    elif spectral_abscissa > threshold and min_real < -threshold:
+        classification = "saddle point"
+    elif np.all(np.abs(real_parts) <= threshold) and has_oscillatory:
+        classification = "centre"
+    else:
+        classification = "non-hyperbolic"
+
+    return SteadyStateStability(
+        eigenvalues=eigenvalues,  # pyright: ignore[reportArgumentType]
+        spectral_abscissa=spectral_abscissa,
+        is_stable=is_stable,
+        has_oscillatory=has_oscillatory,
+        classification=classification,
+    )
