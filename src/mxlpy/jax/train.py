@@ -8,12 +8,14 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
+import pandas as pd
 from tqdm.auto import trange
 
 from mxlpy.jax.models import JaxModel, Method, Ude
 
 __all__ = [
     "IntegrationSettings",
+    "LossesPerLesson",
     "grad_loss",
     "grad_loss_split",
     "make_step",
@@ -21,6 +23,8 @@ __all__ = [
     "train",
     "train_only_nde",
 ]
+
+type LossesPerLesson = list[pd.Series]
 
 
 @dataclass(unsafe_hash=True)
@@ -268,8 +272,8 @@ def make_step_split[T: JaxModel](
     return loss, eqx.apply_updates(trainable, updates), opt_state
 
 
-def train[T: JaxModel](
-    model: T,
+def train[Model: JaxModel](
+    model: Model,
     *,
     ts: jax.Array,
     ys: jax.Array,
@@ -278,7 +282,7 @@ def train[T: JaxModel](
     avg_every: int = 1000,
     optim: optax.GradientTransformationExtraArgs | None = None,
     integration_settings: IntegrationSettings | None = None,
-) -> tuple[T, dict[int, float]]:
+) -> tuple[Model, LossesPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
     Each curriculum stage re-initialises the optimiser and uses a
@@ -307,13 +311,11 @@ def train[T: JaxModel](
     Returns
     -------
     tuple[T, dict[int, float]]
-        Best model encountered during training and a dict mapping
-        global step index to average loss.
+        Best model encountered during training and losses per curriculum lesson.
     """
     loss = 0
     acc_loss = 0
     acc_count = 0
-    global_step = 0
     optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
     best_training_loss = jnp.inf
     best_model = model
@@ -324,12 +326,14 @@ def train[T: JaxModel](
 
     y_mean = jnp.mean(ys)
     y_scale = jnp.std(ys)
-    losses = {}
+    losses_per_lesson = []
     for i, (steps, frac) in enumerate(training_steps, start=1):
         opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
         length = math.ceil(len(ts) * frac)
         _ts = ts[:length]
         _ys = ys[:length]
+        losses = {}
+        losses_per_lesson.append(losses)
 
         with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
             for step in pbar:
@@ -351,18 +355,18 @@ def train[T: JaxModel](
                     best_training_loss = loss
 
                 if i == len(training_steps) and loss < target_loss:
-                    return (model, losses)
+                    return (model, [pd.Series(i) for i in losses_per_lesson])
 
                 if (step % avg_every) == 0 or step == steps - 1:
                     avg_loss = acc_loss / acc_count
                     pbar.set_postfix_str(
                         f"Avg. loss {(avg_loss):.2e} over last {acc_count} runs"
                     )
-                    global_step += acc_count
                     acc_loss = 0
                     acc_count = 0
-                    losses[global_step] = float(avg_loss)
-    return best_model, losses
+                    losses[step] = float(avg_loss)
+
+    return best_model, [pd.Series(i) for i in losses_per_lesson]
 
 
 def train_only_nde[T: Ude](
@@ -375,7 +379,7 @@ def train_only_nde[T: Ude](
     target_loss: float = 1e-4,
     optim: optax.GradientTransformationExtraArgs | None = None,
     integration_settings: IntegrationSettings | None = None,
-) -> tuple[T, dict[int, float]]:
+) -> tuple[T, LossesPerLesson]:
     """Train only the neural-network part of a UDE, keeping the ODE frozen.
 
     Partitions ``model`` into trainable (neural network) and frozen (ODE)
@@ -403,8 +407,7 @@ def train_only_nde[T: Ude](
     Returns
     -------
     tuple[T, dict[int, float]]
-        Best model encountered during training and a dict mapping
-        global step index to average loss.
+        Best model encountered during training and losses per curriculum lesson.
     """
     loss = 0
     acc_loss = 0
@@ -426,6 +429,7 @@ def train_only_nde[T: Ude](
     )
     trainable, frozen = eqx.partition(model, filter_spec)
 
+    losses_per_lesson = []
     y_mean = jnp.mean(ys)
     y_scale = jnp.std(ys)
     losses = {}
@@ -434,6 +438,8 @@ def train_only_nde[T: Ude](
         length = math.ceil(len(ts) * frac)
         _ts = ts[:length]
         _ys = ys[:length]
+        losses = {}
+        losses_per_lesson.append(losses)
 
         with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
             for step in pbar:
@@ -456,7 +462,10 @@ def train_only_nde[T: Ude](
                     best_training_loss = loss
 
                 if i == len(training_steps) and loss < target_loss:
-                    return (eqx.combine(trainable, frozen), losses)
+                    return (
+                        eqx.combine(trainable, frozen),
+                        [pd.Series(i) for i in losses_per_lesson],
+                    )
 
                 if (step % avg_every) == 0 or step == steps - 1:
                     avg_loss = acc_loss / acc_count
@@ -467,4 +476,4 @@ def train_only_nde[T: Ude](
                     acc_loss = 0
                     acc_count = 0
                     losses[global_step] = float(avg_loss)
-    return best_model, losses
+    return best_model, [pd.Series(i) for i in losses_per_lesson]
