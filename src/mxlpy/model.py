@@ -20,6 +20,7 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy import _topo, fns
+from mxlpy.dsl import from_dsl
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
@@ -1666,7 +1667,7 @@ class Model:
         args
             A list of arguments for the reaction function.
         stoichiometry
-            The stoichiometry of the reaction, mapping species to their coefficients.
+            The stoichiometry of the reaction, mapping variables to their coefficients.
         unit
             Unit of the rate
 
@@ -1804,6 +1805,39 @@ class Model:
     #         compound=compound,
     #         value=self.stoichiometries[rate_name][compound] * scale,
     #     )
+
+    ##########################################################################
+    # DSLs
+    ##########################################################################
+
+    def add_reactions_from_dsl(
+        self,
+        network: str,
+        *,
+        variables: dict[str, float],
+        parameters: dict[str, float],
+    ) -> Self:
+        """Build a Model from a string-based reaction network DSL.
+
+        Delegates to :func:`mxlpy.dsl.from_reactions`. See that function for
+        full documentation and supported syntax.
+
+        Parameters
+        ----------
+        network
+            Multi-line string describing the reaction network.
+        variables
+            Initial conditions keyed by variable name.
+        parameters
+            Parameter values keyed by parameter name.
+
+        Returns
+        -------
+        Model
+            Fully constructed model.
+
+        """
+        return from_dsl(self, network, variables=variables, parameters=parameters)
 
     ##########################################################################
     # Readouts
@@ -2487,7 +2521,7 @@ class Model:
         Parameters
         ----------
         variables
-            A dictionary where keys are species names and values are their concentrations.
+            A dictionary where keys are variable names and values are their concentrations.
         time
             The time at which to calculate the fluxes. Defaults to 0.0.
 
@@ -2795,35 +2829,3 @@ class Model:
             readouts=self._readouts,
             time_unit=time_unit,
         )
-
-    @classmethod
-    def from_reactions(
-        cls,
-        network: str,
-        *,
-        species: dict[str, float],
-        parameters: dict[str, float],
-    ) -> Model:
-        """Build a Model from a string-based reaction network DSL.
-
-        Delegates to :func:`mxlpy.dsl.from_reactions`. See that function for
-        full documentation and supported syntax.
-
-        Parameters
-        ----------
-        network
-            Multi-line string describing the reaction network.
-        species
-            Initial conditions keyed by species name.
-        parameters
-            Parameter values keyed by parameter name.
-
-        Returns
-        -------
-        Model
-            Fully constructed model.
-
-        """
-        from mxlpy.dsl import from_reactions
-
-        return from_reactions(network, species=species, parameters=parameters)

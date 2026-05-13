@@ -60,7 +60,7 @@ from . import (
     scan,
     units,
 )
-from .dsl import from_reactions
+from .dsl import from_dsl
 from .integrators import DefaultIntegrator, Scipy
 from .integrators.abstract import AbstractIntegrator, IntegratorProtocol
 from .label_map import LabelMapper
@@ -135,7 +135,7 @@ __all__ = [
     "experimental",
     "fit",
     "fns",
-    "from_reactions",
+    "from_dsl",
     "fuzzy",
     "make_protocol",
     "mc",
