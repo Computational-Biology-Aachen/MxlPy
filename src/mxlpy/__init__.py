@@ -42,10 +42,12 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+# dsl imported after fns and model to avoid circular-import ordering issues
 from . import (
     compare,
     databases,
     distributions,
+    dsl,
     experimental,
     fit,
     fns,
@@ -58,6 +60,7 @@ from . import (
     scan,
     units,
 )
+from .dsl import from_reactions
 from .integrators import DefaultIntegrator, Scipy
 from .integrators.abstract import AbstractIntegrator, IntegratorProtocol
 from .label_map import LabelMapper
@@ -128,9 +131,11 @@ __all__ = [
     "configure_default_logging",
     "databases",
     "distributions",
+    "dsl",
     "experimental",
     "fit",
     "fns",
+    "from_reactions",
     "fuzzy",
     "make_protocol",
     "mc",

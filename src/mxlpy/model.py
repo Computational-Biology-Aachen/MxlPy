@@ -2795,3 +2795,35 @@ class Model:
             readouts=self._readouts,
             time_unit=time_unit,
         )
+
+    @classmethod
+    def from_reactions(
+        cls,
+        network: str,
+        *,
+        species: dict[str, float],
+        parameters: dict[str, float],
+    ) -> Model:
+        """Build a Model from a string-based reaction network DSL.
+
+        Delegates to :func:`mxlpy.dsl.from_reactions`. See that function for
+        full documentation and supported syntax.
+
+        Parameters
+        ----------
+        network
+            Multi-line string describing the reaction network.
+        species
+            Initial conditions keyed by species name.
+        parameters
+            Parameter values keyed by parameter name.
+
+        Returns
+        -------
+        Model
+            Fully constructed model.
+
+        """
+        from mxlpy.dsl import from_reactions
+
+        return from_reactions(network, species=species, parameters=parameters)
