@@ -9,12 +9,12 @@ import sympy
 
 from mxlpy import fns
 from mxlpy.fns import hill_1s, michaelis_menten_1s
-from mxlpy.model import Model
 
 if TYPE_CHECKING:
+    from mxlpy.model import Model
     from mxlpy.types import RateFn
 
-__all__ = ["from_reactions"]
+__all__ = ["from_dsl"]
 
 _REVERSIBLE_SEP = re.compile(r"\s*<-->\s*")
 _IRREVERSIBLE_SEP = re.compile(r"\s*-->\s*")
@@ -22,7 +22,7 @@ _SPECIES_TOKEN = re.compile(r"^\s*(\d+)?\s*\*?\s*([A-Za-z_][A-Za-z0-9_]*)\s*$")
 
 
 def _parse_side(side: str) -> dict[str, float]:
-    """Parse one side of a reaction arrow into {species: coefficient}."""
+    """Parse one side of a reaction arrow into {variable: coefficient}."""
     side = side.strip()
     if not side:
         return {}
@@ -30,7 +30,7 @@ def _parse_side(side: str) -> dict[str, float]:
     for token in side.split("+"):
         m = _SPECIES_TOKEN.match(token)
         if m is None:
-            msg = f"Cannot parse species token: {token!r}"
+            msg = f"Cannot parse variable token: {token!r}"
             raise ValueError(msg)
         coeff = float(m.group(1)) if m.group(1) else 1.0
         name = m.group(2)
@@ -142,12 +142,36 @@ def _first_top_level_comma(s: str) -> int:
     return -1
 
 
-def from_reactions(
+def _validate_variables(
+    reactants: dict[str, float],
+    products: dict[str, float],
+    variables: dict[str, float],
+) -> None:
+    all_rxn_vars = set(reactants) | set(products)
+    missing = all_rxn_vars - set(variables)
+    if missing:
+        msg = f"Species in reaction not found in variables dict: {sorted(missing)}"
+        raise ValueError(msg)
+
+
+def _validate_args(
+    args: list[str],
+    all_names: set[str],
+    rate_str: str,
+) -> None:
+    missing = [a for a in args if a not in all_names]
+    if missing:
+        msg = f"Unknown symbols {missing!r} in rate expression {rate_str!r}"
+        raise ValueError(msg)
+
+
+def from_dsl[T: Model](
+    model: T,
     network: str,
     *,
-    species: dict[str, float],
+    variables: dict[str, float],
     parameters: dict[str, float],
-) -> Model:
+) -> T:
     """Build a Model from a string-based reaction network DSL.
 
     Each non-empty, non-comment line has the form::
@@ -167,9 +191,9 @@ def from_reactions(
     ----------
     network
         Multi-line string describing the reaction network.
-    species
-        Initial conditions for every species that appears in the network.
-        Raises ``ValueError`` for species not listed here.
+    variables
+        Initial conditions for every variable that appears in the network.
+        Raises ``ValueError`` for variables not listed here.
     parameters
         Values for every parameter that appears in rate expressions.
         Raises ``ValueError`` for parameters not listed here.
@@ -181,17 +205,16 @@ def from_reactions(
 
     Examples
     --------
-    >>> model = from_reactions(
+    >>> model = model.add_reactions_from_dsl(
     ...     "k1, A --> B",
-    ...     species={"A": 1.0, "B": 0.0},
+    ...     variables={"A": 1.0, "B": 0.0},
     ...     parameters={"k1": 0.1},
     ... )
 
     """
-    all_names: set[str] = set(species) | set(parameters)
+    all_names: set[str] = set(variables) | set(parameters)
 
-    model = Model()
-    model.add_variables(species)
+    model.add_variables(variables)
     model.add_parameters(parameters)
 
     reaction_counter = 0
@@ -231,7 +254,7 @@ def from_reactions(
             reactants = _parse_side(parts[0])
             products = _parse_side(parts[1])
 
-            _validate_species(reactants, products, species)
+            _validate_variables(reactants, products, variables)
 
             stoich_fwd = _net_stoichiometry(reactants, products)
             stoich_rev = {k: -v for k, v in stoich_fwd.items()}
@@ -262,7 +285,7 @@ def from_reactions(
             reactants = _parse_side(parts[0])
             products = _parse_side(parts[1])
 
-            _validate_species(reactants, products, species)
+            _validate_variables(reactants, products, variables)
 
             stoich = _net_stoichiometry(reactants, products)
             fn, args = _resolve_rate(rate_part, reactants, products, all_names)
@@ -271,26 +294,3 @@ def from_reactions(
             model.add_reaction(f"r{r_idx}", fn, args=args, stoichiometry=stoich)
 
     return model
-
-
-def _validate_species(
-    reactants: dict[str, float],
-    products: dict[str, float],
-    species: dict[str, float],
-) -> None:
-    all_rxn_species = set(reactants) | set(products)
-    missing = all_rxn_species - set(species)
-    if missing:
-        msg = f"Species in reaction not found in species dict: {sorted(missing)}"
-        raise ValueError(msg)
-
-
-def _validate_args(
-    args: list[str],
-    all_names: set[str],
-    rate_str: str,
-) -> None:
-    missing = [a for a in args if a not in all_names]
-    if missing:
-        msg = f"Unknown symbols {missing!r} in rate expression {rate_str!r}"
-        raise ValueError(msg)
