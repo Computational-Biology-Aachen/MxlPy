@@ -7,6 +7,7 @@ __all__ = [
     "constant",
     "diffusion_1s_1p",
     "div",
+    "hill_1s",
     "mass_action_1s",
     "mass_action_1s_1p",
     "mass_action_2s",
@@ -637,6 +638,41 @@ def michaelis_menten_3s(
     return (
         vmax * s1 * s2 * s3 / (s1 * s2 + km1 * s2 * s3 + km2 * s1 * s3 + km3 * s1 * s2)
     )
+
+
+def hill_1s(s: float, v: float, K: float, n: float) -> float:  # noqa: N803
+    """Calculate Hill kinetics rate for one substrate.
+
+    Rate = v * s^n / (K^n + s^n)
+
+    Parameters
+    ----------
+    s
+        Substrate concentration
+    v
+        Maximum reaction velocity
+    K
+        Half-saturation constant
+    n
+        Hill coefficient (cooperativity)
+
+    Returns
+    -------
+    Float
+        Reaction rate
+
+    Examples
+    --------
+    >>> hill_1s(1.0, 10.0, 1.0, 1.0)  # Hill-1 reduces to Michaelis-Menten
+    5.0
+    >>> hill_1s(1.0, 10.0, 1.0, 2.0)  # Cooperative binding
+    5.0
+    >>> hill_1s(2.0, 10.0, 1.0, 2.0)
+    8.0
+
+    """
+    sn = s**n
+    return v * sn / (K**n + sn)
 
 
 ###############################################################################
