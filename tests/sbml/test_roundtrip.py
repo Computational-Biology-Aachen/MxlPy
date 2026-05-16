@@ -11,8 +11,11 @@ TMP_DIR = default_tmp_dir(None, remove_old_cache=False)
 def _canonicalise(self: Model) -> Model:
     """Canonicalise the model for comparison."""
 
-    # Remove default compartment
+    # Remove default compartment and any derived that reference it (e.g. x_amount)
     if "compartment" in self.get_raw_parameters(as_copy=False):
+        for name, dp in list(self.get_raw_derived().items()):
+            if "compartment" in dp.args:
+                self.remove_derived(name)
         self.remove_parameter("compartment")
 
     def _handle_derived(dp: Derived) -> Derived:
