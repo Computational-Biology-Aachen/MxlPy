@@ -2,7 +2,7 @@ name: Upload Python Package
 
 on:
   release:
-    types: [ published ]
+    types: [published]
   workflow_dispatch: {}
 
 permissions:
@@ -10,6 +10,9 @@ permissions:
 
 jobs:
   release-build:
+    needs:
+      - default-tests
+      - build-documentation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
