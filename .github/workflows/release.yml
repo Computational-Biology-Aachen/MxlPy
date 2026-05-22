@@ -1,14 +1,99 @@
-name: Notify Slack on Release
+name: Upload Python Package
 
 on:
   release:
     types: [published]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
-  notify:
+  build-documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # fetch all commits/branches
+
+      - name: Configure Git Credentials
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        with:
+          key: mkdocs-material-${{ env.cache_id }}
+          path: .cache
+          restore-keys: |
+            mkdocs-material-
+
+      - run: uv sync --all-extras --all-groups
+      - run: uv run python -c "import toml;print('VERSION={}'.format(toml.load(open('pyproject.toml'))['project']['version']))" >> $GITHUB_ENV
+      - run: uv run mike deploy --update-aliases --push ${{ env.VERSION }} latest
+      - run: uv run mike set-default --push latest
+
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.13.12
+
+      - name: Set Python version
+        run: uv venv --python 3.13.12
+
+      - name: Build release distribution
+        run: uv build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+    needs:
+      - build-release
+      - build-documentation
+    permissions:
+      id-token: write
+
+    environment:
+      name: pypi
+
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+  notify-slack:
     runs-on: ubuntu-latest
     needs:
       - pypi-publish
+
+    # github.event.release.* not populated if run via
+    # workflow_dispatch
+    if: github.event_name == 'release'
 
     steps:
       - name: Send release notification to Slack
