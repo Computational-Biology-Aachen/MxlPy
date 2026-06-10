@@ -1461,8 +1461,8 @@ def generate_model_code_mxlweb(
     )
     return "\n".join(
         [
-            f'import {{ {mathml_import_str} }} from "$lib/mathml";',
-            'import { ModelBuilder } from "$lib/model-editor/modelBuilder";',
+            'import { KineticModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
+            f'import {{ {mathml_import_str} }} from "@computational-biology-aachen/mxlweb-core/mathml";',
             f"\n{docstring}" if docstring else "",
             model_builder_str,
         ]
