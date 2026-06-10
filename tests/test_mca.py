@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
-from mxlpy import Model, fns
+from mxlpy import Model, Simulator, fns
 from mxlpy.mca import (
+    RateCharacteristics,
     SteadyStateStability,
     parameter_elasticities,
+    rate_characteristics,
     response_coefficients,
     steady_state_stability,
     variable_elasticities,
@@ -233,3 +238,106 @@ def test_steady_state_stability_spectral_abscissa_matches_eigenvalues() -> None:
     result = steady_state_stability(linear_chain(), ss)
     max_real = max(float(ev.real) for ev in result.eigenvalues)
     assert result.spectral_abscissa == pytest.approx(max_real)
+
+
+###############################################################################
+# rate_characteristics
+###############################################################################
+
+
+def test_rate_characteristics_returns_result_type() -> None:
+    result = rate_characteristics(linear_chain(), "B", n_points=16, parallel=False)
+    assert isinstance(result, RateCharacteristics)
+    assert isinstance(result.steady_state_conc, float)
+
+
+def test_rate_characteristics_supply_demand_columns() -> None:
+    """B is produced by v1 (supply) and consumed by v2 (demand)."""
+    result = rate_characteristics(linear_chain(), "B", n_points=16, parallel=False)
+    assert list(result.supply_fluxes.columns) == ["v1"]
+    assert list(result.demand_fluxes.columns) == ["v2"]
+
+
+def test_rate_characteristics_n_points() -> None:
+    result = rate_characteristics(linear_chain(), "B", n_points=32, parallel=False)
+    assert len(result.supply_fluxes) == 32
+    assert len(result.demand_fluxes) == 32
+
+
+def test_rate_characteristics_steady_state_conc() -> None:
+    """At steady state k1*A = v_in and k2*B = k1*A, so A=2, B=4."""
+    model = linear_chain()
+    ss = (
+        Simulator(model)
+        .simulate_to_steady_state()
+        .get_result()
+        .unwrap_or_err()
+        .get_new_y0()
+    )
+    result = rate_characteristics(model, "B", n_points=16, parallel=False)
+    assert result.steady_state_conc == pytest.approx(ss["B"])
+    assert result.steady_state_conc == pytest.approx(4.0, rel=1e-3)
+
+
+def test_rate_characteristics_scan_bounds() -> None:
+    """Scan spans [ss / min_factor, ss * max_factor] on a log scale."""
+    result = rate_characteristics(
+        linear_chain(),
+        "B",
+        min_factor=10.0,
+        max_factor=100.0,
+        n_points=16,
+        parallel=False,
+    )
+    concs = result.demand_fluxes.index.to_numpy()
+    ss = result.steady_state_conc
+    assert concs[0] == pytest.approx(ss / 10.0)
+    assert concs[-1] == pytest.approx(ss * 100.0)
+
+
+def test_rate_characteristics_demand_increases_with_concentration() -> None:
+    """Demand flux v2 = k2 * B is monotonically increasing in B."""
+    result = rate_characteristics(linear_chain(), "B", n_points=16, parallel=False)
+    demand = result.total_demand.to_numpy()
+    assert np.all(np.diff(demand) > 0)
+
+
+def test_rate_characteristics_totals_are_series() -> None:
+    result = rate_characteristics(linear_chain(), "B", n_points=16, parallel=False)
+    assert result.total_supply.shape == (16,)
+    assert result.total_demand.shape == (16,)
+
+
+def test_rate_characteristics_no_reaction_raises() -> None:
+    """A variable that participates in no reaction is rejected."""
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 1.0)
+        .add_reaction(
+            "v1",
+            fn=fns.constant,
+            args=["k"],
+            stoichiometry={},
+        )
+    )
+    with pytest.raises(ValueError, match="does not participate"):
+        rate_characteristics(model, "x", n_points=4, parallel=False)
+
+
+def test_rate_characteristics_plot_supply_demand() -> None:
+    result = rate_characteristics(linear_chain(), "B", n_points=16, parallel=False)
+    fig, ax = result.plot_supply_demand()
+    assert isinstance(fig, Figure)
+    assert isinstance(ax, Axes)
+    assert ax.get_xscale() == "log"
+    assert ax.get_yscale() == "log"
+    plt.close(fig)
+
+
+def test_rate_characteristics_plot() -> None:
+    result = rate_characteristics(linear_chain(), "B", n_points=16, parallel=False)
+    fig, axs = result.plot()
+    assert isinstance(fig, Figure)
+    assert len(axs) == 3
+    plt.close(fig)
