@@ -1255,7 +1255,7 @@ def generate_model_code_mxlweb(
     Returns
     -------
     str
-        TypeScript source that constructs a ``ModelBuilder`` for mxlweb.
+        TypeScript source that constructs a ``KineticModelBuilder`` for mxlweb.
 
     """
     sliders = {} if sliders is None else sliders
@@ -1453,8 +1453,8 @@ def generate_model_code_mxlweb(
     mathml_import_str = ", ".join(sorted(used))
     model_builder_str = "\n".join(
         (
-            "export function initModel(): ModelBuilder {",
-            "    return new ModelBuilder()",
+            "export function initModel(): KineticModelBuilder {",
+            "    return new KineticModelBuilder()",
             "\n".join(lines),
             "  }",
         )
