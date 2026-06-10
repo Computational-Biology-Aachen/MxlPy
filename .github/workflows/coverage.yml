@@ -12,10 +12,10 @@ jobs:
   default-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v8.2.0
 
       - name: Set up Python
         run: uv python install 3.13.12
@@ -35,7 +35,7 @@ jobs:
           >> $GITHUB_ENV
 
       - name: Coverage badge
-        uses: schneegans/dynamic-badges-action@v1.7.0
+        uses: schneegans/dynamic-badges-action@v1.8.0
         with:
           auth: ${{ secrets.GIST_SECRET }}
           gistID: 98ab3ce1db511de42f9871e91d85e4cd
