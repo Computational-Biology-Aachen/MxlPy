@@ -186,7 +186,7 @@ def get_all_dependencies_of(
     requested: set[str],
     leaves: set[str],
     dependees: dict[str, set[str]],
-):
+) -> set[str]:
     needed: set[str] = set()
     queue: SimpleQueue[str] = SimpleQueue()
     for name in requested:
