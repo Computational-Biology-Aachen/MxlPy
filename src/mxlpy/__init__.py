@@ -58,6 +58,7 @@ from . import (
     report,
     sbml,
     scan,
+    sensitivity,
     units,
 )
 from .dsl import from_dsl
@@ -146,6 +147,7 @@ __all__ = [
     "report",
     "sbml",
     "scan",
+    "sensitivity",
     "surrogates",
     "symbolic",
     "to_symbolic_model",
