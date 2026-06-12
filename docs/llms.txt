@@ -11,7 +11,7 @@
 
 ## Extended reference
 
-- [analysis (fitting, scanning, MCA, Monte Carlo)](llms-analysis.txt)
+- [analysis (fitting, scanning, MCA, Monte Carlo, sensitivity)](llms-analysis.txt)
 - [visualization](llms-visualization.txt)
 - [advanced (SBML, symbolic, surrogates, comparison)](llms-advanced.txt)
 
