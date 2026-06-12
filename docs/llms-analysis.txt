@@ -1,4 +1,4 @@
-# MxlPy - Analysis (Fitting, Scanning, MCA, Monte Carlo)
+# MxlPy - Analysis (Fitting, Scanning, MCA, Monte Carlo, Sensitivity)
 
 [← back to main reference](llms.txt)
 
@@ -256,4 +256,56 @@ from mxlpy import plot
 fig, ax = plot.one_axes()
 plot.violins(result[["x", "y"]], ax=ax)
 plot.show()
+```
+
+---
+
+## Global sensitivity screening (`mxlpy.sensitivity`)
+
+Morris elementary-effects screening identifies which parameters drive a model output, before committing to expensive analyses (fitting, identifiability, Sobol). Cost is only `n_trajectories * (k + 1)` model evaluations for `k` parameters.
+
+`sensitivity.morris(model, *, output, param_bounds, n_trajectories=10, num_levels=4, seed=None) -> pd.DataFrame`
+
+The result is indexed by parameter name with columns `mu` (mean elementary effect), `mu_star` (mean absolute effect — the importance ranking), `sigma` (std of effects — nonlinearity/interaction), and `mu_star_conf` (bootstrap CI). Reading: low `mu_star` = unimportant; high `mu_star` + low `sigma` = important & linear; high `mu_star` + high `sigma` = important & nonlinear.
+
+`output` is a callable `(model, samples: pd.DataFrame) -> np.ndarray` mapping the whole sample matrix (one row per sample, columns = parameter names) to one scalar per row. There are **no built-in output helpers** — build the reduction on `mxlpy.scan`, which runs samples in parallel, caches, and returns `NaN` on integration failure (the `NaN` propagates into the indices).
+
+`param_bounds` is a `dict[str, tuple[float, float]]` of `(lower, upper)` sampling bounds per parameter. `SALib` is a core dependency — no extra install step.
+
+> Screen steady-state of a species against rate constants
+
+```python
+from mxlpy import scan, sensitivity
+
+def steady_state_x(model, samples):
+    return scan.steady_state(model, to_scan=samples).variables["x"].to_numpy()
+
+result = sensitivity.morris(
+    model,
+    output=steady_state_x,
+    param_bounds={"k1": (0.5, 2.0), "k2": (0.5, 2.0), "k_out": (0.5, 2.0)},
+    n_trajectories=20,
+    seed=0,
+)
+result.sort_values("mu_star", ascending=False)
+```
+
+> Other common outputs via `scan`
+
+```python
+# Peak value over a time course
+def max_x(model, samples):
+    return (
+        scan.time_course(model, to_scan=samples, time_points=time_points)
+        .get_agg_per_run("max")["x"]
+        .to_numpy()
+    )
+
+# Area under the curve (pass np.trapezoid as the aggregator)
+def auc_x(model, samples):
+    return (
+        scan.time_course(model, to_scan=samples, time_points=time_points)
+        .get_agg_per_run(np.trapezoid)["x"]
+        .to_numpy()
+    )
 ```
