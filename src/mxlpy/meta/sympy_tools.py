@@ -434,5 +434,9 @@ def sympy_to_inline_mxlweb(
             )
             return f"new {ts_name}([{children}])"
 
+    if expr == sympy.pi:
+        used.add("Num")
+        return f"new Num({float(expr)})"
+
     msg = f"Cannot convert sympy type {type(expr).__name__} ({expr!r}) to MxlWeb AST"
     raise ValueError(msg)
