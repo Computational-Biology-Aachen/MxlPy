@@ -271,7 +271,9 @@ plot.show()
 
 ---
 
-## Global sensitivity screening (`mxlpy.sensitivity`)
+## Global sensitivity analysis (`mxlpy.sensitivity`)
+
+### Morris screening (`sensitivity.morris`)
 
 Morris elementary-effects screening identifies which parameters drive a model output, before committing to expensive analyses (fitting, identifiability, Sobol). Cost is only `n_trajectories * (k + 1)` model evaluations for `k` parameters.
 
@@ -319,4 +321,30 @@ def auc_x(model, samples):
         .get_agg_per_run(np.trapezoid)["x"]
         .to_numpy()
     )
+```
+
+### Variance-based Sobol indices (`sensitivity.sobol`)
+
+Once Morris has screened out the unimportant parameters, Sobol quantifies *how much* of the output variance each survivor explains. Cost is `n_samples * (k + 2)` model evaluations, so it is a deliberate follow-on, not a first pass.
+
+`sensitivity.sobol(model, *, output, param_bounds, n_samples=1024, seed=None) -> pd.DataFrame`
+
+`output` and `param_bounds` use the **same contract as `morris`** (batch callable on `mxlpy.scan`; `dict[str, tuple[float, float]]` bounds). `n_samples` must be a power of two (`ValueError` otherwise). The result is indexed by parameter name with columns `S1` (first-order index — variance explained alone), `ST` (total-order index — variance explained including all interactions), and their bootstrap CIs `S1_conf`, `ST_conf`. Reading: high `S1` = direct driver; large `ST - S1` gap = the parameter acts mainly through interactions; `ST ≈ 0` = negligible.
+
+> Quantify the survivors after a Morris screen
+
+```python
+from mxlpy import scan, sensitivity
+
+def steady_state_x(model, samples):
+    return scan.steady_state(model, to_scan=samples).variables["x"].to_numpy()
+
+result = sensitivity.sobol(
+    model,
+    output=steady_state_x,
+    param_bounds={"k1": (0.5, 2.0), "k2": (0.5, 2.0)},
+    n_samples=1024,   # power of two; total evals = n_samples * (k + 2)
+    seed=0,
+)
+result.sort_values("ST", ascending=False)
 ```

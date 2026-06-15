@@ -38,7 +38,9 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import pandas as pd
 from SALib.analyze.morris import analyze as _morris_analyze
+from SALib.analyze.sobol import analyze as _sobol_analyze
 from SALib.sample.morris import sample as _morris_sample
+from SALib.sample.sobol import sample as _sobol_sample
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -46,7 +48,7 @@ if TYPE_CHECKING:
     from mxlpy.model import Model
     from mxlpy.types import Array
 
-__all__ = ["OutputFn", "morris"]
+__all__ = ["OutputFn", "morris", "sobol"]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -190,3 +192,93 @@ def morris(
         seed=seed,
     )
     return cast("pd.DataFrame", result.to_df())
+
+
+def sobol(
+    model: Model,
+    *,
+    output: OutputFn,
+    param_bounds: Mapping[str, tuple[float, float]],
+    n_samples: int = 1024,
+    seed: int | None = None,
+) -> pd.DataFrame:
+    """Quantify parameter influence with variance-based Sobol indices.
+
+    The Sobol method decomposes the variance of a model output into the
+    contributions of each parameter.  Unlike Morris screening, which only
+    ranks parameters, Sobol quantifies *how much* of the output variance each
+    parameter explains (``S1``, first-order) and how much it explains
+    including all of its interactions (``ST``, total-order).  A large gap
+    ``ST - S1`` flags a parameter that matters mostly through interactions.
+
+    The cost is ``n_samples * (k + 2)`` model evaluations for ``k``
+    parameters, so screen with :func:`morris` first and quantify only the
+    survivors with :func:`sobol`.
+
+    Parameters
+    ----------
+    model
+        Model instance to analyse.
+    output
+        Callable mapping ``(model, samples)`` to a one-dimensional array of
+        scalar outputs, one per sample row.  Typically built on
+        :mod:`mxlpy.scan`, e.g.
+        ``lambda m, s: scan.steady_state(m, to_scan=s).variables["ATP"].to_numpy()``.
+    param_bounds
+        Mapping of parameter name to its ``(lower, upper)`` sampling bounds.
+    n_samples
+        Base sample size of the Saltelli design.  Must be a power of two.
+        Total evaluations are ``n_samples * (len(param_bounds) + 2)``.
+    seed
+        Seed for the sampler and the analysis bootstrap, for reproducibility.
+
+    Returns
+    -------
+    pd.DataFrame
+        Sensitivity indices indexed by parameter name, with columns ``S1``
+        (first-order index), ``ST`` (total-order index), ``S1_conf`` and
+        ``ST_conf`` (bootstrap confidence intervals).
+
+    Raises
+    ------
+    ValueError
+        If ``n_samples`` is not a positive power of two.
+
+    Examples
+    --------
+    >>> from mxlpy import scan, sensitivity
+    >>> def output(model, samples):
+    ...     return scan.steady_state(
+    ...         model, to_scan=samples
+    ...     ).variables["v1"].to_numpy()
+    >>> sensitivity.sobol(
+    ...     model,
+    ...     output=output,
+    ...     param_bounds={"p1": (0.1, 10.0)},
+    ...     n_samples=512,
+    ...     seed=0,
+    ... )
+
+    """
+    if n_samples <= 0 or n_samples & (n_samples - 1) != 0:
+        msg = f"n_samples must be a positive power of two, got {n_samples}."
+        raise ValueError(msg)
+
+    problem = _build_problem(param_bounds)
+    sample_matrix = _sobol_sample(
+        problem,
+        N=n_samples,
+        calc_second_order=False,
+        seed=seed,
+    )
+    y = _evaluate(model, output, sample_matrix, problem["names"])
+
+    result: Any = _sobol_analyze(
+        problem,
+        y,
+        calc_second_order=False,
+        seed=seed,
+    )
+    total_df, first_df = result.to_df()
+    merged = pd.concat([first_df, total_df], axis=1)
+    return cast("pd.DataFrame", merged[["S1", "ST", "S1_conf", "ST_conf"]])
