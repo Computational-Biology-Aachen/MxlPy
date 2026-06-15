@@ -107,6 +107,24 @@ model.remove_reaction("v_out")
 model.remove_parameter("k_unused")
 ```
 
+> Compose larger models from independently-built submodels
+
+```python
+from mxlpy import compose
+
+# Merge two or more models into one new model. Components are matched by name
+# across the whole namespace; the inputs are never mutated.
+full_model = compose(metabolic_core, regulatory_layer)
+
+# Any name defined in more than one model raises ValueError by default.
+# To deliberately share a component (e.g. a species both submodels touch),
+# allow the later model to override the earlier one (emits a warning):
+full_model = compose(producer, consumer, raise_on_conflict=False)
+
+# Variadic: folds left-to-right.
+full_model = compose(a, b, c)
+```
+
 ## Available rate functions (`mxlpy.fns`)
 
 | Function | Formula | Args |
