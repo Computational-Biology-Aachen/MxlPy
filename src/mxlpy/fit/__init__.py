@@ -6,6 +6,17 @@ Single model, single data routines
 - `time_course`
 - `protocol_time_course`
 
+Single model, single data, multiple initial guesses (multi-start)
+-----------------------------------------------------------------
+Also known as **multi-start** optimisation: the same model is fitted to the
+same data from many different initial parameter guesses (one per row of the
+`p0` DataFrame, e.g. generated with `mxlpy.distributions.sample`). The starts
+run in parallel and a `GroupFit` is returned, whose `get_best_fit()` yields
+the best result and `get_losses()` the loss of every start.
+- `group_steady_state`
+- `group_time_course`
+- `group_protocol_time_course`
+
 Multiple model, single data routines
 ------------------------------------
 - `ensemble_steady_state`
