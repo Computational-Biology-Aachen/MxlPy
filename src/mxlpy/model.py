@@ -28,6 +28,7 @@ from mxlpy.meta.sympy_tools import (
 )
 from mxlpy.surrogates.abstract import AbstractSurrogate, SurrogateProtocol
 from mxlpy.types import (
+    Annotation,
     Derived,
     InitialAssignment,
     Parameter,
@@ -249,6 +250,17 @@ class ModelCache:
     initial_conditions: dict[str, float]
 
 
+def _normalize_annotations(
+    annotations: Annotation | Iterable[Annotation] | None,
+) -> list[Annotation]:
+    """Normalise an annotation argument into a list of annotations."""
+    if annotations is None:
+        return []
+    if isinstance(annotations, Annotation):
+        return [annotations]
+    return list(annotations)
+
+
 @dataclass(slots=True)
 class Model:
     """Represents a metabolic model.
@@ -285,10 +297,49 @@ class Model:
     _reactions: dict[str, Reaction] = field(default_factory=dict)
     _surrogates: dict[str, SurrogateProtocol] = field(default_factory=dict)
     _data: dict[str, pd.Series | pd.DataFrame] = field(default_factory=dict)
+    _annotations: list[Annotation] = field(default_factory=list)
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
+
+    def annotate_model(self, annotations: Annotation | Iterable[Annotation]) -> Self:
+        """Attach MIRIAM model-level annotations to the model.
+
+        Examples
+        --------
+            >>> model.annotate_model(
+            ...     Annotation(
+            ...         uri="https://identifiers.org/biomodels.db:BIOMD0000000048",
+            ...         predicate="isDerivedFrom",
+            ...     )
+            ... )
+
+        Parameters
+        ----------
+        annotations
+            A single annotation or an iterable of annotations describing the
+            model. Use ``bqmodel`` qualifiers as the predicate.
+
+        Returns
+        -------
+        Self
+            The instance of the model with the added model-level annotations.
+
+        """
+        self._annotations.extend(_normalize_annotations(annotations))
+        return self
+
+    def get_annotations(self) -> list[Annotation]:
+        """Return the model-level annotations.
+
+        Returns
+        -------
+        list[Annotation]
+            The model-level annotations.
+
+        """
+        return self._annotations
 
     ###########################################################################
     # Cache
@@ -599,6 +650,7 @@ class Model:
         value: float | InitialAssignment,
         unit: sympy.Expr | None = None,
         source: str | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
     ) -> Self:
         """Adds a parameter to the model.
 
@@ -616,6 +668,8 @@ class Model:
             unit of the parameter
         source
             source of the information given
+        annotations
+            MIRIAM annotation(s) for the parameter (bqbiol qualifiers).
 
         Returns
         -------
@@ -624,7 +678,12 @@ class Model:
 
         """
         self._insert_id(name=name, ctx="parameter")
-        self._parameters[name] = Parameter(value=value, unit=unit, source=source)
+        self._parameters[name] = Parameter(
+            value=value,
+            unit=unit,
+            source=source,
+            annotations=_normalize_annotations(annotations),
+        )
         return self
 
     def add_parameters(
@@ -650,7 +709,13 @@ class Model:
         """
         for k, v in parameters.items():
             if isinstance(v, Parameter):
-                self.add_parameter(k, v.value, unit=v.unit, source=v.source)
+                self.add_parameter(
+                    k,
+                    v.value,
+                    unit=v.unit,
+                    source=v.source,
+                    annotations=v.annotations,
+                )
             else:
                 self.add_parameter(k, v)
         return self
@@ -716,6 +781,7 @@ class Model:
         *,
         unit: sympy.Expr | None = None,
         source: str | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
     ) -> Self:
         """Update the value of a parameter.
 
@@ -733,6 +799,8 @@ class Model:
             Unit of the parameter
         source
             Source of the information
+        annotations
+            MIRIAM annotation(s) to replace the parameter's annotations.
 
         Returns
         -------
@@ -756,6 +824,8 @@ class Model:
             parameter.unit = unit
         if source is not None:
             parameter.source = source
+        if annotations is not None:
+            parameter.annotations = _normalize_annotations(annotations)
         return self
 
     def update_parameters(
@@ -780,7 +850,13 @@ class Model:
         """
         for k, v in parameters.items():
             if isinstance(v, Parameter):
-                self.update_parameter(k, value=v.value, unit=v.unit, source=v.source)
+                self.update_parameter(
+                    k,
+                    value=v.value,
+                    unit=v.unit,
+                    source=v.source,
+                    annotations=v.annotations,
+                )
             else:
                 self.update_parameter(k, v)
         return self
@@ -1016,6 +1092,7 @@ class Model:
         initial_value: float | InitialAssignment,
         unit: sympy.Expr | None = None,
         source: str | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
     ) -> Self:
         """Adds a variable to the model with the given name and initial condition.
 
@@ -1033,6 +1110,8 @@ class Model:
             unit of the variable
         source
             source of the information given
+        annotations
+            MIRIAM annotation(s) for the variable (bqbiol qualifiers).
 
         Returns
         -------
@@ -1042,7 +1121,10 @@ class Model:
         """
         self._insert_id(name=name, ctx="variable")
         self._variables[name] = Variable(
-            initial_value=initial_value, unit=unit, source=source
+            initial_value=initial_value,
+            unit=unit,
+            source=source,
+            annotations=_normalize_annotations(annotations),
         )
         return self
 
@@ -1074,6 +1156,7 @@ class Model:
                     initial_value=v.initial_value,
                     unit=v.unit,
                     source=v.source,
+                    annotations=v.annotations,
                 )
             else:
                 self.add_variable(name=name, initial_value=v)
@@ -1156,6 +1239,7 @@ class Model:
         initial_value: float | InitialAssignment,
         unit: sympy.Expr | None = None,
         source: str | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
     ) -> Self:
         """Updates the value of a variable in the model.
 
@@ -1173,6 +1257,8 @@ class Model:
             Unit of the variable
         source
             Source of the information
+        annotations
+            MIRIAM annotation(s) to replace the variable's annotations.
 
         Returns
         -------
@@ -1192,6 +1278,8 @@ class Model:
             variable.unit = unit
         if source is not None:
             variable.source = source
+        if annotations is not None:
+            variable.annotations = _normalize_annotations(annotations)
         return self
 
     def update_variables(
@@ -1221,6 +1309,7 @@ class Model:
                     initial_value=v.initial_value,
                     unit=v.unit,
                     source=v.source,
+                    annotations=v.annotations,
                 )
             else:
                 self.update_variable(k, v)
@@ -1374,6 +1463,7 @@ class Model:
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
     ) -> Self:
         """Adds a derived attribute to the model.
 
@@ -1391,6 +1481,8 @@ class Model:
             The list of arguments to be passed to the function.
         unit
             Unit of the derived value
+        annotations
+            MIRIAM annotation(s) for the derived value (bqbiol qualifiers).
 
         Returns
         -------
@@ -1399,7 +1491,12 @@ class Model:
 
         """
         self._insert_id(name=name, ctx="derived")
-        self._derived[name] = Derived(fn=fn, args=args, unit=unit)
+        self._derived[name] = Derived(
+            fn=fn,
+            args=args,
+            unit=unit,
+            annotations=_normalize_annotations(annotations),
+        )
         return self
 
     def get_derived_parameter_names(self) -> list[str]:
@@ -1440,6 +1537,7 @@ class Model:
         *,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
     ) -> Self:
         """Updates the derived function and its arguments for a given name.
 
@@ -1457,6 +1555,8 @@ class Model:
             The new arguments for the derived function. If None, the existing arguments are retained.
         unit
             Unit of the derived value
+        annotations
+            MIRIAM annotation(s) to replace the derived value's annotations.
 
         Returns
         -------
@@ -1471,6 +1571,8 @@ class Model:
             der.args = args
         if unit is not None:
             der.unit = unit
+        if annotations is not None:
+            der.annotations = _normalize_annotations(annotations)
         return self
 
     @_invalidate_cache
@@ -1646,6 +1748,7 @@ class Model:
         args: list[str],
         stoichiometry: Mapping[str, float | str | Derived],
         unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
         # source: str | None = None,
     ) -> Self:
         """Adds a reaction to the model.
@@ -1670,6 +1773,8 @@ class Model:
             The stoichiometry of the reaction, mapping variables to their coefficients.
         unit
             Unit of the rate
+        annotations
+            MIRIAM annotation(s) for the reaction (bqbiol qualifiers).
 
         Returns
         -------
@@ -1688,6 +1793,7 @@ class Model:
             stoichiometry=stoich,
             args=args,
             unit=unit,
+            annotations=_normalize_annotations(annotations),
         )
         return self
 
@@ -1716,6 +1822,7 @@ class Model:
         args: list[str] | None = None,
         stoichiometry: Mapping[str, float | Derived | str] | None = None,
         unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
     ) -> Self:
         """Updates the properties of an existing reaction in the model.
 
@@ -1739,6 +1846,8 @@ class Model:
             The new stoichiometry for the reaction. If None, the existing stoichiometry is retained.
         unit
             Unit of the reaction
+        annotations
+            MIRIAM annotation(s) to replace the reaction's annotations.
 
         Returns
         -------
@@ -1757,6 +1866,8 @@ class Model:
             rxn.stoichiometry = stoich
         rxn.args = rxn.args if args is None else args
         rxn.unit = rxn.unit if unit is None else unit
+        if annotations is not None:
+            rxn.annotations = _normalize_annotations(annotations)
         return self
 
     @_invalidate_cache

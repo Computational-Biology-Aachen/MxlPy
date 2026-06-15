@@ -17,7 +17,7 @@ Classes:
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -32,6 +32,7 @@ from numpy.typing import NDArray
 from wadler_lindig import pformat
 
 __all__ = [
+    "Annotation",
     "Array",
     "ArrayLike",
     "Derived",
@@ -227,12 +228,37 @@ class Result[T]:
 
 
 @dataclass
+class Annotation:
+    """MIRIAM annotation linking a model component to an ontology identifier.
+
+    Attributes
+    ----------
+    uri
+        Resource identifier, typically an ``identifiers.org`` URL
+        (e.g. ``"https://identifiers.org/uniprot:P00533"``).
+    predicate
+        MIRIAM qualifier relating the component to the resource. Biological
+        qualifiers (``bqbiol``) apply to components, model qualifiers
+        (``bqmodel``) apply to the model itself.
+
+    """
+
+    uri: str
+    predicate: str = "is"
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+
+@dataclass
 class Variable:
     """Container for variable meta information."""
 
     initial_value: float | InitialAssignment
     unit: sympy.Expr | None = None
     source: str | None = None
+    annotations: list[Annotation] = field(default_factory=list)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -246,6 +272,7 @@ class Parameter:
     value: float | InitialAssignment
     unit: sympy.Expr | None = None
     source: str | None = None
+    annotations: list[Annotation] = field(default_factory=list)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -259,6 +286,7 @@ class Derived:
     fn: RateFn
     args: list[str]
     unit: sympy.Expr | None = None
+    annotations: list[Annotation] = field(default_factory=list)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -383,6 +411,7 @@ class Reaction:
     stoichiometry: Mapping[str, float | Derived]
     args: list[str]
     unit: sympy.Expr | None = None
+    annotations: list[Annotation] = field(default_factory=list)
 
     def __repr__(self) -> str:
         """Return default representation."""

@@ -10,7 +10,7 @@ import numpy as np
 
 from mxlpy.meta.source_tools import get_fn_ast
 from mxlpy.sbml._data import AtomicUnit, Compartment
-from mxlpy.types import Derived, InitialAssignment
+from mxlpy.types import Annotation, Derived, InitialAssignment
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BINARY",
+    "BQB_QUALIFIERS",
+    "BQM_QUALIFIERS",
     "DocstringRemover",
     "IdentifierReplacer",
     "NARY",
@@ -70,6 +72,78 @@ NARY = {
     "max": libsbml.AST_FUNCTION_MAX,
     "min": libsbml.AST_FUNCTION_MIN,
 }
+
+# MIRIAM biological qualifiers (bqbiol) for model components.
+BQB_QUALIFIERS = {
+    "is": libsbml.BQB_IS,
+    "hasPart": libsbml.BQB_HAS_PART,
+    "isPartOf": libsbml.BQB_IS_PART_OF,
+    "isVersionOf": libsbml.BQB_IS_VERSION_OF,
+    "hasVersion": libsbml.BQB_HAS_VERSION,
+    "isHomologTo": libsbml.BQB_IS_HOMOLOG_TO,
+    "isEncodedBy": libsbml.BQB_IS_ENCODED_BY,
+    "encodes": libsbml.BQB_ENCODES,
+    "occursIn": libsbml.BQB_OCCURS_IN,
+    "hasTaxon": libsbml.BQB_HAS_TAXON,
+    "isDescribedBy": libsbml.BQB_IS_DESCRIBED_BY,
+}
+
+# MIRIAM model qualifiers (bqmodel) for the model itself.
+BQM_QUALIFIERS = {
+    "is": libsbml.BQM_IS,
+    "isDerivedFrom": libsbml.BQM_IS_DERIVED_FROM,
+    "isDescribedBy": libsbml.BQM_IS_DESCRIBED_BY,
+    "isInstanceOf": libsbml.BQM_IS_INSTANCE_OF,
+    "hasInstance": libsbml.BQM_HAS_INSTANCE,
+}
+
+
+def _set_annotations(
+    sbase: libsbml.SBase,
+    annotations: list[Annotation],
+    *,
+    is_model: bool = False,
+) -> None:
+    """Attach MIRIAM annotations to an SBML element as CVTerms.
+
+    Parameters
+    ----------
+    sbase
+        The SBML element to annotate.
+    annotations
+        Annotations to serialise as ``<rdf:RDF>`` CVTerms.
+    is_model
+        Whether the element is the model itself. Model annotations use model
+        qualifiers (``bqmodel``); component annotations use biological
+        qualifiers (``bqbiol``).
+
+    """
+    if not annotations:
+        return
+
+    if not sbase.isSetMetaId():
+        sbase.setMetaId(f"meta_{sbase.getId()}")
+
+    qualifiers = BQM_QUALIFIERS if is_model else BQB_QUALIFIERS
+    context = "bqmodel" if is_model else "bqbiol"
+
+    for annotation in annotations:
+        if (qualifier := qualifiers.get(annotation.predicate)) is None:
+            msg = (
+                f"Predicate {annotation.predicate!r} is not a valid {context} "
+                f"qualifier - supported: {sorted(qualifiers)}"
+            )
+            raise ValueError(msg)
+
+        cv = libsbml.CVTerm()
+        if is_model:
+            cv.setQualifierType(libsbml.MODEL_QUALIFIER)
+            cv.setModelQualifierType(qualifier)
+        else:
+            cv.setQualifierType(libsbml.BIOLOGICAL_QUALIFIER)
+            cv.setBiologicalQualifierType(qualifier)
+        cv.addResource(annotation.uri)
+        sbase.addCVTerm(cv)
 
 
 class IdentifierReplacer(ast.NodeTransformer):
@@ -504,6 +578,8 @@ def _create_sbml_variables(
         else:
             cpd.setInitialConcentration(float(init))
 
+        _set_annotations(cpd, variable.annotations)
+
 
 def _create_sbml_derived_variables(*, model: Model, sbml_model: libsbml.Model) -> None:
     for name, dv in model.get_derived_variables().items():
@@ -512,6 +588,7 @@ def _create_sbml_derived_variables(*, model: Model, sbml_model: libsbml.Model) -
         sbml_ar.setName(_convert_id_to_sbml(id_=name, prefix="AR"))
         sbml_ar.setVariable(_convert_id_to_sbml(id_=name, prefix="AR"))
         sbml_ar.setMath(_sbmlify_fn(dv.fn, dv.args))
+        _set_annotations(sbml_ar, dv.annotations)
         # cpd.setUnit() # FIXME: implement
 
 
@@ -526,6 +603,7 @@ def _create_derived_parameter(
     ar.setName(_convert_id_to_sbml(id_=name, prefix="AR"))
     ar.setVariable(_convert_id_to_sbml(id_=name, prefix="AR"))
     ar.setMath(_sbmlify_fn(dp.fn, dp.args))
+    _set_annotations(ar, dp.annotations)
     # cpd.setUnit() # FIXME: implement
 
 
@@ -557,6 +635,8 @@ def _create_sbml_parameters(
             ar.setMath(_sbmlify_fn(init.fn, init.args))
         else:
             k.setValue(float(init))
+
+        _set_annotations(k, value.annotations)
 
 
 def _create_sbml_derived_parameters(*, model: Model, sbml_model: libsbml.Model) -> None:
@@ -604,6 +684,7 @@ def _create_sbml_reactions(
             sref.setSpecies(_convert_id_to_sbml(id_=compound_id, prefix="CPD"))
 
         sbml_rxn.createKineticLaw().setMath(_sbmlify_fn(rxn.fn, rxn.args))
+        _set_annotations(sbml_rxn, rxn.annotations)
 
 
 def _model_to_sbml(
@@ -625,6 +706,7 @@ def _model_to_sbml(
         substance_units=substance_units,
         time_units=time_units,
     )
+    _set_annotations(sbml_model, model.get_annotations(), is_model=True)
     _create_sbml_units(units=units, sbml_model=sbml_model)
     _create_sbml_compartments(compartments=compartments, sbml_model=sbml_model)
     # Actual model components
