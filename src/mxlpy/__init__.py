@@ -75,6 +75,7 @@ from .simulator import Simulator
 from .surrogates.abstract import AbstractSurrogate, SurrogateProtocol
 from .symbolic import SymbolicModel, to_symbolic_model
 from .types import (
+    Annotation,
     Derived,
     InitialAssignment,
     OscillationDetected,
@@ -105,6 +106,7 @@ __all__ = [
     "AbstractIntegrator",
     "AbstractMinimizer",
     "AbstractSurrogate",
+    "Annotation",
     "Assimulo",
     "Cache",
     "Conflict",

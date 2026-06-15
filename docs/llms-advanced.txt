@@ -14,6 +14,56 @@ model = sbml.read("path/to/model.xml")
 sbml.write(model, "path/to/output.xml")
 ```
 
+### MIRIAM annotations
+
+Attach standardized ontology identifiers (UniProt, ChEBI, KEGG, GO, …) to
+components and the model. Annotations are stored on the model and serialised
+as `<annotation><rdf:RDF>` CVTerms on export; `read()` parses them back.
+
+```python
+from mxlpy import Annotation, Model, fns
+
+model = (
+    Model()
+    # Components use bqbiol qualifiers (default predicate "is")
+    .add_variable(
+        "EGFR",
+        1.0,
+        annotations=Annotation("https://identifiers.org/uniprot:P00533"),
+    )
+    .add_parameter(
+        "k1",
+        0.1,
+        annotations=[
+            Annotation("https://identifiers.org/ec-code:1.1.1.1", predicate="isVersionOf"),
+        ],
+    )
+    # The model itself uses bqmodel qualifiers
+    .annotate_model(
+        Annotation(
+            "https://identifiers.org/biomodels.db:BIOMD0000000048",
+            predicate="isDerivedFrom",
+        )
+    )
+)
+```
+
+`annotations` is accepted by `add_variable/add_parameter/add_derived/add_reaction`
+(and their `update_*` counterparts) as a single `Annotation` or an iterable.
+Component predicates must be biological qualifiers (`is`, `hasPart`, `isPartOf`,
+`isVersionOf`, `hasVersion`, `isHomologTo`, `isEncodedBy`, `encodes`, `occursIn`,
+`hasTaxon`, `isDescribedBy`); model predicates must be model qualifiers (`is`,
+`isDerivedFrom`, `isDescribedBy`, `isInstanceOf`, `hasInstance`). Using the wrong
+context raises `ValueError` on export.
+
+```python
+# Round-trip: annotations survive export → import on the Model
+sbml.write(model, "model.xml")
+model = sbml.read("model.xml")
+model.get_raw_variables()["EGFR"].annotations  # [Annotation(uri=..., predicate="is")]
+model.get_annotations()                          # model-level annotations
+```
+
 ---
 
 ## Model comparison (`mxlpy.compare`)
