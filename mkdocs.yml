@@ -10,7 +10,7 @@ nav:
       - Basics: basics.ipynb
       - Scans: scans.ipynb
       - MCA: mca.ipynb
-      - Sensitivity screening: sensitivity.ipynb
+      - Sensitivity analysis: sensitivity.ipynb
       - Fitting: fitting.ipynb
       - Fuzzy fitting: fuzzy_fitting.ipynb
       - Monte Carlo methods: monte-carlo.ipynb

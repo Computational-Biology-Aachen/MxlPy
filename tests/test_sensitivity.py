@@ -4,14 +4,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from mxlpy import scan, sensitivity
 from mxlpy.sensitivity import _build_problem, _evaluate
 from tests.models import m_2v_2p_1d_1r
 
 if TYPE_CHECKING:
-    import pytest
-
     from mxlpy.model import Model
 
 
@@ -105,3 +104,73 @@ def test_morris_propagates_failed_runs_as_nan() -> None:
         seed=0,
     )
     assert bool(result["mu_star"].isna().all())
+
+
+def test_sobol_returns_labelled_dataframe() -> None:
+    result = sensitivity.sobol(
+        m_2v_2p_1d_1r(),
+        output=_steady_state_output("v1"),
+        param_bounds={"p1": (0.1, 10.0), "p2": (0.01, 1.0)},
+        n_samples=16,
+        seed=0,
+    )
+    assert isinstance(result, pd.DataFrame)
+    assert list(result.index) == ["p1", "p2"]
+    assert list(result.columns) == ["S1", "ST", "S1_conf", "ST_conf"]
+
+
+def test_sobol_is_reproducible_with_seed() -> None:
+    kwargs = {
+        "output": _steady_state_output("v1"),
+        "param_bounds": {"p1": (0.1, 10.0), "p2": (0.01, 1.0)},
+        "n_samples": 16,
+        "seed": 42,
+    }
+    first = sensitivity.sobol(m_2v_2p_1d_1r(), **kwargs)
+    second = sensitivity.sobol(m_2v_2p_1d_1r(), **kwargs)
+    pd.testing.assert_frame_equal(first, second)
+
+
+def test_sobol_evaluation_count() -> None:
+    captured: dict[str, pd.DataFrame] = {}
+
+    def output(_model: Model, samples: pd.DataFrame) -> np.ndarray:
+        captured["samples"] = samples
+        return np.zeros(len(samples))
+
+    sensitivity.sobol(
+        m_2v_2p_1d_1r(),
+        output=output,
+        param_bounds={"p1": (0.1, 10.0), "p2": (0.01, 1.0)},
+        n_samples=16,
+        seed=0,
+    )
+    # Sobol uses N * (k + 2) evaluations when second-order indices are off
+    assert len(captured["samples"]) == 16 * (2 + 2)
+    assert list(captured["samples"].columns) == ["p1", "p2"]
+
+
+@pytest.mark.parametrize("n_samples", [0, -8, 100, 1000])
+def test_sobol_rejects_non_power_of_two(n_samples: int) -> None:
+    with pytest.raises(ValueError, match="power of two"):
+        sensitivity.sobol(
+            m_2v_2p_1d_1r(),
+            output=_steady_state_output("v1"),
+            param_bounds={"p1": (0.1, 10.0), "p2": (0.01, 1.0)},
+            n_samples=n_samples,
+            seed=0,
+        )
+
+
+def test_sobol_propagates_failed_runs_as_nan() -> None:
+    def output(_model: Model, samples: pd.DataFrame) -> np.ndarray:
+        return np.full(len(samples), np.nan)
+
+    result = sensitivity.sobol(
+        m_2v_2p_1d_1r(),
+        output=output,
+        param_bounds={"p1": (0.1, 10.0), "p2": (0.01, 1.0)},
+        n_samples=16,
+        seed=0,
+    )
+    assert bool(result["ST"].isna().all())
