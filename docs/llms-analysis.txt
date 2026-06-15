@@ -72,18 +72,29 @@ result = fit.steady_state(
 )
 ```
 
-> Group fitting: one model with multiple initial guesses (returns best)
+> Group fitting = multi-start (multistart) optimisation: one model, one dataset, many initial guesses run in parallel
+
+`group_*` is mxlpy's multi-start optimisation. `p0` is a `pd.DataFrame` with one
+row per start (e.g. from `mxlpy.distributions.sample`). It returns a `GroupFit`,
+not a `Result`; use `.get_best_fit()` for the best `Fit` and `.get_losses()` for
+the loss of every start. Also available: `group_time_course`,
+`group_protocol_time_course`.
 
 ```python
-p0_list = [{"k1": v, "k2": 1.0} for v in [0.1, 1.0, 5.0, 10.0]]
+import pandas as pd
+from mxlpy.distributions import LogUniform, sample
 
-result = fit.group_steady_state(
+# Space out 50 starts across the parameter ranges
+p0 = sample({"k1": LogUniform(0.01, 10.0), "k2": LogUniform(0.01, 10.0)}, n=50)
+
+group_fit = fit.group_steady_state(
     model,
-    p0=p0_list,
+    p0=p0,
     data=data,
     minimizer=LocalScipyMinimizer(),
 )
-fitted = result.unwrap_or_err()
+best = group_fit.get_best_fit()   # Fit with lowest loss
+losses = group_fit.get_losses()   # pd.Series of all start losses
 ```
 
 > Joint fitting: fit shared parameters across multiple models/datasets simultaneously
