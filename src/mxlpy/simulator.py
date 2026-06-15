@@ -19,7 +19,7 @@ import pandas as pd
 from sympy import lambdify
 from wadler_lindig import pformat
 
-from mxlpy.integrators import DefaultIntegrator
+from mxlpy.integrators import DefaultIntegrator, Scipy
 from mxlpy.integrators.abstract import TimeCourse
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.simulation import Simulation
@@ -138,6 +138,11 @@ class Simulator:
         self._initialise_integrator()
 
     def _initialise_integrator(self) -> None:
+        events = self.model._events  # noqa: SLF001
+        if events and self._integrator_type is not Scipy:
+            msg = "Events require the Scipy integrator; switch with integrator=Scipy"
+            raise NotImplementedError(msg)
+
         jac_fn = None
         if self.use_jacobian:
             try:
@@ -165,6 +170,17 @@ class Simulator:
             tuple(y0[k] for k in self.model.get_variable_names()),
             jac_fn,
         )
+
+        if events and isinstance(self.integrator, Scipy):
+            model = self.model
+
+            def _update_param(name: str, value: float) -> None:
+                model.update_parameter(name, value)
+
+            self.integrator._events = events  # noqa: SLF001
+            self.integrator._var_names = self.model.get_variable_names()  # noqa: SLF001
+            self.integrator._param_values = self.model.get_parameter_values()  # noqa: SLF001
+            self.integrator._param_update_callback = _update_param  # noqa: SLF001
 
     def clear_results(self) -> None:
         """Clear simulation results."""
