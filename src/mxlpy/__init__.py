@@ -61,6 +61,7 @@ from . import (
     sensitivity,
     units,
 )
+from .composition import compose
 from .dsl import from_dsl
 from .integrators import DefaultIntegrator, Scipy
 from .integrators.abstract import AbstractIntegrator, IntegratorProtocol
@@ -129,6 +130,7 @@ __all__ = [
     "Variable",
     "cartesian_product",
     "compare",
+    "compose",
     "configure_default_logging",
     "databases",
     "distributions",

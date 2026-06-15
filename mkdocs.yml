@@ -8,6 +8,7 @@ nav:
   - About: index.md
   - ODE features:
       - Basics: basics.ipynb
+      - Model composition: composition.ipynb
       - Scans: scans.ipynb
       - MCA: mca.ipynb
       - Sensitivity screening: sensitivity.ipynb
