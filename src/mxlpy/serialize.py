@@ -151,9 +151,8 @@ def model_to_dict(
         name: {"value": _value_to_node_dict(par.value, origin=name)}
         for name, par in model.get_raw_parameters().items()
     }
-    reactions = [
-        {
-            "name": name,
+    reactions = {
+        name: {
             "fn": _fn_to_node_dict(rxn.fn, origin=name, args=rxn.args),
             "stoichiometry": {
                 var: _stoich_to_node_dict(stoich, origin=f"{name}:{var}")
@@ -161,7 +160,7 @@ def model_to_dict(
             },
         }
         for name, rxn in model.get_raw_reactions().items()
-    ]
+    }
     derived = {
         name: {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)}
         for name, der in model.get_raw_derived().items()
@@ -294,13 +293,13 @@ def model_from_dict(data: Mapping[str, Any]) -> Model:
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])
         model.add_derived(name, fn, args=args)
-    for rxn in spec["reactions"]:
+    for name, rxn in spec["reactions"].items():
         fn, args = _node_dict_to_fn(rxn["fn"])
         stoichiometry = {
             var: _node_dict_to_stoich(node)
             for var, node in rxn["stoichiometry"].items()
         }
-        model.add_reaction(rxn["name"], fn, args=args, stoichiometry=stoichiometry)
+        model.add_reaction(name, fn, args=args, stoichiometry=stoichiometry)
     for name, rdt in spec["readouts"].items():
         fn, args = _node_dict_to_fn(rdt["fn"])
         model.add_readout(name, fn, args=args)
