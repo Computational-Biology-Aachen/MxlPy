@@ -28,6 +28,7 @@ nav:
       - Neural Posterior Estimation: mxl-npe.ipynb
       - Reaction carousel: carousel.ipynb
   - Metaprogramming: metaprogramming.ipynb
+  - Serialization: serialization.ipynb
   - Examples: examples.ipynb
   - Reporting: report.ipynb
   - Tips:
