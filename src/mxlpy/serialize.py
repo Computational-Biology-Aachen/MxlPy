@@ -65,7 +65,7 @@ SPEC_VERSION = "1.0"
 _SCHEMA_MAJOR = SPEC_VERSION.split(".", 1)[0]
 SCHEMA_URL = (
     "https://raw.githubusercontent.com/Computational-Biology-Aachen/"
-    f"mxl-schemas/main/v{_SCHEMA_MAJOR}/mxl-model.schema.json"
+    f"mxl-schemas/main/v{_SCHEMA_MAJOR}/kinetic-model.schema.json"
 )
 
 _FN_NAME = "_mxl_fn"
