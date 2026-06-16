@@ -80,7 +80,7 @@ maintainers = [
 name = "mxlpy"
 readme = "README.md"
 requires-python = ">=3.12"
-version = "0.50.0"
+version = "0.51.0"
 
 [project.optional-dependencies]
 jax = ["diffrax>=0.7.0", "equinox>=0.13", "optax>=0.2.5", "sympy2jax>=0.0.7"]
