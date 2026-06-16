@@ -16,6 +16,34 @@ sbml.write(model, "path/to/output.xml")
 
 ---
 
+## Native JSON format (`mxlpy.save` / `mxlpy.load`)
+
+Version-controllable `.mxl.json` format that captures the full model structure
+(variables, parameters, reactions, derived quantities, readouts). Rate
+expressions are stored as trees of math nodes from the node set shared with
+MxlWeb, so the same files can be consumed by both tools.
+
+```python
+import mxlpy
+
+# Save a model to the native JSON format
+mxlpy.save(model, "model.mxl.json")
+
+# Load it back - all constructs restored, simulates identically
+model = mxlpy.load("model.mxl.json")
+```
+
+- Rate functions go through SymPy, so a loaded model uses generated (not the
+  original named) functions and is behaviourally identical. `save -> load ->
+  save` reaches a stable fixed point.
+- Optional metadata: `mxlpy.save(model, path, model_id="glycolysis", description="...")`.
+- Raises `mxlpy.types.SerializationError` for surrogates or rate functions that
+  cannot be parsed into an expression.
+- Each file references a `$schema` (the shared `mxl-schemas` repo) for editor
+  validation and autocompletion. Use SBML instead for cross-tool interchange.
+
+---
+
 ## Model comparison (`mxlpy.compare`)
 
 Compare simulations of two models side-by-side (e.g. before/after refactoring, or two hypotheses):

@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import sympy
 
+from mxlpy.meta import _mathml as mml
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.types import Derived
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
 __all__ = [
     "list_of_symbols",
+    "mathml_to_sympy",
     "stoichiometries_to_sympy",
     "sympy_to_inline_c",
     "sympy_to_inline_cxx",
@@ -23,6 +25,7 @@ __all__ = [
     "sympy_to_inline_mxlweb",
     "sympy_to_inline_py",
     "sympy_to_inline_rust",
+    "sympy_to_mathml",
     "sympy_to_python_fn",
 ]
 
@@ -440,3 +443,239 @@ def sympy_to_inline_mxlweb(
 
     msg = f"Cannot convert sympy type {type(expr).__name__} ({expr!r}) to MxlWeb AST"
     raise ValueError(msg)
+
+
+###############################################################################
+# sympy <-> MathML node tree
+###############################################################################
+
+# sympy function type -> MathML unary node class
+_UNARY_NODE_MAP: dict[type, Callable[[mml.Base], mml.Base]] = {
+    sympy_type: getattr(mml, name) for sympy_type, name in _UNARY_FN_MAP
+}
+# MathML unary node class name -> sympy callable
+_NODE_TO_UNARY_SYMPY: dict[str, Callable[..., sympy.Expr]] = {
+    name: sympy_type for sympy_type, name in _UNARY_FN_MAP
+}
+# sympy relational/logical type -> MathML n-ary node class
+_RELATIONAL_NODE_MAP: dict[type, Callable[[list[mml.Base]], mml.Base]] = {
+    sympy_type: getattr(mml, name) for sympy_type, name in _RELATIONAL_MAP
+}
+_NODE_TO_RELATIONAL_SYMPY: dict[str, Callable[..., sympy.Expr]] = {
+    name: sympy_type for sympy_type, name in _RELATIONAL_MAP
+}
+
+
+def sympy_to_mathml(expr: sympy.Expr) -> mml.Base:
+    """Convert a sympy expression into a MathML node tree.
+
+    The resulting tree uses the shared mxlpy/mxlweb node set
+    (:mod:`mxlpy.meta._mathml`) and is the in-memory form behind the native
+    JSON model format.
+
+    Parameters
+    ----------
+    expr
+        Sympy expression to convert
+
+    Returns
+    -------
+    mml.Base
+        Equivalent MathML expression node
+
+    """
+    # Constants (checked before Number; pi/E are not sympy.Number instances)
+    if expr is sympy.true:
+        return mml.Bool(value=True)
+    if expr is sympy.false:
+        return mml.Bool(value=False)
+    if expr is sympy.pi:
+        return mml.Pi()
+    if expr is sympy.E:
+        return mml.E()
+
+    # Numbers
+    if isinstance(expr, sympy.Number):
+        return mml.Num(value=float(expr))
+
+    # Named symbol
+    if isinstance(expr, sympy.Symbol):
+        return mml.Name(name=expr.name)
+
+    # Addition
+    if isinstance(expr, sympy.Add):
+        return mml.Add([sympy_to_mathml(cast(sympy.Expr, a)) for a in expr.args])
+
+    # Multiplication - handle negation and division
+    if isinstance(expr, sympy.Mul):
+        return _mul_to_mathml(expr)
+
+    # Powers
+    if isinstance(expr, sympy.Pow):
+        base = cast(sympy.Expr, expr.args[0])
+        exp = cast(sympy.Expr, expr.args[1])
+        if exp == sympy.Rational(1, 2):
+            return mml.Sqrt(child=sympy_to_mathml(base), base=mml.Num(value=2.0))
+        if exp == sympy.Integer(-1):
+            return mml.Divide([mml.Num(value=1.0), sympy_to_mathml(base)])
+        return mml.Pow(left=sympy_to_mathml(base), right=sympy_to_mathml(exp))
+
+    # Unary functions
+    for sympy_type, node_cls in _UNARY_NODE_MAP.items():
+        if isinstance(expr, sympy_type):
+            child = sympy_to_mathml(cast(sympy.Expr, expr.args[0]))
+            return node_cls(child)
+
+    # N-ary min/max
+    if isinstance(expr, sympy.Max):
+        return mml.Max([sympy_to_mathml(cast(sympy.Expr, a)) for a in expr.args])
+    if isinstance(expr, sympy.Min):
+        return mml.Min([sympy_to_mathml(cast(sympy.Expr, a)) for a in expr.args])
+
+    # Piecewise: sympy args are ((val, cond), ...) pairs. A trailing cond=True
+    # becomes the value-only "otherwise" branch.
+    if isinstance(expr, sympy.Piecewise):
+        children: list[mml.Base] = []
+        for pair in expr.args:
+            val = cast(sympy.Expr, pair.args[0])
+            cond = cast(sympy.Expr, pair.args[1])
+            children.append(sympy_to_mathml(val))
+            if cond is not sympy.true:
+                children.append(sympy_to_mathml(cond))
+        return mml.Piecewise(children)
+
+    # Relational and logical operators
+    for sympy_type, node_cls in _RELATIONAL_NODE_MAP.items():
+        if isinstance(expr, sympy_type):
+            return node_cls([sympy_to_mathml(cast(sympy.Expr, a)) for a in expr.args])
+
+    msg = f"Cannot convert sympy type {type(expr).__name__} ({expr!r}) to MathML node"
+    raise ValueError(msg)
+
+
+def _mul_to_mathml(expr: sympy.Mul) -> mml.Base:
+    coeff, rest_factors = expr.as_coeff_mul()
+
+    numer: list[sympy.Expr] = []
+    denom: list[sympy.Expr] = []
+    for arg in rest_factors:
+        if isinstance(arg, sympy.Pow):
+            arg_exp = cast(sympy.Expr, arg.exp)
+            if isinstance(arg_exp, sympy.Number) and arg_exp.is_negative:
+                neg_exp = cast(sympy.Expr, -arg_exp)
+                base = cast(sympy.Expr, arg.base)
+                denom.append(
+                    base if neg_exp == sympy.Integer(1) else sympy.Pow(base, neg_exp)
+                )
+                continue
+        numer.append(cast(sympy.Expr, arg))
+
+    abs_coeff = cast(sympy.Expr, -coeff if coeff.is_negative else coeff)
+    if abs_coeff != sympy.Integer(1):
+        numer = [cast(sympy.Expr, sympy.Number(abs_coeff)), *numer]
+
+    if denom:
+        n_expr: sympy.Expr = (
+            sympy.Mul(*numer)
+            if len(numer) > 1
+            else (numer[0] if numer else sympy.Integer(1))
+        )
+        d_expr: sympy.Expr = sympy.Mul(*denom) if len(denom) > 1 else denom[0]
+        inner: mml.Base = mml.Divide([sympy_to_mathml(n_expr), sympy_to_mathml(d_expr)])
+    elif len(numer) == 1:
+        inner = sympy_to_mathml(numer[0])
+    else:
+        inner = mml.Mul([sympy_to_mathml(f) for f in numer])
+
+    if coeff.is_negative:
+        return mml.Minus([inner])
+    return inner
+
+
+def mathml_to_sympy(node: mml.Base) -> sympy.Expr:
+    """Convert a MathML node tree back into a sympy expression.
+
+    Parameters
+    ----------
+    node
+        MathML expression node, e.g. produced by :func:`sympy_to_mathml` or
+        :func:`mxlpy.meta._mathml.node_from_dict`.
+
+    Returns
+    -------
+    sympy.Expr
+        Equivalent sympy expression
+
+    """
+    if isinstance(node, mml.Num):
+        value = node.value
+        if float(value).is_integer():
+            return sympy.Integer(int(value))
+        return sympy.Float(value)
+    if isinstance(node, mml.Name):
+        return sympy.Symbol(node.name)
+    if isinstance(node, mml.Pi):
+        return cast(sympy.Expr, sympy.pi)
+    if isinstance(node, mml.E):
+        return cast(sympy.Expr, sympy.E)
+    if isinstance(node, mml.Bool):
+        return cast(sympy.Expr, sympy.true if node.value else sympy.false)
+
+    if isinstance(node, mml.Add):
+        return sympy.Add(*(mathml_to_sympy(c) for c in node.children))
+    if isinstance(node, mml.Mul):
+        return sympy.Mul(*(mathml_to_sympy(c) for c in node.children))
+    if isinstance(node, mml.Minus):
+        children = [mathml_to_sympy(c) for c in node.children]
+        if len(children) == 1:
+            return cast(sympy.Expr, sympy.Mul(sympy.Integer(-1), children[0]))
+        rest = sympy.Mul(sympy.Integer(-1), sympy.Add(*children[1:]))
+        return cast(sympy.Expr, sympy.Add(children[0], rest))
+    if isinstance(node, mml.Divide):
+        children = [mathml_to_sympy(c) for c in node.children]
+        denom = sympy.Pow(sympy.Mul(*children[1:]), sympy.Integer(-1))
+        return cast(sympy.Expr, sympy.Mul(children[0], denom))
+    if isinstance(node, mml.Pow):
+        return sympy.Pow(mathml_to_sympy(node.left), mathml_to_sympy(node.right))
+    if isinstance(node, mml.Sqrt):
+        inv_base = sympy.Pow(mathml_to_sympy(node.base), sympy.Integer(-1))
+        return sympy.Pow(mathml_to_sympy(node.child), inv_base)
+    if isinstance(node, mml.Log):
+        inv_log_base = sympy.Pow(
+            sympy.log(mathml_to_sympy(node.base)), sympy.Integer(-1)
+        )
+        return cast(
+            sympy.Expr,
+            sympy.Mul(sympy.log(mathml_to_sympy(node.child)), inv_log_base),
+        )
+    if isinstance(node, mml.Max):
+        return cast(sympy.Expr, sympy.Max(*(mathml_to_sympy(c) for c in node.children)))
+    if isinstance(node, mml.Min):
+        return cast(sympy.Expr, sympy.Min(*(mathml_to_sympy(c) for c in node.children)))
+    if isinstance(node, mml.Piecewise):
+        return _piecewise_to_sympy(node)
+
+    name = type(node).__name__
+    node_any = cast(Any, node)
+    if (unary_fn := _NODE_TO_UNARY_SYMPY.get(name)) is not None:
+        return cast(sympy.Expr, unary_fn(mathml_to_sympy(node_any.child)))
+    if (rel_fn := _NODE_TO_RELATIONAL_SYMPY.get(name)) is not None:
+        return cast(
+            sympy.Expr,
+            rel_fn(*(mathml_to_sympy(c) for c in node_any.children)),
+        )
+
+    msg = f"Cannot convert MathML node {name!r} to sympy"
+    raise ValueError(msg)
+
+
+def _piecewise_to_sympy(node: mml.Piecewise) -> sympy.Expr:
+    children = node.children
+    pairs: list[tuple[sympy.Expr, sympy.Expr]] = []
+    i = 0
+    while i + 1 < len(children):
+        pairs.append((mathml_to_sympy(children[i]), mathml_to_sympy(children[i + 1])))
+        i += 2
+    if i < len(children):  # trailing "otherwise" value
+        pairs.append((mathml_to_sympy(children[i]), cast(sympy.Expr, sympy.true)))
+    return cast(sympy.Expr, sympy.Piecewise(*pairs))

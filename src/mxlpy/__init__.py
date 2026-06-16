@@ -70,6 +70,7 @@ from .mc import Cache
 from .minimizers.abstract import AbstractMinimizer, MinimizerProtocol
 from .model import Model
 from .npe.abstract import AbstractEstimator, EstimatorProtocol
+from .serialize import load, save
 from .simulation import Simulation
 from .simulator import Simulator
 from .surrogates.abstract import AbstractSurrogate, SurrogateProtocol
@@ -138,6 +139,7 @@ __all__ = [
     "fns",
     "from_dsl",
     "fuzzy",
+    "load",
     "make_protocol",
     "mc",
     "mca",
@@ -145,6 +147,7 @@ __all__ = [
     "npe",
     "plot",
     "report",
+    "save",
     "sbml",
     "scan",
     "sensitivity",

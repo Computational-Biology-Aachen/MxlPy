@@ -49,6 +49,7 @@ __all__ = [
     "Result",
     "RetType",
     "Rhs",
+    "SerializationError",
     "Variable",
 ]
 
@@ -140,6 +141,24 @@ class FitFailure(Exception):
         """Initialise."""
         super().__init__(self.message)
         self.extra_info = [] if extra_info is None else extra_info
+
+
+class SerializationError(Exception):
+    """Raised when a model cannot be serialised to the native JSON format."""
+
+    message: str = "Failed to serialize model."
+
+    def __init__(self, detail: str | None = None) -> None:
+        """Initialise.
+
+        Parameters
+        ----------
+        detail
+            Optional context, e.g. the name of the offending model element.
+
+        """
+        super().__init__(self.message if detail is None else f"{self.message} {detail}")
+        self.detail = detail
 
 
 @dataclass(slots=True)
