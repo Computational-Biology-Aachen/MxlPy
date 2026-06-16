@@ -1,274 +1,100 @@
-# MxlPy - Advanced Features
+# MxlPy — Advanced analysis
 
-[← back to main reference](llms.txt)
+[← back to index](llms.txt)
 
-## SBML import / export (`mxlpy.sbml`)
-
-```python
-from mxlpy import sbml
-
-# Import an SBML file into a Model
-model = sbml.read("path/to/model.xml")
-
-# Export a Model to SBML
-sbml.write(model, "path/to/output.xml")
-```
-
-### MIRIAM annotations
-
-Attach standardized ontology identifiers (UniProt, ChEBI, KEGG, GO, …) to
-components and the model. Annotations are stored on the model and serialised
-as `<annotation><rdf:RDF>` CVTerms on export; `read()` parses them back.
-
-```python
-from mxlpy import Annotation, Model, fns
-
-model = (
-    Model()
-    # Components use bqbiol qualifiers (default predicate "is")
-    .add_variable(
-        "EGFR",
-        1.0,
-        annotations=Annotation("https://identifiers.org/uniprot:P00533"),
-    )
-    .add_parameter(
-        "k1",
-        0.1,
-        annotations=[
-            Annotation("https://identifiers.org/ec-code:1.1.1.1", predicate="isVersionOf"),
-        ],
-    )
-    # The model itself uses bqmodel qualifiers
-    .annotate_model(
-        Annotation(
-            "https://identifiers.org/biomodels.db:BIOMD0000000048",
-            predicate="isDerivedFrom",
-        )
-    )
-)
-```
-
-`annotations` is accepted by `add_variable/add_parameter/add_derived/add_reaction`
-(and their `update_*` counterparts) as a single `Annotation` or an iterable.
-Component predicates must be biological qualifiers (`is`, `hasPart`, `isPartOf`,
-`isVersionOf`, `hasVersion`, `isHomologTo`, `isEncodedBy`, `encodes`, `occursIn`,
-`hasTaxon`, `isDescribedBy`); model predicates must be model qualifiers (`is`,
-`isDerivedFrom`, `isDescribedBy`, `isInstanceOf`, `hasInstance`). Using the wrong
-context raises `ValueError` on export.
-
-```python
-# Round-trip: annotations survive export → import on the Model
-sbml.write(model, "model.xml")
-model = sbml.read("model.xml")
-model.get_raw_variables()["EGFR"].annotations  # [Annotation(uri=..., predicate="is")]
-model.get_annotations()                          # model-level annotations
-```
-
----
-
-## Native JSON format (`mxlpy.save` / `mxlpy.load`)
-
-Version-controllable `.mxl.json` format that captures the full model structure
-(variables, parameters, reactions, derived quantities, readouts). Rate
-expressions are stored as trees of math nodes from the node set shared with
-MxlWeb, so the same files can be consumed by both tools.
-
-```python
-import mxlpy
-
-# Save a model to the native JSON format
-mxlpy.save(model, "model.mxl.json")
-
-# Load it back - all constructs restored, simulates identically
-model = mxlpy.load("model.mxl.json")
-```
-
-- Rate functions go through SymPy, so a loaded model uses generated (not the
-  original named) functions and is behaviourally identical. `save -> load ->
-  save` reaches a stable fixed point.
-- Optional metadata: `mxlpy.save(model, path, model_id="glycolysis", description="...")`.
-- Raises `mxlpy.types.SerializationError` for surrogates or rate functions that
-  cannot be parsed into an expression.
-- Each file references a `$schema` (the shared `mxl-schemas` repo) for editor
-  validation and autocompletion. Use SBML instead for cross-tool interchange.
-
----
-
-## Model comparison (`mxlpy.compare`)
-
-Compare simulations of two models side-by-side (e.g. before/after refactoring, or two hypotheses):
-
-> Steady-state comparison
-
-```python
-from mxlpy import compare
-
-cmp = compare.steady_states(model_a, model_b)
-print(cmp.variables)   # pd.DataFrame: variable values from both models
-print(cmp.fluxes)      # pd.DataFrame: flux values from both models
-cmp.plot_variables()
-cmp.plot_fluxes()
-```
-
-> Time-course comparison
-
-```python
-import numpy as np
-
-time_points = np.linspace(0, 100, 300)
-cmp = compare.time_courses(model_a, model_b, time_points=time_points)
-cmp.plot_variables()
-```
-
-> Protocol comparison
-
-```python
-from mxlpy import make_protocol
-
-protocol = make_protocol([(10, {"k1": 1.0}), (10, {"k1": 3.0})])
-cmp = compare.protocol_time_courses(model_a, model_b, protocol=protocol)
-cmp.plot_variables()
-```
-
----
+Symbolic analysis, identifiability, stability visualisation, units, and parallel execution / caching.
 
 ## Symbolic analysis (`mxlpy.symbolic`)
 
-Convert a `Model` to a symbolic representation using SymPy for analytical inspection and identifiability analysis.
-
-> Convert to symbolic model
+Convert a `Model` to a SymPy representation for analytical inspection.
 
 ```python
-from mxlpy import to_symbolic_model
+import sympy
+from mxlpy import to_symbolic_model, symbolic
 
-sym_model = to_symbolic_model(model)
-# sym_model exposes SymPy expressions for ODEs and derived quantities
+sym = to_symbolic_model(model)
+sym.jacobian()        # symbolic Jacobian
 ```
 
-> Structural identifiability analysis (requires StrikeGOLDD)
+### Structural identifiability
+
+`symbolic.check_identifiability(symbolic_model, outputs=[...])` tests whether parameters are *structurally* identifiable from the chosen observed outputs (requires StrikeGOLDD). `outputs` are SymPy symbols of the observed variables.
 
 ```python
-from mxlpy import symbolic
-
-result = symbolic.check_identifiability(model, observed=["x", "y"])
+res = symbolic.check_identifiability(sym, outputs=[sympy.Symbol("i"), sympy.Symbol("r")])
+print(res.summary())
 ```
 
----
+## Numerical (practical) identifiability (`mxlpy.identify`)
 
-## Neural network surrogates (`mxlpy.surrogates`, `mxlpy.nn`)
-
-Surrogates replace expensive sub-models with trained neural networks while preserving the ODE interface.
-
-> Add a pre-trained surrogate to a model
+`profile_likelihood` asks whether a parameter is *practically* identifiable from data: for each fixed value of the parameter of interest it refits the remaining parameters (from `n_random` random starts) and records the best error. A clear minimum around the true value ⟹ identifiable; a flat profile ⟹ not.
 
 ```python
-# surrogate must implement SurrogateProtocol
-model.add_surrogate(
-    name="v_surrogate",
-    surrogate=trained_surrogate,
-    args=["s", "p", "vmax"],
-    outputs=["v_fwd", "v_rev"],
-    stoichiometries={"v_fwd": {"s": -1, "p": 1}, "v_rev": {"s": 1, "p": -1}},
+import numpy as np
+from mxlpy import plot
+from mxlpy.identify import profile_likelihood
+
+errors = profile_likelihood(            # -> pd.Series indexed by parameter value
+    model,
+    data=data,                          # pd.DataFrame
+    parameter_name="beta",
+    parameter_values=np.linspace(0.1, 0.3, 10),
+    n_random=10,                         # random starts for the nuisance parameters
+    # loss_fn=fit.rmse                   # optional
 )
+fig, ax = plot.lines(errors, legend=False)
+ax.set(xlabel="parameter value", ylabel="abs(error)")
 ```
 
-> Update or remove a surrogate
+## Stability visualisation
+
+Phase-plane vector fields and steady-state classification. `plot.trajectories_2d(model, x1=(name, values), x2=(name, values))` draws a quiver field over two variables and returns `(fig, ax)`, so you can overlay example trajectories:
 
 ```python
-model.update_surrogate("v_surrogate", surrogate=new_surrogate, args=["s", "p"])
-model.remove_surrogate("v_surrogate")
+import numpy as np
+from mxlpy import Simulator, plot
+
+fig, ax = plot.trajectories_2d(model, x1=("s1", np.linspace(0, 2, 20)), x2=("s2", np.linspace(0, 2, 20)))
+for s1 in np.linspace(0, 1, 4):
+    for s2 in np.linspace(0, 2, 4):
+        c = Simulator(model, y0={"s1": s1, "s2": s2}).simulate(1.5).get_result().unwrap_or_err().variables
+        ax.plot(c["s1"], c["s2"])
 ```
 
-Available backends (lazy-loaded):
-- `mxlpy.nn` - PyTorch (default), Keras, Equinox (JAX-based)
-- `mxlpy.npe` - Neural Posterior Estimation (amortized Bayesian inference)
+For eigenvalue-based classification of a fixed point (`stable node`, `saddle point`, …) see `mca.steady_state_stability` in [scans & MCA](llms-scans-mca.txt).
 
----
+## Units (`mxlpy.units`)
 
-## Parallel execution and caching
-
-Scans, MC, and fitting all support parallelization via `pebble` + `dill`. Provide a `Cache` object to persist results to disk.
+Attach units to parameters/variables/reactions (via `Parameter`, `Variable`, `unit=`) using SymPy-units constants. Available names include `second`/`minute`/`hour`, `per_second`/`per_minute`/`per_hour`, `mol`/`mmol`/`mumol`/`nmol`/`pmol` and their per-time/per-gram variants (`mol_s`, `mmol_s`, `mmol_h`, `mmol_g`, …), and `meter`/`sqm`/`cbm`.
 
 ```python
-from mxlpy import scan, Cache, cartesian_product
+from mxlpy import Parameter, Variable, units
 
-cache = Cache(path="./results/scan_cache")
-parameters = cartesian_product({"k1": [0.5, 1.0, 2.0], "k2": [0.1, 1.0]})
-
-result = scan.steady_state(model, parameters=parameters, cache=cache)
-# Second call with same parameters loads from disk instead of recomputing
+Model().add_parameters({"k": Parameter(1.0, unit=units.per_second)}).add_variables({"S": Variable(0.0, unit=units.mmol)})
 ```
 
----
+`model.infer_units()` returns a `UnitInference` that propagates declared units through the model and reports any `Conflict` (inconsistent units in a rate expression).
 
-## Readouts and initial assignments
+## Parallel execution & caching (`mxlpy.parallel`)
 
-> Readout: an observable quantity computed from variables/parameters but not part of the ODE
+Scans, Monte Carlo and group/ensemble fits run in parallel by default (via `pebble` process pools + `dill`). The underlying `parallelise` is generic and reusable for any work, taking a function and an iterable of `(key, value)` pairs (the key maps results back to inputs and drives caching).
 
 ```python
-from mxlpy.fns import add
+from mxlpy.parallel import parallelise, Cache
 
-model.add_readout("total", add, args=["x", "y"])
-# Appears in simulation results alongside variables
+def square(x: float) -> float:
+    return x ** 2
+
+parallelise(square, [("a", 2), ("b", 3), ("c", 4)])
 ```
 
-> Initial assignment: compute initial conditions symbolically
+`Cache` persists results to disk so a repeated run loads instead of recomputing. It is a dataclass with `tmp_dir` (default `.cache`) and overridable `name_fn` / `load_fn` / `save_fn` (default pickle). Give each analysis its own folder to avoid collisions; pass `cache=` to `parallelise` and to scan functions.
 
 ```python
-model.add_variables({"atp": 1.0, "adp": 0.0})
-model.add_parameters({"adenine_total": 5.0})
-# adp_0 = adenine_total - atp_0  evaluated once before integration
-from mxlpy.fns import moiety_1s
-model.add_initial_assignment("adp", moiety_1s, args=["atp", "adenine_total"])
-```
+from pathlib import Path
+from mxlpy import scan, cartesian_product
 
----
-
-## Utility functions
-
-> Generate parameter combinations for scans
-
-```python
-from mxlpy import cartesian_product
-
-# Returns pd.DataFrame with one row per combination
-params = cartesian_product({
-    "k1": [0.5, 1.0, 2.0],
-    "k2": [0.1, 1.0, 5.0],
-})
-# 9 rows (3 × 3)
-```
-
-> Inspect model structure
-
-```python
-model.get_variable_names()         # list[str]
-model.get_parameter_names()        # list[str]
-model.get_reaction_names()         # list[str]
-model.get_parameter_values()       # dict[str, float]
-model.get_initial_conditions()     # dict[str, float]
-model.get_unused_parameters()      # set[str] - parameters not referenced by any fn
-model.get_stoichiometries()        # pd.DataFrame: reactions × variables
-```
-
-> Evaluate model at a point
-
-```python
-# RHS at current initial conditions and t=0
-rhs = model.get_right_hand_side(model.get_initial_conditions(), time=0.0)
-
-# All fluxes at given variable values
-import pandas as pd
-vars_df = pd.DataFrame({"x": [1.0, 0.8], "y": [0.5, 0.6]})
-fluxes_df = model.get_fluxes(vars_df)
-```
-
-> `make_variable_static` / `make_parameter_dynamic`
-
-```python
-# Remove a variable from the ODE (clamp it to a fixed value)
-model.make_variable_static("atp", value=2.0)
-
-# Promote a parameter to a dynamic variable (add it to the ODE)
-model.make_parameter_dynamic("k_enz", initial_value=1.0, stoichiometries={"v_synthesis": 1})
+cache = Cache(tmp_dir=Path(".cache") / "k1_k2_scan")
+result = scan.steady_state(model, to_scan=cartesian_product({"k1": [0.5, 1.0, 2.0], "k2": [0.1, 1.0]}), cache=cache)
+# Second call with the same keys loads from disk instead of recomputing.
 ```
