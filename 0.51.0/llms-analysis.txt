@@ -1,0 +1,350 @@
+# MxlPy - Analysis (Fitting, Scanning, MCA, Monte Carlo, Sensitivity)
+
+[← back to main reference](llms.txt)
+
+## Parameter fitting (`mxlpy.fit`)
+
+All fitting functions follow the same signature pattern:
+`fit.<mode>(model, p0, data, minimizer, ...)  -> Result[Fit]`
+
+`p0` is a `dict[str, float]` of initial parameter guesses. `data` is a `pd.DataFrame`. The `Fit` result has `.model`, `.best_pars`, and `.loss`.
+
+> Fit parameters to steady-state data
+
+```python
+import pandas as pd
+from mxlpy import fit
+from mxlpy.fit import LocalScipyMinimizer
+
+data = pd.DataFrame({"x": [0.5], "y": [1.2]})
+p0 = {"k1": 1.0, "k2": 1.0}
+
+result = fit.steady_state(model, p0=p0, data=data, minimizer=LocalScipyMinimizer())
+fitted = result.unwrap_or_err()
+print(fitted.best_pars)   # dict[str, float]
+print(fitted.loss)
+```
+
+> Fit parameters to time-course data
+
+```python
+import numpy as np
+
+time_points = np.linspace(0, 50, 100)
+data = pd.DataFrame({"x": x_measured, "y": y_measured}, index=time_points)
+
+result = fit.time_course(
+    model,
+    p0={"k1": 1.0, "k2": 0.5},
+    data=data,
+    minimizer=LocalScipyMinimizer(),
+)
+fitted = result.unwrap_or_err()
+```
+
+> Fit parameters to protocol time-course data
+
+```python
+from mxlpy import make_protocol
+
+protocol = make_protocol([(10, {"k1": 1.0}), (10, {"k1": 3.0})])
+
+result = fit.protocol_time_course(
+    model,
+    p0={"vmax": 2.0, "km": 0.5},
+    data=data,
+    minimizer=LocalScipyMinimizer(),
+    protocol=protocol,
+)
+```
+
+> Global optimization
+
+```python
+from mxlpy.fit import GlobalScipyMinimizer, Bounds
+
+bounds = Bounds(lower={"k1": 0.01, "k2": 0.01}, upper={"k1": 10.0, "k2": 10.0})
+result = fit.steady_state(
+    model,
+    p0={"k1": 1.0, "k2": 1.0},
+    data=data,
+    minimizer=GlobalScipyMinimizer(bounds=bounds),
+)
+```
+
+> Group fitting = multi-start (multistart) optimisation: one model, one dataset, many initial guesses run in parallel
+
+`group_*` is mxlpy's multi-start optimisation. `p0` is a `pd.DataFrame` with one
+row per start (e.g. from `mxlpy.distributions.sample`). It returns a `GroupFit`,
+not a `Result`; use `.get_best_fit()` for the best `Fit` and `.get_losses()` for
+the loss of every start. Also available: `group_time_course`,
+`group_protocol_time_course`.
+
+```python
+import pandas as pd
+from mxlpy.distributions import LogUniform, sample
+
+# Space out 50 starts across the parameter ranges
+p0 = sample({"k1": LogUniform(0.01, 10.0), "k2": LogUniform(0.01, 10.0)}, n=50)
+
+group_fit = fit.group_steady_state(
+    model,
+    p0=p0,
+    data=data,
+    minimizer=LocalScipyMinimizer(),
+)
+best = group_fit.get_best_fit()   # Fit with lowest loss
+losses = group_fit.get_losses()   # pd.Series of all start losses
+```
+
+> Joint fitting: fit shared parameters across multiple models/datasets simultaneously
+
+```python
+result = fit.joint_steady_state(
+    models=[model_a, model_b],
+    p0={"k_shared": 1.0},
+    data=[data_a, data_b],
+    minimizer=LocalScipyMinimizer(),
+)
+```
+
+> Ensemble fitting: fit different parameter sets for a list of models
+
+```python
+result = fit.ensemble_steady_state(
+    models=[model_a, model_b, model_c],
+    p0={"k1": 1.0},
+    data=data,
+    minimizer=LocalScipyMinimizer(),
+)
+```
+
+### Loss functions
+
+```python
+from mxlpy.fit import rmse, mae, mean_squared, mean_absolute_percentage, cosine_similarity
+
+# Pass as loss_fn argument to fitting functions
+result = fit.steady_state(model, p0, data, minimizer, loss_fn=rmse)
+```
+
+---
+
+## Parameter scanning (`mxlpy.scan`)
+
+`scan` functions sweep one or more parameters and collect steady-state or time-course results. Use `cartesian_product` to build multi-dimensional parameter grids.
+
+> Steady-state scan over a single parameter
+
+```python
+import numpy as np
+import pandas as pd
+from mxlpy import scan
+
+parameters = pd.DataFrame({"k1": np.linspace(0.1, 5.0, 50)})
+result = scan.steady_state(model, parameters=parameters)
+# result is a pd.DataFrame indexed by k1
+```
+
+> Multi-parameter steady-state scan (cartesian product)
+
+```python
+from mxlpy import scan, cartesian_product
+
+parameters = cartesian_product({"k1": [0.5, 1.0, 2.0], "k2": [0.1, 1.0, 5.0]})
+result = scan.steady_state(model, parameters=parameters)
+```
+
+> Time-course scan
+
+```python
+import numpy as np
+
+time_points = np.linspace(0, 100, 200)
+parameters = cartesian_product({"k1": [0.5, 1.0, 2.0]})
+result = scan.time_course(model, parameters=parameters, time_points=time_points)
+```
+
+> Protocol scan
+
+```python
+from mxlpy import make_protocol
+
+protocol = make_protocol([(10, {"light": 1.0}), (10, {"light": 0.0})])
+parameters = cartesian_product({"k1": [0.5, 1.0, 2.0]})
+result = scan.protocol(model, parameters=parameters, protocol=protocol)
+```
+
+> Visualize a steady-state scan
+
+```python
+from mxlpy import plot
+
+fig, ax = plot.one_axes()
+plot.lines(result[["x", "y"]], ax=ax)
+ax.set(xlabel="k1", ylabel="concentration / a.u.")
+plot.show()
+```
+
+---
+
+## Metabolic Control Analysis (`mxlpy.mca`)
+
+MCA quantifies how sensitive steady-state concentrations and fluxes are to infinitesimal changes in parameters or enzyme activities.
+
+> Concentration and flux control coefficients
+
+```python
+from mxlpy import mca
+
+rc = mca.response_coefficients(model)
+print(rc.concentrations)   # pd.DataFrame: parameters × variables
+print(rc.fluxes)           # pd.DataFrame: parameters × reactions
+```
+
+> Variable elasticities (sensitivity of fluxes to variable concentrations)
+
+```python
+elasticities = mca.variable_elasticities(model, parameters=model.get_parameter_values())
+```
+
+> Parameter elasticities
+
+```python
+elasticities = mca.parameter_elasticities(model, parameters=model.get_parameter_values())
+```
+
+> Visualize response coefficients as a heatmap
+
+```python
+from mxlpy import plot
+
+fig, ax = plot.one_axes()
+plot.heatmap(rc.concentrations, ax=ax)
+plot.show()
+```
+
+---
+
+## Monte Carlo analysis (`mxlpy.mc`)
+
+MC propagates parameter/initial-condition uncertainty through simulations.
+
+> Steady-state Monte Carlo with parameter distributions
+
+```python
+from mxlpy import mc, distributions
+
+par_dist = {
+    "k1": distributions.LogNormal(mean=1.0, sigma=0.2),
+    "k2": distributions.LogNormal(mean=0.5, sigma=0.1),
+}
+
+result = mc.steady_state(model, y0_dist={}, par_dist=par_dist, n_samples=1000)
+# result is a pd.DataFrame with n_samples rows
+```
+
+> Time-course Monte Carlo
+
+```python
+import numpy as np
+
+time_points = np.linspace(0, 100, 200)
+result = mc.time_course(
+    model,
+    y0_dist={},
+    par_dist=par_dist,
+    time_points=time_points,
+    n_samples=500,
+)
+```
+
+> Visualize MC results
+
+```python
+from mxlpy import plot
+
+fig, ax = plot.one_axes()
+plot.violins(result[["x", "y"]], ax=ax)
+plot.show()
+```
+
+---
+
+## Global sensitivity analysis (`mxlpy.sensitivity`)
+
+### Morris screening (`sensitivity.morris`)
+
+Morris elementary-effects screening identifies which parameters drive a model output, before committing to expensive analyses (fitting, identifiability, Sobol). Cost is only `n_trajectories * (k + 1)` model evaluations for `k` parameters.
+
+`sensitivity.morris(model, *, output, param_bounds, n_trajectories=10, num_levels=4, seed=None) -> pd.DataFrame`
+
+The result is indexed by parameter name with columns `mu` (mean elementary effect), `mu_star` (mean absolute effect — the importance ranking), `sigma` (std of effects — nonlinearity/interaction), and `mu_star_conf` (bootstrap CI). Reading: low `mu_star` = unimportant; high `mu_star` + low `sigma` = important & linear; high `mu_star` + high `sigma` = important & nonlinear.
+
+`output` is a callable `(model, samples: pd.DataFrame) -> np.ndarray` mapping the whole sample matrix (one row per sample, columns = parameter names) to one scalar per row. There are **no built-in output helpers** — build the reduction on `mxlpy.scan`, which runs samples in parallel, caches, and returns `NaN` on integration failure (the `NaN` propagates into the indices).
+
+`param_bounds` is a `dict[str, tuple[float, float]]` of `(lower, upper)` sampling bounds per parameter. `SALib` is a core dependency — no extra install step.
+
+> Screen steady-state of a species against rate constants
+
+```python
+from mxlpy import scan, sensitivity
+
+def steady_state_x(model, samples):
+    return scan.steady_state(model, to_scan=samples).variables["x"].to_numpy()
+
+result = sensitivity.morris(
+    model,
+    output=steady_state_x,
+    param_bounds={"k1": (0.5, 2.0), "k2": (0.5, 2.0), "k_out": (0.5, 2.0)},
+    n_trajectories=20,
+    seed=0,
+)
+result.sort_values("mu_star", ascending=False)
+```
+
+> Other common outputs via `scan`
+
+```python
+# Peak value over a time course
+def max_x(model, samples):
+    return (
+        scan.time_course(model, to_scan=samples, time_points=time_points)
+        .get_agg_per_run("max")["x"]
+        .to_numpy()
+    )
+
+# Area under the curve (pass np.trapezoid as the aggregator)
+def auc_x(model, samples):
+    return (
+        scan.time_course(model, to_scan=samples, time_points=time_points)
+        .get_agg_per_run(np.trapezoid)["x"]
+        .to_numpy()
+    )
+```
+
+### Variance-based Sobol indices (`sensitivity.sobol`)
+
+Once Morris has screened out the unimportant parameters, Sobol quantifies *how much* of the output variance each survivor explains. Cost is `n_samples * (k + 2)` model evaluations, so it is a deliberate follow-on, not a first pass.
+
+`sensitivity.sobol(model, *, output, param_bounds, n_samples=1024, seed=None) -> pd.DataFrame`
+
+`output` and `param_bounds` use the **same contract as `morris`** (batch callable on `mxlpy.scan`; `dict[str, tuple[float, float]]` bounds). `n_samples` must be a power of two (`ValueError` otherwise). The result is indexed by parameter name with columns `S1` (first-order index — variance explained alone), `ST` (total-order index — variance explained including all interactions), and their bootstrap CIs `S1_conf`, `ST_conf`. Reading: high `S1` = direct driver; large `ST - S1` gap = the parameter acts mainly through interactions; `ST ≈ 0` = negligible.
+
+> Quantify the survivors after a Morris screen
+
+```python
+from mxlpy import scan, sensitivity
+
+def steady_state_x(model, samples):
+    return scan.steady_state(model, to_scan=samples).variables["x"].to_numpy()
+
+result = sensitivity.sobol(
+    model,
+    output=steady_state_x,
+    param_bounds={"k1": (0.5, 2.0), "k2": (0.5, 2.0)},
+    n_samples=1024,   # power of two; total evals = n_samples * (k + 2)
+    seed=0,
+)
+result.sort_values("ST", ascending=False)
+```
