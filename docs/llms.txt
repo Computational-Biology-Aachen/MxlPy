@@ -61,3 +61,7 @@ plot.show()
 ```
 
 > Recommended style: define models inside a function so you can cheaply re-create a fresh instance.
+
+## MCP Server
+
+[MxlMCP](https://computational-biology-aachen.github.io/mxl-mcp/mxlpy/latest) is a Model Context Protocol server for MxlPy. It exposes MxlPy's modeling, simulation, fitting, and analysis capabilities as tools that AI assistants can call programmatically — enabling conversational model building, parameter estimation, and systems biology analysis.
