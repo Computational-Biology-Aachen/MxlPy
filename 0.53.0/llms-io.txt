@@ -1,0 +1,98 @@
+# MxlPy — Import / export & code generation
+
+[← back to index](llms.txt)
+
+## SBML (`mxlpy.sbml`)
+
+Read and write the Systems Biology Markup Language — the standard for sharing models across tools and languages. `read()` always returns a plain `Model`.
+
+```python
+from mxlpy import sbml
+
+model = sbml.read("model.xml")
+sbml.write(model, file="out.xml")
+
+# Optional meta-information on export (see sbml.org for legal values)
+sbml.write(model, file="out.xml", extent_units="mole", substance_units="mole", time_units="second")
+```
+
+### MIRIAM annotations
+
+Attach standardised ontology identifiers (UniProt, ChEBI, KEGG, GO, BioModels, …) to components and the model, e.g. to submit to the BioModels Database. An `Annotation` pairs an [identifiers.org](https://identifiers.org/) `uri` with a MIRIAM `predicate` (default `"is"`).
+
+- **Component** annotations use **biological** qualifiers (`bqbiol`): `is`, `hasPart`, `isPartOf`, `isVersionOf`, `hasVersion`, `isHomologTo`, `isEncodedBy`, `encodes`, `occursIn`, `hasTaxon`, `isDescribedBy`.
+- **Model** annotations use **model** qualifiers (`bqmodel`): `is`, `isDerivedFrom`, `isDescribedBy`, `isInstanceOf`, `hasInstance`.
+
+Using a predicate from the wrong context raises `ValueError` on export. The `annotations=` argument (a single `Annotation` or an iterable) is accepted by every `add_*` / `update_*` method; `annotate_model` adds model-level annotations. They serialise as `<annotation><rdf:RDF>` CVTerms and round-trip through `sbml.read`.
+
+```python
+from mxlpy import Annotation, Model, fns
+
+model = (
+    Model()
+    .add_parameter("k1", 1.0,
+        annotations=Annotation("https://identifiers.org/ec-code:1.1.1.1", predicate="isVersionOf"))
+    .add_variable("S", 0.0,
+        annotations=[
+            Annotation("https://identifiers.org/uniprot:P00533"),                 # predicate "is"
+            Annotation("https://identifiers.org/chebi:16796", predicate="hasPart"),
+        ])
+    .annotate_model(
+        Annotation("https://identifiers.org/biomodels.db:BIOMD0000000048", predicate="isDerivedFrom"))
+)
+
+sbml.write(model, file="annotated.xml")
+reloaded = sbml.read("annotated.xml")
+reloaded.get_annotations()                            # model-level annotations
+reloaded.get_raw_variables()["S"].annotations         # component annotations
+reloaded.get_raw_parameters()["k1"].annotations
+```
+
+## Native JSON (`mxlpy.save` / `mxlpy.load`)
+
+A version-controllable `.mxl.json` format capturing the full model structure (variables, parameters, reactions, derived quantities, readouts), designed for clean diffs. Rate expressions are stored as **trees of math nodes** shared with [MxlWeb](https://github.com/Computational-Biology-Aachen/mxl-web), so the same files serve both tools.
+
+```python
+import mxlpy
+
+mxlpy.save(model, "model.mxl.json", model_id="glycolysis", description="...")  # id/description optional
+restored = mxlpy.load("model.mxl.json")
+```
+
+- **Lossless dynamics, regenerated functions.** Rate functions go through SymPy, so a loaded model uses generated (not the original named) functions but simulates identically. `save → load → save` reaches a stable fixed point.
+- Each file references a `$schema` from the shared [`mxl-schemas`](https://github.com/Computational-Biology-Aachen/mxl-schemas) repo for editor validation/autocompletion. A `spec_version` field tracks the format version (shared with MxlWeb, decoupled from the package version).
+- Surrogates and rate functions that cannot be parsed into an expression raise `mxlpy.types.SerializationError` — use SBML for those, or for cross-tool interchange.
+
+## Code & LaTeX generation (`mxlpy.meta`)
+
+Inspect the Python source of model functions (parsed via `ast`) and re-emit the model as code or LaTeX. Requires **pure Python** functions (no `numpy`, no closures). Use cases: hand a model to collaborators in another language, generate a methods section, or diff two model versions.
+
+```python
+from mxlpy import meta
+
+# Round-trip back into mxlpy builder syntax (e.g. to freeze a fitted/SBML-imported model)
+print(meta.generate_mxlpy_code(model))
+
+# Self-contained ODE function in a target language. Result has .model, .derived, .inits.
+cg = meta.generate_model_code_py(model)        # also _rs (Rust), _ts (TypeScript), _jl (Julia)
+print(cg.model); print(cg.derived); print(cg.inits)
+```
+
+- `free_parameters=[...]` — leave these as function arguments instead of inlined constants (to drive scans/fits in the target environment).
+- `derived_to_calculate=[...]` — emit only these derived quantities; intermediates needed solely for omitted ones are pruned.
+- Code targets raise `ValueError` on untranslatable constructs (a loud failure beats nonsense output).
+
+### LaTeX
+
+```python
+# Structured tables (parameters, variables, rates, stoichiometry)
+print(*meta.generate_model_code_latex(model, gls={"k_in": r"k_{in}"}, long_name_cutoff=20).as_tables(), sep="\n\n")
+
+# Highlighted diff between two model versions (only_changes=True to drop unchanged rows)
+print(*meta.generate_latex_diff(model_a, model_b, only_changes=False).as_default(), sep="\n\n")
+
+# Wrap either result in a complete, compilable .tex document
+print(meta.generate_latex_document(meta.generate_model_code_latex(model)))
+```
+
+The LaTeX exporter inserts a red placeholder for untranslatable equations (rather than raising) and continues, so the rest of the document remains usable.

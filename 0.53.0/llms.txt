@@ -1,0 +1,67 @@
+# MxlPy
+
+> MxlPy (pronounced "em axe el pie") is a Python package for **mechanistic learning** — combining mechanistic modeling (ODEs) with machine learning to deliver explainable, data-informed solutions for systems biology. Models encode real biology (ODEs, stoichiometry, kinetics); ML augments understanding without replacing it. Maintained by the Computational Biology group at RWTH Aachen.
+
+Targets Python 3.12–3.13. Part of a tool family with [MxlBricks](https://github.com/Computational-Biology-Aachen/mxl-bricks) (composable reaction bricks) and [MxlWeb](https://github.com/Computational-Biology-Aachen/mxl-web) (browser simulation).
+
+## Core concepts
+
+- **Fluent builder.** Every `Model` mutation (`add_*` / `update_*` / `remove_*` / `scale_*`) returns `Self`, so calls chain. The same applies to `Simulator`.
+- **Pure named rate functions.** Rate/derived functions take `float` args and return a `float`. They must be pure and **pickle-able**, so **lambdas are not allowed** — always pass a named function reference (e.g. from `mxlpy.fns`). `args` are passed **by position**, so their order must match the function signature.
+- **Result / Option error handling.** Operations that can fail (simulation, fitting) return `Result[T]`. Extract with `.unwrap_or_err()` (raises on failure) or `.value` (`T | Exception`, inspect with `isinstance(..., Exception)`) or `.default(fn)`.
+- **DataFrames everywhere.** Simulations, scans, MCA and MC return `pandas` objects, which feed directly into the `plot` and `fit` modules.
+- **Special name `time`.** Use `"time"` in `args` to make a reaction depend on integration time.
+
+## Reference map
+
+Each file is a self-contained reference for one topic area:
+
+- [modeling](llms-modeling.txt) — building models: variables, parameters, reactions, rate functions (`fns`), derived quantities, initial assignments, data, introspection/CRUD, `compose`, compartmentalisation, label models
+- [simulation](llms-simulation.txt) — `Simulator`: time courses, protocols, steady state, the result object, error handling, integrator configuration
+- [scans & MCA](llms-scans-mca.txt) — `scan` (steady-state / time-course / protocol parameter sweeps) and `mca` (elasticities, response coefficients, stability, rate characteristics)
+- [sensitivity](llms-sensitivity.txt) — global sensitivity: Morris screening and Sobol variance decomposition
+- [fitting](llms-fitting.txt) — `fit` (steady-state / time-course / protocol; group / ensemble / joint / mixed), minimizers, loss functions, fuzzy fitting, Monte Carlo (`mc`), distributions, parameterisation from BRENDA
+- [mechanistic learning](llms-mxl.txt) — neural-network surrogates, neural posterior estimation (`npe`), universal differential equations (UDEs), reaction carousels
+- [visualization](llms-visualization.txt) — the `plot` module and model-comparison `report`s
+- [import/export](llms-io.txt) — SBML read/write (+ MIRIAM annotations), native `.mxl.json` format, code/LaTeX generation (`meta`)
+- [advanced](llms-advanced.txt) — symbolic analysis, structural & numerical identifiability, stability, units, parallel execution & caching
+
+## Installation
+
+```bash
+uv sync --all-extras --all-groups   # PyPI; uses the Scipy integrator
+pixi install --frozen                # conda-forge; adds the Assimulo integrator
+```
+
+Heavy backends (torch, keras, jax/equinox/diffrax, SymPy regression) are optional and lazy-imported.
+
+## Quick start
+
+> Build a model with a fluent builder, then simulate it.
+
+```python
+from mxlpy import Model, Simulator, fns, plot
+
+def get_model() -> Model:
+    return (
+        Model()
+        .add_variables({"S": 0.0, "P": 0.0})
+        .add_parameters({"k_in": 1.0, "k1": 1.0, "k_out": 1.0})
+        .add_reaction("v_in", fns.constant, args=["k_in"], stoichiometry={"S": 1})
+        .add_reaction("v1", fns.proportional, args=["k1", "S"], stoichiometry={"S": -1, "P": 1})
+        .add_reaction("v_out", fns.proportional, args=["k_out", "P"], stoichiometry={"P": -1})
+    )
+
+# Simulate a time course; the result unpacks into (variables, fluxes)
+variables, fluxes = Simulator(get_model()).simulate(t_end=10).get_result().unwrap_or_err()
+
+fig, ax = plot.lines(variables)
+ax.set(xlabel="time / a.u.", ylabel="concentration / a.u.")
+plot.show()
+```
+
+> Recommended style: define models inside a function so you can cheaply re-create a fresh instance.
+
+## MCP Server
+
+[MxlMCP](https://computational-biology-aachen.github.io/mxl-mcp/mxlpy/latest) is a Model Context Protocol server for MxlPy. It exposes MxlPy's modeling, simulation, fitting, and analysis capabilities as tools that AI assistants can call programmatically — enabling conversational model building, parameter estimation, and systems biology analysis.
