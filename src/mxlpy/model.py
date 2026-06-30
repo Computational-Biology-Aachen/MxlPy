@@ -12,7 +12,7 @@ import inspect
 import itertools as it
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Any, Self, cast
 
 import numpy as np
 import pandas as pd
@@ -1916,6 +1916,134 @@ class Model:
     #         compound=compound,
     #         value=self.stoichiometries[rate_name][compound] * scale,
     #     )
+
+    ##########################################################################
+    # Rename
+    ##########################################################################
+
+    def _rename_references(self, old_name: str, new_name: str) -> None:
+        """Replace every reference to ``old_name`` with ``new_name`` in place.
+
+        Rewrites all ``args`` lists and stoichiometry keys across the model. The
+        owning slot itself is handled by :meth:`rename`.
+
+        Parameters
+        ----------
+        old_name
+            The name currently being referenced.
+        new_name
+            The name to reference instead.
+
+        """
+
+        def rename_args(args: list[str]) -> list[str]:
+            return [new_name if arg == old_name else arg for arg in args]
+
+        def rename_stoich(
+            stoich: Mapping[str, float | Derived],
+        ) -> dict[str, float | Derived]:
+            result: dict[str, float | Derived] = {}
+            for cpd, factor in stoich.items():
+                if isinstance(factor, Derived):
+                    factor.args = rename_args(factor.args)
+                result[new_name if cpd == old_name else cpd] = factor
+            return result
+
+        # Initial assignments on variables and parameters
+        for variable in self._variables.values():
+            if isinstance(init := variable.initial_value, InitialAssignment):
+                init.args = rename_args(init.args)
+        for parameter in self._parameters.values():
+            if isinstance(value := parameter.value, InitialAssignment):
+                value.args = rename_args(value.args)
+
+        # Args of derived values and readouts
+        for derived in self._derived.values():
+            derived.args = rename_args(derived.args)
+        for readout in self._readouts.values():
+            readout.args = rename_args(readout.args)
+
+        # Args and stoichiometries of reactions
+        for reaction in self._reactions.values():
+            reaction.args = rename_args(reaction.args)
+            reaction.stoichiometry = rename_stoich(reaction.stoichiometry)
+
+        # Args and stoichiometries of surrogates
+        for surrogate in self._surrogates.values():
+            surrogate.args = rename_args(surrogate.args)
+            surrogate.stoichiometries = {
+                (new_name if flux == old_name else flux): rename_stoich(stoich)
+                for flux, stoich in surrogate.stoichiometries.items()
+            }
+
+    @_invalidate_cache
+    def rename(self, old_name: str, new_name: str) -> Self:
+        """Rename a model component and update all references to it.
+
+        Renames any registered name - variable, parameter, derived, reaction,
+        readout, surrogate, surrogate output or data set - and rewrites every
+        reference to it in ``args`` lists and stoichiometries.
+
+        Examples
+        --------
+            >>> model.rename("v1", "glucose")
+
+        Parameters
+        ----------
+        old_name
+            The current name of the component.
+        new_name
+            The new name for the component.
+
+        Returns
+        -------
+        Self
+            The instance of the model with the component renamed.
+
+        Raises
+        ------
+        KeyError
+            If ``old_name`` is not a registered name, or ``new_name`` is the
+            reserved ``"time"`` identifier.
+        NameError
+            If ``new_name`` already exists in the model.
+
+        """
+        if old_name == new_name:
+            return self
+
+        ctx = self._ids[old_name]  # KeyError if old_name is unknown
+        # Insert before remove so a collision or reserved name raises before
+        # any part of the model is mutated.
+        self._insert_id(name=new_name, ctx=ctx)
+        self._remove_id(name=old_name)
+
+        # Move the owning slot
+        containers: list[dict[str, Any]] = [
+            self._variables,
+            self._parameters,
+            self._derived,
+            self._readouts,
+            self._reactions,
+            self._surrogates,
+            self._data,
+        ]
+        for container in containers:
+            if old_name in container:
+                container[new_name] = container.pop(old_name)
+                break
+        else:
+            # Surrogate output: lives in a surrogate's `outputs` list
+            for surrogate in self._surrogates.values():
+                if old_name in surrogate.outputs:
+                    surrogate.outputs = [
+                        new_name if out == old_name else out
+                        for out in surrogate.outputs
+                    ]
+                    break
+
+        self._rename_references(old_name, new_name)
+        return self
 
     ##########################################################################
     # DSLs

@@ -4,7 +4,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from mxlpy import Derived, InitialAssignment, Simulator
 from mxlpy.model import Model
+from mxlpy.surrogates import qss
+
+
+def qss_single_output(v1: float) -> tuple[float]:
+    return (v1 * 2.0,)
 
 
 def no_arguments() -> float:
@@ -1292,3 +1298,240 @@ def test_get_right_hand_side_empty_concs() -> None:
     )
     with pytest.raises(KeyError):
         model.get_right_hand_side({})
+
+
+# ---------------------------------------------------------------------------
+# rename
+# ---------------------------------------------------------------------------
+
+
+def test_rename_variable() -> None:
+    model = (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_reaction(
+            "r1",
+            fn=one_argument,
+            args=["v1"],
+            stoichiometry={"v1": -1.0},
+        )
+    )
+    model.rename("v1", "x")
+
+    assert "x" in model.get_variable_names()
+    assert "v1" not in model.get_variable_names()
+    assert model._ids["x"] == "variable"
+    assert "v1" not in model._ids
+    rxn = model.get_raw_reactions(as_copy=False)["r1"]
+    assert rxn.args == ["x"]
+    assert "x" in rxn.stoichiometry
+    assert "v1" not in rxn.stoichiometry
+
+
+def test_rename_parameter() -> None:
+    model = (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_parameter("p1", 2.0)
+        .add_derived("d1", fn=two_arguments, args=["v1", "p1"])
+    )
+    model.rename("p1", "k")
+
+    assert "k" in model.get_parameter_names()
+    assert "p1" not in model._ids
+    assert model.get_raw_derived(as_copy=False)["d1"].args == ["v1", "k"]
+
+
+def test_rename_parameter_in_initial_assignment() -> None:
+    model = (
+        Model()
+        .add_parameter("p1", 2.0)
+        .add_variable("v1", InitialAssignment(fn=one_argument, args=["p1"]))
+    )
+    model.rename("p1", "k")
+
+    init = model.get_raw_variables(as_copy=False)["v1"].initial_value
+    assert isinstance(init, InitialAssignment)
+    assert init.args == ["k"]
+
+
+def test_rename_derived() -> None:
+    model = (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_derived("d1", fn=one_argument, args=["v1"])
+        .add_reaction(
+            "r1",
+            fn=one_argument,
+            args=["d1"],
+            stoichiometry={"v1": -1.0},
+        )
+    )
+    model.rename("d1", "flux")
+
+    assert "flux" in model.get_derived_variable_names()
+    assert model.get_raw_reactions(as_copy=False)["r1"].args == ["flux"]
+
+
+def test_rename_reaction() -> None:
+    model = (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_reaction(
+            "r1",
+            fn=one_argument,
+            args=["v1"],
+            stoichiometry={"v1": -1.0},
+        )
+        .add_readout("ro1", fn=one_argument, args=["r1"])
+    )
+    model.rename("r1", "uptake")
+
+    assert "uptake" in model.get_reaction_names()
+    assert "r1" not in model._ids
+    assert model._readouts["ro1"].args == ["uptake"]
+
+
+def test_rename_readout() -> None:
+    model = (
+        Model().add_variable("v1", 1.0).add_readout("ro1", fn=one_argument, args=["v1"])
+    )
+    model.rename("ro1", "energy")
+
+    assert "energy" in model.get_readout_names()
+    assert "ro1" not in model._ids
+
+
+def test_rename_surrogate() -> None:
+    model = (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_surrogate(
+            "qss1",
+            qss.Surrogate(
+                model=qss_single_output,
+                args=["v1"],
+                outputs=["out1"],
+                stoichiometries={"out1": {"v1": -1.0}},
+            ),
+        )
+    )
+    model.rename("qss1", "ml")
+
+    assert "ml" in model.get_raw_surrogates(as_copy=False)
+    assert "qss1" not in model._ids
+    # Outputs are unaffected when renaming the surrogate itself
+    assert model.get_raw_surrogates(as_copy=False)["ml"].outputs == ["out1"]
+
+
+def test_rename_surrogate_output() -> None:
+    model = (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_surrogate(
+            "qss1",
+            qss.Surrogate(
+                model=qss_single_output,
+                args=["v1"],
+                outputs=["out1"],
+                stoichiometries={"out1": {"v1": -1.0}},
+            ),
+        )
+        .add_readout("ro1", fn=one_argument, args=["out1"])
+    )
+    model.rename("out1", "flux")
+
+    surrogate = model.get_raw_surrogates(as_copy=False)["qss1"]
+    assert surrogate.outputs == ["flux"]
+    assert "flux" in surrogate.stoichiometries
+    assert "out1" not in surrogate.stoichiometries
+    assert "out1" not in model._ids
+    assert model._readouts["ro1"].args == ["flux"]
+
+
+def test_rename_data() -> None:
+    model = (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_data("d", pd.Series({"a": 1.0}))
+        .add_reaction(
+            "r1",
+            fn=two_arguments,
+            args=["v1", "d"],
+            stoichiometry={"v1": -1.0},
+        )
+    )
+    model.rename("d", "measured")
+
+    assert "measured" in model._data
+    assert "d" not in model._ids
+    assert model.get_raw_reactions(as_copy=False)["r1"].args == ["v1", "measured"]
+
+
+def test_rename_string_stoichiometry() -> None:
+    model = (
+        Model()
+        .add_variable("v1", 1.0)
+        .add_parameter("p1", 2.0)
+        .add_reaction(
+            "r1",
+            fn=one_argument,
+            args=["v1"],
+            stoichiometry={"v1": "p1"},
+        )
+    )
+    model.rename("p1", "k")
+
+    factor = model.get_raw_reactions(as_copy=False)["r1"].stoichiometry["v1"]
+    assert isinstance(factor, Derived)
+    assert factor.args == ["k"]
+
+
+def test_rename_missing_name() -> None:
+    model = Model().add_variable("v1", 1.0)
+    with pytest.raises(KeyError):
+        model.rename("nope", "x")
+
+
+def test_rename_collision() -> None:
+    model = Model().add_variables({"v1": 1.0, "v2": 2.0})
+    with pytest.raises(NameError):
+        model.rename("v1", "v2")
+    # Insert-before-remove: the model is left untouched
+    assert "v1" in model._ids
+    assert "v2" in model._ids
+
+
+def test_rename_to_time() -> None:
+    model = Model().add_variable("v1", 1.0)
+    with pytest.raises(KeyError):
+        model.rename("v1", "time")
+    assert "v1" in model._ids
+
+
+def test_rename_same_name_is_noop() -> None:
+    model = Model().add_variable("v1", 1.0)
+    assert model.rename("v1", "v1") is model
+    assert "v1" in model._ids
+
+
+def test_rename_preserves_dynamics() -> None:
+    def build(var: str, par: str) -> Model:
+        return (
+            Model()
+            .add_variable(var, 10.0)
+            .add_parameter(par, 0.5)
+            .add_reaction(
+                "r1",
+                fn=two_arguments,
+                args=[var, par],
+                stoichiometry={var: -1.0},
+            )
+        )
+
+    renamed = build("v1", "p1").rename("v1", "x").rename("p1", "k")
+    reference = build("x", "k")
+
+    res_renamed = Simulator(renamed).simulate(10).get_result().unwrap_or_err()
+    res_reference = Simulator(reference).simulate(10).get_result().unwrap_or_err()
+    pd.testing.assert_frame_equal(res_renamed.variables, res_reference.variables)
