@@ -3,8 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from collections import Counter
 
-from mxlpy import Model, fns
+from mxlpy import Model, fns, make_protocol
 from mxlpy.integrators import DefaultIntegrator
 from mxlpy.scan import (
     _steady_state_worker,
@@ -12,6 +13,7 @@ from mxlpy.scan import (
     _update_parameters_and_initial_conditions,
     steady_state,
     time_course,
+    protocol
 )
 
 
@@ -21,6 +23,31 @@ def simple_model() -> Model:
         Model()
         .add_variables({"S": 10.0, "P": 0.0})
         .add_parameters({"k1": 1.0, "k2": 2.0})
+        .add_reaction(
+            "v1",
+            fn=fns.mass_action_1s,
+            args=["S", "k1"],
+            stoichiometry={"S": -1.0, "P": 1.0},
+        )
+        .add_reaction(
+            "v2",
+            fn=fns.mass_action_1s,
+            args=["P", "k2"],
+            stoichiometry={"P": -1.0},
+        )
+    )
+    
+@pytest.fixture
+def complex_model() -> Model:
+    return (
+        Model()
+        .add_variables({"S": 10.0, "P": 0.0})
+        .add_parameters({"k1": 1.0, "k2": 2.0})
+        .add_readout(
+            "1/S",
+            fn=fns.one_div,
+            args=["S"]
+        )
         .add_reaction(
             "v1",
             fn=fns.mass_action_1s,
@@ -106,9 +133,17 @@ def test_protocol_time_course() -> None:
     assert True
 
 
-def test_protocolscan_combined() -> None:
-    # FIXME: implement this
-    assert True
+def test_protocolscan_combined(complex_model: Model) -> None:
+    to_scan = pd.DataFrame({"k1": [1.0, 2.0, 3.0]})
+    
+    result = protocol(
+        complex_model,
+        to_scan=to_scan,
+        protocol=make_protocol([(1, {"k2": 2}), (2, {"k2": 4})]),
+        parallel=False,
+    ).combined
+    
+    assert Counter(list(result.columns)) == Counter(complex_model.get_variable_names() + complex_model.get_readout_names() + complex_model.get_reaction_names())
 
 
 def test_protocolscan_fluxes() -> None:
@@ -194,9 +229,16 @@ def test_steady_state_worker(simple_model: Model) -> None:
     assert not np.isnan(result.fluxes["v2"].iloc[-1])
 
 
-def test_steadystatescan_combined() -> None:
-    # FIXME: implement this
-    assert True
+def test_steadystatescan_combined(complex_model: Model) -> None:
+    to_scan = pd.DataFrame({"k1": [1.0, 2.0, 3.0]})
+
+    result = steady_state(
+        complex_model,
+        to_scan=to_scan,
+        parallel=False,
+    ).combined
+    
+    assert Counter(list(result.columns)) == Counter(complex_model.get_variable_names() + complex_model.get_readout_names() + complex_model.get_reaction_names())
 
 
 def test_steadystatescan_fluxes() -> None:
@@ -255,9 +297,18 @@ def test_time_course_worker(simple_model: Model) -> None:
     assert not np.isnan(result.fluxes.values).any()
 
 
-def test_timecoursescan_combined() -> None:
-    # FIXME: implement this
-    assert True
+def test_timecoursescan_combined(complex_model: Model) -> None:
+    to_scan = pd.DataFrame({"k1": [1.0, 2.0]})
+    time_points = np.linspace(0, 1, 3)
+
+    result = time_course(
+        complex_model,
+        to_scan=to_scan,
+        time_points=time_points,
+        parallel=False,
+    ).combined
+    
+    assert Counter(list(result.columns)) == Counter(complex_model.get_variable_names() + complex_model.get_readout_names() + complex_model.get_reaction_names())
 
 
 def test_timecoursescan_fluxes() -> None:
