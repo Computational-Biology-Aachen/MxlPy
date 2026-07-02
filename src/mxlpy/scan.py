@@ -365,7 +365,7 @@ class SteadyStateScan:
         include_reactions: bool = True,
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
-        include_readouts: bool = False,
+        include_readouts: bool = True,
     ) -> pd.DataFrame:
         """Return steady-state args by scan.
 
@@ -554,7 +554,7 @@ class TimeCourseScan:
         include_reactions: bool = True,
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
-        include_readouts: bool = False,
+        include_readouts: bool = True,
     ) -> pd.DataFrame:
         """Return all args of the time courses.
 
@@ -797,7 +797,7 @@ class ProtocolScan:
         include_reactions: bool = True,
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
-        include_readouts: bool = False,
+        include_readouts: bool = True,
     ) -> pd.DataFrame:
         """Return all args of the time courses.
 
