@@ -123,12 +123,20 @@ def routine(test: int) -> bool:
         elif k_conc in result.columns:
             result = result.rename(columns={k_conc: k})
 
+    args = m.get_args()
     for k in sim_settings.get("amount-ids", []):
         k_amount = f"{k}_amount"
         if k in result.columns and k_amount in result.columns:
             result = result.drop(columns=[k]).rename(columns={k_amount: k})
         elif k_amount in result.columns:
             result = result.rename(columns={k_amount: k})
+        elif k_amount in args:
+            # Constant species held at a fixed amount while their concentration
+            # derives from a dynamic compartment (SBML spec section 4.6.4): the amount
+            # lives in a constant parameter, not a simulated column, so it never
+            # shows up in `result`. Overwrite the (derived, non-constant) `k`
+            # column with the constant amount instead.
+            result[k] = args[k_amount]
 
     common = list(expected.columns.intersection(result.columns))
     return np.testing.assert_allclose(
