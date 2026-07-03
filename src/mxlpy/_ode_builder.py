@@ -204,35 +204,31 @@ def _expr_free_symbol_names(expr: sympy.Expr) -> list[str]:
     """Return an expression's free symbol names in a deterministic order.
 
     `Expr.free_symbols` is a `set`, whose iteration order depends on
-    Python's per-process string hash seed. Sorting makes the binding
-    between an expression's symbols and a positional `args` list
-    reproducible across processes.
+    Python's per-process string hash seed. Sorting keeps repeated calls
+    for the same expression reproducible across processes.
     """
     return sorted(i.name for i in expr.free_symbols if isinstance(i, sympy.Symbol))
 
 
-def _expr_as_fn(fn: RateFn | sympy.Expr, *, args: list[str]) -> RateFn:
-    if isinstance(fn, sympy.Expr):
-        symbols = _expr_free_symbol_names(fn)
-        if len(symbols) != len(args):
-            msg = (
-                f"Expression {fn} has {len(symbols)} free symbol(s) {symbols}, "
-                f"but {len(args)} args were given: {args}"
-            )
-            raise ValueError(msg)
-        return sympy.lambdify(symbols, fn)
-    return fn
+def _expr_to_fn_and_args(expr: sympy.Expr) -> tuple[RateFn, list[str]]:
+    """Convert a sympy expression into a callable and its own argument names.
+
+    The expression's free symbol names are used *literally* as the
+    argument names - they must exist as parameters/variables/derived
+    quantities in the model. There is no separate `args` list to remap
+    them through: a sympy expression has no declared parameter order to
+    bind such a list against, so mxlpy does not offer one.
+    """
+    args = _expr_free_symbol_names(expr)
+    return sympy.lambdify(args, expr), args
 
 
 def _expr_as_initial_assignment[T](
     value: T | InitialAssignment | sympy.Expr,
 ) -> T | InitialAssignment:
     if isinstance(value, sympy.Expr):
-        args = _expr_free_symbol_names(value)
-        value = InitialAssignment(
-            fn=sympy.lambdify(args, value),
-            args=args,
-        )
+        fn, args = _expr_to_fn_and_args(value)
+        value = InitialAssignment(fn=fn, args=args)
     return value
 
 
@@ -1060,7 +1056,7 @@ class OdeModelBuilder:
     def add_derived(
         self,
         name: str,
-        fn: RateFn | sympy.Expr,
+        fn: RateFn,
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
@@ -1093,7 +1089,56 @@ class OdeModelBuilder:
         """
         self._insert_id(name=name, ctx="derived")
         self._derived[name] = Derived(
-            fn=_expr_as_fn(fn, args=args),
+            fn=fn,
+            args=args,
+            unit=unit,
+            annotations=_normalize_annotations(annotations),
+        )
+        return self
+
+    @_invalidate_cache
+    def add_derived_from_expr(
+        self,
+        name: str,
+        expr: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+    ) -> Self:
+        """Adds a derived attribute computed from a sympy expression.
+
+        Unlike `add_derived`, there is no separate `args` list: the
+        expression's free symbols are used *literally* as argument names,
+        so they must already exist as parameters/variables/derived
+        quantities in the model.
+
+        Examples
+        --------
+            >>> k1, km = sympy.symbols("k1 km")
+            >>> model.add_derived_from_expr("keq", k1 / km)
+
+        Parameters
+        ----------
+        name
+            The name of the derived attribute.
+        expr
+            A sympy expression whose free symbols name existing model
+            components.
+        unit
+            Unit of the derived value
+        annotations
+            MIRIAM annotation(s) for the derived value (bqbiol qualifiers).
+
+        Returns
+        -------
+        Self
+            The instance of the model with the added derived attribute.
+
+        """
+        self._insert_id(name=name, ctx="derived")
+        fn, args = _expr_to_fn_and_args(expr)
+        self._derived[name] = Derived(
+            fn=fn,
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
@@ -1134,7 +1179,7 @@ class OdeModelBuilder:
     def update_derived(
         self,
         name: str,
-        fn: RateFn | sympy.Expr | None = None,
+        fn: RateFn | None = None,
         *,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
@@ -1167,9 +1212,50 @@ class OdeModelBuilder:
         """
         der = self._derived[name]
         if fn is not None:
-            der.fn = _expr_as_fn(fn, args=args if args is not None else der.args)
+            der.fn = fn
         if args is not None:
             der.args = args
+        if unit is not None:
+            der.unit = unit
+        if annotations is not None:
+            der.annotations = _normalize_annotations(annotations)
+        return self
+
+    @_invalidate_cache
+    def update_derived_from_expr(
+        self,
+        name: str,
+        expr: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+    ) -> Self:
+        """Updates a derived attribute from a sympy expression.
+
+        The expression's free symbols are used *literally* as argument
+        names and fully replace the previous `args`, since there is no
+        way to keep an old `args` list alongside a new expression.
+
+        Parameters
+        ----------
+        name
+            The name of the derived function to update.
+        expr
+            A sympy expression whose free symbols name existing model
+            components.
+        unit
+            Unit of the derived value
+        annotations
+            MIRIAM annotation(s) to replace the derived value's annotations.
+
+        Returns
+        -------
+        Self
+            The instance of the class with the updated derived function and arguments.
+
+        """
+        der = self._derived[name]
+        der.fn, der.args = _expr_to_fn_and_args(expr)
         if unit is not None:
             der.unit = unit
         if annotations is not None:
@@ -1583,7 +1669,7 @@ class OdeModelBuilder:
     def add_readout(
         self,
         name: str,
-        fn: RateFn | sympy.Expr,
+        fn: RateFn,
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
@@ -1616,7 +1702,51 @@ class OdeModelBuilder:
         """
         self._insert_id(name=name, ctx="readout")
         self._readouts[name] = Readout(
-            fn=_expr_as_fn(fn, args=args),
+            fn=fn,
+            args=args,
+            unit=unit,
+        )
+        return self
+
+    def add_readout_from_expr(
+        self,
+        name: str,
+        expr: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+    ) -> Self:
+        """Adds a readout computed from a sympy expression.
+
+        Unlike `add_readout`, there is no separate `args` list: the
+        expression's free symbols are used *literally* as argument names,
+        so they must already exist as parameters/variables/derived
+        quantities in the model.
+
+        Examples
+        --------
+            >>> nadph, nadp_total = sympy.symbols("NADPH NADP*_total")
+            >>> model.add_readout_from_expr("energy_state", nadph / nadp_total)
+
+        Parameters
+        ----------
+        name
+            The name of the readout.
+        expr
+            A sympy expression whose free symbols name existing model
+            components.
+        unit
+            Unit of the readout
+
+        Returns
+        -------
+        Self
+            The instance of the model with the added readout.
+
+        """
+        self._insert_id(name=name, ctx="readout")
+        fn, args = _expr_to_fn_and_args(expr)
+        self._readouts[name] = Readout(
+            fn=fn,
             args=args,
             unit=unit,
         )

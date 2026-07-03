@@ -266,35 +266,31 @@ def _expr_free_symbol_names(expr: sympy.Expr) -> list[str]:
     """Return an expression's free symbol names in a deterministic order.
 
     `Expr.free_symbols` is a `set`, whose iteration order depends on
-    Python's per-process string hash seed. Sorting makes the binding
-    between an expression's symbols and a positional `args` list
-    reproducible across processes.
+    Python's per-process string hash seed. Sorting keeps repeated calls
+    for the same expression reproducible across processes.
     """
     return sorted(i.name for i in expr.free_symbols if isinstance(i, sympy.Symbol))
 
 
-def _expr_as_fn(fn: RateFn | sympy.Expr, *, args: list[str]) -> RateFn:
-    if isinstance(fn, sympy.Expr):
-        symbols = _expr_free_symbol_names(fn)
-        if len(symbols) != len(args):
-            msg = (
-                f"Expression {fn} has {len(symbols)} free symbol(s) {symbols}, "
-                f"but {len(args)} args were given: {args}"
-            )
-            raise ValueError(msg)
-        return sympy.lambdify(symbols, fn)
-    return fn
+def _expr_to_fn_and_args(expr: sympy.Expr) -> tuple[RateFn, list[str]]:
+    """Convert a sympy expression into a callable and its own argument names.
+
+    The expression's free symbol names are used *literally* as the
+    argument names - they must exist as parameters/variables/derived
+    quantities in the model. There is no separate `args` list to remap
+    them through: a sympy expression has no declared parameter order to
+    bind such a list against, so mxlpy does not offer one.
+    """
+    args = _expr_free_symbol_names(expr)
+    return sympy.lambdify(args, expr), args
 
 
 def _expr_as_initial_assignment[T](
     value: T | InitialAssignment | sympy.Expr,
 ) -> T | InitialAssignment:
     if isinstance(value, sympy.Expr):
-        args = _expr_free_symbol_names(value)
-        value = InitialAssignment(
-            fn=sympy.lambdify(args, value),
-            args=args,
-        )
+        fn, args = _expr_to_fn_and_args(value)
+        value = InitialAssignment(fn=fn, args=args)
     return value
 
 
@@ -302,11 +298,8 @@ def _expr_as_derived[T](
     value: T | Derived | sympy.Expr,
 ) -> T | Derived:
     if isinstance(value, sympy.Expr):
-        args = _expr_free_symbol_names(value)
-        value = Derived(
-            fn=sympy.lambdify(args, value),
-            args=args,
-        )
+        fn, args = _expr_to_fn_and_args(value)
+        value = Derived(fn=fn, args=args)
     return value
 
 
@@ -1519,7 +1512,7 @@ class KineticModelBuilder:
     def add_derived(
         self,
         name: str,
-        fn: RateFn | sympy.Expr,
+        fn: RateFn,
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
@@ -1552,7 +1545,56 @@ class KineticModelBuilder:
         """
         self._insert_id(name=name, ctx="derived")
         self._derived[name] = Derived(
-            fn=_expr_as_fn(fn, args=args),
+            fn=fn,
+            args=args,
+            unit=unit,
+            annotations=_normalize_annotations(annotations),
+        )
+        return self
+
+    @_invalidate_cache
+    def add_derived_from_expr(
+        self,
+        name: str,
+        expr: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+    ) -> Self:
+        """Adds a derived attribute computed from a sympy expression.
+
+        Unlike `add_derived`, there is no separate `args` list: the
+        expression's free symbols are used *literally* as argument names,
+        so they must already exist as parameters/variables/derived
+        quantities in the model.
+
+        Examples
+        --------
+            >>> k1, km = sympy.symbols("k1 km")
+            >>> model.add_derived_from_expr("keq", k1 / km)
+
+        Parameters
+        ----------
+        name
+            The name of the derived attribute.
+        expr
+            A sympy expression whose free symbols name existing model
+            components.
+        unit
+            Unit of the derived value
+        annotations
+            MIRIAM annotation(s) for the derived value (bqbiol qualifiers).
+
+        Returns
+        -------
+        Self
+            The instance of the model with the added derived attribute.
+
+        """
+        self._insert_id(name=name, ctx="derived")
+        fn, args = _expr_to_fn_and_args(expr)
+        self._derived[name] = Derived(
+            fn=fn,
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
@@ -1593,7 +1635,7 @@ class KineticModelBuilder:
     def update_derived(
         self,
         name: str,
-        fn: RateFn | sympy.Expr | None = None,
+        fn: RateFn | None = None,
         *,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
@@ -1626,9 +1668,50 @@ class KineticModelBuilder:
         """
         der = self._derived[name]
         if fn is not None:
-            der.fn = _expr_as_fn(fn, args=args if args is not None else der.args)
+            der.fn = fn
         if args is not None:
             der.args = args
+        if unit is not None:
+            der.unit = unit
+        if annotations is not None:
+            der.annotations = _normalize_annotations(annotations)
+        return self
+
+    @_invalidate_cache
+    def update_derived_from_expr(
+        self,
+        name: str,
+        expr: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+    ) -> Self:
+        """Updates a derived attribute from a sympy expression.
+
+        The expression's free symbols are used *literally* as argument
+        names and fully replace the previous `args`, since there is no
+        way to keep an old `args` list alongside a new expression.
+
+        Parameters
+        ----------
+        name
+            The name of the derived function to update.
+        expr
+            A sympy expression whose free symbols name existing model
+            components.
+        unit
+            Unit of the derived value
+        annotations
+            MIRIAM annotation(s) to replace the derived value's annotations.
+
+        Returns
+        -------
+        Self
+            The instance of the class with the updated derived function and arguments.
+
+        """
+        der = self._derived[name]
+        der.fn, der.args = _expr_to_fn_and_args(expr)
         if unit is not None:
             der.unit = unit
         if annotations is not None:
@@ -1805,7 +1888,7 @@ class KineticModelBuilder:
     def add_reaction(
         self,
         name: str,
-        fn: RateFn | sympy.Expr,
+        fn: RateFn,
         *,
         args: list[str],
         stoichiometry: Mapping[str, float | str | Derived | sympy.Expr],
@@ -1853,7 +1936,69 @@ class KineticModelBuilder:
             for k, v in stoichiometry.items()
         }
         self._reactions[name] = Reaction(
-            fn=_expr_as_fn(fn, args=args),
+            fn=fn,
+            stoichiometry=stoich,
+            args=args,
+            unit=unit,
+            annotations=_normalize_annotations(annotations),
+        )
+        return self
+
+    @_invalidate_cache
+    def add_reaction_from_expr(
+        self,
+        name: str,
+        expr: sympy.Expr,
+        *,
+        stoichiometry: Mapping[str, float | str | Derived | sympy.Expr],
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+    ) -> Self:
+        """Adds a reaction whose rate is computed from a sympy expression.
+
+        Unlike `add_reaction`, there is no separate `args` list: the
+        expression's free symbols are used *literally* as argument names,
+        so they must already exist as parameters/variables/derived
+        quantities in the model.
+
+        Examples
+        --------
+            >>> s, vmax, km = sympy.symbols("s vmax km")
+            >>> model.add_reaction_from_expr(
+            ...     "v1", vmax * s / (km + s), stoichiometry={"s": -1}
+            ... )
+
+        Parameters
+        ----------
+        name
+            The name of the reaction.
+        expr
+            A sympy expression whose free symbols name existing model
+            components.
+        stoichiometry
+            The stoichiometry of the reaction, mapping variables to their coefficients.
+        unit
+            Unit of the rate
+        annotations
+            MIRIAM annotation(s) for the reaction (bqbiol qualifiers).
+
+        Returns
+        -------
+        Self
+            The instance of the model with the added reaction.
+
+        """
+        self._insert_id(name=name, ctx="reaction")
+
+        stoich: dict[str, Derived | float] = {
+            k: Derived(fn=fns.constant, args=[v])
+            if isinstance(v, str)
+            else _expr_as_derived(v)
+            for k, v in stoichiometry.items()
+        }
+        fn, args = _expr_to_fn_and_args(expr)
+        self._reactions[name] = Reaction(
+            fn=fn,
             stoichiometry=stoich,
             args=args,
             unit=unit,
@@ -1881,7 +2026,7 @@ class KineticModelBuilder:
     def update_reaction(
         self,
         name: str,
-        fn: RateFn | sympy.Expr | None = None,
+        fn: RateFn | None = None,
         *,
         args: list[str] | None = None,
         stoichiometry: Mapping[str, float | Derived | sympy.Expr | str] | None = None,
@@ -1920,11 +2065,7 @@ class KineticModelBuilder:
 
         """
         rxn = self._reactions[name]
-        rxn.fn = (
-            rxn.fn
-            if fn is None
-            else _expr_as_fn(fn, args=args if args is not None else rxn.args)
-        )
+        rxn.fn = rxn.fn if fn is None else fn
 
         if stoichiometry is not None:
             stoich = {
@@ -1935,6 +2076,58 @@ class KineticModelBuilder:
             }
             rxn.stoichiometry = stoich
         rxn.args = rxn.args if args is None else args
+        rxn.unit = rxn.unit if unit is None else unit
+        if annotations is not None:
+            rxn.annotations = _normalize_annotations(annotations)
+        return self
+
+    @_invalidate_cache
+    def update_reaction_from_expr(
+        self,
+        name: str,
+        expr: sympy.Expr,
+        *,
+        stoichiometry: Mapping[str, float | Derived | sympy.Expr | str] | None = None,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+    ) -> Self:
+        """Updates a reaction's rate from a sympy expression.
+
+        The expression's free symbols are used *literally* as argument
+        names and fully replace the previous `args`, since there is no
+        way to keep an old `args` list alongside a new expression.
+
+        Parameters
+        ----------
+        name
+            The name of the reaction to update.
+        expr
+            A sympy expression whose free symbols name existing model
+            components.
+        stoichiometry
+            The new stoichiometry for the reaction. If None, the existing stoichiometry is retained.
+        unit
+            Unit of the reaction
+        annotations
+            MIRIAM annotation(s) to replace the reaction's annotations.
+
+        Returns
+        -------
+        Self
+            The instance of the model with the updated reaction.
+
+        """
+        rxn = self._reactions[name]
+        rxn.fn, rxn.args = _expr_to_fn_and_args(expr)
+
+        if stoichiometry is not None:
+            stoich = {
+                k: Derived(fn=fns.constant, args=[v])
+                if isinstance(v, str)
+                else _expr_as_derived(v)
+                for k, v in stoichiometry.items()
+            }
+            rxn.stoichiometry = stoich
         rxn.unit = rxn.unit if unit is None else unit
         if annotations is not None:
             rxn.annotations = _normalize_annotations(annotations)
@@ -2158,7 +2351,7 @@ class KineticModelBuilder:
     def add_readout(
         self,
         name: str,
-        fn: RateFn | sympy.Expr,
+        fn: RateFn,
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
@@ -2191,7 +2384,51 @@ class KineticModelBuilder:
         """
         self._insert_id(name=name, ctx="readout")
         self._readouts[name] = Readout(
-            fn=_expr_as_fn(fn, args=args),
+            fn=fn,
+            args=args,
+            unit=unit,
+        )
+        return self
+
+    def add_readout_from_expr(
+        self,
+        name: str,
+        expr: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+    ) -> Self:
+        """Adds a readout computed from a sympy expression.
+
+        Unlike `add_readout`, there is no separate `args` list: the
+        expression's free symbols are used *literally* as argument names,
+        so they must already exist as parameters/variables/derived
+        quantities in the model.
+
+        Examples
+        --------
+            >>> nadph, nadp_total = sympy.symbols("NADPH NADP*_total")
+            >>> model.add_readout_from_expr("energy_state", nadph / nadp_total)
+
+        Parameters
+        ----------
+        name
+            The name of the readout.
+        expr
+            A sympy expression whose free symbols name existing model
+            components.
+        unit
+            Unit of the readout
+
+        Returns
+        -------
+        Self
+            The instance of the model with the added readout.
+
+        """
+        self._insert_id(name=name, ctx="readout")
+        fn, args = _expr_to_fn_and_args(expr)
+        self._readouts[name] = Readout(
+            fn=fn,
             args=args,
             unit=unit,
         )
