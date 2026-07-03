@@ -12,6 +12,9 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy import _topo
+from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.meta.source_tools import fn_to_sympy_expr, fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
@@ -32,8 +35,6 @@ from mxlpy.units import Quantity
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy._steady_state_builder import SteadyStateModelBuilder
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,7 +71,6 @@ __all__ = [
     "generate_model_code_ts",
     "join_except_empty",
     "model_to_symbolic_repr",
-    "ss_builder_to_symbolic_repr",
     "valid_identifier",
     "valid_tex_identifier",
 ]
@@ -642,7 +642,108 @@ def _fns_to_symbolic_reprs(
     ]
 
 
-def model_to_symbolic_repr(
+def _ss_builder_to_symbolic_repr(
+    model: SteadyStateModelBuilder,
+    *,
+    only_warn: bool = False,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> SymbolicRepr:
+    sym = SymbolicRepr()
+
+    for k, parameter in model.get_raw_parameters().items():
+        sym.parameters[k] = SymbolicParameter(
+            value=_fn_to_symbolic_repr(
+                k,
+                val.fn,
+                val.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            )
+            if isinstance(val := parameter.value, InitialAssignment)
+            else sympy.Float(val),
+            unit=cast(Quantity, parameter.unit),
+        )
+
+    for k, der in model.get_raw_derived().items():
+        sym.derived[k] = _fn_to_symbolic_repr(
+            k,
+            der.fn,
+            der.args,
+            only_warn=only_warn,
+            custom_fns=custom_fns,
+        )
+
+    return sym
+
+
+def _ode_builder_to_symbolic_repr(
+    model: OdeModelBuilder,
+    *,
+    only_warn: bool = False,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> SymbolicRepr:
+    sym = SymbolicRepr()
+
+    for k, diff_eq in model.get_raw_diff_eqs().items():
+        sym.variables[k] = SymbolicVariable(
+            value=_fn_to_symbolic_repr(
+                k,
+                val.fn,
+                val.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            )
+            if isinstance(val := diff_eq.initial_value, InitialAssignment)
+            else sympy.Float(val),
+            unit=cast(Quantity, diff_eq.unit),
+        )
+        sym.reactions[k] = SymbolicReaction(
+            fn=_fn_to_symbolic_repr(
+                k,
+                diff_eq.fn,
+                diff_eq.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            ),
+            stoichiometry={k: sympy.Float(1.0)},
+        )
+
+    for k, parameter in model.get_raw_parameters().items():
+        sym.parameters[k] = SymbolicParameter(
+            value=_fn_to_symbolic_repr(
+                k,
+                val.fn,
+                val.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            )
+            if isinstance(val := parameter.value, InitialAssignment)
+            else sympy.Float(val),
+            unit=cast(Quantity, parameter.unit),
+        )
+
+    for k, der in model.get_raw_derived().items():
+        sym.derived[k] = _fn_to_symbolic_repr(
+            k,
+            der.fn,
+            der.args,
+            only_warn=only_warn,
+            custom_fns=custom_fns,
+        )
+
+    for k, der in model.get_raw_readouts().items():
+        sym.readouts[k] = _fn_to_symbolic_repr(
+            k,
+            der.fn,
+            der.args,
+            only_warn=only_warn,
+            custom_fns=custom_fns,
+        )
+
+    return sym
+
+
+def _kinetic_builder_to_symbolic_repr(
     model: KineticModelBuilder,
     *,
     only_warn: bool = False,
@@ -759,38 +860,27 @@ def model_to_symbolic_repr(
     return sym
 
 
-def ss_builder_to_symbolic_repr(
-    model: SteadyStateModelBuilder,
+def model_to_symbolic_repr(
+    model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
     *,
     only_warn: bool = False,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
 ) -> SymbolicRepr:
-    sym = SymbolicRepr()
-
-    for k, parameter in model.get_raw_parameters().items():
-        sym.parameters[k] = SymbolicParameter(
-            value=_fn_to_symbolic_repr(
-                k,
-                val.fn,
-                val.args,
-                only_warn=only_warn,
-                custom_fns=custom_fns,
-            )
-            if isinstance(val := parameter.value, InitialAssignment)
-            else sympy.Float(val),
-            unit=cast(Quantity, parameter.unit),
+    if isinstance(model, KineticModelBuilder):
+        return _kinetic_builder_to_symbolic_repr(
+            model, only_warn=only_warn, custom_fns=custom_fns
+        )
+    if isinstance(model, OdeModelBuilder):
+        return _ode_builder_to_symbolic_repr(
+            model, only_warn=only_warn, custom_fns=custom_fns
+        )
+    if isinstance(model, SteadyStateModelBuilder):
+        return _ss_builder_to_symbolic_repr(
+            model, only_warn=only_warn, custom_fns=custom_fns
         )
 
-    for k, der in model.get_raw_derived().items():
-        sym.derived[k] = _fn_to_symbolic_repr(
-            k,
-            der.fn,
-            der.args,
-            only_warn=only_warn,
-            custom_fns=custom_fns,
-        )
-
-    return sym
+    msg = f"Unknown model type {type(model)}"
+    raise ValueError(msg)
 
 
 ###############################################################################
