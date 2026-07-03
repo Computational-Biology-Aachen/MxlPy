@@ -122,6 +122,32 @@ from mxlpy.types import InitialAssignment
 )
 ```
 
+### Sympy expressions
+
+Anywhere a value, `InitialAssignment`, rate function, or `Derived` is expected, a `sympy.Expr` can be passed instead - mxlpy converts it to a callable via `sympy.lambdify`. Applies to `add_parameter(s)`, `add_variable(s)`, `add_derived`, `add_reaction` (`fn` and stoichiometry values), `add_readout`, surrogate stoichiometries, and their `update_*`/`make_*_static`/`make_*_dynamic` counterparts.
+
+Two binding rules, depending on whether the method also takes an explicit `args` list:
+
+- **No `args` parameter** (`add_parameter`, `add_variable`, stoichiometry values): symbol names are used **literally** to look up model components — they must already exist.
+- **Explicit `args` parameter** (`add_derived`, `add_reaction`'s `fn`, `add_readout`): symbols are anonymous placeholders bound to `args` positionally, **sorted alphabetically by symbol name** (sympy expressions have no declared parameter order). Lengths must match or a `ValueError` is raised.
+
+```python
+import sympy
+
+k1, km = sympy.symbols("k1 km")
+
+# literal: k1/km must exist as model names -> becomes an InitialAssignment
+Model().add_parameters({"k1": 2.0, "km": 4.0}).add_parameter("keq", k1 / km)
+
+# placeholder: k1, k2 don't need to exist; alphabetical k1->args[0], k2->args[1]
+k1, k2 = sympy.symbols("k1 k2")
+Model().add_parameters({"a1": 3.0, "a2": 5.0}).add_derived("diff", k1 - k2, args=["a1", "a2"])
+
+# reaction fn: free symbols sorted (km, s, vmax) bind to args in that order
+s, vmax, km = sympy.symbols("s vmax km")
+Model().add_reaction("v1", vmax * s / (km + s), args=["my_km", "my_s", "my_vmax"], stoichiometry={"my_s": -1})
+```
+
 ### Readouts and data
 
 ```python
