@@ -1,5 +1,5 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
-def create_model() -> Model:
-    return Model().add_parameter("C", value=4.0)
+def create_model() -> KineticModelBuilder:
+    return KineticModelBuilder().add_parameter("C", value=4.0)

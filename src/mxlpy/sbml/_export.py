@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
 
 __all__ = [
@@ -547,7 +547,7 @@ def _create_sbml_compartments(
 
 def _create_sbml_variables(
     *,
-    model: Model,
+    model: KineticModelBuilder,
     sbml_model: libsbml.Model,
 ) -> None:
     """Create the variables for the sbml model.
@@ -581,7 +581,9 @@ def _create_sbml_variables(
         _set_annotations(cpd, variable.annotations)
 
 
-def _create_sbml_derived_variables(*, model: Model, sbml_model: libsbml.Model) -> None:
+def _create_sbml_derived_variables(
+    *, model: KineticModelBuilder, sbml_model: libsbml.Model
+) -> None:
     for name, dv in model.get_derived_variables().items():
         sbml_ar = sbml_model.createAssignmentRule()
         sbml_ar.setId(_convert_id_to_sbml(id_=name, prefix="AR"))
@@ -609,7 +611,7 @@ def _create_derived_parameter(
 
 def _create_sbml_parameters(
     *,
-    model: Model,
+    model: KineticModelBuilder,
     sbml_model: libsbml.Model,
 ) -> None:
     """Create the parameters for the sbml model.
@@ -639,14 +641,16 @@ def _create_sbml_parameters(
         _set_annotations(k, value.annotations)
 
 
-def _create_sbml_derived_parameters(*, model: Model, sbml_model: libsbml.Model) -> None:
+def _create_sbml_derived_parameters(
+    *, model: KineticModelBuilder, sbml_model: libsbml.Model
+) -> None:
     for name, dp in model.get_derived_parameters().items():
         _create_derived_parameter(sbml_model, name, dp)
 
 
 def _create_sbml_reactions(
     *,
-    model: Model,
+    model: KineticModelBuilder,
     sbml_model: libsbml.Model,
 ) -> None:
     """Create the reactions for the sbml model."""
@@ -688,7 +692,7 @@ def _create_sbml_reactions(
 
 
 def _model_to_sbml(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     model_name: str,
     units: dict[str, AtomicUnit],
@@ -754,7 +758,7 @@ def _default_units(units: dict[str, AtomicUnit] | None) -> dict[str, AtomicUnit]
 
 
 def write(
-    model: Model,
+    model: KineticModelBuilder,
     file: Path,
     *,
     model_name: str | None = None,

@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 from mxlpy.fns import constant, mass_action_1s, michaelis_menten_1s
 
 __all__ = ["get_lin_chain_two_circles", "get_linear_chain_1v", "get_linear_chain_2v"]
 
 
-def get_linear_chain_1v() -> Model:
+def get_linear_chain_1v() -> KineticModelBuilder:
     """Linear chain of reactions with one variable."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"x": 1.0})
         .add_parameters({"k1": 1.0, "k_out": 1.0})
         .add_reaction(
@@ -29,10 +29,10 @@ def get_linear_chain_1v() -> Model:
     )
 
 
-def get_linear_chain_2v() -> Model:
+def get_linear_chain_2v() -> KineticModelBuilder:
     """Linear chain of reactions with two variables."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"x": 1.0, "y": 1.0})
         .add_parameters({"k1": 1.0, "k2": 2.0, "k_out": 1.0})
         .add_reaction(
@@ -56,10 +56,10 @@ def get_linear_chain_2v() -> Model:
     )
 
 
-def get_lin_chain_two_circles() -> Model:
+def get_lin_chain_two_circles() -> KineticModelBuilder:
     """Linear chain of reactions with two circles."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"x1": 1.0, "x2": 1.0, "x3": 1.0, "x4": 1.0})
         .add_parameters(
             {

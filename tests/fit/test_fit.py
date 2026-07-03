@@ -3,9 +3,9 @@ import pandas as pd
 
 from example_models import get_linear_chain_2v
 from mxlpy import fit
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.fit.abstract import _Settings
 from mxlpy.minimizers.abstract import mock_minimizer
-from mxlpy.model import Model
 
 
 def mock_residual_proto(
@@ -19,7 +19,7 @@ def test_fit_steady_state() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
     data = pd.Series()
     p_fit = fit.steady_state(
-        model=Model().add_parameters(p_true),
+        model=KineticModelBuilder().add_parameters(p_true),
         p0=p_true,
         data=data,
         minimizer=mock_minimizer,
@@ -33,7 +33,7 @@ def test_fit_time_course() -> None:
     p_true = {"k1": 1.0, "k2": 2.0, "k3": 1.0}
     data = pd.DataFrame()
     p_fit = fit.time_course(
-        model=Model(),
+        model=KineticModelBuilder(),
         p0=p_true,
         data=data,
         minimizer=mock_minimizer,

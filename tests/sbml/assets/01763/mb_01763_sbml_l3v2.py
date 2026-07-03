@@ -1,13 +1,13 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def J0(avogadro: float) -> float:
     return 6.02214179e23 / avogadro
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("S1", initial_value=1.0)
         .add_parameter("avogadro", value=1.0e24)
         .add_parameter("C", value=1.0)

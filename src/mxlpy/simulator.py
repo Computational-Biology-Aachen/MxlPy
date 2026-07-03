@@ -27,8 +27,8 @@ from mxlpy.symbolic import to_symbolic_model
 from mxlpy.types import IntegrationFailure, OscillationDetected, Result
 
 if TYPE_CHECKING:
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.integrators import IntegratorProtocol, IntegratorType
-    from mxlpy.model import Model
     from mxlpy.types import ArrayLike
 
 _LOGGER = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ class Simulator:
 
     """
 
-    model: Model
+    model: KineticModelBuilder
     y0: dict[str, float]
     integrator: IntegratorProtocol
     variables: list[pd.DataFrame] | None
@@ -97,7 +97,7 @@ class Simulator:
 
     def __init__(
         self,
-        model: Model,
+        model: KineticModelBuilder,
         y0: dict[str, float] | None = None,
         integrator: IntegratorType | None = None,
         *,

@@ -1,4 +1,4 @@
-from mxlpy import Derived, InitialAssignment, Model
+from mxlpy import Derived, InitialAssignment, KineticModelBuilder
 
 
 def init_S1_stoich() -> float:
@@ -13,9 +13,9 @@ def J0_stoich_S1(S1_stoich: float) -> float:
     return 1.0 * S1_stoich
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable(
             "S1_stoich",
             initial_value=InitialAssignment(fn=init_S1_stoich, args=[]),

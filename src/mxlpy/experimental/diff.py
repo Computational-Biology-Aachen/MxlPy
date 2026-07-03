@@ -12,7 +12,7 @@ from mxlpy.types import Derived
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
 __all__ = [
     "DerivedDiff",
@@ -160,7 +160,7 @@ def _soft_eq_stoichiometries(
     return True
 
 
-def soft_eq(m1: Model, m2: Model) -> bool:
+def soft_eq(m1: KineticModelBuilder, m2: KineticModelBuilder) -> bool:
     """Check if two models are equal, ignoring the functions.
 
     Parameters
@@ -207,7 +207,7 @@ def soft_eq(m1: Model, m2: Model) -> bool:
     return True
 
 
-def model_diff(m1: Model, m2: Model) -> ModelDiff:
+def model_diff(m1: KineticModelBuilder, m2: KineticModelBuilder) -> ModelDiff:
     """Compute the difference between two models.
 
     Parameters

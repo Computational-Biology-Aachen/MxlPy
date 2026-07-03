@@ -1,13 +1,13 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def dc(c: float) -> float:
     return 0.5 * c
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("c", initial_value=0.015)
         .add_reaction(
             "dc",

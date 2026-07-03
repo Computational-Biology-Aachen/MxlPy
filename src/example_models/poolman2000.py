@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 from mxlpy.fns import moiety_1s
 
 __all__ = [
@@ -337,9 +337,9 @@ variables = {
 }
 
 
-def get_model() -> Model:
+def get_model() -> KineticModelBuilder:
     """Calvin cycle model from Poolman et al. 2000."""
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameters(parameters)
     model.add_variables(variables)
 

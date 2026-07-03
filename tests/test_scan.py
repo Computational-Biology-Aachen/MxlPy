@@ -1,26 +1,27 @@
 from __future__ import annotations
 
+from collections import Counter
+
 import numpy as np
 import pandas as pd
 import pytest
-from collections import Counter
 
-from mxlpy import Model, fns, make_protocol
+from mxlpy import KineticModelBuilder, fns, make_protocol
 from mxlpy.integrators import DefaultIntegrator
 from mxlpy.scan import (
     _steady_state_worker,
     _time_course_worker,
     _update_parameters_and_initial_conditions,
+    protocol,
     steady_state,
     time_course,
-    protocol
 )
 
 
 @pytest.fixture
-def simple_model() -> Model:
+def simple_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"S": 10.0, "P": 0.0})
         .add_parameters({"k1": 1.0, "k2": 2.0})
         .add_reaction(
@@ -36,18 +37,15 @@ def simple_model() -> Model:
             stoichiometry={"P": -1.0},
         )
     )
-    
+
+
 @pytest.fixture
-def complex_model() -> Model:
+def complex_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"S": 10.0, "P": 0.0})
         .add_parameters({"k1": 1.0, "k2": 2.0})
-        .add_readout(
-            "1/S",
-            fn=fns.one_div,
-            args=["S"]
-        )
+        .add_readout("1/S", fn=fns.one_div, args=["S"])
         .add_reaction(
             "v1",
             fn=fns.mass_action_1s,
@@ -63,7 +61,7 @@ def complex_model() -> Model:
     )
 
 
-def test_steady_state_scan_empty_dataframe(simple_model: Model) -> None:
+def test_steady_state_scan_empty_dataframe(simple_model: KineticModelBuilder) -> None:
     """Empty to_scan must not crash and must return an empty result."""
     to_scan = pd.DataFrame({"k1": pd.Series([], dtype=float)})
     result = steady_state(simple_model, to_scan=to_scan, parallel=False)
@@ -71,7 +69,9 @@ def test_steady_state_scan_empty_dataframe(simple_model: Model) -> None:
     assert result.fluxes.empty
 
 
-def test_time_course_scan_empty_dataframe_raises(simple_model: Model) -> None:
+def test_time_course_scan_empty_dataframe_raises(
+    simple_model: KineticModelBuilder,
+) -> None:
     """Empty to_scan for time course scan raises ValueError on result access.
 
     The scan itself completes, but accessing ``.variables`` on the result calls
@@ -87,7 +87,9 @@ def test_time_course_scan_empty_dataframe_raises(simple_model: Model) -> None:
         _ = result.variables
 
 
-def test_steady_state_scan_nan_in_to_scan_raises(simple_model: Model) -> None:
+def test_steady_state_scan_nan_in_to_scan_raises(
+    simple_model: KineticModelBuilder,
+) -> None:
     """NaN parameter causes the ODE to diverge, y0 becomes NaN, scipy raises.
 
     ``update_parameter("k1", NaN)`` is accepted silently by the model, but
@@ -104,7 +106,7 @@ def test_steady_state_scan_nan_in_to_scan_raises(simple_model: Model) -> None:
 
 
 def test_update_parameters_and_initial_conditions_variable_vs_parameter(
-    simple_model: Model,
+    simple_model: KineticModelBuilder,
 ) -> None:
     """Column named after a variable updates that variable, not a parameter.
 
@@ -113,7 +115,7 @@ def test_update_parameters_and_initial_conditions_variable_vs_parameter(
     """
     from mxlpy.scan import _update_parameters_and_initial_conditions
 
-    def get_ic(model: Model) -> dict[str, float]:
+    def get_ic(model: KineticModelBuilder) -> dict[str, float]:
         return model.get_initial_conditions()
 
     pars = pd.Series({"S": 5.0, "k1": 2.0})
@@ -133,17 +135,21 @@ def test_protocol_time_course() -> None:
     assert True
 
 
-def test_protocolscan_combined(complex_model: Model) -> None:
+def test_protocolscan_combined(complex_model: KineticModelBuilder) -> None:
     to_scan = pd.DataFrame({"k1": [1.0, 2.0, 3.0]})
-    
+
     result = protocol(
         complex_model,
         to_scan=to_scan,
         protocol=make_protocol([(1, {"k2": 2}), (2, {"k2": 4})]),
         parallel=False,
     ).combined
-    
-    assert Counter(list(result.columns)) == Counter(complex_model.get_variable_names() + complex_model.get_readout_names() + complex_model.get_reaction_names())
+
+    assert Counter(list(result.columns)) == Counter(
+        complex_model.get_variable_names()
+        + complex_model.get_readout_names()
+        + complex_model.get_reaction_names()
+    )
 
 
 def test_protocolscan_fluxes() -> None:
@@ -181,7 +187,7 @@ def test_steady_state() -> None:
     assert True
 
 
-def test_steady_state_scan(simple_model: Model) -> None:
+def test_steady_state_scan(simple_model: KineticModelBuilder) -> None:
     to_scan = pd.DataFrame({"k1": [1.0, 2.0, 3.0]})
 
     result = steady_state(
@@ -197,7 +203,7 @@ def test_steady_state_scan(simple_model: Model) -> None:
     assert not np.isnan(result.fluxes.values).any()
 
 
-def test_steady_state_scan_with_multiindex(simple_model: Model) -> None:
+def test_steady_state_scan_with_multiindex(simple_model: KineticModelBuilder) -> None:
     to_scan = pd.DataFrame({"k1": [1.0, 2.0], "k2": [3.0, 4.0]})
 
     result = steady_state(
@@ -214,7 +220,7 @@ def test_steady_state_scan_with_multiindex(simple_model: Model) -> None:
     assert not np.isnan(result.fluxes.values).any()
 
 
-def test_steady_state_worker(simple_model: Model) -> None:
+def test_steady_state_worker(simple_model: KineticModelBuilder) -> None:
     result = _steady_state_worker(
         simple_model,
         rel_norm=False,
@@ -229,7 +235,7 @@ def test_steady_state_worker(simple_model: Model) -> None:
     assert not np.isnan(result.fluxes["v2"].iloc[-1])
 
 
-def test_steadystatescan_combined(complex_model: Model) -> None:
+def test_steadystatescan_combined(complex_model: KineticModelBuilder) -> None:
     to_scan = pd.DataFrame({"k1": [1.0, 2.0, 3.0]})
 
     result = steady_state(
@@ -237,8 +243,12 @@ def test_steadystatescan_combined(complex_model: Model) -> None:
         to_scan=to_scan,
         parallel=False,
     ).combined
-    
-    assert Counter(list(result.columns)) == Counter(complex_model.get_variable_names() + complex_model.get_readout_names() + complex_model.get_reaction_names())
+
+    assert Counter(list(result.columns)) == Counter(
+        complex_model.get_variable_names()
+        + complex_model.get_readout_names()
+        + complex_model.get_reaction_names()
+    )
 
 
 def test_steadystatescan_fluxes() -> None:
@@ -261,7 +271,7 @@ def test_time_course() -> None:
     assert True
 
 
-def test_time_course_scan(simple_model: Model) -> None:
+def test_time_course_scan(simple_model: KineticModelBuilder) -> None:
     to_scan = pd.DataFrame({"k1": [1.0, 2.0]})
     time_points = np.linspace(0, 1, 3)
 
@@ -282,7 +292,7 @@ def test_time_course_scan(simple_model: Model) -> None:
     assert not np.isnan(result.fluxes.values).any()
 
 
-def test_time_course_worker(simple_model: Model) -> None:
+def test_time_course_worker(simple_model: KineticModelBuilder) -> None:
     time_points = np.linspace(0, 1, 3)
     result = _time_course_worker(
         simple_model,
@@ -297,7 +307,7 @@ def test_time_course_worker(simple_model: Model) -> None:
     assert not np.isnan(result.fluxes.values).any()
 
 
-def test_timecoursescan_combined(complex_model: Model) -> None:
+def test_timecoursescan_combined(complex_model: KineticModelBuilder) -> None:
     to_scan = pd.DataFrame({"k1": [1.0, 2.0]})
     time_points = np.linspace(0, 1, 3)
 
@@ -307,8 +317,12 @@ def test_timecoursescan_combined(complex_model: Model) -> None:
         time_points=time_points,
         parallel=False,
     ).combined
-    
-    assert Counter(list(result.columns)) == Counter(complex_model.get_variable_names() + complex_model.get_readout_names() + complex_model.get_reaction_names())
+
+    assert Counter(list(result.columns)) == Counter(
+        complex_model.get_variable_names()
+        + complex_model.get_readout_names()
+        + complex_model.get_reaction_names()
+    )
 
 
 def test_timecoursescan_fluxes() -> None:
@@ -341,10 +355,10 @@ def test_timecoursescan_variables() -> None:
     assert True
 
 
-def test_update_parameters_and(simple_model: Model) -> None:
+def test_update_parameters_and(simple_model: KineticModelBuilder) -> None:
     params = pd.Series({"k1": 2.0})
 
-    def get_params(model: Model) -> dict[str, float]:
+    def get_params(model: KineticModelBuilder) -> dict[str, float]:
         return model.get_parameter_values()
 
     result = _update_parameters_and_initial_conditions(params, get_params, simple_model)

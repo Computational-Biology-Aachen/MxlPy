@@ -1,8 +1,8 @@
-from mxlpy import Model, meta
+from mxlpy import KineticModelBuilder, meta
 
 
-def model_empty() -> Model:
-    return Model()
+def model_empty() -> KineticModelBuilder:
+    return KineticModelBuilder()
 
 
 def test_generate_model_code_jax() -> None:

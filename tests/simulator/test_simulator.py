@@ -5,15 +5,15 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from mxlpy import Model, Simulator
+from mxlpy import KineticModelBuilder, Simulator
 from mxlpy.fns import mass_action_1s
 from mxlpy.types import IntegrationFailure
 
 
 @pytest.fixture
-def simple_model() -> Model:
+def simple_model() -> KineticModelBuilder:
     """Create a simple model for testing."""
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameters({"k1": 1.0, "k2": 2.0})
     model.add_variables({"S": 10.0, "P": 0.0})
 
@@ -35,12 +35,12 @@ def simple_model() -> Model:
 
 
 @pytest.fixture
-def simulator(simple_model: Model) -> Simulator:
+def simulator(simple_model: KineticModelBuilder) -> Simulator:
     """Create a simulator for testing."""
     return Simulator(simple_model)
 
 
-def test_simulator_init(simple_model: Model) -> None:
+def test_simulator_init(simple_model: KineticModelBuilder) -> None:
     """Test simulator initialization."""
     simulator = Simulator(simple_model)
     assert simulator.model == simple_model

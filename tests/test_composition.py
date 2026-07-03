@@ -4,23 +4,23 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mxlpy import Model, Simulator, compose, fns
+from mxlpy import KineticModelBuilder, Simulator, compose, fns
 
 
-def _producer() -> Model:
+def _producer() -> KineticModelBuilder:
     """Model that produces x."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k_in", 1.0)
         .add_variable("x", 1.0)
         .add_reaction("v_in", fns.constant, args=["k_in"], stoichiometry={"x": 1})
     )
 
 
-def _consumer() -> Model:
+def _consumer() -> KineticModelBuilder:
     """Model that consumes the shared variable x."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k_out", 1.0)
         .add_variable("x", 1.0)
         .add_reaction(
@@ -29,10 +29,10 @@ def _consumer() -> Model:
     )
 
 
-def _independent() -> Model:
+def _independent() -> KineticModelBuilder:
     """Model with a disjoint namespace from _producer."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k2", 2.0)
         .add_variable("y", 3.0)
         .add_reaction("v2", fns.constant, args=["k2"], stoichiometry={"y": 1})
@@ -69,8 +69,8 @@ def test_compose_conflict_raises_by_default() -> None:
 
 
 def test_compose_override_warns_and_later_model_wins() -> None:
-    m1 = Model().add_parameter("k", 1.0).add_variable("x", 1.0)
-    m2 = Model().add_parameter("k", 2.0).add_variable("x", 5.0)
+    m1 = KineticModelBuilder().add_parameter("k", 1.0).add_variable("x", 1.0)
+    m2 = KineticModelBuilder().add_parameter("k", 2.0).add_variable("x", 5.0)
 
     with pytest.warns(UserWarning, match="overridden"):
         merged = compose(m1, m2, raise_on_conflict=False)
@@ -92,9 +92,9 @@ def test_compose_does_not_mutate_inputs() -> None:
 
 
 def test_compose_three_models() -> None:
-    m1 = Model().add_variable("x", 1.0)
-    m2 = Model().add_variable("y", 2.0)
-    m3 = Model().add_variable("z", 3.0)
+    m1 = KineticModelBuilder().add_variable("x", 1.0)
+    m2 = KineticModelBuilder().add_variable("y", 2.0)
+    m3 = KineticModelBuilder().add_variable("z", 3.0)
 
     merged = compose(m1, m2, m3)
 
@@ -102,9 +102,9 @@ def test_compose_three_models() -> None:
 
 
 def test_compose_merges_derived_readouts_and_data() -> None:
-    base = Model().add_parameter("k_in", 1.0).add_variable("x", 1.0)
+    base = KineticModelBuilder().add_parameter("k_in", 1.0).add_variable("x", 1.0)
     extra = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k2", 2.0)
         .add_derived("d1", fns.proportional, args=["k2", "k2"])
         .add_readout("r1", fns.constant, args=["k2"])

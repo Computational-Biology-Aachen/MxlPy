@@ -1,6 +1,6 @@
 import pytest
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 from mxlpy._topo import CircularDependencyError, MissingDependenciesError
 
 
@@ -10,7 +10,7 @@ def moiety_1(x1: float, tot: float) -> float:
 
 def test_par_missing_parameter() -> None:
     m = (
-        Model()
+        KineticModelBuilder()
         .add_parameters({"x1": 1})
         # .add_parameters({"xtot": 1})
         .add_derived("x2", moiety_1, args=["x1", "xtot"])
@@ -21,7 +21,7 @@ def test_par_missing_parameter() -> None:
 
 def test_par_circular() -> None:
     m = (
-        Model()
+        KineticModelBuilder()
         .add_parameters({"xtot": 1})
         .add_derived("x1", moiety_1, args=["xtot", "x2"])
         .add_derived("x2", moiety_1, args=["xtot", "x1"])
@@ -32,7 +32,7 @@ def test_par_circular() -> None:
 
 def test_mod_missing_parameter() -> None:
     m = (
-        Model()
+        KineticModelBuilder()
         .add_variables({"x1": 1})
         .add_derived("x2", moiety_1, args=["x1", "xtot"])
     )
@@ -42,7 +42,7 @@ def test_mod_missing_parameter() -> None:
 
 def test_mod_missing_compound() -> None:
     m = (
-        Model()
+        KineticModelBuilder()
         .add_parameters({"xtot": 1})
         .add_derived("x2", moiety_1, args=["x1", "xtot"])
     )
@@ -52,7 +52,7 @@ def test_mod_missing_compound() -> None:
 
 def test_mod_circular() -> None:
     m = (
-        Model()
+        KineticModelBuilder()
         .add_parameters({"xtot": 1})
         .add_derived("x1", moiety_1, args=["xtot", "x2"])
         .add_derived("x2", moiety_1, args=["xtot", "x1"])

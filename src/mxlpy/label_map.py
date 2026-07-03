@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from mxlpy.model import Model
+from mxlpy._kinetic_builder import KineticModelBuilder
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -339,7 +339,7 @@ def _get_external_labels(
 
 
 def _create_isotopomer_reactions(
-    model: Model,
+    model: KineticModelBuilder,
     label_variables: dict[str, int],
     rate_name: str,
     function: Callable,
@@ -467,7 +467,7 @@ class LabelMapper:
 
     """
 
-    model: Model
+    model: KineticModelBuilder
     label_variables: dict[str, int] = field(default_factory=dict)
     label_maps: dict[str, list[int]] = field(default_factory=dict)
 
@@ -607,7 +607,7 @@ class LabelMapper:
 
     def build_model(
         self, initial_labels: dict[str, int | list[int]] | None = None
-    ) -> Model:
+    ) -> KineticModelBuilder:
         """Build new model with labeled species and reactions.
 
         Examples
@@ -635,7 +635,7 @@ class LabelMapper:
         isotopomers = self.get_isotopomers()
         initial_labels = {} if initial_labels is None else initial_labels
 
-        m = Model()
+        m = KineticModelBuilder()
 
         m.add_parameters(self.model.get_parameter_values())
 

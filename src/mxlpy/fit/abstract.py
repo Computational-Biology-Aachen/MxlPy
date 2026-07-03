@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Protocol
 import pandas as pd
 from wadler_lindig import pformat
 
-from mxlpy.model import Model
+from mxlpy._kinetic_builder import KineticModelBuilder
 
 __all__ = [
     "EnsembleFit",
@@ -27,9 +27,9 @@ __all__ = [
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 
 if TYPE_CHECKING:
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.integrators.abstract import IntegratorType
     from mxlpy.minimizers.abstract import LossFn
-    from mxlpy.model import Model
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class FitResidual(Protocol):
 class FitSettings:
     """Settings for a fit."""
 
-    model: Model
+    model: KineticModelBuilder
     data: pd.Series | pd.DataFrame
     y0: dict[str, float] | None = None
     integrator: IntegratorType | None = None
@@ -69,7 +69,7 @@ class FitSettings:
 class MixedSettings:
     """Settings for a fit."""
 
-    model: Model
+    model: KineticModelBuilder
     data: pd.Series | pd.DataFrame
     residual_fn: FitResidual
     y0: dict[str, float] | None = None
@@ -83,7 +83,7 @@ class MixedSettings:
 class _Settings:
     """Non user-facing version of FitSettings."""
 
-    model: Model
+    model: KineticModelBuilder
     data: pd.Series | pd.DataFrame
     y0: dict[str, float] | None
     integrator: IntegratorType | None
@@ -130,7 +130,7 @@ class _Settings:
 class Fit:
     """Result of a fit operation."""
 
-    model: Model
+    model: KineticModelBuilder
     best_pars: dict[str, float]
     loss: float
 

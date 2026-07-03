@@ -12,7 +12,7 @@ from mxlpy import sbml
 from mxlpy.types import Result
 
 if TYPE_CHECKING:
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
 __all__ = [
     "load_biomodel",
@@ -32,7 +32,7 @@ def _biomodel_id(accession: int | str) -> str:
     return accession
 
 
-def _sbml_bytes_to_model(content: bytes) -> Model:
+def _sbml_bytes_to_model(content: bytes) -> KineticModelBuilder:
     with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
         tmp.write(content)
         tmp_path = Path(tmp.name)
@@ -42,7 +42,7 @@ def _sbml_bytes_to_model(content: bytes) -> Model:
         tmp_path.unlink(missing_ok=True)
 
 
-def load_biomodel(accession: int | str) -> Result[Model]:
+def load_biomodel(accession: int | str) -> Result[KineticModelBuilder]:
     """Load a model from BioModels by accession ID or integer index.
 
     Parameters
@@ -104,7 +104,7 @@ def search_biomodels(query: str, n: int = 10) -> list[dict[str, Any]]:
     return response.json().get("models", [])
 
 
-def load_jws_model(slug: str) -> Result[Model]:
+def load_jws_model(slug: str) -> Result[KineticModelBuilder]:
     """Load a model from JWS Online by slug identifier.
 
     Parameters

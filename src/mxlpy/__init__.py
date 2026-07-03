@@ -61,6 +61,9 @@ from . import (
     sensitivity,
     units,
 )
+from ._kinetic_builder import KineticModelBuilder
+from ._ode_builder import OdeModelBuilder
+from ._steady_state_builder import SteadyStateModelBuilder
 from .composition import compose
 from .dsl import from_dsl
 from .integrators import DefaultIntegrator, Scipy
@@ -69,7 +72,6 @@ from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
 from .mc import Cache
 from .minimizers.abstract import AbstractMinimizer, MinimizerProtocol
-from .model import Model
 from .npe.abstract import AbstractEstimator, EstimatorProtocol
 from .serialize import load, save
 from .simulation import Simulation
@@ -102,6 +104,8 @@ else:
     npe = lazy_module("mxlpy.npe")
     surrogates = lazy_module("mxlpy.surrogates")
 
+# Alias for backward compatability
+Model = KineticModelBuilder
 
 __all__ = [
     "AbstractEstimator",
@@ -118,15 +122,18 @@ __all__ = [
     "EstimatorProtocol",
     "InitialAssignment",
     "IntegratorProtocol",
+    "KineticModelBuilder",
     "LabelMapper",
     "LinearLabelMapper",
     "MinimizerProtocol",
     "Model",
+    "OdeModelBuilder",
     "OscillationDetected",
     "Parameter",
     "Scipy",
     "Simulation",
     "Simulator",
+    "SteadyStateModelBuilder",
     "SurrogateProtocol",
     "SymbolicModel",
     "UnitInference",

@@ -11,7 +11,7 @@ from mxlpy import fns
 from mxlpy.fns import hill_1s, michaelis_menten_1s
 
 if TYPE_CHECKING:
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.types import RateFn
 
 __all__ = ["from_dsl"]
@@ -165,7 +165,7 @@ def _validate_args(
         raise ValueError(msg)
 
 
-def from_dsl[T: Model](
+def from_dsl[T: KineticModelBuilder](
     model: T,
     network: str,
     *,

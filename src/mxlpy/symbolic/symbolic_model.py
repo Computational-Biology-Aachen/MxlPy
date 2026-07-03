@@ -11,7 +11,7 @@ from wadler_lindig import pformat
 from mxlpy.meta.sympy_tools import fn_to_sympy_expr, list_of_symbols
 
 if TYPE_CHECKING:
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
 __all__ = [
     "SymbolicModel",
@@ -41,7 +41,7 @@ class SymbolicModel:
         )
 
 
-def to_symbolic_model(model: Model) -> SymbolicModel:
+def to_symbolic_model(model: KineticModelBuilder) -> SymbolicModel:
     """Convert model into symbolic representation.
 
     Parameters

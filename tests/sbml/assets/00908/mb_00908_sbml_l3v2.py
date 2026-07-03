@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def dC1(C1: float, C2: float) -> float:
@@ -9,9 +9,9 @@ def dC2(C1: float, C2: float) -> float:
     return 0.3 * C1 - 0.1 * C2
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("C1", initial_value=1.5)
         .add_variable("C2", initial_value=0.75)
         .add_reaction(

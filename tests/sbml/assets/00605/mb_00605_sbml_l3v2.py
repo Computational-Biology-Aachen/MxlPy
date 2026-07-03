@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def reaction1(S1: float, k1: float, S2: float) -> float:
@@ -9,9 +9,9 @@ def reaction2(S3: float, k2: float) -> float:
     return S3 * k2
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("S1", initial_value=0.1)
         .add_variable("S2", initial_value=0.2)
         .add_variable("S3", initial_value=0.1)

@@ -1,4 +1,4 @@
-from mxlpy import Derived, Model
+from mxlpy import Derived, KineticModelBuilder
 
 
 def Xref(time: float) -> float:
@@ -13,9 +13,9 @@ def J0_stoich_X(Xref: float) -> float:
     return 1.0 * Xref
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("X", initial_value=1.0)
         .add_parameter("k1", value=1.0)
         .add_parameter("default_compartment", value=1.0)

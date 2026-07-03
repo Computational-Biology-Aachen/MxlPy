@@ -38,8 +38,8 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from numpy.typing import NDArray
 
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.integrators import IntegratorType
-    from mxlpy.model import Model
     from mxlpy.plot import FigAx, FigAxs
 
 __all__ = [
@@ -58,7 +58,7 @@ __all__ = [
 def _response_coefficient_worker(
     parameter: str,
     *,
-    model: Model,
+    model: KineticModelBuilder,
     y0: dict[str, float] | None,
     normalized: bool,
     rel_norm: bool,
@@ -145,7 +145,7 @@ def _response_coefficient_worker(
 
 
 def variable_elasticities(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     to_scan: list[str] | None = None,
     variables: dict[str, float] | None = None,
@@ -210,7 +210,7 @@ def variable_elasticities(
 
 
 def parameter_elasticities(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     to_scan: list[str] | None = None,
     variables: dict[str, float] | None = None,
@@ -300,7 +300,7 @@ class ResponseCoefficients:
 
 
 def response_coefficients(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     to_scan: list[str] | None = None,
     variables: dict[str, float] | None = None,
@@ -418,7 +418,7 @@ class SteadyStateStability:
 
 
 def steady_state_stability(
-    model: Model,
+    model: KineticModelBuilder,
     steady_state: dict[str, float],
     *,
     threshold: float = 1e-10,
@@ -612,7 +612,7 @@ class RateCharacteristics:
 
 
 def rate_characteristics(
-    model: Model,
+    model: KineticModelBuilder,
     variable: str,
     *,
     min_factor: float = 100.0,

@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def z(x: float) -> float:
@@ -9,9 +9,9 @@ def dx() -> float:
     return 1
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("x", initial_value=0.0)
         .add_derived(
             "z",

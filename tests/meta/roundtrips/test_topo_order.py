@@ -1,4 +1,4 @@
-from mxlpy import Model, meta
+from mxlpy import KineticModelBuilder, meta
 
 
 def constant(x: float) -> float:
@@ -9,9 +9,9 @@ def mass_action_1s(s1: float, k: float) -> float:
     return k * s1
 
 
-def model_topo_order() -> Model:
+def model_topo_order() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("x1", initial_value=1.0)
         .add_derived(
             "d1",

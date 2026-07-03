@@ -1,6 +1,6 @@
 import math
 
-from mxlpy import Derived, InitialAssignment, Model
+from mxlpy import Derived, InitialAssignment, KineticModelBuilder
 
 
 def init_P2_sr() -> float:
@@ -311,9 +311,9 @@ def J0_stoich_P39(P39_sr: float) -> float:
     return 1.0 * P39_sr
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable(
             "P2_sr",
             initial_value=InitialAssignment(fn=init_P2_sr, args=[]),

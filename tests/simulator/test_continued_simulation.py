@@ -2,12 +2,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mxlpy import Model, Simulator, fns, make_protocol
+from mxlpy import KineticModelBuilder, Simulator, fns, make_protocol
 
 
-def get_model() -> Model:
+def get_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"x1": 0.0})
         .add_parameters({"kf": 1.0})
         .add_reaction(

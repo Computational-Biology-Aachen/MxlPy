@@ -3,11 +3,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from mxlpy import Model, fns, make_protocol, mc
+from mxlpy import KineticModelBuilder, fns, make_protocol, mc
 
 
-def get_simple_model() -> Model:
-    model = Model()
+def get_simple_model() -> KineticModelBuilder:
+    model = KineticModelBuilder()
     model.add_parameters({"k0": 1.0, "k1": 1.0, "k2": 2.0})
     model.add_variables({"S": 0.0, "P": 0.0})
 

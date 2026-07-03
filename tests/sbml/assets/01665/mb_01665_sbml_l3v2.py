@@ -1,13 +1,13 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def dp1() -> float:
     return 6.02214179
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("p1", initial_value=1.0)
         .add_reaction(
             "dp1",

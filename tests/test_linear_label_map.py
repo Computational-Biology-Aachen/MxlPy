@@ -3,6 +3,7 @@
 import pandas as pd
 import pytest
 
+from mxlpy._kinetic_builder import Derived, KineticModelBuilder
 from mxlpy.linear_label_map import (
     LinearLabelMapper,
     _add_label_influx_or_efflux,
@@ -14,7 +15,6 @@ from mxlpy.linear_label_map import (
     _stoichiometry_to_duplicate_list,
     _unpack_stoichiometries,
 )
-from mxlpy.model import Derived, Model
 
 
 def test_add_label_influx_or_efflux() -> None:
@@ -60,7 +60,7 @@ def test_generate_isotope_labels() -> None:
 def test_linear_label_mapper_build_model() -> None:
     """Test LinearLabelMapper build_model method."""
     # Create a simple model
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 0.0})
     model.add_parameters({"k1": 0.1})  # Changed from v1 to k1
     model.add_reaction(
@@ -98,7 +98,7 @@ def test_linear_label_mapper_build_model() -> None:
 def test_linear_label_mapper_build_model_with_initial_labels() -> None:
     """Test LinearLabelMapper build_model with initial labels."""
     # Create a simple model
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 1.0})
     model.add_parameters({"k1": 0.1})  # Changed from v1 to k1
     model.add_reaction(
@@ -129,7 +129,7 @@ def test_linear_label_mapper_build_model_with_initial_labels() -> None:
 
 def test_linear_label_mapper_build_model_with_multiple_initial_labels() -> None:
     # Test with multiple initial labels
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 1.0})
     model.add_parameters({"k1": 0.1})  # Changed from v1 to k1
     model.add_reaction(
@@ -159,7 +159,7 @@ def test_linear_label_mapper_build_model_with_multiple_initial_labels() -> None:
 
 def test_linear_label_mapper_get_isotopomers() -> None:
     """Test LinearLabelMapper get_isotopomers method."""
-    model = Model()
+    model = KineticModelBuilder()
     mapper = LinearLabelMapper(model=model, label_variables={"A": 2, "B": 3, "C": 1})
 
     isotopomers = mapper.get_isotopomers(["A", "C"])

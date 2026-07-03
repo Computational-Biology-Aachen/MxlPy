@@ -1,13 +1,13 @@
-from mxlpy import Model, meta
+from mxlpy import KineticModelBuilder, meta
 
 
 def add(x: float, y: float) -> float:
     return x + y
 
 
-def model_1der() -> Model:
+def model_1der() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", initial_value=1.0)
         .add_parameter("p1", value=1.0)
         .add_derived(

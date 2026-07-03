@@ -11,6 +11,7 @@ from typing import cast
 import pandas as pd
 
 from mxlpy import parallel
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.fit import losses
 from mxlpy.fit._single import protocol_time_course, steady_state, time_course
 from mxlpy.fit.abstract import Fit, FitResidual, GroupFit
@@ -22,7 +23,6 @@ from mxlpy.fit.residuals import (
 from mxlpy.integrators import IntegratorType
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
-from mxlpy.model import Model
 from mxlpy.simulator import _normalise_protocol_index
 from mxlpy.types import Result
 
@@ -32,7 +32,7 @@ __all__ = ["group_protocol_time_course", "group_steady_state", "group_time_cours
 def _wrap_steady_state(
     p0: dict[str, float],
     *,
-    model: Model,
+    model: KineticModelBuilder,
     data: pd.Series,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
@@ -63,7 +63,7 @@ def _wrap_steady_state(
 def _wrap_time_course(
     p0: dict[str, float],
     *,
-    model: Model,
+    model: KineticModelBuilder,
     data: pd.DataFrame,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
@@ -92,7 +92,7 @@ def _wrap_time_course(
 def _wrap_protocol_time_course(
     p0: dict[str, float],
     *,
-    model: Model,
+    model: KineticModelBuilder,
     data: pd.DataFrame,
     protocol: pd.DataFrame,
     minimizer: MinimizerProtocol,
@@ -126,7 +126,7 @@ def _iterrows(df: pd.DataFrame) -> Iterable[tuple[str, dict[str, float]]]:
 
 
 def group_steady_state(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     p0: pd.DataFrame,
     data: pd.Series,
@@ -211,7 +211,7 @@ def group_steady_state(
 
 
 def group_time_course(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     p0: pd.DataFrame,
     data: pd.DataFrame,
@@ -296,7 +296,7 @@ def group_time_course(
 
 
 def group_protocol_time_course(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     p0: pd.DataFrame,
     data: pd.DataFrame,

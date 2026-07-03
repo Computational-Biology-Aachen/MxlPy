@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def s_conc(s: float, c: float) -> float:
@@ -9,9 +9,9 @@ def dc(c: float) -> float:
     return 0.5 * c
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("c", initial_value=1.0)
         .add_variable("s", initial_value=2.0)
         .add_derived(

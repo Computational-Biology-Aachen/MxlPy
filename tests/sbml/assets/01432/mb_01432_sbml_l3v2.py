@@ -1,13 +1,13 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def J0() -> float:
     return 1
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("A", initial_value=30.0)
         .add_variable("B", initial_value=1.0)
         .add_parameter("C", value=1.0)

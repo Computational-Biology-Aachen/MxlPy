@@ -1,8 +1,8 @@
-from mxlpy import Model, meta
+from mxlpy import KineticModelBuilder, meta
 
 
-def model_1par() -> Model:
-    return Model().add_parameter("p1", value=1.0)
+def model_1par() -> KineticModelBuilder:
+    return KineticModelBuilder().add_parameter("p1", value=1.0)
 
 
 def test_generate_model_code_jax() -> None:

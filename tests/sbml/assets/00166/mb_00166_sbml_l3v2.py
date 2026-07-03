@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def dS1(S3: float, S4: float, S1: float, k1: float, S2: float, k2: float) -> float:
@@ -17,9 +17,9 @@ def dS4(S3: float, S4: float, k2: float, S1: float, k1: float, S2: float) -> flo
     return S1 * S2 * k1 - S3 * S4 * k2
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("S1", initial_value=0.01)
         .add_variable("S2", initial_value=0.01)
         .add_variable("S3", initial_value=0.02)

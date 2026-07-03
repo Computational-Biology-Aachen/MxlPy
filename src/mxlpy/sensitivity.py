@@ -45,14 +45,14 @@ from SALib.sample.sobol import sample as _sobol_sample
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.types import Array
 
 __all__ = ["OutputFn", "morris", "sobol"]
 
 _LOGGER = logging.getLogger(__name__)
 
-type OutputFn = Callable[[Model, pd.DataFrame], Array]
+type OutputFn = Callable[[KineticModelBuilder, pd.DataFrame], Array]
 
 
 def _build_problem(param_bounds: Mapping[str, tuple[float, float]]) -> dict:
@@ -78,7 +78,7 @@ def _build_problem(param_bounds: Mapping[str, tuple[float, float]]) -> dict:
 
 
 def _evaluate(
-    model: Model,
+    model: KineticModelBuilder,
     output: OutputFn,
     sample_matrix: Array,
     names: list[str],
@@ -117,7 +117,7 @@ def _evaluate(
 
 
 def morris(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     output: OutputFn,
     param_bounds: Mapping[str, tuple[float, float]],
@@ -195,7 +195,7 @@ def morris(
 
 
 def sobol(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     output: OutputFn,
     param_bounds: Mapping[str, tuple[float, float]],

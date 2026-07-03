@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from mxlpy import Model, Simulator, fns
+from mxlpy import KineticModelBuilder, Simulator, fns
 from mxlpy.mca import (
     RateCharacteristics,
     SteadyStateStability,
@@ -20,10 +20,10 @@ from mxlpy.mca import (
 )
 
 
-def linear_chain() -> Model:
+def linear_chain() -> KineticModelBuilder:
     """A -> B -> C open linear chain with mass-action kinetics."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"A": 5.0, "B": 2.0})
         .add_parameters({"k1": 1.0, "k2": 0.5, "k_in": 2.0})
         .add_reaction(
@@ -104,7 +104,7 @@ def test_response_coefficients_zero_parameter() -> None:
     than raising.  This test documents the current behavior.
     """
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("S", 1.0)
         .add_parameters({"k_active": 1.0, "k_zero": 0.0})
         .add_reaction(
@@ -174,7 +174,7 @@ def test_variable_elasticities_zero_variable_produces_nan_or_inf() -> None:
     This test documents the current behavior.
     """
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("S", 0.0)  # zero initial condition
         .add_parameter("k", 1.0)
         .add_reaction(
@@ -217,7 +217,7 @@ def test_steady_state_stability_linear_chain_is_stable() -> None:
 def test_steady_state_stability_unstable_model() -> None:
     """Autocatalytic model dS/dt = k*S has positive eigenvalue → unstable."""
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("S", 1.0)
         .add_parameter("k", 1.0)
         .add_reaction(
@@ -311,7 +311,7 @@ def test_rate_characteristics_totals_are_series() -> None:
 def test_rate_characteristics_no_reaction_raises() -> None:
     """A variable that participates in no reaction is rejected."""
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("x", 1.0)
         .add_parameter("k", 1.0)
         .add_reaction(

@@ -1,4 +1,4 @@
-from mxlpy import Derived, Model, fns
+from mxlpy import Derived, KineticModelBuilder, fns
 from mxlpy.surrogates import qss
 
 
@@ -10,25 +10,25 @@ def qss_single_output(v1: float) -> tuple[float]:
     return (v1 * 2.0,)
 
 
-def m_1v_0p_0d_0r() -> Model:
-    return Model().add_variable("v1", 1.0)
+def m_1v_0p_0d_0r() -> KineticModelBuilder:
+    return KineticModelBuilder().add_variable("v1", 1.0)
 
 
-def m_2v_0p_0d_0r() -> Model:
-    return Model().add_variables({"v1": 1.0, "v2": 2.0})
+def m_2v_0p_0d_0r() -> KineticModelBuilder:
+    return KineticModelBuilder().add_variables({"v1": 1.0, "v2": 2.0})
 
 
-def m_0v_1p_0d_0r() -> Model:
-    return Model().add_parameter("p1", 1.0)
+def m_0v_1p_0d_0r() -> KineticModelBuilder:
+    return KineticModelBuilder().add_parameter("p1", 1.0)
 
 
-def m_0v_2p_0d_0r() -> Model:
-    return Model().add_parameters({"p1": 1.0, "p2": 2.0})
+def m_0v_2p_0d_0r() -> KineticModelBuilder:
+    return KineticModelBuilder().add_parameters({"p1": 1.0, "p2": 2.0})
 
 
-def m_1v_1p_1d_0r() -> Model:
+def m_1v_1p_1d_0r() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_parameter("p1", 1.0)
         .add_derived(
@@ -39,9 +39,9 @@ def m_1v_1p_1d_0r() -> Model:
     )
 
 
-def m_1v_1p_1d_1r() -> Model:
+def m_1v_1p_1d_1r() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_parameter("p1", 1.0)
         .add_derived(
@@ -58,9 +58,9 @@ def m_1v_1p_1d_1r() -> Model:
     )
 
 
-def m_2v_1p_1d_1r() -> Model:
+def m_2v_1p_1d_1r() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"v1": 1.0, "v2": 2.0})
         .add_parameter("p1", 1.0)
         .add_derived(
@@ -77,9 +77,9 @@ def m_2v_1p_1d_1r() -> Model:
     )
 
 
-def m_2v_2p_1d_1r() -> Model:
+def m_2v_2p_1d_1r() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"v1": 1.0, "v2": 2.0})
         .add_parameters({"p1": 1.0, "p2": 2.0})
         .add_derived(
@@ -96,9 +96,9 @@ def m_2v_2p_1d_1r() -> Model:
     )
 
 
-def m_2v_2p_2d_1r() -> Model:
+def m_2v_2p_2d_1r() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"v1": 1.0, "v2": 2.0})
         .add_parameters({"p1": 1.0, "p2": 2.0})
         .add_derived(
@@ -120,9 +120,9 @@ def m_2v_2p_2d_1r() -> Model:
     )
 
 
-def m_2v_2p_2d_2r() -> Model:
+def m_2v_2p_2d_2r() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"v1": 1.0, "v2": 2.0})
         .add_parameters({"p1": 1.0, "p2": 2.0})
         .add_derived(
@@ -150,9 +150,9 @@ def m_2v_2p_2d_2r() -> Model:
     )
 
 
-def m_dependent_derived() -> Model:
+def m_dependent_derived() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter("p1", 1.0)
         .add_derived(
             "d1",
@@ -167,9 +167,9 @@ def m_dependent_derived() -> Model:
     )
 
 
-def m_derived_stoichiometry() -> Model:
+def m_derived_stoichiometry() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_reaction(
             "r1",
@@ -182,9 +182,9 @@ def m_derived_stoichiometry() -> Model:
     )
 
 
-def m_1v_1p_0d_0r_1qss() -> Model:
+def m_1v_1p_0d_0r_1qss() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_parameter("p1", 1.0)
         .add_surrogate(
@@ -199,9 +199,9 @@ def m_1v_1p_0d_0r_1qss() -> Model:
     )
 
 
-def m_1v_0p_0d_0r_1qss() -> Model:
+def m_1v_0p_0d_0r_1qss() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_surrogate(
             "qss1",

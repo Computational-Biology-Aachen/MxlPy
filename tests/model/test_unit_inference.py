@@ -10,8 +10,8 @@ import sympy
 if TYPE_CHECKING:
     import pytest
 
-from mxlpy import Conflict, Model, fns
-from mxlpy.model import MdText
+from mxlpy import Conflict, KineticModelBuilder, fns
+from mxlpy._kinetic_builder import MdText
 from mxlpy.units import mmol, second
 
 mmol_per_second = mmol / second
@@ -21,10 +21,10 @@ per_second = 1 / second  # type: ignore
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _mass_action_model() -> Model:
+def _mass_action_model() -> KineticModelBuilder:
     """S → P via v = k * S.  S and k are annotated; P and reaction are not."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0, unit=per_second)
         .add_variable("S", 1.0, unit=mmol)
         .add_variable("P", 0.0)
@@ -37,10 +37,10 @@ def _mass_action_model() -> Model:
     )
 
 
-def _mm_model() -> Model:
+def _mm_model() -> KineticModelBuilder:
     """S → P via Michaelis-Menten.  vmax and S annotated; km not."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter("vmax", 10.0, unit=mmol_per_second)
         .add_parameter("km", 0.5)
         .add_variable("S", 1.0, unit=mmol)
@@ -74,7 +74,7 @@ def test_forward_variable_unit_from_reaction() -> None:
 
 def test_forward_derived_unit() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0, unit=per_second)
         .add_variable("S", 1.0, unit=mmol)
         .add_derived("flux", fns.mul, args=["k", "S"])
@@ -85,7 +85,7 @@ def test_forward_derived_unit() -> None:
 
 def test_forward_readout_unit() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 2.0, unit=mmol)
         .add_variable("S", 1.0, unit=mmol)
         .add_readout("ratio", fns.div, args=["k", "S"])
@@ -103,7 +103,7 @@ def test_backward_parameter_unit_simple() -> None:
     """Backward inference works for purely multiplicative rate functions."""
     # v = k * S, unit(v)=mmol/s, unit(S)=mmol → unit(k) = 1/s
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0)
         .add_variable("S", 1.0, unit=mmol)
         .add_variable("P", 0.0, unit=mmol)
@@ -144,7 +144,7 @@ def test_backward_variable_unit_from_reaction_and_variable() -> None:
 def test_transitive_derived_unit() -> None:
     """d2 depends on d1 which depends on k and S."""
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0, unit=per_second)
         .add_variable("S", 1.0, unit=mmol)
         .add_variable("P", 0.0)
@@ -172,7 +172,7 @@ def test_conflict_detection() -> None:
     zero-order flux in v2 (unit mmol/s) - an inconsistent model.
     """
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0)
         .add_variable("S", 1.0, unit=mmol)
         .add_variable("P", 0.0, unit=mmol)
@@ -191,7 +191,7 @@ def test_conflict_detection() -> None:
 
 def test_has_conflicts() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0)
         .add_variable("S", 1.0, unit=mmol)
         .add_variable("P", 0.0, unit=mmol)
@@ -209,7 +209,7 @@ def test_has_conflicts() -> None:
 
 def test_no_units_returns_none() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0)
         .add_variable("S", 1.0)
         .add_reaction(
@@ -225,7 +225,7 @@ def test_no_units_returns_none() -> None:
 def test_all_units_set_returns_existing() -> None:
     rxn_unit = mmol_per_second
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0, unit=per_second)
         .add_variable("S", 1.0, unit=mmol)
         .add_reaction(
@@ -250,7 +250,7 @@ def test_unparseable_function_returns_none() -> None:
         return eval("_x * 2")  # noqa: S307
 
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("x", 1.0, unit=mmol)
         .add_derived("d", _unparseable, args=["x"])
     )
@@ -269,7 +269,7 @@ def test_all_inferred_true_when_all_known() -> None:
 
 
 def test_all_inferred_false_when_none() -> None:
-    model = Model().add_parameter("k", 1.0).add_variable("S", 1.0)
+    model = KineticModelBuilder().add_parameter("k", 1.0).add_variable("S", 1.0)
     result = model.infer_units(time_unit=second)
     assert not result.all_inferred()
 
@@ -300,7 +300,7 @@ def test_apply_to_skips_conflicts_with_warning(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0)
         .add_variable("S", 1.0, unit=mmol)
         .add_variable("P", 0.0, unit=mmol)
@@ -331,7 +331,7 @@ def test_report_renders() -> None:
 
 def test_report_contains_conflict_label() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0)
         .add_variable("S", 1.0, unit=mmol)
         .add_variable("P", 0.0, unit=mmol)
@@ -355,7 +355,7 @@ def test_time_arg_uses_time_unit() -> None:
         return t * k
 
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k", 1.0, unit=mmol / second)
         .add_variable("S", 1.0)
         .add_derived("slope", linear_in_time, args=["time", "k"])

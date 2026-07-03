@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mxlpy import Model, fns
+from mxlpy import KineticModelBuilder, fns
 
 __all__ = ["get_phase_plane", "v1"]
 
@@ -12,10 +12,10 @@ def v1(s2: float, k: float, k1: float, n: float) -> float:
     return k1 / (1 + (s2 / k) ** n)
 
 
-def get_phase_plane() -> Model:
+def get_phase_plane() -> KineticModelBuilder:
     """Get phase plane model."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"s1": 1.0, "s2": 1.0})
         .add_parameters(
             {

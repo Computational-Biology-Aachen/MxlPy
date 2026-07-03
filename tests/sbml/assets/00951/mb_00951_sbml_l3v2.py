@@ -1,11 +1,11 @@
 import math
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter("P", value=math.inf)
         .add_parameter("Q", value=float("-inf"))
         .add_parameter("R", value=math.nan)

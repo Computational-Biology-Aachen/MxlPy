@@ -12,7 +12,7 @@ from mxlpy import plot
 from mxlpy.simulator import Simulator
 
 if TYPE_CHECKING:
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.simulation import Simulation
     from mxlpy.types import ArrayLike
 
@@ -251,7 +251,9 @@ class ProtocolComparison:
         return fig, axs
 
 
-def steady_states(m1: Model, m2: Model) -> SteadyStateComparison:
+def steady_states(
+    m1: KineticModelBuilder, m2: KineticModelBuilder
+) -> SteadyStateComparison:
     """Compare the steady states of two models.
 
     Parameters
@@ -268,7 +270,9 @@ def steady_states(m1: Model, m2: Model) -> SteadyStateComparison:
     )
 
 
-def time_courses(m1: Model, m2: Model, time_points: ArrayLike) -> TimeCourseComparison:
+def time_courses(
+    m1: KineticModelBuilder, m2: KineticModelBuilder, time_points: ArrayLike
+) -> TimeCourseComparison:
     """Compare the time courses of two models.
 
     Parameters
@@ -294,8 +298,8 @@ def time_courses(m1: Model, m2: Model, time_points: ArrayLike) -> TimeCourseComp
 
 
 def protocol_time_courses(
-    m1: Model,
-    m2: Model,
+    m1: KineticModelBuilder,
+    m2: KineticModelBuilder,
     protocol: pd.DataFrame,
 ) -> ProtocolComparison:
     """Compare the protocol time courses of two models.

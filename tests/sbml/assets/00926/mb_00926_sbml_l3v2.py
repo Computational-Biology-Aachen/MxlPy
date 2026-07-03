@@ -1,4 +1,4 @@
-from mxlpy import InitialAssignment, Model
+from mxlpy import InitialAssignment, KineticModelBuilder
 
 
 def init_s_amount(c: float) -> float:
@@ -13,9 +13,9 @@ def dc(c: float) -> float:
     return 0.5 * c
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("c", initial_value=1.0)
         .add_variable(
             "s_amount",

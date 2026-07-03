@@ -7,15 +7,15 @@ which is commonly used to model the spread of infectious diseases.
 
 from __future__ import annotations
 
-from mxlpy import Model, fns
+from mxlpy import KineticModelBuilder, fns
 
 __all__ = ["get_sir", "get_sird"]
 
 
-def get_sir() -> Model:
+def get_sir() -> KineticModelBuilder:
     """Create a simple SIR model."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"s": 0.9, "i": 0.1, "r": 0.0})
         .add_parameters({"beta": 0.2, "gamma": 0.1})
         .add_reaction(
@@ -33,7 +33,7 @@ def get_sir() -> Model:
     )
 
 
-def get_sird() -> Model:
+def get_sird() -> KineticModelBuilder:
     """Create a simple SIR model with death."""
     return (
         get_sir()

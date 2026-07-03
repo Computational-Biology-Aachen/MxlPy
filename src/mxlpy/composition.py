@@ -13,12 +13,12 @@ import warnings
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
 __all__ = ["compose"]
 
 
-def _remove_by_ctx(model: Model, name: str, ctx: str) -> None:
+def _remove_by_ctx(model: KineticModelBuilder, name: str, ctx: str) -> None:
     """Remove *name* from *model*, dispatching on its namespace context.
 
     Variables are removed without cascading into reaction stoichiometries, so a
@@ -43,7 +43,9 @@ def _remove_by_ctx(model: Model, name: str, ctx: str) -> None:
         model.remove_surrogate(name)
 
 
-def _merge_into(result: Model, model: Model, *, raise_on_conflict: bool) -> None:
+def _merge_into(
+    result: KineticModelBuilder, model: KineticModelBuilder, *, raise_on_conflict: bool
+) -> None:
     """Fold all components of *model* into *result* in place."""
     if duplicates := sorted(set(result.ids) & set(model.ids)):
         if raise_on_conflict:
@@ -82,7 +84,9 @@ def _merge_into(result: Model, model: Model, *, raise_on_conflict: bool) -> None
         result.add_data(name, copy.deepcopy(data))
 
 
-def compose(*models: Model, raise_on_conflict: bool = True) -> Model:
+def compose(
+    *models: KineticModelBuilder, raise_on_conflict: bool = True
+) -> KineticModelBuilder:
     """Merge multiple models into a single new model.
 
     Components are identified by name across the global namespace (variables,

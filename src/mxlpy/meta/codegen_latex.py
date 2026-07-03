@@ -14,7 +14,7 @@ from mxlpy.types import Derived, RateFn
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from mxlpy import Model
+    from mxlpy import KineticModelBuilder
 
 __all__ = [
     "TexExport",
@@ -703,7 +703,7 @@ class TexExport:
 """
 
 
-def to_tex_export(model: Model) -> TexExport:
+def to_tex_export(model: KineticModelBuilder) -> TexExport:
     """Create TexExport object from a model.
 
     Parameters
@@ -735,7 +735,7 @@ def to_tex_export(model: Model) -> TexExport:
 
 
 def generate_latex_code(
-    model: Model,
+    model: KineticModelBuilder,
     gls: dict[str, str] | None = None,
     long_name_cutoff: int = 10,
 ) -> str:
@@ -777,8 +777,8 @@ def generate_latex_code(
 
 
 def get_model_tex_diff(
-    m1: Model,
-    m2: Model,
+    m1: KineticModelBuilder,
+    m2: KineticModelBuilder,
     gls: dict[str, str] | None = None,
     long_name_cutoff: int = 10,
 ) -> str:

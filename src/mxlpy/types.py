@@ -36,6 +36,7 @@ __all__ = [
     "Array",
     "ArrayLike",
     "Derived",
+    "DiffEq",
     "FitFailure",
     "InitialAssignment",
     "IntegrationFailure",
@@ -72,7 +73,7 @@ RetType = TypeVar("RetType")
 if TYPE_CHECKING:
     import sympy
 
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
 
 class IntegrationFailure(Exception):
@@ -417,7 +418,7 @@ class Reaction:
         """Return default representation."""
         return pformat(self)
 
-    def get_modifiers(self, model: Model) -> list[str]:
+    def get_modifiers(self, model: KineticModelBuilder) -> list[str]:
         """Get the modifiers of the reaction.
 
         Parameters
@@ -435,6 +436,50 @@ class Reaction:
         exclude = set(self.stoichiometry)
 
         return [k for k in self.args if k in include and k not in exclude]
+
+    def calculate(self, args: dict[str, Any]) -> float:
+        """Calculate the derived value.
+
+        Parameters
+        ----------
+        args
+            Dictionary of args variables.
+
+        Returns
+        -------
+            The calculated derived value.
+
+        """
+        return cast(float, self.fn(*(args[arg] for arg in self.args)))
+
+    def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
+        """Calculate the reaction in place.
+
+        Parameters
+        ----------
+        name
+            Name of the derived variable.
+        args
+            Dictionary of args variables.
+
+        """
+        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
+
+
+@dataclass(kw_only=True, slots=True)
+class DiffEq:
+    """Container for a differential equation."""
+
+    initial_value: float | InitialAssignment
+    fn: RateFn
+    args: list[str]
+    unit: sympy.Expr | None = None
+    source: str | None = None
+    annotations: list[Annotation] = field(default_factory=list)
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
 
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.

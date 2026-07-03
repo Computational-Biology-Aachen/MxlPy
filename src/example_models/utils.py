@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mxlpy import Model
+    from mxlpy import KineticModelBuilder
 
 __all__ = ["filter_stoichiometry"]
 
 
 def filter_stoichiometry(
-    model: Model,
+    model: KineticModelBuilder,
     stoichiometry: dict[str, float],
 ) -> dict[str, float]:
     """Only use components that are actually compounds in the model.

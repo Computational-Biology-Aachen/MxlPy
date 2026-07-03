@@ -8,6 +8,7 @@ from functools import partial
 
 import pandas as pd
 
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.fit import losses
 from mxlpy.fit.abstract import Fit, FitResidual, _Settings
 from mxlpy.fit.residuals import (
@@ -24,7 +25,6 @@ from mxlpy.minimizers.abstract import (
     OptimisationState,
 )
 from mxlpy.minimizers.abstract import Residual as MinimizerResidual
-from mxlpy.model import Model
 from mxlpy.simulator import _normalise_protocol_index
 from mxlpy.types import Result
 
@@ -32,7 +32,7 @@ __all__ = ["protocol_time_course", "steady_state", "time_course"]
 
 
 def steady_state(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     p0: dict[str, float],
     data: pd.Series,
@@ -120,7 +120,7 @@ def steady_state(
 
 
 def time_course(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
@@ -203,7 +203,7 @@ def time_course(
 
 
 def protocol_time_course(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     p0: dict[str, float],
     data: pd.DataFrame,

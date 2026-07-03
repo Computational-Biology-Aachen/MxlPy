@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 from mxlpy.dsl import from_dsl
 from mxlpy.fns import hill_1s, mass_action_1s, michaelis_menten_1s
 
 
 def test_simple_irreversible() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "k1, A --> B",
         variables={"A": 1.0, "B": 0.0},
         parameters={"k1": 0.1},
@@ -22,7 +22,7 @@ def test_simple_irreversible() -> None:
 
 def test_reversible_reaction() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "(k2, k3), C <--> D",
         variables={"C": 1.0, "D": 0.0},
         parameters={"k2": 0.05, "k3": 0.02},
@@ -32,7 +32,7 @@ def test_reversible_reaction() -> None:
 
 def test_sequential_naming() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         """
         k1, A --> B
         k2, B --> C
@@ -45,7 +45,7 @@ def test_sequential_naming() -> None:
 
 def test_mm_shorthand() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "mm(kcat, Km), S --> P",
         variables={"S": 2.0, "P": 0.0},
         parameters={"kcat": 1.0, "Km": 0.5},
@@ -58,7 +58,7 @@ def test_mm_shorthand() -> None:
 
 def test_hill_shorthand() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "hill(v, K, n), A --> B",
         variables={"A": 1.0, "B": 0.0},
         parameters={"v": 1.0, "K": 0.3, "n": 2.0},
@@ -70,7 +70,7 @@ def test_hill_shorthand() -> None:
 
 def test_ma_shorthand() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "ma(k1), A + B --> C",
         variables={"A": 1.0, "B": 0.5, "C": 0.0},
         parameters={"k1": 0.1},
@@ -82,7 +82,7 @@ def test_ma_shorthand() -> None:
 
 def test_arbitrary_expression() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "k_deg * X, X -->",
         variables={"X": 1.0},
         parameters={"k_deg": 0.1},
@@ -93,7 +93,7 @@ def test_arbitrary_expression() -> None:
 
 def test_named_fns_lookup() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "mass_action_1s(A, k1), A --> B",
         variables={"A": 1.0, "B": 0.0},
         parameters={"k1": 0.1},
@@ -105,7 +105,7 @@ def test_named_fns_lookup() -> None:
 
 def test_degradation_empty_product() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "k_deg * X, X -->",
         variables={"X": 2.0},
         parameters={"k_deg": 0.5},
@@ -116,7 +116,7 @@ def test_degradation_empty_product() -> None:
 
 def test_production_empty_reactant() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "ma(k_syn), --> Y",
         variables={"Y": 0.0},
         parameters={"k_syn": 0.2},
@@ -127,7 +127,7 @@ def test_production_empty_reactant() -> None:
 
 def test_stoichiometric_coefficient() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         "k1, 2A + B --> C",
         variables={"A": 2.0, "B": 1.0, "C": 0.0},
         parameters={"k1": 0.1},
@@ -140,7 +140,7 @@ def test_stoichiometric_coefficient() -> None:
 
 def test_comment_lines_ignored() -> None:
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         """
         # this is a comment
         k1, A --> B
@@ -155,7 +155,7 @@ def test_comment_lines_ignored() -> None:
 def test_missing_species_raises() -> None:
     with pytest.raises(ValueError, match="Species"):
         from_dsl(
-            Model(),
+            KineticModelBuilder(),
             "k1, A --> B",
             variables={"A": 1.0},  # B missing
             parameters={"k1": 0.1},
@@ -165,7 +165,7 @@ def test_missing_species_raises() -> None:
 def test_missing_parameter_raises() -> None:
     with pytest.raises(ValueError, match="Unknown"):
         from_dsl(
-            Model(),
+            KineticModelBuilder(),
             "k1 * A, A --> B",
             variables={"A": 1.0, "B": 0.0},
             parameters={},  # k1 missing
@@ -175,7 +175,7 @@ def test_missing_parameter_raises() -> None:
 def test_mm_ambiguous_substrate_raises() -> None:
     with pytest.raises(ValueError, match="mm\\(\\) requires exactly one"):
         from_dsl(
-            Model(),
+            KineticModelBuilder(),
             "mm(kcat, Km), A + B --> C",
             variables={"A": 1.0, "B": 1.0, "C": 0.0},
             parameters={"kcat": 1.0, "Km": 0.5},
@@ -185,7 +185,7 @@ def test_mm_ambiguous_substrate_raises() -> None:
 def test_hill_ambiguous_substrate_raises() -> None:
     with pytest.raises(ValueError, match="hill\\(\\) requires exactly one"):
         from_dsl(
-            Model(),
+            KineticModelBuilder(),
             "hill(v, K, n), A + B --> C",
             variables={"A": 1.0, "B": 1.0, "C": 0.0},
             parameters={"v": 1.0, "K": 0.3, "n": 2.0},
@@ -195,7 +195,7 @@ def test_hill_ambiguous_substrate_raises() -> None:
 def test_reversible_without_tuple_raises() -> None:
     with pytest.raises(ValueError, match="tuple"):
         from_dsl(
-            Model(),
+            KineticModelBuilder(),
             "k1, C <--> D",
             variables={"C": 1.0, "D": 0.0},
             parameters={"k1": 0.05},
@@ -205,7 +205,7 @@ def test_reversible_without_tuple_raises() -> None:
 def test_full_example() -> None:
     """Smoke test: the canonical example from the issue must build without error."""
     model = from_dsl(
-        Model(),
+        KineticModelBuilder(),
         """
         k1,              A + B --> C
         (k2, k3),        C <--> D
@@ -243,8 +243,8 @@ def test_full_example() -> None:
 
 
 def test_model_from_reactions_classmethod() -> None:
-    model = Model.add_reactions_from_dsl(
-        Model(),
+    model = KineticModelBuilder.add_reactions_from_dsl(
+        KineticModelBuilder(),
         "k1, A --> B",
         variables={"A": 1.0, "B": 0.0},
         parameters={"k1": 0.1},

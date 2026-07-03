@@ -1,4 +1,4 @@
-from mxlpy import Derived, Model
+from mxlpy import Derived, KineticModelBuilder
 
 
 def Xref(X: float) -> float:
@@ -17,9 +17,9 @@ def J1(Y: float, k1: float) -> float:
     return Y * k1
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("X", initial_value=1.0)
         .add_variable("Y", initial_value=1.0)
         .add_parameter("k1", value=1.0)

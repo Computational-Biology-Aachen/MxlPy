@@ -1,12 +1,12 @@
 import pandas as pd
 
-from mxlpy import Model, fns
+from mxlpy import KineticModelBuilder, fns
 from mxlpy.simulation import Simulation
 
 
 def test_get_producers_and_consumers() -> None:
     m = (
-        Model()
+        KineticModelBuilder()
         .add_variable("x", 1.0)
         .add_parameter("k", 2.0)
         .add_reaction("v_in", fns.constant, args=["k"], stoichiometry={"x": 2})

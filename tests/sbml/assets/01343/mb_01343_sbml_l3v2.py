@@ -1,6 +1,6 @@
 import math
 
-from mxlpy import InitialAssignment, Model
+from mxlpy import InitialAssignment, KineticModelBuilder
 
 
 def init_P1() -> float:
@@ -19,9 +19,9 @@ def P4(time: float) -> float:
     return -math.tanh(time)
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter(
             "P1",
             value=InitialAssignment(fn=init_P1, args=[]),

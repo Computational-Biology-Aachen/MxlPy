@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from mxlpy import Model, fns
+from mxlpy import KineticModelBuilder, fns
 
 __all__ = ["get_tpi_ald_model"]
 
 
-def get_tpi_ald_model() -> Model:
+def get_tpi_ald_model() -> KineticModelBuilder:
     """Create model of triose phosphate isomerase and aldolase reactions.
 
     This is mostly used for showing a simple label propagation example.
@@ -28,7 +28,7 @@ def get_tpi_ald_model() -> Model:
     y0 = {"GAP": GAP0, "DHAP": DHAP0, "FBP": FBP0}
 
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables(y0)
         .add_parameters(p)
         .add_reaction(

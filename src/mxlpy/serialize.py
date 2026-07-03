@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import scipy.special  # bound as `scipy`, used by generated rate fns
 
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.meta import _mathml as mml
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
@@ -38,7 +39,6 @@ from mxlpy.meta.sympy_tools import (
     sympy_to_mathml,
     sympy_to_python_fn,
 )
-from mxlpy.model import Model
 from mxlpy.types import Derived, InitialAssignment, SerializationError
 
 if TYPE_CHECKING:
@@ -110,7 +110,7 @@ def _stoich_to_node_dict(
 
 
 def model_to_dict(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     model_id: str,
     description: str = "",
@@ -186,7 +186,7 @@ def model_to_dict(
 
 
 def save(
-    model: Model,
+    model: KineticModelBuilder,
     path: str | Path,
     *,
     model_id: str | None = None,
@@ -269,7 +269,7 @@ def _node_dict_to_stoich(node_dict: dict[str, Any]) -> float | Derived:
     return Derived(fn=fn, args=args)
 
 
-def model_from_dict(data: Mapping[str, Any]) -> Model:
+def model_from_dict(data: Mapping[str, Any]) -> KineticModelBuilder:
     """Reconstruct a model from its ``.mxl.json`` dict representation.
 
     Parameters
@@ -284,7 +284,7 @@ def model_from_dict(data: Mapping[str, Any]) -> Model:
 
     """
     spec = data["model"]
-    model = Model()
+    model = KineticModelBuilder()
 
     for name, par in spec["parameters"].items():
         model.add_parameter(name, _node_dict_to_value(par["value"]))
@@ -307,7 +307,7 @@ def model_from_dict(data: Mapping[str, Any]) -> Model:
     return model
 
 
-def load(path: str | Path) -> Model:
+def load(path: str | Path) -> KineticModelBuilder:
     """Load a model from the native ``.mxl.json`` format.
 
     Parameters

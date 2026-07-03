@@ -1,6 +1,6 @@
 import math
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def J0() -> float:
@@ -211,9 +211,9 @@ def J51() -> float:
     return 0
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("S0", initial_value=0.0)
         .add_variable("S1", initial_value=0.0)
         .add_variable("S2", initial_value=0.0)

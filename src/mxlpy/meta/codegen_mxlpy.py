@@ -24,7 +24,7 @@ from mxlpy.types import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.surrogates.abstract import SurrogateProtocol
 
 __all__ = ["Context", "generate_mxlpy_code"]
@@ -256,7 +256,7 @@ def _codegen_readout(
 
 
 def generate_mxlpy_code(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     model_fn_name: str = "create_model",
     imports: list[str] | None = None,

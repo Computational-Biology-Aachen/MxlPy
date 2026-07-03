@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def S1_conc(compartment: float, S1: float) -> float:
@@ -17,9 +17,9 @@ def reaction2(compartment: float, S2_conc: float, k2: float) -> float:
     return S2_conc * k2 / compartment
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter("k1", value=0.5)
         .add_parameter("k2", value=0.25)
         .add_parameter("compartment", value=1.0)

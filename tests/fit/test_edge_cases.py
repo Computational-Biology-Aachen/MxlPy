@@ -5,16 +5,16 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from mxlpy import Model, fit, fns
+from mxlpy import KineticModelBuilder, fit, fns
 from mxlpy.fit import losses
 from mxlpy.fit.abstract import _Settings
 from mxlpy.fit.residuals import steady_state_residual
 from mxlpy.minimizers.abstract import mock_minimizer
 
 
-def simple_model() -> Model:
+def simple_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"S": 10.0, "P": 0.0})
         .add_parameters({"k1": 1.0, "k2": 2.0})
         .add_reaction(

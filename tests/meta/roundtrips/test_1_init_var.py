@@ -1,13 +1,13 @@
-from mxlpy import InitialAssignment, Model, meta
+from mxlpy import InitialAssignment, KineticModelBuilder, meta
 
 
 def _ia_init(p1: float) -> float:
     return p1 * 2.0
 
 
-def model_1_init_var() -> Model:
+def model_1_init_var() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable(
             "v1",
             initial_value=InitialAssignment(fn=_ia_init, args=["p1"]),

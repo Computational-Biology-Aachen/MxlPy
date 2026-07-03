@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def c(time: float) -> float:
@@ -13,9 +13,9 @@ def dS1() -> float:
     return 1
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("S1", initial_value=1.2)
         .add_derived(
             "c",

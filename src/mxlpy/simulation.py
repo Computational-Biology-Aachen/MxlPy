@@ -14,7 +14,7 @@ __all__ = ["Simulation"]
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.types import Array, ArrayLike
 
 
@@ -56,7 +56,7 @@ def _normalise_split_results(
 class Simulation:
     """Simulation results."""
 
-    model: Model
+    model: KineticModelBuilder
     raw_variables: list[pd.DataFrame]
     raw_parameters: list[dict[str, float]]
     raw_args: list[pd.DataFrame] = field(default_factory=list)
@@ -66,7 +66,7 @@ class Simulation:
         return pformat(self)
 
     @classmethod
-    def default(cls, model: Model, time_points: Array) -> Simulation:
+    def default(cls, model: KineticModelBuilder, time_points: Array) -> Simulation:
         """Get result filled with NaNs.
 
         Parameters

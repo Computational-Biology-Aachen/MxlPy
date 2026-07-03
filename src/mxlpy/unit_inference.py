@@ -17,7 +17,7 @@ from mxlpy.types import InitialAssignment
 if TYPE_CHECKING:
     from sympy.physics.units.quantities import Quantity
 
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.types import Derived, Parameter, Reaction, Readout, Variable
 
 __all__ = ["Conflict", "LOGGER", "MdText", "UnitInference", "infer_units", "unit_of"]
@@ -211,7 +211,7 @@ class UnitInference:
                         lines.append(f"\n- {name}: " + _fmt_success(_latex_view(expr)))
         return MdText(lines)
 
-    def apply_to(self, model: Model) -> None:
+    def apply_to(self, model: KineticModelBuilder) -> None:
         """Write inferred units back into *model*.
 
         Only fills components whose current unit is ``None``.

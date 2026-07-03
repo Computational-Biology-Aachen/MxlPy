@@ -1,4 +1,4 @@
-from mxlpy import Model, meta
+from mxlpy import KineticModelBuilder, meta
 
 
 def mass_action_1s(s1: float, k: float) -> float:
@@ -9,9 +9,9 @@ def _readout_ratio(a: float, b: float) -> float:
     return a / b
 
 
-def model_1rdo() -> Model:
+def model_1rdo() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", initial_value=1.0)
         .add_variable("v2", initial_value=2.0)
         .add_parameter("p1", value=1.0)

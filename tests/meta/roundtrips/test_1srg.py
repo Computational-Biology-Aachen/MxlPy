@@ -1,4 +1,4 @@
-from mxlpy import Model, meta
+from mxlpy import KineticModelBuilder, meta
 from mxlpy.surrogates import qss
 
 
@@ -6,9 +6,9 @@ def _qss_two(v1: float, p1: float) -> tuple[float, float]:
     return v1 * p1, v1 + p1
 
 
-def model_1srg() -> Model:
+def model_1srg() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", initial_value=1.0)
         .add_parameter("p1", value=1.0)
         .add_surrogate(

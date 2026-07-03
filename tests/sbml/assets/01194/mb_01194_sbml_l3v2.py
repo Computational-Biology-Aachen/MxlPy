@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def A(A_amount: float, Cell: float) -> float:
@@ -185,9 +185,9 @@ def init_Y_amount(Cell: float) -> float:
     return 0
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("A_amount", initial_value=0.0)
         .add_variable("B_amount", initial_value=0.0)
         .add_variable("C_amount", initial_value=0.0)

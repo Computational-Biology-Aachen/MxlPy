@@ -1,4 +1,4 @@
-from mxlpy import InitialAssignment, Model
+from mxlpy import InitialAssignment, KineticModelBuilder
 
 
 def init_a() -> float:
@@ -9,9 +9,9 @@ def init_b(a: float) -> float:
     return (1) if (a > 0) else (2)
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter(
             "a",
             value=InitialAssignment(fn=init_a, args=[]),

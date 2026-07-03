@@ -1,12 +1,12 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def x() -> float:
     return 3
 
 
-def create_model() -> Model:
-    return Model().add_derived(
+def create_model() -> KineticModelBuilder:
+    return KineticModelBuilder().add_derived(
         "x",
         fn=x,
         args=[],

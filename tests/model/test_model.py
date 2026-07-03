@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from mxlpy import Derived, InitialAssignment, Simulator
-from mxlpy.model import Model
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.surrogates import qss
 
 
@@ -34,7 +34,7 @@ def two_arguments_v2(x: float, y: float) -> float:
 
 
 def test_add_parameter() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
 
     parameters = model.get_parameter_values()
@@ -42,20 +42,20 @@ def test_add_parameter() -> None:
 
 
 def test_add_parameter_existing_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     with pytest.raises(NameError):
         model.add_parameter("param1", 2.0)
 
 
 def test_add_parameter_protected_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.add_parameter("time", 1.0)
 
 
 def test_add_parameters() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameters({"param1": 1.0, "param2": 2.0})
 
     parameters = model.get_parameter_values()
@@ -64,20 +64,20 @@ def test_add_parameters() -> None:
 
 
 def test_add_parameters_existing_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     with pytest.raises(NameError):
         model.add_parameters({"param1": 2.0, "param2": 2.0})
 
 
 def test_add_parameters_protected_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.add_parameters({"time": 1.0, "param2": 2.0})
 
 
 def test_parameters() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_parameter("param2", 2.0)
 
@@ -87,13 +87,13 @@ def test_parameters() -> None:
 
 
 def test_parameters_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     parameters = model.get_parameter_values()
     assert parameters == {}
 
 
 def test_get_parameter_names() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_parameter("param2", 2.0)
     parameter_names = model.get_parameter_names()
@@ -103,13 +103,13 @@ def test_get_parameter_names() -> None:
 
 
 def test_get_parameter_names_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     parameter_names = model.get_parameter_names()
     assert parameter_names == []
 
 
 def test_remove_parameter() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.remove_parameter("param1")
 
@@ -119,13 +119,13 @@ def test_remove_parameter() -> None:
 
 
 def test_remove_parameter_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.remove_parameter("param1")
 
 
 def test_remove_parameters() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_parameter("param2", 2.0)
     model.remove_parameters(["param1", "param2"])
@@ -138,7 +138,7 @@ def test_remove_parameters() -> None:
 
 
 def test_remove_parameters_partial() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_parameter("param2", 2.0)
     model.add_parameter("param3", 3.0)
@@ -155,14 +155,14 @@ def test_remove_parameters_partial() -> None:
 
 
 def test_remove_parameters_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     with pytest.raises(KeyError):
         model.remove_parameters(["param1", "param2"])
 
 
 def test_update_parameter() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.update_parameter("param1", 2.0)
 
@@ -171,13 +171,13 @@ def test_update_parameter() -> None:
 
 
 def test_update_parameter_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.update_parameter("param1", 2.0)
 
 
 def test_update_parameters() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_parameter("param2", 2.0)
     update_params = {"param1": 1.5, "param2": 2.5}
@@ -189,7 +189,7 @@ def test_update_parameters() -> None:
 
 
 def test_update_parameters_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     update_params = {"param1": 1.5, "param2": 2.5}
     with pytest.raises(KeyError):
@@ -197,7 +197,7 @@ def test_update_parameters_nonexistent() -> None:
 
 
 def test_scale_parameter() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.scale_parameter("param1", 2.0)
 
@@ -206,13 +206,13 @@ def test_scale_parameter() -> None:
 
 
 def test_scale_parameter_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.scale_parameter("param1", 2.0)
 
 
 def test_scale_parameters() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_parameter("param2", 2.0)
     scale_factors = {"param1": 2.0, "param2": 0.5}
@@ -224,7 +224,7 @@ def test_scale_parameters() -> None:
 
 
 def test_scale_parameters_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     scale_factors = {"param1": 2.0, "param2": 0.5}
     with pytest.raises(KeyError):
@@ -232,7 +232,7 @@ def test_scale_parameters_nonexistent() -> None:
 
 
 def test_make_parameter_dynamic() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.make_parameter_dynamic("param1")
 
@@ -245,7 +245,7 @@ def test_make_parameter_dynamic() -> None:
 
 
 def test_make_parameter_dynamic_with_initial_value() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.make_parameter_dynamic("param1", initial_value=2.0)
 
@@ -258,13 +258,13 @@ def test_make_parameter_dynamic_with_initial_value() -> None:
 
 
 def test_make_parameter_dynamic_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.make_parameter_dynamic("param1")
 
 
 def test_variables() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
 
@@ -276,13 +276,13 @@ def test_variables() -> None:
 
 
 def test_variables_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     variables = model.get_initial_conditions()
     assert variables == {}
 
 
 def test_add_variable() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
 
     variables = model.get_initial_conditions()
@@ -292,20 +292,20 @@ def test_add_variable() -> None:
 
 
 def test_add_variable_existing_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     with pytest.raises(NameError):
         model.add_variable("var1", 2.0)
 
 
 def test_add_variable_protected_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.add_variable("time", 1.0)
 
 
 def test_add_variables() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"var1": 1.0, "var2": 2.0})
 
     variables = model.get_initial_conditions()
@@ -318,20 +318,20 @@ def test_add_variables() -> None:
 
 
 def test_add_variables_existing_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     with pytest.raises(NameError):
         model.add_variables({"var1": 2.0, "var2": 2.0})
 
 
 def test_add_variables_protected_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.add_variables({"time": 1.0, "var2": 2.0})
 
 
 def test_remove_variable() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     model.remove_variable("var1", remove_stoichiometries=True)
 
@@ -341,13 +341,13 @@ def test_remove_variable() -> None:
 
 
 def test_remove_variable_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.remove_variable("var1", remove_stoichiometries=True)
 
 
 def test_remove_variables() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
     model.remove_variables(["var1", "var2"], remove_stoichiometries=True)
@@ -360,7 +360,7 @@ def test_remove_variables() -> None:
 
 
 def test_remove_variables_partial() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
     model.add_variable("var3", 3.0)
@@ -377,14 +377,14 @@ def test_remove_variables_partial() -> None:
 
 
 def test_remove_variables_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     with pytest.raises(KeyError):
         model.remove_variables(["var1", "var2"], remove_stoichiometries=True)
 
 
 def test_update_variable() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     model.update_variable("var1", 2.0)
 
@@ -393,13 +393,13 @@ def test_update_variable() -> None:
 
 
 def test_update_variable_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.update_variable("var1", 2.0)
 
 
 def test_get_variable_names() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
     variable_names = model.get_variable_names()
@@ -409,13 +409,13 @@ def test_get_variable_names() -> None:
 
 
 def test_get_variable_names_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     variable_names = model.get_variable_names()
     assert variable_names == []
 
 
 def test_get_initial_conditions() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     model.add_variable("var2", 2.0)
     initial_conditions = model.get_initial_conditions()
@@ -426,13 +426,13 @@ def test_get_initial_conditions() -> None:
 
 
 def test_get_initial_conditions_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     initial_conditions = model.get_initial_conditions()
     assert initial_conditions == {}
 
 
 def test_make_variable_static() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     model.make_variable_static("var1")
 
@@ -445,7 +445,7 @@ def test_make_variable_static() -> None:
 
 
 def test_make_variable_static_with_value() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 1.0)
     model.make_variable_static("var1", value=2.0)
 
@@ -458,13 +458,13 @@ def test_make_variable_static_with_value() -> None:
 
 
 def test_make_variable_static_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.make_variable_static("var1")
 
 
 def test_derived_variables() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     model.add_variable("x", 1.0)
     model.add_derived("derived1", derived_fn, args=["x"])
@@ -475,13 +475,13 @@ def test_derived_variables() -> None:
 
 
 def test_derived_variables_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_vars = model.get_derived_variables()
     assert derived_vars == {}
 
 
 def test_derived_parameters() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     model.add_parameter("param1", 1.0)
     model.add_derived("derived_param1", derived_fn, args=["param1"])
@@ -492,13 +492,13 @@ def test_derived_parameters() -> None:
 
 
 def test_derived_parameters_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_params = model.get_derived_parameters()
     assert derived_params == {}
 
 
 def test_add_derived() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     model.add_derived("derived1", derived_fn, args=["x"])
 
@@ -510,7 +510,7 @@ def test_add_derived() -> None:
 
 
 def test_add_derived_existing_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     model.add_derived("derived1", derived_fn, args=["x"])
     with pytest.raises(NameError):
@@ -518,14 +518,14 @@ def test_add_derived_existing_name() -> None:
 
 
 def test_add_derived_protected_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     with pytest.raises(KeyError):
         model.add_derived("time", derived_fn, args=["x"])
 
 
 def test_get_derived_parameter_names() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     model.add_parameter("param1", 1.0)
     model.add_derived("derived_param1", derived_fn, args=["param1"])
@@ -535,13 +535,13 @@ def test_get_derived_parameter_names() -> None:
 
 
 def test_get_derived_parameter_names_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_param_names = model.get_derived_parameter_names()
     assert derived_param_names == []
 
 
 def test_get_derived_variable_names() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     model.add_variable("x", 1.0)
     model.add_derived("derived1", derived_fn, args=["x"])
@@ -551,13 +551,13 @@ def test_get_derived_variable_names() -> None:
 
 
 def test_get_derived_variable_names_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_var_names = model.get_derived_variable_names()
     assert derived_var_names == []
 
 
 def test_update_derived_fn() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     new_derived_fn = one_argument_v2
     model.add_variable("x", 1.0)
@@ -570,7 +570,7 @@ def test_update_derived_fn() -> None:
 
 
 def test_update_derived_args() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     model.add_variable("x", 1.0)
     model.add_variable("y", 2.0)
@@ -583,7 +583,7 @@ def test_update_derived_args() -> None:
 
 
 def test_update_derived_fn_and_args() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     new_derived_fn = one_argument_v2
     model.add_variable("x", 1.0)
@@ -597,13 +597,13 @@ def test_update_derived_fn_and_args() -> None:
 
 
 def test_update_derived_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.update_derived("derived1", fn=one_argument, args=["x"])
 
 
 def test_remove_derived() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     derived_fn = one_argument
     model.add_derived("derived1", derived_fn, args=["x"])
     model.remove_derived("derived1")
@@ -614,13 +614,13 @@ def test_remove_derived() -> None:
 
 
 def test_remove_derived_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.remove_derived("derived1")
 
 
 def test_reactions() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -638,13 +638,13 @@ def test_reactions() -> None:
 
 
 def test_reactions_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     reactions = model.get_raw_reactions()
     assert reactions == {}
 
 
 def test_add_reaction() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -664,7 +664,7 @@ def test_add_reaction() -> None:
 
 
 def test_add_reaction_existing_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -684,7 +684,7 @@ def test_add_reaction_existing_name() -> None:
 
 
 def test_add_reaction_protected_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -698,7 +698,7 @@ def test_add_reaction_protected_name() -> None:
 
 
 def test_get_reaction_names() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -714,13 +714,13 @@ def test_get_reaction_names() -> None:
 
 
 def test_get_reaction_names_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     reaction_names = model.get_reaction_names()
     assert reaction_names == []
 
 
 def test_update_reaction_fn() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     new_reaction_fn = two_arguments_v2
@@ -740,7 +740,7 @@ def test_update_reaction_fn() -> None:
 
 
 def test_update_reaction_stoichiometry() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -760,7 +760,7 @@ def test_update_reaction_stoichiometry() -> None:
 
 
 def test_update_reaction_args() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -780,7 +780,7 @@ def test_update_reaction_args() -> None:
 
 
 def test_update_reaction_fn_and_stoichiometry() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     new_reaction_fn = two_arguments_v2
@@ -803,7 +803,7 @@ def test_update_reaction_fn_and_stoichiometry() -> None:
 
 
 def test_update_reaction_fn_and_args() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     new_reaction_fn = two_arguments_v2
@@ -824,7 +824,7 @@ def test_update_reaction_fn_and_args() -> None:
 
 
 def test_update_reaction_stoichiometry_and_args() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -845,7 +845,7 @@ def test_update_reaction_stoichiometry_and_args() -> None:
 
 
 def test_update_reaction_fn_stoichiometry_and_args() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     new_reaction_fn = two_arguments_v2
@@ -869,13 +869,13 @@ def test_update_reaction_fn_stoichiometry_and_args() -> None:
 
 
 def test_update_reaction_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.update_reaction("reaction1")
 
 
 def test_remove_reaction() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -893,13 +893,13 @@ def test_remove_reaction() -> None:
 
 
 def test_remove_reaction_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.remove_reaction("reaction1")
 
 
 def test_add_readout() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     readout_fn = one_argument
     model.add_readout("readout1", readout_fn, args=["x"])
 
@@ -911,7 +911,7 @@ def test_add_readout() -> None:
 
 
 def test_add_readout_existing_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     readout_fn = one_argument
     model.add_readout("readout1", readout_fn, args=["x"])
     with pytest.raises(NameError):
@@ -919,14 +919,14 @@ def test_add_readout_existing_name() -> None:
 
 
 def test_add_readout_protected_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     readout_fn = one_argument
     with pytest.raises(KeyError):
         model.add_readout("time", readout_fn, args=["x"])
 
 
 def test_get_readout_names() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     readout_fn = one_argument
     model.add_readout("readout1", readout_fn, args=["x"])
     model.add_readout("readout2", readout_fn, args=["x"])
@@ -938,13 +938,13 @@ def test_get_readout_names() -> None:
 
 
 def test_get_readout_names_empty() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     readout_names = model.get_readout_names()
     assert readout_names == []
 
 
 def test_remove_readout() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     readout_fn = one_argument
     model.add_readout("readout1", readout_fn, args=["x"])
     model.remove_readout("readout1")
@@ -955,13 +955,13 @@ def test_remove_readout() -> None:
 
 
 def test_remove_readout_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.remove_readout("readout1")
 
 
 def test_get_args() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_variable("var1", 2.0)
     model.add_derived("derived1", one_argument, args=["var1"])
@@ -978,7 +978,7 @@ def test_get_args() -> None:
 
 
 def test_get_args_without_readouts() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_variable("var1", 2.0)
     model.add_derived("derived1", one_argument, args=["var1"])
@@ -992,7 +992,7 @@ def test_get_args_without_readouts() -> None:
 
 
 def test_get_args_with_multiple_concs() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_variable("var1", 2.0)
     model.add_variable("var2", 3.0)
@@ -1009,7 +1009,7 @@ def test_get_args_with_multiple_concs() -> None:
 
 
 def test_get_args_with_empty_concs() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_variable("var1", 2.0)
     model.add_derived("derived1", one_argument, args=["var1"])
@@ -1020,7 +1020,7 @@ def test_get_args_with_empty_concs() -> None:
 
 
 def test_get_args_time_course() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_variable("var1", 2.0)
     model.add_derived("derived1", one_argument, args=["var1"])
@@ -1042,7 +1042,7 @@ def test_get_args_time_course() -> None:
 
 
 def test_get_args_time_course_with_readouts() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_variable("var1", 2.0)
     model.add_derived("derived1", one_argument, args=["var1"])
@@ -1067,7 +1067,7 @@ def test_get_args_time_course_with_readouts() -> None:
 
 
 def test_get_args_time_course_with_multiple_concs() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_variable("var1", 2.0)
     model.add_variable("var2", 3.0)
@@ -1090,7 +1090,7 @@ def test_get_args_time_course_with_multiple_concs() -> None:
 
 
 def test_get_args_time_course_with_empty_concs() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_parameter("param1", 1.0)
     model.add_variable("var1", 2.0)
     model.add_derived("derived1", one_argument, args=["var1"])
@@ -1101,7 +1101,7 @@ def test_get_args_time_course_with_empty_concs() -> None:
 
 
 def test_get_full_args() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 2.0)
     model.add_variable("var2", 3.0)
     model.add_derived("derived1", two_arguments, args=["var1", "var2"])
@@ -1117,7 +1117,7 @@ def test_get_full_args() -> None:
 
 
 def test_get_full_args_without_readouts() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 2.0)
     model.add_variable("var2", 3.0)
     model.add_derived("derived1", two_arguments, args=["var1", "var2"])
@@ -1133,7 +1133,7 @@ def test_get_full_args_without_readouts() -> None:
 
 
 def test_get_full_args_with_empty_concs() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variable("var1", 2.0)
     model.add_variable("var2", 3.0)
     model.add_derived("derived1", two_arguments, args=["var1", "var2"])
@@ -1144,7 +1144,7 @@ def test_get_full_args_with_empty_concs() -> None:
 
 
 def test_get_fluxes() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -1161,14 +1161,14 @@ def test_get_fluxes() -> None:
 
 
 def test_get_fluxes_empty_reactions() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     concs = {"A": 1.0, "B": 2.0}
     fluxes = model.get_fluxes(concs)
     assert fluxes.empty
 
 
 def test_get_fluxes_empty_concs() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -1183,7 +1183,7 @@ def test_get_fluxes_empty_concs() -> None:
 
 
 def test_get_fluxes_time_course() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -1202,7 +1202,7 @@ def test_get_fluxes_time_course() -> None:
 
 
 def test_get_fluxes_time_course_empty_reactions() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     concs = pd.DataFrame({"A": [1.0, 2.0], "B": [2.0, 3.0]}, index=[0.0, 1.0])
     args_time_course = model.get_args_time_course(concs)
     fluxes_time_course = model.get_fluxes_time_course(args_time_course)
@@ -1211,7 +1211,7 @@ def test_get_fluxes_time_course_empty_reactions() -> None:
 
 
 def test_get_fluxes_time_course_empty_args() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -1227,7 +1227,7 @@ def test_get_fluxes_time_course_empty_args() -> None:
 
 
 def test_call() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -1245,7 +1245,7 @@ def test_call() -> None:
 
 
 def test_call_empty_reactions() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     time = 0.0
     concs = np.array([1.0, 2.0])
     with pytest.raises(Exception):  # noqa: B017
@@ -1253,7 +1253,7 @@ def test_call_empty_reactions() -> None:
 
 
 def test_call_empty_concs() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -1269,7 +1269,7 @@ def test_call_empty_concs() -> None:
 
 
 def test_get_right_hand_side() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -1286,7 +1286,7 @@ def test_get_right_hand_side() -> None:
 
 
 def test_get_right_hand_side_empty_concs() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -1307,7 +1307,7 @@ def test_get_right_hand_side_empty_concs() -> None:
 
 def test_rename_variable() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_reaction(
             "r1",
@@ -1330,7 +1330,7 @@ def test_rename_variable() -> None:
 
 def test_rename_parameter() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_parameter("p1", 2.0)
         .add_derived("d1", fn=two_arguments, args=["v1", "p1"])
@@ -1344,7 +1344,7 @@ def test_rename_parameter() -> None:
 
 def test_rename_parameter_in_initial_assignment() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameter("p1", 2.0)
         .add_variable("v1", InitialAssignment(fn=one_argument, args=["p1"]))
     )
@@ -1357,7 +1357,7 @@ def test_rename_parameter_in_initial_assignment() -> None:
 
 def test_rename_derived() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_derived("d1", fn=one_argument, args=["v1"])
         .add_reaction(
@@ -1375,7 +1375,7 @@ def test_rename_derived() -> None:
 
 def test_rename_reaction() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_reaction(
             "r1",
@@ -1394,7 +1394,9 @@ def test_rename_reaction() -> None:
 
 def test_rename_readout() -> None:
     model = (
-        Model().add_variable("v1", 1.0).add_readout("ro1", fn=one_argument, args=["v1"])
+        KineticModelBuilder()
+        .add_variable("v1", 1.0)
+        .add_readout("ro1", fn=one_argument, args=["v1"])
     )
     model.rename("ro1", "energy")
 
@@ -1404,7 +1406,7 @@ def test_rename_readout() -> None:
 
 def test_rename_surrogate() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_surrogate(
             "qss1",
@@ -1426,7 +1428,7 @@ def test_rename_surrogate() -> None:
 
 def test_rename_surrogate_output() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_surrogate(
             "qss1",
@@ -1451,7 +1453,7 @@ def test_rename_surrogate_output() -> None:
 
 def test_rename_data() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_data("d", pd.Series({"a": 1.0}))
         .add_reaction(
@@ -1470,7 +1472,7 @@ def test_rename_data() -> None:
 
 def test_rename_string_stoichiometry() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", 1.0)
         .add_parameter("p1", 2.0)
         .add_reaction(
@@ -1488,13 +1490,13 @@ def test_rename_string_stoichiometry() -> None:
 
 
 def test_rename_missing_name() -> None:
-    model = Model().add_variable("v1", 1.0)
+    model = KineticModelBuilder().add_variable("v1", 1.0)
     with pytest.raises(KeyError):
         model.rename("nope", "x")
 
 
 def test_rename_collision() -> None:
-    model = Model().add_variables({"v1": 1.0, "v2": 2.0})
+    model = KineticModelBuilder().add_variables({"v1": 1.0, "v2": 2.0})
     with pytest.raises(NameError):
         model.rename("v1", "v2")
     # Insert-before-remove: the model is left untouched
@@ -1503,22 +1505,22 @@ def test_rename_collision() -> None:
 
 
 def test_rename_to_time() -> None:
-    model = Model().add_variable("v1", 1.0)
+    model = KineticModelBuilder().add_variable("v1", 1.0)
     with pytest.raises(KeyError):
         model.rename("v1", "time")
     assert "v1" in model._ids
 
 
 def test_rename_same_name_is_noop() -> None:
-    model = Model().add_variable("v1", 1.0)
+    model = KineticModelBuilder().add_variable("v1", 1.0)
     assert model.rename("v1", "v1") is model
     assert "v1" in model._ids
 
 
 def test_rename_preserves_dynamics() -> None:
-    def build(var: str, par: str) -> Model:
+    def build(var: str, par: str) -> KineticModelBuilder:
         return (
-            Model()
+            KineticModelBuilder()
             .add_variable(var, 10.0)
             .add_parameter(par, 0.5)
             .add_reaction(

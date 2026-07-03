@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from mxlpy import Model, Simulator, fns
+from mxlpy import KineticModelBuilder, Simulator, fns
 
 
-def get_model() -> Model:
+def get_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"S": 10.0, "P": 0.0})
         .add_parameters({"k1": 1.0, "k2": 2.0})
         .add_reaction(
@@ -54,7 +54,7 @@ def test_errors_block_subsequent_simulate() -> None:
     """
     # Force an error by making the model diverge: very stiff, large k
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("x", 1.0)
         .add_parameter("k", 1e30)
         .add_reaction(

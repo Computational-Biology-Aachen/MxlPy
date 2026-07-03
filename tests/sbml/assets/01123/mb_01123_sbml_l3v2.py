@@ -1,4 +1,4 @@
-from mxlpy import Derived, Model
+from mxlpy import Derived, KineticModelBuilder
 
 
 def S1_conc(comp: float, S1: float) -> float:
@@ -21,9 +21,9 @@ def __J0_stoich_S1(comp: float) -> float:
     return -1.0 * comp
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("comp", initial_value=5.0)
         .add_variable("S1", initial_value=1.0)
         .add_parameter("S3", value=4.0)

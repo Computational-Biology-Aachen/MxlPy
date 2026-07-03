@@ -1,6 +1,6 @@
 import math
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def P2() -> float:
@@ -159,9 +159,9 @@ def P40() -> float:
     return 24
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter("P1", value=3.7)
         .add_derived(
             "P2",

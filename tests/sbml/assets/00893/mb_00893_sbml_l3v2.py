@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def dP3(time: float, k1: float) -> float:
@@ -13,9 +13,9 @@ def dP2(P1: float, P3: float) -> float:
     return P1 * P3
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("P1", initial_value=0.0015)
         .add_variable("P2", initial_value=0.0)
         .add_variable("P3", initial_value=0.001)

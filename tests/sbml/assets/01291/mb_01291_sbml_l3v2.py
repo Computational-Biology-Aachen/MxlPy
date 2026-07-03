@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def p1() -> float:
@@ -9,9 +9,9 @@ def p2() -> float:
     return False
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_derived(
             "p1",
             fn=p1,

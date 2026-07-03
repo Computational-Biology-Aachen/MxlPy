@@ -1,6 +1,6 @@
 import math
 
-from mxlpy import Derived, Model
+from mxlpy import Derived, KineticModelBuilder
 
 
 def P1(S1_stoich: float) -> float:
@@ -215,9 +215,9 @@ def J0_stoich_S1(S1_stoich: float, C: float) -> float:
     return 1.0 * C * S1_stoich
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("S1_stoich", initial_value=2.0)
         .add_variable("S1", initial_value=0.0)
         .add_parameter("C", value=1.0)

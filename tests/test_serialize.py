@@ -19,7 +19,7 @@ from example_models import (
     get_tpi_ald_model,
     get_upper_glycolysis,
 )
-from mxlpy import Derived, InitialAssignment, Model, fns
+from mxlpy import Derived, InitialAssignment, KineticModelBuilder, fns
 from mxlpy.meta import _mathml as mml
 from mxlpy.meta.sympy_tools import mathml_to_sympy, sympy_to_mathml
 from mxlpy.serialize import model_from_dict, model_to_dict
@@ -41,7 +41,7 @@ EXAMPLE_MODELS = [
 ]
 
 
-def _combined(model: Model) -> pd.DataFrame:
+def _combined(model: KineticModelBuilder) -> pd.DataFrame:
     res = mxlpy.Simulator(model).simulate(10).get_result().unwrap_or_err()
     return res.get_combined()
 
@@ -185,7 +185,7 @@ def test_save_writes_schema_and_default_model_id(tmp_path: Path) -> None:
 
 def test_initial_assignment_roundtrip() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_parameters({"p1": 2.0, "p2": 3.0})
         .add_variable("v1", InitialAssignment(fn=fns.mul, args=["p1", "p2"]))
     )
@@ -198,7 +198,7 @@ def test_initial_assignment_roundtrip() -> None:
 
 def test_dynamic_stoichiometry_roundtrip() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variables({"v1": 1.0, "v2": 1.0})
         .add_parameters({"p1": 1.0, "k": 2.0})
         .add_reaction(
@@ -216,7 +216,7 @@ def test_dynamic_stoichiometry_roundtrip() -> None:
 
 def test_readout_roundtrip() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variables({"v1": 2.0, "v2": 4.0})
         .add_readout("ratio", fn=fns.div, args=["v1", "v2"])
     )
@@ -236,6 +236,6 @@ def test_surrogate_raises_serialization_error() -> None:
         outputs=["o1"],
         stoichiometries={},
     )
-    model = Model().add_variable("v1", 1.0).add_surrogate("s1", surrogate)
+    model = KineticModelBuilder().add_variable("v1", 1.0).add_surrogate("s1", surrogate)
     with pytest.raises(SerializationError, match="surrogates"):
         model_to_dict(model, model_id="m")

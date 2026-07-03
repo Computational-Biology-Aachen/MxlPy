@@ -1,10 +1,10 @@
 import pandas as pd
 
-from mxlpy import InitialAssignment, Model, fns
+from mxlpy import InitialAssignment, KineticModelBuilder, fns
 
 
 def test_derived_initial_from_variable() -> None:
-    m = Model()
+    m = KineticModelBuilder()
     m.add_variables(
         {
             "x": 1.0,
@@ -31,7 +31,7 @@ def test_derived_initial_from_variable() -> None:
 
 
 def test_derived_initial_from_derived() -> None:
-    m = Model()
+    m = KineticModelBuilder()
     m.add_variables(
         {
             "x": 1.0,
@@ -61,7 +61,7 @@ def test_derived_initial_from_derived() -> None:
 
 
 def test_derived_initial_from_rate() -> None:
-    m = Model()
+    m = KineticModelBuilder()
     m.add_variables(
         {
             "x": 1.0,

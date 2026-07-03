@@ -1,4 +1,4 @@
-from mxlpy import Model, meta
+from mxlpy import KineticModelBuilder, meta
 
 
 def constant(x: float) -> float:
@@ -10,7 +10,7 @@ def mass_action_1s(s1: float, k: float) -> float:
 
 
 def test_generate_model_code_mxlweb_empty() -> None:
-    assert meta.generate_model_code_mxlweb(Model()).split("\n") == [
+    assert meta.generate_model_code_mxlweb(KineticModelBuilder()).split("\n") == [
         'import { KineticModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
         'import {  } from "@computational-biology-aachen/mxlweb-core/mathml";',
         "",
@@ -22,7 +22,7 @@ def test_generate_model_code_mxlweb_empty() -> None:
 
 
 def test_generate_model_code_mxlweb_parameter() -> None:
-    model = Model().add_parameter("p1", value=1.0)
+    model = KineticModelBuilder().add_parameter("p1", value=1.0)
     assert meta.generate_model_code_mxlweb(model).split("\n") == [
         'import { KineticModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
         'import {  } from "@computational-biology-aachen/mxlweb-core/mathml";',
@@ -38,7 +38,7 @@ def test_generate_model_code_mxlweb_parameter() -> None:
 
 
 def test_generate_model_code_mxlweb_variable() -> None:
-    model = Model().add_variable("v1", initial_value=1.0)
+    model = KineticModelBuilder().add_variable("v1", initial_value=1.0)
     assert meta.generate_model_code_mxlweb(model).split("\n") == [
         'import { KineticModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
         'import {  } from "@computational-biology-aachen/mxlweb-core/mathml";',
@@ -55,7 +55,7 @@ def test_generate_model_code_mxlweb_variable() -> None:
 
 def test_generate_model_code_mxlweb_derived() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("x1", initial_value=1.0)
         .add_derived(
             "d1",
@@ -83,7 +83,7 @@ def test_generate_model_code_mxlweb_derived() -> None:
 
 def test_generate_model_code_mxlweb_reaction() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", initial_value=1.0)
         .add_parameter("p1", value=1.0)
         .add_reaction(
@@ -118,7 +118,7 @@ def test_generate_model_code_mxlweb_reaction() -> None:
 
 def test_generate_model_code_mxlweb_topo_order() -> None:
     model = (
-        Model()
+        KineticModelBuilder()
         .add_variable("x1", initial_value=1.0)
         .add_derived("d1", fn=constant, args=["x1"])
         .add_derived("d2", fn=constant, args=["r1"])
@@ -169,7 +169,11 @@ def test_generate_model_code_mxlweb_topo_order() -> None:
 
 def test_generate_model_code_mxlweb_options() -> None:
     """tex_names, sliders and docstring are threaded into the output."""
-    model = Model().add_parameter("p1", value=1.0).add_variable("v1", initial_value=2.0)
+    model = (
+        KineticModelBuilder()
+        .add_parameter("p1", value=1.0)
+        .add_variable("v1", initial_value=2.0)
+    )
     assert meta.generate_model_code_mxlweb(
         model,
         tex_names={"p1": "alpha", "v1": "V"},

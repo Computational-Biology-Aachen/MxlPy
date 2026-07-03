@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 from mxlpy.fns import constant
 
 __all__ = ["get_model", "wrapper"]
@@ -13,10 +13,10 @@ def wrapper(x: float) -> float:
     return constant(x)
 
 
-def get_model() -> Model:
+def get_model() -> KineticModelBuilder:
     """Create a model with a nested function call."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"x": 0})
         .add_reaction("v1", wrapper, args=["x"], stoichiometry={"x": -1})
     )

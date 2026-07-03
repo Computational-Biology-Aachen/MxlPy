@@ -20,7 +20,7 @@ from mxlpy.simulator import Simulator
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from mxlpy import Model
+    from mxlpy import KineticModelBuilder
 
 __all__ = [
     "ThompsonState",
@@ -97,7 +97,7 @@ class ThompsonState:
 
 def _thompson_worker(
     inp: tuple[dict[str, int], dict[str, float]],
-    model: Model,
+    model: KineticModelBuilder,
     data: pd.DataFrame,
 ) -> tuple[dict[str, int], pd.DataFrame | None]:
     idxs, parameters = inp
@@ -115,7 +115,7 @@ def _thompson_worker(
 
 
 def thompson_sampling(
-    model: Model,
+    model: KineticModelBuilder,
     data: pd.DataFrame,
     state: ThompsonState,
     rtol: float,

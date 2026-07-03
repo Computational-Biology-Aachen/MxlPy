@@ -1,4 +1,4 @@
-from mxlpy import InitialAssignment, Model
+from mxlpy import InitialAssignment, KineticModelBuilder
 
 
 def init_a_sbml() -> float:
@@ -165,9 +165,9 @@ def init_a_2015() -> float:
     return 0.999999845071732
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_parameter(
             "a_sbml",
             value=InitialAssignment(fn=init_a_sbml, args=[]),

@@ -11,11 +11,11 @@ from mxlpy.sensitivity import _build_problem, _evaluate
 from tests.models import m_2v_2p_1d_1r
 
 if TYPE_CHECKING:
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
 
 def _steady_state_output(variable: str) -> sensitivity.OutputFn:
-    def output(model: Model, samples: pd.DataFrame) -> np.ndarray:
+    def output(model: KineticModelBuilder, samples: pd.DataFrame) -> np.ndarray:
         return (
             scan.steady_state(model, to_scan=samples, parallel=False)
             .variables[variable]
@@ -60,7 +60,7 @@ def test_morris_is_reproducible_with_seed() -> None:
 def test_morris_evaluation_count() -> None:
     captured: dict[str, pd.DataFrame] = {}
 
-    def output(_model: Model, samples: pd.DataFrame) -> np.ndarray:
+    def output(_model: KineticModelBuilder, samples: pd.DataFrame) -> np.ndarray:
         captured["samples"] = samples
         return np.zeros(len(samples))
 
@@ -77,7 +77,7 @@ def test_morris_evaluation_count() -> None:
 
 
 def test_evaluate_warns_on_non_finite(caplog: pytest.LogCaptureFixture) -> None:
-    def output(_model: Model, samples: pd.DataFrame) -> np.ndarray:
+    def output(_model: KineticModelBuilder, samples: pd.DataFrame) -> np.ndarray:
         y = np.ones(len(samples))
         y[0] = np.nan
         return y
@@ -93,7 +93,7 @@ def test_evaluate_warns_on_non_finite(caplog: pytest.LogCaptureFixture) -> None:
 def test_morris_propagates_failed_runs_as_nan() -> None:
     # A model whose integration fails for every sample yields NaN outputs,
     # which surface as NaN sensitivity indices rather than raising.
-    def output(_model: Model, samples: pd.DataFrame) -> np.ndarray:
+    def output(_model: KineticModelBuilder, samples: pd.DataFrame) -> np.ndarray:
         return np.full(len(samples), np.nan)
 
     result = sensitivity.morris(
@@ -134,7 +134,7 @@ def test_sobol_is_reproducible_with_seed() -> None:
 def test_sobol_evaluation_count() -> None:
     captured: dict[str, pd.DataFrame] = {}
 
-    def output(_model: Model, samples: pd.DataFrame) -> np.ndarray:
+    def output(_model: KineticModelBuilder, samples: pd.DataFrame) -> np.ndarray:
         captured["samples"] = samples
         return np.zeros(len(samples))
 
@@ -163,7 +163,7 @@ def test_sobol_rejects_non_power_of_two(n_samples: int) -> None:
 
 
 def test_sobol_propagates_failed_runs_as_nan() -> None:
-    def output(_model: Model, samples: pd.DataFrame) -> np.ndarray:
+    def output(_model: KineticModelBuilder, samples: pd.DataFrame) -> np.ndarray:
         return np.full(len(samples), np.nan)
 
     result = sensitivity.sobol(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 from mxlpy.fns import mass_action_1s
 from mxlpy.label_map import (
     LabelMapper,
@@ -23,8 +23,8 @@ from mxlpy.label_map import (
 
 
 @pytest.fixture
-def simple_model() -> Model:
-    model = Model()
+def simple_model() -> KineticModelBuilder:
+    model = KineticModelBuilder()
     model.add_parameters({"k1": 1.0, "k2": 2.0})
     model.add_variables({"A": 1.0, "B": 0.0, "C": 0.0})
 
@@ -59,7 +59,7 @@ def test_assign_compound_labels() -> None:
     assert result == ["A__01", "B__10"]
 
 
-def test_build_model(simple_model: Model) -> None:
+def test_build_model(simple_model: KineticModelBuilder) -> None:
     mapper = LabelMapper(
         model=simple_model,
         label_variables={"A": 1, "B": 1, "C": 1},
@@ -104,7 +104,9 @@ def test_build_model(simple_model: Model) -> None:
     assert variables["A__0"] == 0.0
 
 
-def test_build_model_with_list_initial_labels(simple_model: Model) -> None:
+def test_build_model_with_list_initial_labels(
+    simple_model: KineticModelBuilder,
+) -> None:
     mapper = LabelMapper(
         model=simple_model,
         label_variables={"A": 2, "B": 2, "C": 1},
@@ -122,7 +124,7 @@ def test_build_model_with_list_initial_labels(simple_model: Model) -> None:
     assert variables["A__01"] == 0.0
 
 
-def test_build_model_without_labels(simple_model: Model) -> None:
+def test_build_model_without_labels(simple_model: KineticModelBuilder) -> None:
     # Test the case where a metabolite is in the model but not in label_variables
     mapper = LabelMapper(
         model=simple_model,
@@ -140,7 +142,7 @@ def test_build_model_without_labels(simple_model: Model) -> None:
 
 
 def test_create_isotopomer_reactions() -> None:
-    test_model = Model()
+    test_model = KineticModelBuilder()
     test_model.add_parameters({"k1": 1.0})
     test_model.add_variables({"A": 1.0, "B": 0.0})
 
@@ -181,7 +183,7 @@ def test_create_isotopomer_reactions() -> None:
 
 
 def test_create_isotopomer_reactions_with_error() -> None:
-    test_model = Model()
+    test_model = KineticModelBuilder()
     test_model.add_parameters({"k1": 1.0})
     test_model.add_variables({"A": 1.0, "B": 0.0})
 
@@ -230,7 +232,7 @@ def test_get_external_labels() -> None:
     assert result == ""
 
 
-def test_get_isotopomer_of(simple_model: Model) -> None:
+def test_get_isotopomer_of(simple_model: KineticModelBuilder) -> None:
     mapper = LabelMapper(
         model=simple_model,
         label_variables={"A": 1, "B": 2, "C": 3},
@@ -241,7 +243,7 @@ def test_get_isotopomer_of(simple_model: Model) -> None:
     assert len(mapper.get_isotopomer_of("C")) == 8  # 2^3 = 8 isotopomers
 
 
-def test_get_isotopomers(simple_model: Model) -> None:
+def test_get_isotopomers(simple_model: KineticModelBuilder) -> None:
     mapper = LabelMapper(
         model=simple_model,
         label_variables={"A": 1, "B": 2},
@@ -253,7 +255,7 @@ def test_get_isotopomers(simple_model: Model) -> None:
     assert isotopomers["B"] == ["B__00", "B__01", "B__10", "B__11"]
 
 
-def test_get_isotopomers_by_regex(simple_model: Model) -> None:
+def test_get_isotopomers_by_regex(simple_model: KineticModelBuilder) -> None:
     mapper = LabelMapper(
         model=simple_model,
         label_variables={"A": 1, "B": 2, "C": 3},
@@ -269,7 +271,7 @@ def test_get_isotopomers_by_regex(simple_model: Model) -> None:
     assert len(result) == 4  # All isotopomers starting with 1
 
 
-def test_get_isotopomers_of_at_position(simple_model: Model) -> None:
+def test_get_isotopomers_of_at_position(simple_model: KineticModelBuilder) -> None:
     mapper = LabelMapper(
         model=simple_model,
         label_variables={"A": 1, "B": 2, "C": 3},
@@ -288,7 +290,7 @@ def test_get_isotopomers_of_at_position(simple_model: Model) -> None:
     assert set(result) == expected
 
 
-def test_get_isotopomers_of_with_n_labels(simple_model: Model) -> None:
+def test_get_isotopomers_of_with_n_labels(simple_model: KineticModelBuilder) -> None:
     mapper = LabelMapper(
         model=simple_model,
         label_variables={"A": 1, "B": 2, "C": 3},
@@ -358,7 +360,7 @@ def test_labelmapper_get_isotopomers_of_with_n_labels() -> None:
     assert True
 
 
-def test_labelmapper_init(simple_model: Model) -> None:
+def test_labelmapper_init(simple_model: KineticModelBuilder) -> None:
     mapper = LabelMapper(
         model=simple_model,
         label_variables={"A": 1, "B": 1},
@@ -396,7 +398,7 @@ def test_map_substrates_to_products() -> None:
     assert result == "0101"
 
 
-def test_model_with_derived_variables(simple_model: Model) -> None:
+def test_model_with_derived_variables(simple_model: KineticModelBuilder) -> None:
     # Add derived variables
     simple_model.add_derived("A_plus_B", lambda a, b: a + b, args=["A", "B"])
 

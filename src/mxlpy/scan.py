@@ -33,8 +33,8 @@ from mxlpy.types import Result
 if TYPE_CHECKING:
     from collections.abc import Callable, Hashable, Iterator
 
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.integrators import IntegratorType
-    from mxlpy.model import Model
     from mxlpy.types import Array
 
 
@@ -55,8 +55,8 @@ __all__ = [
 
 def _update_parameters_and_initial_conditions[T](
     pars: pd.Series,
-    fn: Callable[[Model], T],
-    model: Model,
+    fn: Callable[[KineticModelBuilder], T],
+    model: KineticModelBuilder,
 ) -> T:
     """Update model parameters and execute a function.
 
@@ -90,7 +90,7 @@ class SteadyStateWorker(Protocol):
 
     def __call__(
         self,
-        model: Model,
+        model: KineticModelBuilder,
         *,
         rel_norm: bool,
         integrator: IntegratorType | None,
@@ -106,7 +106,7 @@ class TimeCourseWorker(Protocol):
 
     def __call__(
         self,
-        model: Model,
+        model: KineticModelBuilder,
         time_points: Array,
         *,
         integrator: IntegratorType | None,
@@ -121,7 +121,7 @@ class ProtocolWorker(Protocol):
 
     def __call__(
         self,
-        model: Model,
+        model: KineticModelBuilder,
         protocol: pd.DataFrame,
         *,
         integrator: IntegratorType | None,
@@ -137,7 +137,7 @@ class ProtocolTimeCourseWorker(Protocol):
 
     def __call__(
         self,
-        model: Model,
+        model: KineticModelBuilder,
         protocol: pd.DataFrame,
         time_points: Array,
         *,
@@ -149,7 +149,7 @@ class ProtocolTimeCourseWorker(Protocol):
 
 
 def _steady_state_worker(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     rel_norm: bool,
     integrator: IntegratorType | None,
@@ -195,7 +195,7 @@ def _steady_state_worker(
 
 
 def _time_course_worker(
-    model: Model,
+    model: KineticModelBuilder,
     time_points: Array,
     y0: dict[str, float] | None,
     integrator: IntegratorType | None,
@@ -232,7 +232,7 @@ def _time_course_worker(
 
 
 def _protocol_worker(
-    model: Model,
+    model: KineticModelBuilder,
     protocol: pd.DataFrame,
     *,
     integrator: IntegratorType | None,
@@ -281,7 +281,7 @@ def _protocol_worker(
 
 
 def _protocol_time_course_worker(
-    model: Model,
+    model: KineticModelBuilder,
     protocol: pd.DataFrame,
     time_points: Array,
     *,
@@ -419,7 +419,7 @@ class SteadyStateScan:
 
 
 def steady_state(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
@@ -656,7 +656,7 @@ class TimeCourseScan:
 
 
 def time_course(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     to_scan: pd.DataFrame,
     time_points: Array,
@@ -899,7 +899,7 @@ class ProtocolScan:
 
 
 def protocol(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     to_scan: pd.DataFrame,
     protocol: pd.DataFrame,
@@ -981,7 +981,7 @@ def protocol(
 
 
 def protocol_time_course(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     to_scan: pd.DataFrame,
     protocol: pd.DataFrame,

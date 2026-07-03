@@ -45,8 +45,8 @@ from mxlpy.scan import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.integrators import IntegratorType
-    from mxlpy.model import Model
     from mxlpy.types import Array
 
 
@@ -69,7 +69,7 @@ class ParameterScanWorker(Protocol):
 
     def __call__(
         self,
-        model: Model,
+        model: KineticModelBuilder,
         *,
         parameters: pd.DataFrame,
         y0: dict[str, float] | None,
@@ -81,7 +81,7 @@ class ParameterScanWorker(Protocol):
 
 
 def _parameter_scan_worker(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     parameters: pd.DataFrame,
     y0: dict[str, float] | None,
@@ -123,7 +123,7 @@ def _parameter_scan_worker(
 
 
 def steady_state(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
@@ -209,7 +209,7 @@ def steady_state(
 
 
 def time_course(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     time_points: Array,
     mc_to_scan: pd.DataFrame,
@@ -286,7 +286,7 @@ def time_course(
 
 
 def protocol(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     protocol: pd.DataFrame,
     mc_to_scan: pd.DataFrame,
@@ -367,7 +367,7 @@ def protocol(
 
 
 def protocol_time_course(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     protocol: pd.DataFrame,
     time_points: Array,
@@ -471,7 +471,7 @@ class McSteadyStates:
 
 
 def scan_steady_state(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     to_scan: pd.DataFrame,
     mc_to_scan: pd.DataFrame,
@@ -564,7 +564,7 @@ def scan_steady_state(
 
 
 def variable_elasticities(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     mc_to_scan: pd.DataFrame,
     to_scan: list[str] | None = None,
@@ -641,7 +641,7 @@ def variable_elasticities(
 
 
 def parameter_elasticities(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     mc_to_scan: pd.DataFrame,
     to_scan: list[str],
@@ -718,7 +718,7 @@ def parameter_elasticities(
 
 
 def response_coefficients(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     mc_to_scan: pd.DataFrame,
     to_scan: list[str],

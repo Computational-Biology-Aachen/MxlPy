@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mxlpy.model import Model
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.surrogates.abstract import MockSurrogate
 from tests.model.test_model import two_arguments
 
 
 def test_add_surrogate() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_surrogate(
         "surrogate1",
         MockSurrogate(
@@ -33,14 +33,14 @@ def test_add_surrogate_existing_name() -> None:
         stoichiometries={"v1": {"x": -1.0, "y": 1.0}},
     )
 
-    model = Model()
+    model = KineticModelBuilder()
     model.add_surrogate("surrogate1", mock_surrogate)
     with pytest.raises(NameError):
         model.add_surrogate("surrogate1", mock_surrogate)
 
 
 def test_add_surrogate_protected_name() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.add_surrogate(
             "time",
@@ -54,7 +54,7 @@ def test_add_surrogate_protected_name() -> None:
 
 
 def test_update_surrogate() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_surrogate(
         "surrogate1",
         MockSurrogate(
@@ -77,7 +77,7 @@ def test_update_surrogate() -> None:
 
 
 def test_update_surrogate_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.update_surrogate(
             "surrogate1",
@@ -91,7 +91,7 @@ def test_update_surrogate_nonexistent() -> None:
 
 
 def test_remove_surrogate() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_surrogate(
         "surrogate1",
         MockSurrogate(
@@ -109,13 +109,13 @@ def test_remove_surrogate() -> None:
 
 
 def test_remove_surrogate_nonexistent() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     with pytest.raises(KeyError):
         model.remove_surrogate("surrogate1")
 
 
 def test_get_fluxes_with_surrogate() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -143,7 +143,7 @@ def test_get_fluxes_with_surrogate() -> None:
 
 
 def test_get_fluxes_time_course_with_surrogate() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -173,7 +173,7 @@ def test_get_fluxes_time_course_with_surrogate() -> None:
 
 
 def test_call_with_surrogate() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}
@@ -200,7 +200,7 @@ def test_call_with_surrogate() -> None:
 
 
 def test_get_right_hand_side_with_surrogate() -> None:
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"A": 1.0, "B": 2.0})
     reaction_fn = two_arguments
     stoichiometry = {"A": -1.0, "B": 1.0}

@@ -14,7 +14,7 @@ from mxlpy.distributions import LogNormal, sample
 from mxlpy.parallel import parallelise
 
 if TYPE_CHECKING:
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.types import Array
 
 __all__ = [
@@ -24,7 +24,7 @@ __all__ = [
 
 def _mc_fit_time_course_worker(
     p0: pd.Series,
-    model: Model,
+    model: KineticModelBuilder,
     data: pd.DataFrame,
     loss_fn: fit.LossFn,
 ) -> float:
@@ -43,7 +43,7 @@ def _mc_fit_time_course_worker(
 
 
 def profile_likelihood(
-    model: Model,
+    model: KineticModelBuilder,
     data: pd.DataFrame,
     parameter_name: str,
     parameter_values: Array,

@@ -1,4 +1,4 @@
-from mxlpy import InitialAssignment, Model
+from mxlpy import InitialAssignment, KineticModelBuilder
 
 
 def init_C(p1: float) -> float:
@@ -37,9 +37,9 @@ def reaction2(S3: float, C: float, k2: float) -> float:
     return C * S3 * k2
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable(
             "C",
             initial_value=InitialAssignment(fn=init_C, args=["p1"]),

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.databases import (
     load_biomodel,
     load_jws_model,
@@ -13,7 +14,6 @@ from mxlpy.databases import (
     search_jws_by_reaction,
     search_jws_by_species,
 )
-from mxlpy.model import Model
 from mxlpy.types import Result
 
 SBML_FIXTURE = (
@@ -41,7 +41,7 @@ def test_load_biomodel_int() -> None:
     ) as mock_get:
         result = load_biomodel(12)
     assert isinstance(result, Result)
-    assert isinstance(result.unwrap_or_err(), Model)
+    assert isinstance(result.unwrap_or_err(), KineticModelBuilder)
     url = mock_get.call_args[0][0]
     assert "BIOMD0000000012" in url
 
@@ -52,7 +52,7 @@ def test_load_biomodel_str() -> None:
     ) as mock_get:
         result = load_biomodel("BIOMD0000000012")
     assert isinstance(result, Result)
-    assert isinstance(result.unwrap_or_err(), Model)
+    assert isinstance(result.unwrap_or_err(), KineticModelBuilder)
     url = mock_get.call_args[0][0]
     assert "BIOMD0000000012" in url
 
@@ -85,7 +85,7 @@ def test_load_jws_model() -> None:
     ):
         result = load_jws_model("teusink")
     assert isinstance(result, Result)
-    assert isinstance(result.unwrap_or_err(), Model)
+    assert isinstance(result.unwrap_or_err(), KineticModelBuilder)
 
 
 def test_load_jws_model_http_error() -> None:

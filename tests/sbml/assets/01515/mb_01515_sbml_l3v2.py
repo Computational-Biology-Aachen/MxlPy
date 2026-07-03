@@ -1,6 +1,6 @@
 import math
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def dP2() -> float:
@@ -155,9 +155,9 @@ def dP39() -> float:
     return -math.tanh(6)
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("P2", initial_value=0.0)
         .add_variable("P3", initial_value=0.0)
         .add_variable("P4", initial_value=0.0)

@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 from mxlpy.fns import constant, mass_action_1s, mass_action_1s_1p, mass_action_2s
 
 __all__ = ["get_model"]
 
 
-def get_model() -> Model:
+def get_model() -> KineticModelBuilder:
     """Upper glycolysis model developed by Klipp et al. (2005)."""
-    m = Model()
+    m = KineticModelBuilder()
     m.add_parameters(
         {
             "k1": 0.25,

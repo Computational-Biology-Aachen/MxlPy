@@ -53,8 +53,8 @@ if TYPE_CHECKING:
     from matplotlib.collections import QuadMesh
     from numpy.typing import NDArray
 
+    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.linear_label_map import LinearLabelMapper
-    from mxlpy.model import Model
     from mxlpy.types import Array, ArrayLike
 
 
@@ -1651,7 +1651,7 @@ def shade_protocol(
 
 
 def trajectories_2d(
-    model: Model,
+    model: KineticModelBuilder,
     x1: tuple[str, ArrayLike],
     x2: tuple[str, ArrayLike],
     y0: dict[str, float] | None = None,
@@ -1798,7 +1798,7 @@ def relative_label_distribution(
 
 
 def network(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     node_size: float = 500,
     cofactors: list[str] | None = None,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mxlpy import Model, Simulator
+from mxlpy import KineticModelBuilder, Simulator
 from mxlpy.fns import mass_action_1s
 from mxlpy.integrators import Scipy
 from mxlpy.integrators.utils import detect_oscillations
@@ -32,10 +32,10 @@ def predator_growth(x: float, y: float, delta: float, gamma: float) -> float:
 
 
 @pytest.fixture
-def lotka_volterra() -> Model:
+def lotka_volterra() -> KineticModelBuilder:
     """Classic Lotka-Volterra predator-prey model (sustained oscillator)."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"prey": 10.0, "predator": 5.0})
         .add_parameters({"alpha": 1.0, "beta": 0.1, "delta": 0.075, "gamma": 1.5})
         .add_reaction(
@@ -54,10 +54,10 @@ def lotka_volterra() -> Model:
 
 
 @pytest.fixture
-def converging_model() -> Model:
+def converging_model() -> KineticModelBuilder:
     """Simple irreversible conversion with a well-defined steady state."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variables({"S": 10.0, "P": 0.0})
         .add_parameters({"k1": 1.0, "k2": 2.0})
         .add_reaction(
@@ -141,7 +141,7 @@ def test_detect_oscillations_only_oscillating_species_listed() -> None:
 
 
 def test_oscillating_model_returns_oscillation_detected(
-    lotka_volterra: Model,
+    lotka_volterra: KineticModelBuilder,
 ) -> None:
     """Lotka-Volterra returns OscillationDetected, not NoSteadyState."""
     result = (
@@ -153,7 +153,7 @@ def test_oscillating_model_returns_oscillation_detected(
 
 
 def test_oscillating_model_species_names_resolved(
-    lotka_volterra: Model,
+    lotka_volterra: KineticModelBuilder,
 ) -> None:
     """oscillating_species contains actual model variable names, not indices."""
     result = (
@@ -169,7 +169,7 @@ def test_oscillating_model_species_names_resolved(
 
 
 def test_oscillating_model_period_is_estimated(
-    lotka_volterra: Model,
+    lotka_volterra: KineticModelBuilder,
 ) -> None:
     """OscillationDetected carries a finite period estimate."""
     result = (
@@ -182,7 +182,7 @@ def test_oscillating_model_period_is_estimated(
     assert result.value.period > 0
 
 
-def test_converging_model_not_affected(converging_model: Model) -> None:
+def test_converging_model_not_affected(converging_model: KineticModelBuilder) -> None:
     """A model that converges to a steady state is unaffected by the feature."""
     result = (
         Simulator(converging_model, integrator=Scipy)
@@ -209,7 +209,9 @@ def test_oscillation_detected_no_period() -> None:
     assert exc.period is None
 
 
-def test_unwrap_oscillation_detected_raises(lotka_volterra: Model) -> None:
+def test_unwrap_oscillation_detected_raises(
+    lotka_volterra: KineticModelBuilder,
+) -> None:
     """unwrap_or_err on an oscillating result raises OscillationDetected."""
     result = (
         Simulator(lotka_volterra, integrator=Scipy)

@@ -32,7 +32,8 @@ from mxlpy.units import Quantity
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,6 +70,7 @@ __all__ = [
     "generate_model_code_ts",
     "join_except_empty",
     "model_to_symbolic_repr",
+    "ss_builder_to_symbolic_repr",
     "valid_identifier",
     "valid_tex_identifier",
 ]
@@ -641,7 +643,7 @@ def _fns_to_symbolic_reprs(
 
 
 def model_to_symbolic_repr(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     only_warn: bool = False,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
@@ -757,6 +759,40 @@ def model_to_symbolic_repr(
     return sym
 
 
+def ss_builder_to_symbolic_repr(
+    model: SteadyStateModelBuilder,
+    *,
+    only_warn: bool = False,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> SymbolicRepr:
+    sym = SymbolicRepr()
+
+    for k, parameter in model.get_raw_parameters().items():
+        sym.parameters[k] = SymbolicParameter(
+            value=_fn_to_symbolic_repr(
+                k,
+                val.fn,
+                val.args,
+                only_warn=only_warn,
+                custom_fns=custom_fns,
+            )
+            if isinstance(val := parameter.value, InitialAssignment)
+            else sympy.Float(val),
+            unit=cast(Quantity, parameter.unit),
+        )
+
+    for k, der in model.get_raw_derived().items():
+        sym.derived[k] = _fn_to_symbolic_repr(
+            k,
+            der.fn,
+            der.args,
+            only_warn=only_warn,
+            custom_fns=custom_fns,
+        )
+
+    return sym
+
+
 ###############################################################################
 # General utils
 ###############################################################################
@@ -814,7 +850,9 @@ def valid_identifier(name: str) -> str:
     return sanitized or "_"
 
 
-def _get_dependencies_and_leaves(model: Model, requested: set[str]) -> set[str]:
+def _get_dependencies_and_leaves(
+    model: KineticModelBuilder, requested: set[str]
+) -> set[str]:
     """Return all names reachable from *requested* via the model's dependency graph."""
     leaves = (
         {
@@ -851,7 +889,7 @@ def _get_dependencies_and_leaves(model: Model, requested: set[str]) -> set[str]:
     return _topo.get_all_dependencies_of(requested, leaves, dependees)
 
 
-def _get_order(self: Model) -> list[str]:
+def _get_order(self: KineticModelBuilder) -> list[str]:
     """Return topological sort order of all model components."""
     base_parameter_values: dict[str, float] = {
         k: val
@@ -901,7 +939,7 @@ def _get_order(self: Model) -> list[str]:
 
 
 def _normalized_symbolic_model(
-    model: Model,
+    model: KineticModelBuilder,
     free_parameters: list[str],
     derived_to_calculate: list[str] | None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
@@ -1015,7 +1053,7 @@ def _normalized_symbolic_model(
 
 
 def _get_extended_returns(
-    model: Model,
+    model: KineticModelBuilder,
     derived_to_calculate: list[str] | None,
 ) -> list[str]:
     return (
@@ -1032,7 +1070,7 @@ def _get_extended_returns(
 
 
 def _generate_model_code(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     free_parameters: list[str],
     derived_to_calculate: list[str] | None,
@@ -1231,7 +1269,7 @@ def _generate_model_code(
 
 
 def generate_model_code_mxlweb(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     tex_names: dict[str, str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
@@ -1470,7 +1508,7 @@ def generate_model_code_mxlweb(
 
 
 def generate_model_code_py(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     free_parameters: list[str] | None = None,
     derived_to_calculate: list[str] | None = None,
@@ -1551,7 +1589,7 @@ def generate_model_code_py(
 
 
 def generate_model_code_jax(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     parameters_to_fit: list[str] | None = None,
     free_parameters: list[str] | None = None,
@@ -1637,7 +1675,7 @@ def generate_model_code_jax(
 
 
 def generate_model_code_ts(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     free_parameters: list[str] | None = None,
     derived_to_calculate: list[str] | None = None,
@@ -1706,7 +1744,7 @@ def generate_model_code_ts(
 
 
 def generate_model_code_jl(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     free_parameters: list[str] | None = None,
     derived_to_calculate: list[str] | None = None,
@@ -1775,7 +1813,7 @@ def generate_model_code_jl(
 
 
 def generate_model_code_matlab(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     free_parameters: list[str] | None = None,
     derived_to_calculate: list[str] | None = None,
@@ -1864,7 +1902,7 @@ def generate_model_code_matlab(
 
 
 def generate_model_code_rs(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     free_parameters: list[str] | None = None,
     derived_to_calculate: list[str] | None = None,
@@ -1962,7 +2000,7 @@ def generate_model_code_rs(
 
 
 def generate_model_code_cpp(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     free_parameters: list[str] | None = None,
     derived_to_calculate: list[str] | None = None,
@@ -2507,7 +2545,7 @@ class LatexCodegen:
 
 
 def generate_model_code_latex(
-    model: Model,
+    model: KineticModelBuilder,
     *,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     gls: dict[str, str] | None = None,
@@ -2727,8 +2765,8 @@ class DiffLatexCodegen:
 
 
 def generate_latex_diff(
-    old: Model,
-    new: Model,
+    old: KineticModelBuilder,
+    new: KineticModelBuilder,
     *,
     only_changes: bool = False,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,

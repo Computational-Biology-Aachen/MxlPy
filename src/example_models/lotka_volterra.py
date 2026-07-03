@@ -1,6 +1,6 @@
 """Lotka-Volterra predator-prey model (v2): predation uses derived stoichiometry."""
 
-from mxlpy import Model, fns
+from mxlpy import KineticModelBuilder, fns
 from mxlpy.types import Derived
 
 __all__ = ["create_model"]
@@ -30,10 +30,10 @@ def _predator_death(
     return gamma * predator
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     """Build the Lotka-Volterra predator-prey model (v2) with derived stoichiometry."""
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable(
             "Prey",
             initial_value=10.0,

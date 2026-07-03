@@ -12,8 +12,8 @@ import jax.numpy as jnp
 from jax import lax
 from jaxtyping import PRNGKeyArray, PyTree
 
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.meta._via_sym_repr import generate_model_code_jax
-from mxlpy.model import Model
 
 __all__ = [
     "Anode",
@@ -497,7 +497,7 @@ class Ode(Base):
     @classmethod
     def from_mxlpy(
         cls,
-        mxlpy_model: Model,
+        mxlpy_model: KineticModelBuilder,
         parameters_to_fit: list[str] | None = None,
         free_parameters: list[str] | None = None,
     ) -> Self:
@@ -588,7 +588,7 @@ class FluxOde(Base):
     @classmethod
     def from_mxlpy(
         cls,
-        mxlpy_model: Model,
+        mxlpy_model: KineticModelBuilder,
         parameters_to_fit: list[str] | None = None,
         free_parameters: list[str] | None = None,
     ) -> Self:

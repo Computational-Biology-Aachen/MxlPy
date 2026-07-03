@@ -25,7 +25,7 @@ from mxlpy.simulator import _normalise_protocol_index
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from mxlpy import Model
+    from mxlpy import KineticModelBuilder
     from mxlpy.integrators import IntegratorType
     from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
     from mxlpy.simulation import Simulation
@@ -59,7 +59,7 @@ class ReactionTemplate:
 class CarouselSteadyState:
     """Time course of a carousel simulation."""
 
-    carousel: list[Model]
+    carousel: list[KineticModelBuilder]
     results: list[Simulation]
 
     def __repr__(self) -> str:
@@ -77,7 +77,7 @@ class CarouselSteadyState:
 class CarouselTimeCourse:
     """Time course of a carousel simulation."""
 
-    carousel: list[Model]
+    carousel: list[KineticModelBuilder]
     results: list[Simulation]
 
     def __repr__(self) -> str:
@@ -94,8 +94,8 @@ def _dict_product[T1, T2](d: Mapping[T1, Iterable[T2]]) -> Iterable[dict[T1, T2]
 
 
 def _make_reaction_carousel(
-    model: Model, rxns: dict[str, list[ReactionTemplate]]
-) -> Iterable[Model]:
+    model: KineticModelBuilder, rxns: dict[str, list[ReactionTemplate]]
+) -> Iterable[KineticModelBuilder]:
     for d in _dict_product(rxns):
         new = deepcopy(model)
         for rxn, template in d.items():
@@ -107,7 +107,7 @@ def _make_reaction_carousel(
 class Carousel:
     """A carousel of models with different reaction templates."""
 
-    variants: list[Model]
+    variants: list[KineticModelBuilder]
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -115,7 +115,7 @@ class Carousel:
 
     def __init__(
         self,
-        model: Model,
+        model: KineticModelBuilder,
         variants: dict[str, list[ReactionTemplate]],
     ) -> None:
         """Initialize the carousel with a model and reaction templates."""

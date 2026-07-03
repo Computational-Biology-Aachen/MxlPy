@@ -13,7 +13,7 @@ from mxlpy.integrators.int_scipy import Scipy
 from mxlpy.sbml import read
 
 if TYPE_CHECKING:
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
 try:
     import assimulo  # type: ignore  # noqa: F401
@@ -47,7 +47,7 @@ def get_simulation_settings(path: Path, prefix: str) -> dict:
 
 
 def add_constant_species_to_results(
-    model: Model, expected: pd.DataFrame, result: pd.DataFrame
+    model: KineticModelBuilder, expected: pd.DataFrame, result: pd.DataFrame
 ) -> pd.DataFrame:
     """Adds constant species from the expected DataFrame to the result DataFrame.
 
@@ -77,7 +77,7 @@ def add_constant_species_to_results(
     return result
 
 
-def get_files(test: int) -> tuple[Model, dict, pd.DataFrame]:
+def get_files(test: int) -> tuple[KineticModelBuilder, dict, pd.DataFrame]:
     prefix = f"{test:05d}"
     path = ASSET_PATH / prefix
     sim_settings = get_simulation_settings(path=path, prefix=prefix)

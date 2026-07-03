@@ -10,12 +10,14 @@ from typing import cast
 
 import sympy
 
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.meta.sympy_tools import fn_to_sympy_expr, list_of_symbols
-from mxlpy.model import Model
 
 __all__ = ["AnalysisFn", "MarkdownReport", "markdown"]
 
-type AnalysisFn = Callable[[Model, Model, Path], tuple[str, Path]]
+type AnalysisFn = Callable[
+    [KineticModelBuilder, KineticModelBuilder, Path], tuple[str, Path]
+]
 
 
 def _latex_view(expr: sympy.Expr | None) -> str:
@@ -77,8 +79,8 @@ class MarkdownReport:
 
 
 def markdown(
-    m1: Model,
-    m2: Model,
+    m1: KineticModelBuilder,
+    m2: KineticModelBuilder,
     *,
     analyses: list[AnalysisFn] | None = None,
     rel_change: float = 1e-2,

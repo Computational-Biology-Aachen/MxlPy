@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from example_models.utils import filter_stoichiometry
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 from mxlpy.fns import constant, michaelis_menten_2s
 
 __all__ = ["get_example1"]
 
 
-def get_example1() -> Model:
+def get_example1() -> KineticModelBuilder:
     """Example model 1."""
-    model = Model()
+    model = KineticModelBuilder()
     model.add_variables({"x2": 0.0, "x3": 0.0})
     model.add_parameters(
         {

@@ -1,4 +1,4 @@
-from mxlpy import Derived, Model
+from mxlpy import Derived, KineticModelBuilder
 
 
 def S1_conc(compartment: float, S1: float) -> float:
@@ -65,9 +65,9 @@ def reaction3_stoich_S4(compartment: float) -> float:
     return 1.0 * compartment
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("S1", initial_value=0.002)
         .add_variable("S2", initial_value=0.002)
         .add_variable("S3", initial_value=0.0)

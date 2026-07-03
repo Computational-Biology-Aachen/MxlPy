@@ -60,8 +60,8 @@ LOGGER = logging.getLogger(__name__)
 __all__ = [
     "ArityMismatchError",
     "Failure",
+    "KineticModelBuilder",
     "LOGGER",
-    "Model",
     "ModelCache",
     "TableView",
     "UnitCheck",
@@ -204,7 +204,7 @@ def _invalidate_cache(method: Callable[Param, RetType]) -> Callable[Param, RetTy
         *args: Param.args,
         **kwargs: Param.kwargs,
     ) -> RetType:
-        self = cast(Model, args[0])
+        self = cast(KineticModelBuilder, args[0])
         self._cache = None
         return method(*args, **kwargs)
 
@@ -262,7 +262,7 @@ def _normalize_annotations(
 
 
 @dataclass(slots=True)
-class Model:
+class KineticModelBuilder:
     """Represents a metabolic model.
 
     Attributes

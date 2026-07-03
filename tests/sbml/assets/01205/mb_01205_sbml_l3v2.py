@@ -1,4 +1,4 @@
-from mxlpy import Model
+from mxlpy import KineticModelBuilder
 
 
 def x(S1_conc: float) -> float:
@@ -13,9 +13,9 @@ def dS1_conc() -> float:
     return 0.4
 
 
-def create_model() -> Model:
+def create_model() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("S1_conc", initial_value=0.0)
         .add_parameter("C1", value=0.5)
         .add_derived(

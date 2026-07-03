@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
-from mxlpy.model import Derived, Model
+from mxlpy._kinetic_builder import Derived, KineticModelBuilder
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -236,7 +236,7 @@ class LinearLabelMapper:
 
     """
 
-    model: Model
+    model: KineticModelBuilder
     label_variables: dict[str, int] = field(default_factory=dict)
     label_maps: dict[str, list[int]] = field(default_factory=dict)
 
@@ -273,7 +273,7 @@ class LinearLabelMapper:
         fluxes: pd.Series,
         external_label: float = 1.0,
         initial_labels: dict[str, int | list[int]] | None = None,
-    ) -> Model:
+    ) -> KineticModelBuilder:
         """Build a metabolic model with labeled isotopomers and reactions.
 
         Examples
@@ -315,7 +315,7 @@ class LinearLabelMapper:
                 for pos in label_positions:
                     variables[f"{base_compound}__{pos}"] = 1 / len(label_positions)
 
-        m = Model()
+        m = KineticModelBuilder()
         m.add_variables(variables)
         m.add_parameters(
             cast(dict, concs.to_dict())

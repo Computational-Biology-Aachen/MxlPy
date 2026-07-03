@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from mxlpy.model import Model
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
 
 def free_symbols(expr: sympy.Expr) -> list[str]:
@@ -99,7 +99,9 @@ def _codegen(model: pysbml.transform.data.Model) -> str:
     return sym.generate_mxlpy()
 
 
-def import_from_path(module_name: str, file_path: Path) -> Callable[[], Model]:
+def import_from_path(
+    module_name: str, file_path: Path
+) -> Callable[[], KineticModelBuilder]:
     """Import a model factory function from a generated Python file.
 
     Parameters
@@ -172,7 +174,7 @@ def _cv_terms_to_annotations(sbase: libsbml.SBase) -> list[Annotation]:
     return annotations
 
 
-def _attach_annotations(model: Model, file: Path) -> None:
+def _attach_annotations(model: KineticModelBuilder, file: Path) -> None:
     """Parse annotations from the SBML file and attach them to the model.
 
     ``pysbml`` discards ``<annotation>`` blocks during transformation, so the
@@ -222,7 +224,7 @@ def _attach_annotations(model: Model, file: Path) -> None:
             reactions[name].annotations = annotations
 
 
-def read(file: Path, *, via_temp_file: bool = True) -> Model:
+def read(file: Path, *, via_temp_file: bool = True) -> KineticModelBuilder:
     """Import a metabolic model from an SBML file.
 
     Parameters
@@ -240,7 +242,7 @@ def read(file: Path, *, via_temp_file: bool = True) -> Model:
     out_name = valid_filename(file.stem)
     model_code = _codegen(model)
 
-    model_fn: Callable[[], Model]
+    model_fn: Callable[[], KineticModelBuilder]
     if via_temp_file:
         path = default_tmp_dir(None, remove_old_cache=False) / f"{out_name}.py"
         with path.open("w+") as f:

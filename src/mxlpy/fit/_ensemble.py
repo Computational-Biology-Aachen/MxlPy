@@ -9,6 +9,7 @@ from functools import partial
 import pandas as pd
 
 from mxlpy import parallel
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.fit import losses
 from mxlpy.fit._single import protocol_time_course, steady_state, time_course
 from mxlpy.fit.abstract import EnsembleFit, FitResidual
@@ -20,7 +21,6 @@ from mxlpy.fit.residuals import (
 from mxlpy.integrators import IntegratorType
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
-from mxlpy.model import Model
 from mxlpy.simulator import _normalise_protocol_index
 
 __all__ = [
@@ -31,7 +31,7 @@ __all__ = [
 
 
 def ensemble_steady_state(
-    ensemble: list[Model],
+    ensemble: list[KineticModelBuilder],
     *,
     p0: dict[str, float],
     data: pd.Series,
@@ -119,7 +119,7 @@ def ensemble_steady_state(
 
 
 def ensemble_time_course(
-    ensemble: list[Model],
+    ensemble: list[KineticModelBuilder],
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
@@ -207,7 +207,7 @@ def ensemble_time_course(
 
 
 def ensemble_protocol_time_course(
-    ensemble: list[Model],
+    ensemble: list[KineticModelBuilder],
     *,
     p0: dict[str, float],
     data: pd.DataFrame,

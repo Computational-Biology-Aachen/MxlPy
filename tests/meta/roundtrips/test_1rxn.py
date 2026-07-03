@@ -1,13 +1,13 @@
-from mxlpy import Model, meta
+from mxlpy import KineticModelBuilder, meta
 
 
 def mass_action_1s(s1: float, k: float) -> float:
     return k * s1
 
 
-def model_1rxn() -> Model:
+def model_1rxn() -> KineticModelBuilder:
     return (
-        Model()
+        KineticModelBuilder()
         .add_variable("v1", initial_value=1.0)
         .add_parameter("p1", value=1.0)
         .add_reaction(
