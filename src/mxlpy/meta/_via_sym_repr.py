@@ -12,9 +12,6 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy import _topo
-from mxlpy._kinetic_builder import KineticModelBuilder
-from mxlpy._ode_builder import OdeModelBuilder
-from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.meta.source_tools import fn_to_sympy_expr, fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
@@ -35,6 +32,9 @@ from mxlpy.units import Quantity
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy._ode_builder import OdeModelBuilder
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -866,6 +866,11 @@ def model_to_symbolic_repr(
     only_warn: bool = False,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
 ) -> SymbolicRepr:
+    # We need the local imports here to avoid a Model -> meta -> Model import loop
+    from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy._ode_builder import OdeModelBuilder
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder
+
     if isinstance(model, KineticModelBuilder):
         return _kinetic_builder_to_symbolic_repr(
             model, only_warn=only_warn, custom_fns=custom_fns

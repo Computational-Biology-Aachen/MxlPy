@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Self, cast
 import pandas as pd
 from wadler_lindig import pformat
 
-from mxlpy._kinetic_builder import TableView
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
@@ -23,7 +22,7 @@ from mxlpy.unit_inference import (
     _latex_view,
 )
 
-__all__ = ["LOGGER", "ModelCache", "SteadyStateModelBuilder"]
+__all__ = ["LOGGER", "ModelCache", "SteadyStateModelBuilder", "TableView"]
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -33,6 +32,28 @@ if TYPE_CHECKING:
     from mxlpy.types import Callable, Param, RateFn, RetType
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(kw_only=True, slots=True)
+class TableView:
+    """Markdown view of pandas Dataframe.
+
+    Mostly used to get nice LaTeX rendering of sympy expressions.
+    """
+
+    data: pd.DataFrame
+
+    def __repr__(self) -> str:
+        """Normal Python shell output."""
+        return self.data.to_markdown()
+
+    def _repr_markdown_(self) -> str:
+        """Fancy IPython shell output.
+
+        Looks the same as __repr__, but is handled by IPython to output
+        `IPython.display.Markdown`, so looks nice
+        """
+        return self.data.to_markdown()
 
 
 @dataclass(slots=True)
