@@ -200,13 +200,27 @@ def _invalidate_cache(method: Callable[Param, RetType]) -> Callable[Param, RetTy
     return wrapper  # type: ignore
 
 
-def _expr_as_fn(fn: RateFn | sympy.Expr) -> RateFn:
+def _expr_free_symbol_names(expr: sympy.Expr) -> list[str]:
+    """Return an expression's free symbol names in a deterministic order.
+
+    `Expr.free_symbols` is a `set`, whose iteration order depends on
+    Python's per-process string hash seed. Sorting makes the binding
+    between an expression's symbols and a positional `args` list
+    reproducible across processes.
+    """
+    return sorted(i.name for i in expr.free_symbols if isinstance(i, sympy.Symbol))
+
+
+def _expr_as_fn(fn: RateFn | sympy.Expr, *, args: list[str]) -> RateFn:
     if isinstance(fn, sympy.Expr):
-        args = [i.name for i in fn.free_symbols if isinstance(i, sympy.Symbol)]
-        return sympy.lambdify(
-            args,
-            fn,
-        )
+        symbols = _expr_free_symbol_names(fn)
+        if len(symbols) != len(args):
+            msg = (
+                f"Expression {fn} has {len(symbols)} free symbol(s) {symbols}, "
+                f"but {len(args)} args were given: {args}"
+            )
+            raise ValueError(msg)
+        return sympy.lambdify(symbols, fn)
     return fn
 
 
@@ -214,12 +228,9 @@ def _expr_as_initial_assignment[T](
     value: T | InitialAssignment | sympy.Expr,
 ) -> T | InitialAssignment:
     if isinstance(value, sympy.Expr):
-        args = [i.name for i in value.free_symbols if isinstance(i, sympy.Symbol)]
+        args = _expr_free_symbol_names(value)
         value = InitialAssignment(
-            fn=sympy.lambdify(
-                args,
-                value,
-            ),
+            fn=sympy.lambdify(args, value),
             args=args,
         )
     return value
@@ -1082,7 +1093,7 @@ class OdeModelBuilder:
         """
         self._insert_id(name=name, ctx="derived")
         self._derived[name] = Derived(
-            fn=_expr_as_fn(fn),
+            fn=_expr_as_fn(fn, args=args),
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
@@ -1156,7 +1167,7 @@ class OdeModelBuilder:
         """
         der = self._derived[name]
         if fn is not None:
-            der.fn = _expr_as_fn(fn)
+            der.fn = _expr_as_fn(fn, args=args if args is not None else der.args)
         if args is not None:
             der.args = args
         if unit is not None:
@@ -1605,7 +1616,7 @@ class OdeModelBuilder:
         """
         self._insert_id(name=name, ctx="readout")
         self._readouts[name] = Readout(
-            fn=_expr_as_fn(fn),
+            fn=_expr_as_fn(fn, args=args),
             args=args,
             unit=unit,
         )
