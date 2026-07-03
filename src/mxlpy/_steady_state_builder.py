@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Self, cast
 
 import pandas as pd
+import sympy
 from wadler_lindig import pformat
 
 from mxlpy.meta.source_tools import fn_to_sympy_expr
@@ -26,8 +27,6 @@ __all__ = ["LOGGER", "ModelCache", "SteadyStateModelBuilder", "TableView"]
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
-
-    import sympy
 
     from mxlpy.types import Callable, Param, RateFn, RetType
 
@@ -129,6 +128,31 @@ def _invalidate_cache(method: Callable[Param, RetType]) -> Callable[Param, RetTy
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore
+
+
+def _expr_as_fn(fn: RateFn | sympy.Expr) -> RateFn:
+    if isinstance(fn, sympy.Expr):
+        args = [i.name for i in fn.free_symbols if isinstance(i, sympy.Symbol)]
+        return sympy.lambdify(
+            args,
+            fn,
+        )
+    return fn
+
+
+def _expr_as_initial_assignment[T](
+    value: T | InitialAssignment | sympy.Expr,
+) -> T | InitialAssignment:
+    if isinstance(value, sympy.Expr):
+        args = [i.name for i in value.free_symbols if isinstance(i, sympy.Symbol)]
+        value = InitialAssignment(
+            fn=sympy.lambdify(
+                args,
+                value,
+            ),
+            args=args,
+        )
+    return value
 
 
 @dataclass(slots=True)
@@ -311,7 +335,7 @@ class SteadyStateModelBuilder:
     def add_parameter(
         self,
         name: str,
-        value: float | InitialAssignment,
+        value: float | InitialAssignment | sympy.Expr,
         unit: sympy.Expr | None = None,
         source: str | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
@@ -343,7 +367,7 @@ class SteadyStateModelBuilder:
         """
         self._insert_id(name=name, ctx="parameter")
         self._parameters[name] = Parameter(
-            value=value,
+            value=_expr_as_initial_assignment(value),
             unit=unit,
             source=source,
             annotations=_normalize_annotations(annotations),
@@ -351,7 +375,8 @@ class SteadyStateModelBuilder:
         return self
 
     def add_parameters(
-        self, parameters: Mapping[str, float | Parameter | InitialAssignment]
+        self,
+        parameters: Mapping[str, float | Parameter | InitialAssignment | sympy.Expr],
     ) -> Self:
         """Adds multiple parameters to the model.
 
@@ -441,7 +466,7 @@ class SteadyStateModelBuilder:
     def update_parameter(
         self,
         name: str,
-        value: float | InitialAssignment | None = None,
+        value: float | InitialAssignment | sympy.Expr | None = None,
         *,
         unit: sympy.Expr | None = None,
         source: str | None = None,
@@ -483,7 +508,7 @@ class SteadyStateModelBuilder:
 
         parameter = self._parameters[name]
         if value is not None:
-            parameter.value = value
+            parameter.value = _expr_as_initial_assignment(value)
         if unit is not None:
             parameter.unit = unit
         if source is not None:
@@ -493,7 +518,8 @@ class SteadyStateModelBuilder:
         return self
 
     def update_parameters(
-        self, parameters: Mapping[str, float | Parameter | InitialAssignment]
+        self,
+        parameters: Mapping[str, float | Parameter | InitialAssignment | sympy.Expr],
     ) -> Self:
         """Update multiple parameters of the model.
 
@@ -683,7 +709,7 @@ class SteadyStateModelBuilder:
     def add_derived(
         self,
         name: str,
-        fn: RateFn,
+        fn: RateFn | sympy.Expr,
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
@@ -716,7 +742,7 @@ class SteadyStateModelBuilder:
         """
         self._insert_id(name=name, ctx="derived")
         self._derived[name] = Derived(
-            fn=fn,
+            fn=_expr_as_fn(fn),
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
@@ -757,7 +783,7 @@ class SteadyStateModelBuilder:
     def update_derived(
         self,
         name: str,
-        fn: RateFn | None = None,
+        fn: RateFn | sympy.Expr | None = None,
         *,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
@@ -790,7 +816,7 @@ class SteadyStateModelBuilder:
         """
         der = self._derived[name]
         if fn is not None:
-            der.fn = fn
+            der.fn = _expr_as_fn(fn)
         if args is not None:
             der.args = args
         if unit is not None:

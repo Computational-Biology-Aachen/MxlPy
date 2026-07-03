@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Self, cast
 
 import pandas as pd
+import sympy
 from wadler_lindig import pformat
 
 from mxlpy import _topo
@@ -40,8 +41,6 @@ from mxlpy.unit_inference import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
-
-    import sympy
 
     from mxlpy.types import Callable, Param, RateFn, RetType
 
@@ -199,6 +198,31 @@ def _invalidate_cache(method: Callable[Param, RetType]) -> Callable[Param, RetTy
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore
+
+
+def _expr_as_fn(fn: RateFn | sympy.Expr) -> RateFn:
+    if isinstance(fn, sympy.Expr):
+        args = [i.name for i in fn.free_symbols if isinstance(i, sympy.Symbol)]
+        return sympy.lambdify(
+            args,
+            fn,
+        )
+    return fn
+
+
+def _expr_as_initial_assignment[T](
+    value: T | InitialAssignment | sympy.Expr,
+) -> T | InitialAssignment:
+    if isinstance(value, sympy.Expr):
+        args = [i.name for i in value.free_symbols if isinstance(i, sympy.Symbol)]
+        value = InitialAssignment(
+            fn=sympy.lambdify(
+                args,
+                value,
+            ),
+            args=args,
+        )
+    return value
 
 
 @dataclass(slots=True)
@@ -596,7 +620,7 @@ class OdeModelBuilder:
     def add_parameter(
         self,
         name: str,
-        value: float | InitialAssignment,
+        value: float | InitialAssignment | sympy.Expr,
         unit: sympy.Expr | None = None,
         source: str | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
@@ -628,7 +652,7 @@ class OdeModelBuilder:
         """
         self._insert_id(name=name, ctx="parameter")
         self._parameters[name] = Parameter(
-            value=value,
+            value=_expr_as_initial_assignment(value),
             unit=unit,
             source=source,
             annotations=_normalize_annotations(annotations),
@@ -636,7 +660,8 @@ class OdeModelBuilder:
         return self
 
     def add_parameters(
-        self, parameters: Mapping[str, float | Parameter | InitialAssignment]
+        self,
+        parameters: Mapping[str, float | Parameter | InitialAssignment | sympy.Expr],
     ) -> Self:
         """Adds multiple parameters to the model.
 
@@ -726,7 +751,7 @@ class OdeModelBuilder:
     def update_parameter(
         self,
         name: str,
-        value: float | InitialAssignment | None = None,
+        value: float | InitialAssignment | sympy.Expr | None = None,
         *,
         unit: sympy.Expr | None = None,
         source: str | None = None,
@@ -768,7 +793,7 @@ class OdeModelBuilder:
 
         parameter = self._parameters[name]
         if value is not None:
-            parameter.value = value
+            parameter.value = _expr_as_initial_assignment(value)
         if unit is not None:
             parameter.unit = unit
         if source is not None:
@@ -778,7 +803,8 @@ class OdeModelBuilder:
         return self
 
     def update_parameters(
-        self, parameters: Mapping[str, float | Parameter | InitialAssignment]
+        self,
+        parameters: Mapping[str, float | Parameter | InitialAssignment | sympy.Expr],
     ) -> Self:
         """Update multiple parameters of the model.
 
@@ -871,7 +897,7 @@ class OdeModelBuilder:
         name: str,
         fn: RateFn,
         args: list[str],
-        initial_value: float | None = None,
+        initial_value: float | InitialAssignment | sympy.Expr | None = None,
     ) -> Self:
         """Converts a parameter to a dynamic variable in the model.
 
@@ -1023,7 +1049,7 @@ class OdeModelBuilder:
     def add_derived(
         self,
         name: str,
-        fn: RateFn,
+        fn: RateFn | sympy.Expr,
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
@@ -1056,7 +1082,7 @@ class OdeModelBuilder:
         """
         self._insert_id(name=name, ctx="derived")
         self._derived[name] = Derived(
-            fn=fn,
+            fn=_expr_as_fn(fn),
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
@@ -1097,7 +1123,7 @@ class OdeModelBuilder:
     def update_derived(
         self,
         name: str,
-        fn: RateFn | None = None,
+        fn: RateFn | sympy.Expr | None = None,
         *,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
@@ -1130,7 +1156,7 @@ class OdeModelBuilder:
         """
         der = self._derived[name]
         if fn is not None:
-            der.fn = fn
+            der.fn = _expr_as_fn(fn)
         if args is not None:
             der.args = args
         if unit is not None:
@@ -1184,7 +1210,11 @@ class OdeModelBuilder:
             cache = self._create_cache()
         return cache.initial_conditions
 
-    def make_diff_eq_static(self, name: str, value: float | None = None) -> Self:
+    def make_diff_eq_static(
+        self,
+        name: str,
+        value: float | InitialAssignment | sympy.Expr | None = None,
+    ) -> Self:
         """Converts a variable to a static parameter.
 
         This removes the variable from the stoichiometries of all diff_eqs and surrogates.
@@ -1210,7 +1240,9 @@ class OdeModelBuilder:
 
         """
         value_or_derived = (
-            self._diff_eqs[name].initial_value if value is None else value
+            self._diff_eqs[name].initial_value
+            if value is None
+            else _expr_as_initial_assignment(value)
         )
         self.remove_diff_eq(name)
 
@@ -1281,7 +1313,7 @@ class OdeModelBuilder:
     def add_diff_eq(
         self,
         name: str,
-        initial_value: float | InitialAssignment,
+        initial_value: float | InitialAssignment | sympy.Expr,
         fn: RateFn,
         *,
         args: list[str],
@@ -1323,7 +1355,7 @@ class OdeModelBuilder:
         self._insert_id(name=name, ctx="diff_eq")
         self._diff_eqs[name] = DiffEq(
             fn=fn,
-            initial_value=initial_value,
+            initial_value=_expr_as_initial_assignment(initial_value),
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
@@ -1351,7 +1383,7 @@ class OdeModelBuilder:
         self,
         name: str,
         *,
-        initial_value: float | InitialAssignment,
+        initial_value: float | InitialAssignment | sympy.Expr,
         fn: RateFn | None = None,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
@@ -1391,7 +1423,9 @@ class OdeModelBuilder:
         diff_eq = self._diff_eqs[name]
         diff_eq.fn = diff_eq.fn if fn is None else fn
         diff_eq.initial_value = (
-            diff_eq.initial_value if initial_value is None else initial_value
+            diff_eq.initial_value
+            if initial_value is None
+            else _expr_as_initial_assignment(initial_value)
         )
 
         diff_eq.args = diff_eq.args if args is None else args
@@ -1538,7 +1572,7 @@ class OdeModelBuilder:
     def add_readout(
         self,
         name: str,
-        fn: RateFn,
+        fn: RateFn | sympy.Expr,
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
@@ -1570,7 +1604,11 @@ class OdeModelBuilder:
 
         """
         self._insert_id(name=name, ctx="readout")
-        self._readouts[name] = Readout(fn=fn, args=args, unit=unit)
+        self._readouts[name] = Readout(
+            fn=_expr_as_fn(fn),
+            args=args,
+            unit=unit,
+        )
         return self
 
     def get_readout_names(self) -> list[str]:

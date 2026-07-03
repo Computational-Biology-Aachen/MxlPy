@@ -32,6 +32,7 @@ from mxlpy.types import (
     Derived,
     InitialAssignment,
     Parameter,
+    RateFn,
     Reaction,
     Readout,
     Variable,
@@ -53,7 +54,7 @@ if TYPE_CHECKING:
 
     from sympy.physics.units.quantities import Quantity
 
-    from mxlpy.types import Callable, Param, RateFn, RetType
+    from mxlpy.types import Callable, Param, RetType
 
 LOGGER = logging.getLogger(__name__)
 
@@ -259,6 +260,46 @@ def _normalize_annotations(
     if isinstance(annotations, Annotation):
         return [annotations]
     return list(annotations)
+
+
+def _expr_as_fn(fn: RateFn | sympy.Expr) -> RateFn:
+    if isinstance(fn, sympy.Expr):
+        args = [i.name for i in fn.free_symbols if isinstance(i, sympy.Symbol)]
+        return sympy.lambdify(
+            args,
+            fn,
+        )
+    return fn
+
+
+def _expr_as_initial_assignment[T](
+    value: T | InitialAssignment | sympy.Expr,
+) -> T | InitialAssignment:
+    if isinstance(value, sympy.Expr):
+        args = [i.name for i in value.free_symbols if isinstance(i, sympy.Symbol)]
+        value = InitialAssignment(
+            fn=sympy.lambdify(
+                args,
+                value,
+            ),
+            args=args,
+        )
+    return value
+
+
+def _expr_as_derived[T](
+    value: T | Derived | sympy.Expr,
+) -> T | Derived:
+    if isinstance(value, sympy.Expr):
+        args = [i.name for i in value.free_symbols if isinstance(i, sympy.Symbol)]
+        value = Derived(
+            fn=sympy.lambdify(
+                args,
+                value,
+            ),
+            args=args,
+        )
+    return value
 
 
 @dataclass(slots=True)
@@ -647,7 +688,7 @@ class KineticModelBuilder:
     def add_parameter(
         self,
         name: str,
-        value: float | InitialAssignment,
+        value: float | InitialAssignment | sympy.Expr,
         unit: sympy.Expr | None = None,
         source: str | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
@@ -679,7 +720,7 @@ class KineticModelBuilder:
         """
         self._insert_id(name=name, ctx="parameter")
         self._parameters[name] = Parameter(
-            value=value,
+            value=_expr_as_initial_assignment(value),
             unit=unit,
             source=source,
             annotations=_normalize_annotations(annotations),
@@ -687,7 +728,11 @@ class KineticModelBuilder:
         return self
 
     def add_parameters(
-        self, parameters: Mapping[str, float | Parameter | InitialAssignment]
+        self,
+        parameters: Mapping[
+            str,
+            float | Parameter | InitialAssignment | sympy.Expr,
+        ],
     ) -> Self:
         """Adds multiple parameters to the model.
 
@@ -777,7 +822,7 @@ class KineticModelBuilder:
     def update_parameter(
         self,
         name: str,
-        value: float | InitialAssignment | None = None,
+        value: float | InitialAssignment | sympy.Expr | None = None,
         *,
         unit: sympy.Expr | None = None,
         source: str | None = None,
@@ -816,10 +861,9 @@ class KineticModelBuilder:
         if name not in self._parameters:
             msg = f"Parameter {name!r} not found. Available parameters: {sorted(self._parameters)}"
             raise KeyError(msg)
-
         parameter = self._parameters[name]
         if value is not None:
-            parameter.value = value
+            parameter.value = _expr_as_initial_assignment(value)
         if unit is not None:
             parameter.unit = unit
         if source is not None:
@@ -829,7 +873,8 @@ class KineticModelBuilder:
         return self
 
     def update_parameters(
-        self, parameters: Mapping[str, float | Parameter | InitialAssignment]
+        self,
+        parameters: Mapping[str, float | Parameter | InitialAssignment | sympy.Expr],
     ) -> Self:
         """Update multiple parameters of the model.
 
@@ -920,7 +965,7 @@ class KineticModelBuilder:
     def make_parameter_dynamic(
         self,
         name: str,
-        initial_value: float | None = None,
+        initial_value: float | InitialAssignment | sympy.Expr | None = None,
         stoichiometries: dict[str, float] | None = None,
     ) -> Self:
         """Converts a parameter to a dynamic variable in the model.
@@ -1089,7 +1134,7 @@ class KineticModelBuilder:
     def add_variable(
         self,
         name: str,
-        initial_value: float | InitialAssignment,
+        initial_value: float | InitialAssignment | sympy.Expr,
         unit: sympy.Expr | None = None,
         source: str | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
@@ -1121,7 +1166,7 @@ class KineticModelBuilder:
         """
         self._insert_id(name=name, ctx="variable")
         self._variables[name] = Variable(
-            initial_value=initial_value,
+            initial_value=_expr_as_initial_assignment(initial_value),
             unit=unit,
             source=source,
             annotations=_normalize_annotations(annotations),
@@ -1129,7 +1174,8 @@ class KineticModelBuilder:
         return self
 
     def add_variables(
-        self, variables: Mapping[str, float | Variable | InitialAssignment]
+        self,
+        variables: Mapping[str, float | Variable | InitialAssignment | sympy.Expr],
     ) -> Self:
         """Adds multiple variables to the model with their initial conditions.
 
@@ -1236,7 +1282,7 @@ class KineticModelBuilder:
     def update_variable(
         self,
         name: str,
-        initial_value: float | InitialAssignment,
+        initial_value: float | InitialAssignment | sympy.Expr,
         unit: sympy.Expr | None = None,
         source: str | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
@@ -1273,7 +1319,7 @@ class KineticModelBuilder:
         variable = self._variables[name]
 
         if initial_value is not None:
-            variable.initial_value = initial_value
+            variable.initial_value = _expr_as_initial_assignment(initial_value)
         if unit is not None:
             variable.unit = unit
         if source is not None:
@@ -1283,7 +1329,7 @@ class KineticModelBuilder:
         return self
 
     def update_variables(
-        self, variables: Mapping[str, float | Variable | InitialAssignment]
+        self, variables: Mapping[str, float | Variable | InitialAssignment | sympy.Expr]
     ) -> Self:
         """Updates multiple variables in the model.
 
@@ -1315,7 +1361,11 @@ class KineticModelBuilder:
                 self.update_variable(k, v)
         return self
 
-    def make_variable_static(self, name: str, value: float | None = None) -> Self:
+    def make_variable_static(
+        self,
+        name: str,
+        value: float | InitialAssignment | sympy.Expr | None = None,
+    ) -> Self:
         """Converts a variable to a static parameter.
 
         This removes the variable from the stoichiometries of all reactions and surrogates.
@@ -1341,7 +1391,9 @@ class KineticModelBuilder:
 
         """
         value_or_derived = (
-            self._variables[name].initial_value if value is None else value
+            self._variables[name].initial_value
+            if value is None
+            else _expr_as_initial_assignment(value)
         )
         self.remove_variable(name, remove_stoichiometries=True)
 
@@ -1459,7 +1511,7 @@ class KineticModelBuilder:
     def add_derived(
         self,
         name: str,
-        fn: RateFn,
+        fn: RateFn | sympy.Expr,
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
@@ -1492,7 +1544,7 @@ class KineticModelBuilder:
         """
         self._insert_id(name=name, ctx="derived")
         self._derived[name] = Derived(
-            fn=fn,
+            fn=_expr_as_fn(fn),
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
@@ -1533,7 +1585,7 @@ class KineticModelBuilder:
     def update_derived(
         self,
         name: str,
-        fn: RateFn | None = None,
+        fn: RateFn | sympy.Expr | None = None,
         *,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
@@ -1566,7 +1618,7 @@ class KineticModelBuilder:
         """
         der = self._derived[name]
         if fn is not None:
-            der.fn = fn
+            der.fn = _expr_as_fn(fn)
         if args is not None:
             der.args = args
         if unit is not None:
@@ -1648,7 +1700,9 @@ class KineticModelBuilder:
         return self._reactions
 
     def get_stoichiometries(
-        self, variables: dict[str, float] | None = None, time: float = 0.0
+        self,
+        variables: dict[str, float] | None = None,
+        time: float = 0.0,
     ) -> pd.DataFrame:
         """Retrieve the stoichiometries of the model.
 
@@ -1743,10 +1797,10 @@ class KineticModelBuilder:
     def add_reaction(
         self,
         name: str,
-        fn: RateFn,
+        fn: RateFn | sympy.Expr,
         *,
         args: list[str],
-        stoichiometry: Mapping[str, float | str | Derived],
+        stoichiometry: Mapping[str, float | str | Derived | sympy.Expr],
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
         # source: str | None = None,
@@ -1785,11 +1839,13 @@ class KineticModelBuilder:
         self._insert_id(name=name, ctx="reaction")
 
         stoich: dict[str, Derived | float] = {
-            k: Derived(fn=fns.constant, args=[v]) if isinstance(v, str) else v
+            k: Derived(fn=fns.constant, args=[v])
+            if isinstance(v, str)
+            else _expr_as_derived(v)
             for k, v in stoichiometry.items()
         }
         self._reactions[name] = Reaction(
-            fn=fn,
+            fn=_expr_as_fn(fn),
             stoichiometry=stoich,
             args=args,
             unit=unit,
@@ -1817,10 +1873,10 @@ class KineticModelBuilder:
     def update_reaction(
         self,
         name: str,
-        fn: RateFn | None = None,
+        fn: RateFn | sympy.Expr | None = None,
         *,
         args: list[str] | None = None,
-        stoichiometry: Mapping[str, float | Derived | str] | None = None,
+        stoichiometry: Mapping[str, float | Derived | sympy.Expr | str] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
     ) -> Self:
@@ -1856,11 +1912,13 @@ class KineticModelBuilder:
 
         """
         rxn = self._reactions[name]
-        rxn.fn = rxn.fn if fn is None else fn
+        rxn.fn = rxn.fn if fn is None else _expr_as_fn(fn)
 
         if stoichiometry is not None:
             stoich = {
-                k: Derived(fn=fns.constant, args=[v]) if isinstance(v, str) else v
+                k: Derived(fn=fns.constant, args=[v])
+                if isinstance(v, str)
+                else _expr_as_derived(v)
                 for k, v in stoichiometry.items()
             }
             rxn.stoichiometry = stoich
@@ -2088,7 +2146,7 @@ class KineticModelBuilder:
     def add_readout(
         self,
         name: str,
-        fn: RateFn,
+        fn: RateFn | sympy.Expr,
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
@@ -2120,7 +2178,11 @@ class KineticModelBuilder:
 
         """
         self._insert_id(name=name, ctx="readout")
-        self._readouts[name] = Readout(fn=fn, args=args, unit=unit)
+        self._readouts[name] = Readout(
+            fn=_expr_as_fn(fn),
+            args=args,
+            unit=unit,
+        )
         return self
 
     def get_readout_names(self) -> list[str]:
@@ -2191,7 +2253,8 @@ class KineticModelBuilder:
         surrogate: SurrogateProtocol,
         args: list[str] | None = None,
         outputs: list[str] | None = None,
-        stoichiometries: dict[str, dict[str, float | Derived]] | None = None,
+        stoichiometries: dict[str, dict[str, float | Derived | sympy.Expr]]
+        | None = None,
     ) -> Self:
         """Adds a surrogate model to the current instance.
 
@@ -2226,7 +2289,15 @@ class KineticModelBuilder:
         if outputs is not None:
             surrogate.outputs = outputs
         if stoichiometries is not None:
-            surrogate.stoichiometries = stoichiometries
+            surrogate.stoichiometries = {
+                rxn: {
+                    k: Derived(fn=fns.constant, args=[v])
+                    if isinstance(v, str)
+                    else _expr_as_derived(v)
+                    for k, v in stoichiometry.items()
+                }
+                for rxn, stoichiometry in stoichiometries.items()
+            }
 
         # Insert ids
         for output in surrogate.outputs:
@@ -2241,7 +2312,8 @@ class KineticModelBuilder:
         surrogate: SurrogateProtocol | None = None,
         args: list[str] | None = None,
         outputs: list[str] | None = None,
-        stoichiometries: dict[str, dict[str, float | Derived]] | None = None,
+        stoichiometries: dict[str, dict[str, float | Derived | sympy.Expr]]
+        | None = None,
     ) -> Self:
         """Update a surrogate model in the model.
 
@@ -2281,7 +2353,15 @@ class KineticModelBuilder:
         if outputs is not None:
             surrogate.outputs = outputs
         if stoichiometries is not None:
-            surrogate.stoichiometries = stoichiometries
+            surrogate.stoichiometries = {
+                rxn: {
+                    k: Derived(fn=fns.constant, args=[v])
+                    if isinstance(v, str)
+                    else _expr_as_derived(v)
+                    for k, v in stoichiometry.items()
+                }
+                for rxn, stoichiometry in stoichiometries.items()
+            }
 
         # Update ids
         for i in self._surrogates[name].outputs:
