@@ -63,6 +63,7 @@ class JaxModel(Protocol):
         self,
         ts: jax.Array,
         y0: jax.Array,
+        args: jax.Array | None = None,
         max_steps: int = 4096,
         rtol: float = 1e-6,
         atol: float = 1e-6,
@@ -93,6 +94,7 @@ class Base(eqx.Module, ABC):
         self,
         ts: jax.Array,
         y0: jax.Array,
+        args: jax.Array | None = None,
         max_steps: int = 4096,
         rtol: float = 1e-6,
         atol: float = 1e-6,
@@ -127,7 +129,7 @@ class Base(eqx.Module, ABC):
             t1=ts[-1],
             dt0=None,
             y0=y0,
-            args=jnp.array([]),
+            args=args,
             stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
             saveat=diffrax.SaveAt(ts=ts),
             max_steps=max_steps,
@@ -457,8 +459,11 @@ class MixedLatentMapper:
 class Ode(Base):
     """ODE model with trainable parameter vector.
 
-    Parameters are prepended to ``args`` at each evaluation so that
-    ``rhs`` receives ``concat(pars, args)`` as its third argument.
+    Trainable parameters are appended to ``args`` at each evaluation so that
+    ``rhs`` receives ``concat(args, pars)`` as its third argument. This matches
+    the argument layout produced by :func:`generate_model_code_jax`, which emits
+    ``args = free_parameters + parameters_to_fit`` (free/runtime parameters
+    first, trainable parameters last).
 
     Parameters
     ----------
@@ -485,14 +490,14 @@ class Ode(Base):
         y : PyTree
             Current state.
         args : PyTree
-            Additional arguments appended after ``pars``.
+            Free/runtime arguments; trainable ``pars`` are appended after these.
 
         Returns
         -------
         jax.Array
             State derivative ``dy/dt``.
         """
-        return self.rhs(t, y, jnp.concat((self.pars, args)))
+        return self.rhs(t, y, jnp.concat((args, self.pars)))
 
     @classmethod
     def from_mxlpy(
@@ -537,7 +542,7 @@ class Ode(Base):
         generated = {}
 
         exec(codegen.imports, globals(), generated)  # noqa: S102
-        exec(codegen.model, globals(), generated)  # noqa: S102
+        exec(codegen.model.replace("math.", "jnp."), globals(), generated)  # noqa: S102
 
         model_pars = mxlpy_model.get_parameter_values()
         pars = jnp.array([model_pars[k] for k in parameters_to_fit])
@@ -576,14 +581,15 @@ class FluxOde(Base):
         y : PyTree
             Current state.
         args : PyTree
-            Additional arguments forwarded to ``fluxes``.
+            Free/runtime arguments; trainable ``pars`` are appended after these
+            before being forwarded to ``fluxes``.
 
         Returns
         -------
         jax.Array
             State derivative ``dy/dt``.
         """
-        return self.nv(self.fluxes(t, y, args))
+        return self.nv(self.fluxes(t, y, jnp.concat((args, self.pars))))
 
     @classmethod
     def from_mxlpy(
@@ -628,8 +634,8 @@ class FluxOde(Base):
         generated = {}
 
         exec(codegen.imports, globals(), generated)  # noqa: S102
-        exec(codegen.fluxes, globals(), generated)  # noqa: S102
-        exec(codegen.nv, globals(), generated)  # noqa: S102
+        exec(codegen.fluxes.replace("math.", "jnp."), globals(), generated)  # noqa: S102
+        exec(codegen.nv.replace("math.", "jnp."), globals(), generated)  # noqa: S102
 
         model_pars = mxlpy_model.get_parameter_values()
         pars = jnp.array([model_pars[k] for k in parameters_to_fit])
