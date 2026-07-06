@@ -21,9 +21,12 @@ if TYPE_CHECKING:
 class SurrogateProtocol(Protocol):
     """FIXME: Something I will fill out."""
 
-    args: list[str]
     outputs: list[str]
     stoichiometries: dict[str, dict[str, float | Derived]]
+
+    def get_arg_names(self) -> list[str]:
+        """Get names of fn arguments."""
+        ...
 
     def predict(
         self, args: dict[str, float | pd.Series | pd.DataFrame]
@@ -78,7 +81,6 @@ class AbstractSurrogate:
 
     """
 
-    args: list[str]
     outputs: list[str]
     stoichiometries: dict[str, dict[str, float | Derived]] = field(default_factory=dict)
 
@@ -127,6 +129,7 @@ class MockSurrogate(AbstractSurrogate):
     """Mock surrogate model for testing purposes."""
 
     fn: Callable[..., Iterable[float]]
+    args: list[str]
 
     def predict(
         self,

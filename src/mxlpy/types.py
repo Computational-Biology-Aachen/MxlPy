@@ -38,6 +38,7 @@ __all__ = [
     "Derived",
     "DiffEq",
     "FitFailure",
+    "Fn",
     "InitialAssignment",
     "IntegrationFailure",
     "NoSteadyState",
@@ -228,6 +229,33 @@ class Result[T]:
         return value
 
 
+@dataclass(kw_only=True, slots=True)
+class Fn:
+    """Container for a derived value."""
+
+    fn: RateFn
+    args: list[str]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def calculate(self, args: dict[str, Any]) -> float:
+        """Calculate the derived value.
+
+        Parameters
+        ----------
+        args
+            Dictionary of args variables.
+
+        Returns
+        -------
+            The calculated derived value.
+
+        """
+        return cast(float, self.fn(*(args[arg] for arg in self.args)))
+
+
 @dataclass
 class Annotation:
     """MIRIAM annotation linking a model component to an ontology identifier.
@@ -284,10 +312,13 @@ class Parameter:
 class Derived:
     """Container for a derived value."""
 
-    fn: RateFn
-    args: list[str]
+    fn: Fn
     unit: sympy.Expr | None = None
     annotations: list[Annotation] = field(default_factory=list)
+
+    def get_arg_names(self) -> list[str]:
+        """Get fn argument names."""
+        return self.fn.args
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -306,7 +337,7 @@ class Derived:
             The calculated derived value.
 
         """
-        return cast(float, self.fn(*(args[arg] for arg in self.args)))
+        return cast(float, self.fn.calculate(args))
 
     def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the derived value in place.
@@ -319,16 +350,19 @@ class Derived:
             Dictionary of args variables.
 
         """
-        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
+        args[name] = cast(float, self.fn.calculate(args))
 
 
 @dataclass(kw_only=True, slots=True)
 class InitialAssignment:
     """Container for a derived value."""
 
-    fn: RateFn
-    args: list[str]
+    fn: Fn
     unit: sympy.Expr | None = None
+
+    def get_arg_names(self) -> list[str]:
+        """Get fn argument names."""
+        return self.fn.args
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -347,7 +381,7 @@ class InitialAssignment:
             The calculated derived value.
 
         """
-        return cast(float, self.fn(*(args[arg] for arg in self.args)))
+        return cast(float, self.fn.calculate(args))
 
     def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the derived value in place.
@@ -360,20 +394,23 @@ class InitialAssignment:
             Dictionary of args variables.
 
         """
-        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
+        args[name] = cast(float, self.fn.calculate(args))
 
 
 @dataclass(kw_only=True, slots=True)
 class Readout:
     """Container for a readout."""
 
-    fn: RateFn
-    args: list[str]
+    fn: Fn
     unit: sympy.Expr | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
+
+    def get_arg_names(self) -> list[str]:
+        """Get fn argument names."""
+        return self.fn.args
 
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
@@ -388,7 +425,7 @@ class Readout:
             The calculated derived value.
 
         """
-        return cast(float, self.fn(*(args[arg] for arg in self.args)))
+        return cast(float, self.fn.calculate(args))
 
     def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the reaction in place.
@@ -401,22 +438,25 @@ class Readout:
             Dictionary of args variables.
 
         """
-        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
+        args[name] = cast(float, self.fn.calculate(args))
 
 
 @dataclass(kw_only=True, slots=True)
 class Reaction:
     """Container for a reaction."""
 
-    fn: RateFn
+    fn: Fn
     stoichiometry: Mapping[str, float | Derived]
-    args: list[str]
     unit: sympy.Expr | None = None
     annotations: list[Annotation] = field(default_factory=list)
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
+
+    def get_arg_names(self) -> list[str]:
+        """Get fn argument names."""
+        return self.fn.args
 
     def get_modifiers(self, model: KineticModelBuilder) -> list[str]:
         """Get the modifiers of the reaction.
@@ -435,7 +475,7 @@ class Reaction:
         include = set(model.get_variable_names())
         exclude = set(self.stoichiometry)
 
-        return [k for k in self.args if k in include and k not in exclude]
+        return [k for k in self.fn.args if k in include and k not in exclude]
 
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
@@ -450,7 +490,7 @@ class Reaction:
             The calculated derived value.
 
         """
-        return cast(float, self.fn(*(args[arg] for arg in self.args)))
+        return cast(float, self.fn.calculate(args))
 
     def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the reaction in place.
@@ -463,7 +503,7 @@ class Reaction:
             Dictionary of args variables.
 
         """
-        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
+        args[name] = cast(float, self.fn.calculate(args))
 
 
 @dataclass(kw_only=True, slots=True)
@@ -471,8 +511,7 @@ class DiffEq:
     """Container for a differential equation."""
 
     initial_value: float | InitialAssignment
-    fn: RateFn
-    args: list[str]
+    fn: Fn
     unit: sympy.Expr | None = None
     source: str | None = None
     annotations: list[Annotation] = field(default_factory=list)
@@ -481,6 +520,10 @@ class DiffEq:
         """Return default representation."""
         return pformat(self)
 
+    def get_arg_names(self) -> list[str]:
+        """Get fn argument names."""
+        return self.fn.args
+
     def calculate(self, args: dict[str, Any]) -> float:
         """Calculate the derived value.
 
@@ -494,7 +537,7 @@ class DiffEq:
             The calculated derived value.
 
         """
-        return cast(float, self.fn(*(args[arg] for arg in self.args)))
+        return cast(float, self.fn.calculate(args))
 
     def calculate_inpl(self, name: str, args: dict[str, Any]) -> None:
         """Calculate the reaction in place.
@@ -507,4 +550,4 @@ class DiffEq:
             Dictionary of args variables.
 
         """
-        args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
+        args[name] = cast(float, self.fn.calculate(args))
