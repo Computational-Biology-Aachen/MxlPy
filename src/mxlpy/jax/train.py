@@ -92,6 +92,59 @@ def grad_loss(
 
 
 @eqx.filter_value_and_grad
+def proto_grad_loss(
+    model: JaxModel,
+    ts: jax.Array,
+    ys: jax.Array,
+    protocol: jax.Array,
+    y_mean: jax.Array,
+    y_scale: jax.Array,
+    ctx: IntegrationSettings,
+) -> jax.Array:
+    """Compute normalised MSE loss and its gradient w.r.t. model parameters.
+
+    Parameters
+    ----------
+    model : JaxModel
+        Model to differentiate.
+    ts : jax.Array
+        Time points, shape ``(T,)``.
+    ys : jax.Array
+        Observed trajectories, shape ``(T, n_obs)``.
+    y_mean : jax.Array
+        Mean used for normalisation.
+    y_scale : jax.Array
+        Standard deviation used for normalisation.
+    ctx : IntegrationSettings
+        ODE solver settings.
+
+    Returns
+    -------
+    tuple[jax.Array, PyTree]
+        Scalar loss value and gradient PyTree.
+    """
+    y0 = ys[0]
+    y_pred = jnp.zeros((len(y0) + 1, 6))
+    y_pred = ys.at[0].set(jnp.array(y0))  # noqa: PD008
+    last_tend = 0
+    for i, step_pars in enumerate(protocol):
+        tend = ts[i]
+        y = model.integrate(
+            ts=jnp.array([0, tend - last_tend]),
+            y0=y_pred[i],
+            args=step_pars,
+            max_steps=ctx.max_steps,
+            rtol=ctx.rtol,
+            atol=ctx.atol,
+            method=ctx.method,
+        )
+        y_pred = y_pred.at[i + 1].set(y[-1])  # noqa: PD008
+        last_tend = tend
+
+    return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
+
+
+@eqx.filter_value_and_grad
 def grad_loss_split(
     trainable: JaxModel,
     frozen: JaxModel,
@@ -182,6 +235,75 @@ def make_step[T: JaxModel](
         model,  # needs to be by pos, is differentiated
         ts=ts,
         ys=ys,
+        y_mean=y_mean,
+        y_scale=y_scale,
+        ctx=ctx,
+    )
+    # Failed solves can produce NaN in y_pred -> NaN gradients; zero them out
+    # so the optimizer state isn't corrupted.
+    grads = jax.tree.map(lambda g: jnp.where(jnp.isfinite(g), g, 0.0), grads)
+
+    # Clip gradients to prevent sudden entry into stiff regions and exploding adjoints
+    grad_norm = optax.global_norm(grads)
+    clip_value = 1.0
+    grads = jax.tree_util.tree_map(
+        lambda g: g * (clip_value / (grad_norm + 1e-6)), grads
+    )
+    updates, opt_state = optim.update(
+        grads,
+        opt_state,
+        eqx.filter(model, eqx.is_array),
+    )
+    return loss, eqx.apply_updates(model, updates), opt_state
+
+
+@eqx.filter_jit
+def proto_make_step[T: JaxModel](
+    *,
+    model: T,
+    ts: jax.Array,
+    ys: jax.Array,
+    protocol: jax.Array,
+    y_mean: jax.Array,
+    y_scale: jax.Array,
+    opt_state: optax.OptState,
+    optim: optax.GradientTransformationExtraArgs,
+    ctx: IntegrationSettings,
+) -> tuple[jax.Array, T, optax.OptState]:
+    """Perform one gradient update step on the full model.
+
+    NaN gradients (from failed ODE solves) are zeroed before the update.
+    Gradients are clipped by global norm to guard against exploding adjoints.
+
+    Parameters
+    ----------
+    model : T
+        Current model state.
+    ts : jax.Array
+        Time points.
+    ys : jax.Array
+        Observed trajectories.
+    y_mean : jax.Array
+        Mean for normalisation.
+    y_scale : jax.Array
+        Scale for normalisation.
+    opt_state : optax.OptState
+        Current optimiser state.
+    optim : optax.GradientTransformationExtraArgs
+        Optimiser.
+    ctx : IntegrationSettings
+        ODE solver settings.
+
+    Returns
+    -------
+    tuple[jax.Array, T, optax.OptState]
+        Scalar loss, updated model, updated optimiser state.
+    """
+    loss, grads = proto_grad_loss(
+        model,  # needs to be by pos, is differentiated
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
         y_mean=y_mean,
         y_scale=y_scale,
         ctx=ctx,
@@ -476,4 +598,103 @@ def train_only_nde[T: Ude](
                     acc_loss = 0
                     acc_count = 0
                     losses[global_step] = float(avg_loss)
+    return best_model, [pd.Series(i) for i in losses_per_lesson]
+
+
+def train_protocol[Model: JaxModel](
+    model: Model,
+    *,
+    ts: jax.Array,
+    ys: jax.Array,
+    protocol: jax.Array,
+    training_steps: list[tuple[int, float]],
+    target_loss: float = 1e-4,
+    avg_every: int = 1000,
+    optim: optax.GradientTransformationExtraArgs | None = None,
+    integration_settings: IntegrationSettings | None = None,
+) -> tuple[Model, LossesPerLesson]:
+    """Train a JAX model through a sequence of curriculum steps.
+
+    Each curriculum stage re-initialises the optimiser and uses a
+    different fraction of the data.  Early stopping triggers when
+    ``loss < target_loss`` during the **last** stage.
+
+    Parameters
+    ----------
+    model : T
+        Initial model state.
+    ts : jax.Array
+        Full time-point array.
+    ys : jax.Array
+        Full observed trajectory, shape ``(T, n_obs)``.
+    training_steps : list[tuple[int, float]]
+        Sequence of ``(n_steps, data_fraction)`` pairs.
+    target_loss : float
+        Early-stopping threshold, checked during the last stage only.
+    avg_every : int
+        Average and log loss every this many steps.
+    optim : optax.GradientTransformationExtraArgs or None
+        Optimiser; defaults to AdaBelief with ``lr=1e-4``.
+    integration_settings : IntegrationSettings or None
+        ODE solver settings; defaults to ``IntegrationSettings()``.
+
+    Returns
+    -------
+    tuple[T, dict[int, float]]
+        Best model encountered during training and losses per curriculum lesson.
+    """
+    loss = 0
+    acc_loss = 0
+    acc_count = 0
+    optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
+    best_training_loss = jnp.inf
+    best_model = model
+
+    ctx = (
+        IntegrationSettings() if integration_settings is None else integration_settings
+    )
+
+    y_mean = jnp.mean(ys)
+    y_scale = jnp.std(ys)
+    losses_per_lesson = []
+    for i, (steps, frac) in enumerate(training_steps, start=1):
+        opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
+        length = math.ceil(len(ts) * frac)
+        _ts = ts[:length]
+        _ys = ys[:length]
+        losses = {}
+        losses_per_lesson.append(losses)
+
+        with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
+            for step in pbar:
+                loss, model, opt_state = proto_make_step(
+                    model=model,
+                    ts=_ts,
+                    ys=_ys,
+                    protocol=protocol,
+                    opt_state=opt_state,
+                    optim=optim,
+                    y_mean=y_mean,
+                    y_scale=y_scale,
+                    ctx=ctx,
+                )
+                acc_loss += loss
+                acc_count += 1
+
+                if loss < best_training_loss:
+                    best_model = model
+                    best_training_loss = loss
+
+                if i == len(training_steps) and loss < target_loss:
+                    return (model, [pd.Series(i) for i in losses_per_lesson])
+
+                if (step % avg_every) == 0 or step == steps - 1:
+                    avg_loss = acc_loss / acc_count
+                    pbar.set_postfix_str(
+                        f"Avg. loss {(avg_loss):.2e} over last {acc_count} runs"
+                    )
+                    acc_loss = 0
+                    acc_count = 0
+                    losses[step] = float(avg_loss)
+
     return best_model, [pd.Series(i) for i in losses_per_lesson]

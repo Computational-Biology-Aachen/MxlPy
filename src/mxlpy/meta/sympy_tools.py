@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 import sympy
+from sympy.printing.pycode import PythonCodePrinter as _PythonCodePrinter
 
 from mxlpy.meta import _mathml as mml
 from mxlpy.meta.source_tools import fn_to_sympy_expr
@@ -19,6 +20,7 @@ __all__ = [
     "stoichiometries_to_sympy",
     "sympy_to_inline_c",
     "sympy_to_inline_cxx",
+    "sympy_to_inline_jax",
     "sympy_to_inline_js",
     "sympy_to_inline_julia",
     "sympy_to_inline_matlab",
@@ -181,6 +183,46 @@ def sympy_to_inline_py(expr: sympy.Expr) -> str:
 
     """
     return cast(str, sympy.pycode(expr, fully_qualified_modules=True, full_prec=False))
+
+
+class _JaxCodePrinter(_PythonCodePrinter):
+    """Python code printer that renders ``Piecewise`` as nested ``jnp.where``.
+
+    ``sympy.pycode`` renders ``Piecewise`` as a Python ternary
+    (``a if cond else b``), which calls ``bool(cond)`` and therefore fails
+    under ``jax.jit`` when ``cond`` is a traced value. ``jnp.where`` is an
+    ordinary (traceable) expression, so it composes inline like every other
+    generated term. Both branches are always evaluated; that is fine for the
+    rate laws we generate, but note that a branch which is undefined outside
+    its own regime (producing ``nan``) would poison gradients -- such cases
+    need ``lax.cond`` instead, which cannot be emitted as an inline expression.
+    """
+
+    def _print_Piecewise(self, expr: sympy.Piecewise) -> str:
+        pieces = list(expr.args)
+        # A trailing ``(value, True)`` pair is the default/else branch.
+        if pieces[-1].cond == sympy.true:
+            acc = self._print(pieces[-1].expr)
+            pieces = pieces[:-1]
+        else:
+            acc = "jnp.nan"
+        for ecp in reversed(pieces):
+            acc = f"jnp.where({self._print(ecp.cond)}, {self._print(ecp.expr)}, {acc})"
+        return acc
+
+
+def sympy_to_inline_jax(expr: sympy.Expr) -> str:
+    """Convert a sympy expression to inline JAX-compatible Python code.
+
+    Identical to :func:`sympy_to_inline_py` except that ``Piecewise`` is
+    rendered as nested ``jnp.where`` calls rather than a Python ternary, so the
+    result can be traced by ``jax.jit``. Other math functions are still emitted
+    as ``math.*`` and rely on the caller's ``math.`` -> ``jnp.`` substitution.
+    """
+    printer = _JaxCodePrinter(
+        {"fully_qualified_modules": True, "full_prec": False},
+    )
+    return cast(str, printer.doprint(expr))
 
 
 def sympy_to_inline_c(expr: sympy.Expr) -> str:

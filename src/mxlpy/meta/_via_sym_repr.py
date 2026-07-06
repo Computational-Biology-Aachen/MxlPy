@@ -20,6 +20,7 @@ from mxlpy.meta.sympy_tools import (
     sympy_to_inline_julia,
     sympy_to_inline_matlab,
     sympy_to_inline_mxlweb,
+    sympy_to_inline_jax,
     sympy_to_inline_py,
     sympy_to_inline_rust,
     sympy_to_python_fn,
@@ -1309,7 +1310,9 @@ def _generate_model_code(
                 [("fluxes", arr_type)],
                 ret_type_rest,
             ),
-            f"{flux_args}\n{extra_args}" if not unpacked_args else flux_args,
+            # ``nv`` receives only the flux vector (no free-parameter args), so
+            # unpack the fluxes but never the extra ``args`` here.
+            flux_args,
             stoich_src,
             diff_eq_src,
             return_formatter(
@@ -1721,11 +1724,21 @@ def generate_model_code_jax(
         args: list[tuple[str, str]],  # noqa: ARG001 ; API stability
         return_type: str,
     ) -> str:
+        # ``nv`` maps a flux vector to state derivatives, so it takes the flux
+        # vector as its single argument (matching every other backend), rather
+        # than the ``(ts, variables, args)`` signature of the other functions.
+        if name == "nv":
+            return f"def nv(fluxes: jax.Array) -> {return_type}:"
         return f"def {name}(ts: jax.Array, variables: jax.Array, args: jax.Array) -> {return_type}:"
 
     def variable_unpacking(variables: list[str], target: str) -> str:
         if len(variables) == 0:
             return ""
+        if len(variables) == 1:
+            # Trailing comma forces scalar unpacking. ``x = arr`` would bind the
+            # whole array, leaving a spurious leading dimension (e.g. a
+            # single-variable model returning shape ``(1, 1)`` instead of ``(1,)``).
+            return f"    ({variables[0]},) = {target}"
         return f"    {', '.join(variables)} = {target}"
 
     def list_template(elements: list[str]) -> str:
@@ -1749,7 +1762,7 @@ def generate_model_code_jax(
         free_parameters=args,
         fn_template=fn_template,
         assignment_template=assignment_template,
-        expr_template=sympy_to_inline_py,
+        expr_template=sympy_to_inline_jax,
         variable_unpacking=variable_unpacking,
         derived_to_calculate=derived_to_calculate,
         list_formatter=list_template,
