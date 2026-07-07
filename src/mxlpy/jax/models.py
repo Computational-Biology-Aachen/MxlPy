@@ -72,6 +72,20 @@ class JaxModel(Protocol):
         """Integrate the model from ``ts[0]`` to ``ts[-1]`` and return saved states."""
         ...
 
+    def integrate_protocol(
+        self,
+        ts: list[jax.Array],
+        y0: jax.Array,
+        protocol: jax.Array,
+        args: jax.Array | None = None,
+        max_steps: int = 4096,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> jax.Array:
+        """Integrate through a sequence of protocol steps and return saved states."""
+        ...
+
 
 ###############################################################################
 # ABC
@@ -89,6 +103,74 @@ class Base(eqx.Module, ABC):
     def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the ODE right-hand side at time ``t`` and state ``y``."""
         ...
+
+    def _solve(
+        self,
+        t0: jax.Array,
+        t1: jax.Array,
+        y0: jax.Array,
+        args: jax.Array | None,
+        saveat_ts: jax.Array,
+        max_steps: int,
+        rtol: float,
+        atol: float,
+        method: Method,
+    ) -> jax.Array:
+        """Integrate from ``t0`` to ``t1``, saving at ``saveat_ts``.
+
+        Shared by :meth:`integrate` and :meth:`integrate_protocol`.  Failed
+        solves return zeros instead of propagating NaN values.
+
+        Parameters
+        ----------
+        t0 : jax.Array
+            Start time.
+        t1 : jax.Array
+            End time.
+        y0 : jax.Array
+            Initial condition at ``t0``.
+        args : jax.Array or None
+            Additional arguments forwarded to the RHS.
+        saveat_ts : jax.Array
+            Time points at which to save the solution; must lie within
+            ``[t0, t1]``.
+        max_steps : int
+            Maximum number of adaptive solver steps before aborting.
+        rtol : float
+            Relative tolerance for the PID step-size controller.
+        atol : float
+            Absolute tolerance for the PID step-size controller.
+        method : Method
+            Diffrax Runge-Kutta solver class.
+
+        Returns
+        -------
+        jax.Array
+            Saved states, shape ``(len(saveat_ts), n_state)``.
+        """
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(self),
+            method(),
+            t0=t0,
+            t1=t1,
+            dt0=None,
+            y0=y0,
+            args=args,
+            stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
+            saveat=diffrax.SaveAt(ts=saveat_ts),
+            max_steps=max_steps,
+        )
+        ys = cast(jax.Array, sol.ys)
+        return lax.cond(
+            sol.result == diffrax.RESULTS.successful,
+            lambda: ys,
+            lambda: jnp.nan_to_num(
+                ys,
+                nan=0.0,
+                posinf=0.0,
+                neginf=0.0,
+            ),
+        )
 
     def integrate(
         self,
@@ -122,28 +204,177 @@ class Base(eqx.Module, ABC):
         jax.Array
             Saved states, shape ``(T, n_state)``.  Failed solves return zeros.
         """
+        return self._solve(
+            t0=ts[0],
+            t1=ts[-1],
+            y0=y0,
+            args=args,
+            saveat_ts=ts,
+            max_steps=max_steps,
+            rtol=rtol,
+            atol=atol,
+            method=method,
+        )
+
+    def integrate_protocol(
+        self,
+        ts: list[jax.Array],
+        y0: jax.Array,
+        protocol: jax.Array,
+        args: jax.Array | None = None,
+        max_steps: int = 4096,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> jax.Array:
+        """Integrate through a sequence of protocol steps and return saved states.
+
+        Mirrors :meth:`mxlpy.simulator.Simulator.simulate_protocol_time_course`:
+        each protocol step supplies a piecewise-constant external argument
+        (e.g. a free parameter such as light intensity) that is active for
+        the duration of that step, and the trajectory is continuous across
+        step boundaries (each step's initial condition is the previous
+        step's final saved state).
+
+        Note that this default implementation integrates in state space
+        directly; subclasses that override :meth:`integrate` to run in a
+        transformed space (:class:`Anode`, :class:`FluxAnode`) would need a
+        matching override here to encode/decode around the per-step loop.
+
+        Parameters
+        ----------
+        ts : list[jax.Array]
+            Per-step, ascending, absolute time points at which to save the
+            solution -- one array per protocol step.  The **last** entry of
+            each array must be that step's transition time (the point at
+            which ``protocol`` switches to its next row), since that value
+            both bounds the integration and seeds the next step's initial
+            condition. The first step is integrated from ``t=0``.
+        y0 : jax.Array
+            Initial condition at ``t=0``.
+        protocol : jax.Array
+            Per-step external argument, shape ``(len(ts), n_args)``.
+            ``protocol[i]`` is held constant while integrating the
+            ``ts[i]`` window.
+        args : jax.Array or None
+            Additional arguments held constant across all steps and
+            concatenated after ``protocol[i]`` (e.g. trainable parameters
+            that are not part of the protocol).
+        max_steps : int
+            Maximum number of adaptive solver steps per step, before aborting.
+        rtol : float
+            Relative tolerance for the PID step-size controller.
+        atol : float
+            Absolute tolerance for the PID step-size controller.
+        method : Method
+            Diffrax Runge-Kutta solver class.
+
+        Returns
+        -------
+        jax.Array
+            Saved states concatenated across all steps, shape
+            ``(sum(len(t) for t in ts), n_state)``.  Does **not** include
+            ``y0`` itself; prepend it if the initial condition is also an
+            observation.
+        """
+        y = y0
+        t_start = jnp.zeros_like(ts[0][0])
+        results = []
+        for step_ts, step_args in zip(ts, protocol, strict=True):
+            combined_args = step_args if args is None else jnp.concat((args, step_args))
+            ys = self._solve(
+                t0=t_start,
+                t1=step_ts[-1],
+                y0=y,
+                args=combined_args,
+                saveat_ts=step_ts,
+                max_steps=max_steps,
+                rtol=rtol,
+                atol=atol,
+                method=method,
+            )
+            results.append(ys)
+            y = ys[-1]
+            t_start = step_ts[-1]
+        return jnp.concatenate(results, axis=0)
+
+    def integrate_to_steady_state(
+        self,
+        y0: jax.Array,
+        args: jax.Array | None = None,
+        t1: float = 1e6,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        steady_state_rtol: float | None = None,
+        steady_state_atol: float | None = None,
+        max_steps: int = 4096,
+        method: Method = diffrax.Tsit5,
+    ) -> jax.Array:
+        """Integrate until a steady state is reached and return the final state.
+
+        Analogous to
+        :meth:`mxlpy.simulator.Simulator.simulate_to_steady_state`, but uses
+        diffrax's event mechanism rather than mxlpy's polling-based
+        integrator loop, since JAX requires a statically-shaped return value
+        (the final state, not a variable-length trajectory).  Oscillation
+        detection is not supported: unlike the mxlpy integrators, diffrax has
+        no way to inspect trajectory history from within the event
+        condition, so oscillating systems will simply run until ``t1`` or
+        ``max_steps`` and return whatever state they end on -- callers should
+        design their own oscillation check on the returned state if needed.
+
+        Parameters
+        ----------
+        y0 : jax.Array
+            Initial condition at ``t=0``.
+        args : jax.Array or None
+            Additional arguments forwarded to the RHS.
+        t1 : float
+            Upper bound on integration time; reaching it without triggering
+            the steady-state event counts as a failed solve.
+        rtol : float
+            Relative tolerance for the PID step-size controller.
+        atol : float
+            Absolute tolerance for the PID step-size controller.
+        steady_state_rtol : float or None
+            Relative tolerance for the steady-state event; defaults to ``rtol``.
+        steady_state_atol : float or None
+            Absolute tolerance for the steady-state event; defaults to ``atol``.
+        max_steps : int
+            Maximum number of adaptive solver steps before aborting.
+        method : Method
+            Diffrax Runge-Kutta solver class.
+
+        Returns
+        -------
+        jax.Array
+            Final (steady-state) state, shape ``(n_state,)``.  Failed solves
+            (steady state not reached by ``t1``, or a genuine solver failure)
+            return zeros.
+        """
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(self),
             method(),
-            t0=ts[0],
-            t1=ts[-1],
+            t0=0.0,
+            t1=t1,
             dt0=None,
             y0=y0,
             args=args,
             stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
-            saveat=diffrax.SaveAt(ts=ts),
+            saveat=diffrax.SaveAt(t1=True),
+            event=diffrax.Event(
+                diffrax.steady_state_event(
+                    rtol=steady_state_rtol,
+                    atol=steady_state_atol,
+                )
+            ),
             max_steps=max_steps,
         )
-        ys = cast(jax.Array, sol.ys)
+        y = cast(jax.Array, sol.ys)[-1]
         return lax.cond(
-            sol.result == diffrax.RESULTS.successful,
-            lambda: ys,
-            lambda: jnp.nan_to_num(
-                ys,
-                nan=0.0,
-                posinf=0.0,
-                neginf=0.0,
-            ),
+            sol.result == diffrax.RESULTS.event_occurred,
+            lambda: y,
+            lambda: jnp.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0),
         )
 
 

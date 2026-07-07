@@ -108,9 +108,14 @@ def proto_grad_loss(
     model : JaxModel
         Model to differentiate.
     ts : jax.Array
-        Time points, shape ``(T,)``.
+        Protocol transition times, shape ``(n_steps,)``.  ``ts[i]`` is the
+        time at which ``protocol[i]`` stops being active; ``ys[i + 1]`` is
+        the observation at that time.
     ys : jax.Array
-        Observed trajectories, shape ``(T, n_obs)``.
+        Observed trajectories, shape ``(n_steps + 1, n_obs)``.  ``ys[0]`` is
+        the initial condition at ``t=0``.
+    protocol : jax.Array
+        Per-step external argument, shape ``(n_steps, n_args)``.
     y_mean : jax.Array
         Mean used for normalisation.
     y_scale : jax.Array
@@ -124,23 +129,22 @@ def proto_grad_loss(
         Scalar loss value and gradient PyTree.
     """
     y0 = ys[0]
-    y_pred = jnp.zeros((len(y0) + 1, 6))
-    y_pred = ys.at[0].set(jnp.array(y0))  # noqa: PD008
-    last_tend = 0
-    for i, step_pars in enumerate(protocol):
-        tend = ts[i]
-        y = model.integrate(
-            ts=jnp.array([0, tend - last_tend]),
-            y0=y_pred[i],
-            args=step_pars,
-            max_steps=ctx.max_steps,
-            rtol=ctx.rtol,
-            atol=ctx.atol,
-            method=ctx.method,
-        )
-        y_pred = y_pred.at[i + 1].set(y[-1])  # noqa: PD008
-        last_tend = tend
-
+    ts_segments = [ts[i : i + 1] for i in range(ts.shape[0])]
+    y_pred = jnp.concatenate(
+        (
+            y0[None, :],
+            model.integrate_protocol(
+                ts=ts_segments,
+                y0=y0,
+                protocol=protocol,
+                max_steps=ctx.max_steps,
+                rtol=ctx.rtol,
+                atol=ctx.atol,
+                method=ctx.method,
+            ),
+        ),
+        axis=0,
+    )
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
 
@@ -624,9 +628,11 @@ def train_protocol[Model: JaxModel](
     model : T
         Initial model state.
     ts : jax.Array
-        Full time-point array.
+        Full protocol transition-time array, shape ``(n_steps,)``.
     ys : jax.Array
-        Full observed trajectory, shape ``(T, n_obs)``.
+        Full observed trajectory, shape ``(n_steps + 1, n_obs)``.
+    protocol : jax.Array
+        Full per-step external argument, shape ``(n_steps, n_args)``.
     training_steps : list[tuple[int, float]]
         Sequence of ``(n_steps, data_fraction)`` pairs.
     target_loss : float
@@ -661,7 +667,8 @@ def train_protocol[Model: JaxModel](
         opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
         length = math.ceil(len(ts) * frac)
         _ts = ts[:length]
-        _ys = ys[:length]
+        _ys = ys[: length + 1]
+        _protocol = protocol[:length]
         losses = {}
         losses_per_lesson.append(losses)
 
@@ -671,7 +678,7 @@ def train_protocol[Model: JaxModel](
                     model=model,
                     ts=_ts,
                     ys=_ys,
-                    protocol=protocol,
+                    protocol=_protocol,
                     opt_state=opt_state,
                     optim=optim,
                     y_mean=y_mean,
