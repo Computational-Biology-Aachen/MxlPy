@@ -267,3 +267,109 @@ def test_single_variable_model_integrates_with_correct_shape() -> None:
     assert bool(jnp.all(jnp.isfinite(ys)))
     # exponential decay from v0=1, k=1 -> v(1) ~ e^-1
     assert float(ys[-1, 0]) == pytest.approx(float(np.exp(-1.0)), rel=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# FluxOde.simulate_* / FluxOdeSimulation
+# ---------------------------------------------------------------------------
+
+
+def test_fluxode_direct_construction_has_no_names() -> None:
+    def fluxes(_t: float, y: jnp.ndarray, _args: jnp.ndarray) -> jnp.ndarray:
+        return jnp.zeros_like(y)
+
+    def nv(flux_vector: jnp.ndarray) -> jnp.ndarray:
+        return flux_vector
+
+    fo = FluxOde(fluxes=fluxes, nv=nv, pars=jnp.array([]))
+    assert fo.variable_names is None
+    assert fo.flux_names is None
+
+    with pytest.raises(ValueError, match="variable_names"):
+        fo.simulate_time_course(
+            jnp.array([0.0, 1.0]), jnp.array([1.0]), jnp.array([])
+        )
+
+
+def test_fluxode_from_mxlpy_sets_names() -> None:
+    fode = FluxOde.from_mxlpy(
+        _distinguishable_model(),
+        parameters_to_fit=["b"],
+        free_parameters=["a"],
+    )
+    assert fode.variable_names == ("v",)
+    assert fode.flux_names == ("ra", "rb")
+
+
+def test_fluxode_simulate_time_course() -> None:
+    # dv/dt = a + 10*b, with a free (=5) and b fit (=3) -> constant dv/dt=35
+    fode = FluxOde.from_mxlpy(
+        _distinguishable_model(),
+        parameters_to_fit=["b"],
+        free_parameters=["a"],
+    )
+    ts = jnp.array([0.0, 1.0, 2.0])
+    sim = fode.simulate_time_course(ts, jnp.array([0.0]), jnp.array([5.0]))
+
+    variables = sim.variables
+    assert list(variables.columns) == ["v"]
+    assert np.allclose(variables.index.to_numpy(), np.asarray(ts))
+    assert np.allclose(variables["v"].to_numpy(), 35.0 * np.asarray(ts), atol=1e-4)
+
+    fluxes = sim.fluxes
+    assert list(fluxes.columns) == ["ra", "rb"]
+    assert np.allclose(fluxes["ra"].to_numpy(), 5.0)
+    assert np.allclose(fluxes["rb"].to_numpy(), 3.0)
+
+    combined = sim.get_combined()
+    assert list(combined.columns) == ["v", "ra", "rb"]
+
+
+def test_fluxode_simulate_protocol_time_course_prepends_t0() -> None:
+    # dv/dt = a + 10*b, b fit = 3; a switches 1 -> 2 -> 3 at t=1,2,3
+    fode = FluxOde.from_mxlpy(
+        _distinguishable_model(),
+        parameters_to_fit=["b"],
+        free_parameters=["a"],
+    )
+    ts = [jnp.array([1.0]), jnp.array([2.0]), jnp.array([3.0])]
+    protocol = jnp.array([[1.0], [2.0], [3.0]])
+    y0 = jnp.array([0.0])
+
+    sim = fode.simulate_protocol_time_course(ts, y0, protocol)
+
+    variables = sim.variables
+    assert np.allclose(variables.index.to_numpy(), [0.0, 1.0, 2.0, 3.0])
+    # v(1)=31, v(2)=31+32=63, v(3)=63+33=96 (dv/dt = a + 30 per step)
+    assert np.allclose(
+        variables["v"].to_numpy(), [0.0, 31.0, 63.0, 96.0], atol=1e-4
+    )
+
+    fluxes = sim.fluxes
+    # t=0 row uses the first step's args (a=1); each subsequent row uses the
+    # args active during its own step's window
+    assert np.allclose(fluxes["ra"].to_numpy(), [1.0, 1.0, 2.0, 3.0])
+    assert np.allclose(fluxes["rb"].to_numpy(), 3.0)
+
+
+def test_integrate_to_steady_state_returns_time_and_state() -> None:
+    ode = Ode.from_mxlpy(_single_variable_model())
+    t, y = ode.integrate_to_steady_state(jnp.array([1.0]), jnp.array([]))
+    assert t.shape == ()
+    assert float(t) > 0.0
+    assert y.shape == (1,)
+    assert float(y[0]) == pytest.approx(0.0, abs=1e-4)
+
+
+def test_fluxode_simulate_to_steady_state() -> None:
+    fode = FluxOde.from_mxlpy(_single_variable_model())
+    sim = fode.simulate_to_steady_state(jnp.array([1.0]), jnp.array([]))
+
+    variables = sim.variables
+    assert variables.shape == (1, 1)
+    assert float(variables.index[0]) > 0.0
+    assert float(variables["v"].iloc[0]) == pytest.approx(0.0, abs=1e-4)
+
+    fluxes = sim.fluxes
+    assert list(fluxes.columns) == ["r"]
+    assert float(fluxes["r"].iloc[0]) == pytest.approx(0.0, abs=1e-4)
