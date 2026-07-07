@@ -13,6 +13,7 @@ from jax import lax
 from jaxtyping import PRNGKeyArray, PyTree
 
 from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy.jax.simulation import FluxOdeSimulation
 from mxlpy.meta._via_sym_repr import generate_model_code_jax
 
 __all__ = [
@@ -309,7 +310,7 @@ class Base(eqx.Module, ABC):
         steady_state_atol: float | None = None,
         max_steps: int = 4096,
         method: Method = diffrax.Tsit5,
-    ) -> jax.Array:
+    ) -> tuple[jax.Array, jax.Array]:
         """Integrate until a steady state is reached and return the final state.
 
         Analogous to
@@ -347,10 +348,11 @@ class Base(eqx.Module, ABC):
 
         Returns
         -------
-        jax.Array
-            Final (steady-state) state, shape ``(n_state,)``.  Failed solves
-            (steady state not reached by ``t1``, or a genuine solver failure)
-            return zeros.
+        tuple[jax.Array, jax.Array]
+            Convergence time (scalar) and final (steady-state) state, shape
+            ``(n_state,)``.  Failed solves (steady state not reached by
+            ``t1``, or a genuine solver failure) return the real time paired
+            with a zeroed-out state.
         """
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(self),
@@ -370,8 +372,9 @@ class Base(eqx.Module, ABC):
             ),
             max_steps=max_steps,
         )
+        t = cast(jax.Array, sol.ts)[-1]
         y = cast(jax.Array, sol.ys)[-1]
-        return lax.cond(
+        return t, lax.cond(
             sol.result == diffrax.RESULTS.event_occurred,
             lambda: y,
             lambda: jnp.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0),
@@ -791,16 +794,35 @@ class FluxOde(Base):
         Flux function ``(t, y, args) -> flux_vector``.
     nv : Nv
         Stoichiometric map ``flux_vector -> dy/dt``.
+    variable_names : tuple[str, ...] or None
+        Names of the state variables, in the order ``fluxes``/``nv`` expect
+        and return them.  Populated automatically by :meth:`from_mxlpy`;
+        ``None`` for hand-built instances.  Required by ``simulate_*``.
+    flux_names : tuple[str, ...] or None
+        Names of the fluxes, in the order returned by ``fluxes``.  Populated
+        automatically by :meth:`from_mxlpy`; ``None`` for hand-built
+        instances.  Required by ``simulate_*``.
     """
 
     fluxes: Rhs
     nv: Nv
     pars: jax.Array  # trainable parameters
+    variable_names: tuple[str, ...] | None = eqx.field(static=True, default=None)
+    flux_names: tuple[str, ...] | None = eqx.field(static=True, default=None)
 
-    def __init__(self, fluxes: Rhs, nv: Nv, pars: jax.Array) -> None:
+    def __init__(
+        self,
+        fluxes: Rhs,
+        nv: Nv,
+        pars: jax.Array,
+        variable_names: tuple[str, ...] | None = None,
+        flux_names: tuple[str, ...] | None = None,
+    ) -> None:
         self.fluxes = fluxes
         self.nv = nv
         self.pars = pars
+        self.variable_names = variable_names
+        self.flux_names = flux_names
 
     def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the ODE right-hand side via fluxes.
@@ -870,10 +892,230 @@ class FluxOde(Base):
 
         model_pars = mxlpy_model.get_parameter_values()
         pars = jnp.array([model_pars[k] for k in parameters_to_fit])
+        variable_names = tuple(mxlpy_model.get_initial_conditions())
+        flux_names = tuple(
+            mxlpy_model.get_arg_names(
+                include_time=False,
+                include_variables=False,
+                include_parameters=False,
+                include_derived_parameters=False,
+                include_derived_variables=False,
+                include_reactions=True,
+                include_surrogate_variables=False,
+                include_surrogate_fluxes=True,
+                include_readouts=False,
+            )
+        )
         return cls(
             fluxes=generated["fluxes"],
             nv=generated["nv"],
             pars=pars,
+            variable_names=variable_names,
+            flux_names=flux_names,
+        )
+
+    def _require_names(self) -> None:
+        if self.variable_names is None or self.flux_names is None:
+            msg = (
+                "FluxOde has no variable_names/flux_names set; construct it "
+                "via FluxOde.from_mxlpy(...), or set them explicitly, before "
+                "calling simulate_*."
+            )
+            raise ValueError(msg)
+
+    def simulate_time_course(
+        self,
+        ts: jax.Array,
+        y0: jax.Array,
+        args: jax.Array | None = None,
+        max_steps: int = 4096,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> FluxOdeSimulation:
+        """Integrate and return a named, DataFrame-based simulation result.
+
+        Parameters
+        ----------
+        ts : jax.Array
+            Sorted time points at which to save the solution, shape ``(T,)``.
+        y0 : jax.Array
+            Initial condition.
+        args : jax.Array or None
+            External arguments, held constant across the trajectory.
+        max_steps : int
+            Maximum number of adaptive solver steps before aborting.
+        rtol : float
+            Relative tolerance for the PID step-size controller.
+        atol : float
+            Absolute tolerance for the PID step-size controller.
+        method : Method
+            Diffrax Runge-Kutta solver class.
+
+        Returns
+        -------
+        FluxOdeSimulation
+            Named simulation result.
+        """
+        self._require_names()
+        ys = self.integrate(
+            ts, y0, args, max_steps=max_steps, rtol=rtol, atol=atol, method=method
+        )
+        row_args = jnp.zeros((0,)) if args is None else args
+        args_per_row = jnp.broadcast_to(row_args, (ts.shape[0], row_args.shape[0]))
+        return FluxOdeSimulation(
+            model=self,
+            ts=ts,
+            ys=ys,
+            args=args_per_row,
+            variable_names=cast(tuple, self.variable_names),
+            flux_names=cast(tuple, self.flux_names),
+        )
+
+    def simulate_protocol_time_course(
+        self,
+        ts: list[jax.Array],
+        y0: jax.Array,
+        protocol: jax.Array,
+        args: jax.Array | None = None,
+        max_steps: int = 4096,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> FluxOdeSimulation:
+        """Integrate through a protocol and return a named simulation result.
+
+        Prepends the ``y0``/``t=0`` row, since :meth:`integrate_protocol`
+        deliberately never includes it (its per-step windows start strictly
+        after the previous step's end) -- without this, the result would be
+        inconsistent with :meth:`simulate_time_course`, which does include
+        its starting point.
+
+        Parameters
+        ----------
+        ts : list[jax.Array]
+            Per-step, ascending, absolute time points; see
+            :meth:`integrate_protocol`.
+        y0 : jax.Array
+            Initial condition at ``t=0``.
+        protocol : jax.Array
+            Per-step external argument, shape ``(len(ts), n_args)``.
+        args : jax.Array or None
+            Additional arguments held constant across all steps; see
+            :meth:`integrate_protocol`.
+        max_steps : int
+            Maximum number of adaptive solver steps per step, before aborting.
+        rtol : float
+            Relative tolerance for the PID step-size controller.
+        atol : float
+            Absolute tolerance for the PID step-size controller.
+        method : Method
+            Diffrax Runge-Kutta solver class.
+
+        Returns
+        -------
+        FluxOdeSimulation
+            Named simulation result, including the initial ``t=0`` row.
+        """
+        self._require_names()
+        ys = self.integrate_protocol(
+            ts,
+            y0,
+            protocol,
+            args,
+            max_steps=max_steps,
+            rtol=rtol,
+            atol=atol,
+            method=method,
+        )
+        full_ts = jnp.concatenate((jnp.zeros((1,)), jnp.concatenate(ts)))
+        full_ys = jnp.concatenate((y0[None, :], ys), axis=0)
+
+        # Same combination rule integrate_protocol uses internally, so the
+        # args recovered here match what was actually active at each row.
+        combined_args = [
+            step_args if args is None else jnp.concat((args, step_args))
+            for step_args in protocol
+        ]
+        args_per_row = jnp.concatenate(
+            [jnp.broadcast_to(combined_args[0], (1, combined_args[0].shape[0]))]
+            + [
+                jnp.broadcast_to(a, (step_ts.shape[0], a.shape[0]))
+                for a, step_ts in zip(combined_args, ts, strict=True)
+            ],
+            axis=0,
+        )
+        return FluxOdeSimulation(
+            model=self,
+            ts=full_ts,
+            ys=full_ys,
+            args=args_per_row,
+            variable_names=cast(tuple, self.variable_names),
+            flux_names=cast(tuple, self.flux_names),
+        )
+
+    def simulate_to_steady_state(
+        self,
+        y0: jax.Array,
+        args: jax.Array | None = None,
+        t1: float = 1e6,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        steady_state_rtol: float | None = None,
+        steady_state_atol: float | None = None,
+        max_steps: int = 4096,
+        method: Method = diffrax.Tsit5,
+    ) -> FluxOdeSimulation:
+        """Integrate to steady state and return a named, 1-row simulation result.
+
+        Parameters
+        ----------
+        y0 : jax.Array
+            Initial condition at ``t=0``.
+        args : jax.Array or None
+            Additional arguments forwarded to the RHS.
+        t1 : float
+            Upper bound on integration time; see
+            :meth:`integrate_to_steady_state`.
+        rtol : float
+            Relative tolerance for the PID step-size controller.
+        atol : float
+            Absolute tolerance for the PID step-size controller.
+        steady_state_rtol : float or None
+            Relative tolerance for the steady-state event; defaults to ``rtol``.
+        steady_state_atol : float or None
+            Absolute tolerance for the steady-state event; defaults to ``atol``.
+        max_steps : int
+            Maximum number of adaptive solver steps before aborting.
+        method : Method
+            Diffrax Runge-Kutta solver class.
+
+        Returns
+        -------
+        FluxOdeSimulation
+            Named simulation result with a single row, indexed by the actual
+            convergence time.
+        """
+        self._require_names()
+        t, y = self.integrate_to_steady_state(
+            y0,
+            args,
+            t1=t1,
+            rtol=rtol,
+            atol=atol,
+            steady_state_rtol=steady_state_rtol,
+            steady_state_atol=steady_state_atol,
+            max_steps=max_steps,
+            method=method,
+        )
+        row_args = jnp.zeros((0,)) if args is None else args
+        return FluxOdeSimulation(
+            model=self,
+            ts=t[None],
+            ys=y[None, :],
+            args=row_args[None, :],
+            variable_names=cast(tuple, self.variable_names),
+            flux_names=cast(tuple, self.flux_names),
         )
 
 
