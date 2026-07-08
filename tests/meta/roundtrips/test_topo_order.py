@@ -40,8 +40,10 @@ def model_topo_order() -> KineticModelBuilder:
 
 def test_generate_model_code_jax() -> None:
     assert meta.generate_model_code_jax(model_topo_order()).full().split("\n") == [
+        "import functools",
         "import jax",
         "import jax.numpy as jnp",
+        "import jax.scipy.special",
         "",
         "def model(ts: jax.Array, variables: jax.Array, args: jax.Array) -> jax.Array:",
         "    (x1,) = variables",

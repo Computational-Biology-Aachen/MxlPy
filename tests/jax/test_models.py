@@ -6,11 +6,15 @@ Focus areas (all regressions that were previously broken):
   matching the generator convention ``args = free_parameters + parameters_to_fit``;
 * the generated ``nv`` is a single-argument ``flux_vector -> dydt`` map;
 * ``FluxOde.from_mxlpy`` translates ``math.*`` to ``jnp.*``;
-* conditional rate laws are emitted as ``jnp.where`` and are jit-integrable.
+* conditional rate laws are emitted as ``jnp.select`` and are jit-integrable;
+* special functions (``min``/``max``, trig, ``sign``, ``erf``/``gamma``/...)
+  are translated to their ``jnp``/``jax.scipy.special`` equivalents.
 """
 
 import math
+from collections.abc import Callable
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -79,6 +83,69 @@ def _exp_model() -> KineticModelBuilder:
         KineticModelBuilder()
         .add_variable("v", initial_value=1.0)
         .add_reaction("r", fn=_exp_rate, args=["v"], stoichiometry={"v": -1.0})
+    )
+
+
+def _sqrt_rate(v: float) -> float:
+    return math.sqrt(v)
+
+
+def _log_rate(v: float) -> float:
+    return math.log(v)
+
+
+def _sin_rate(v: float) -> float:
+    return math.sin(v)
+
+
+def _floor_rate(v: float) -> float:
+    return math.floor(v)
+
+
+def _ceil_rate(v: float) -> float:
+    return math.ceil(v)
+
+
+def _sign_rate(v: float) -> float:
+    return np.sign(v)
+
+
+def _erf_rate(v: float) -> float:
+    return math.erf(v)
+
+
+def _gamma_rate(v: float) -> float:
+    return math.gamma(v)
+
+
+def _loggamma_rate(v: float) -> float:
+    return math.lgamma(v)
+
+
+def _min_rate(v: float, w: float) -> float:
+    return min(v, w)
+
+
+def _max_rate(v: float, w: float) -> float:
+    return max(v, w)
+
+
+def _unary_fn_model(fn: Callable[[float], float], initial_value: float) -> KineticModelBuilder:
+    return (
+        KineticModelBuilder()
+        .add_variable("v", initial_value=initial_value)
+        .add_reaction("r", fn=fn, args=["v"], stoichiometry={"v": -1.0})
+    )
+
+
+def _min_max_model(
+    fn: Callable[[float, float], float], v0: float, w0: float
+) -> KineticModelBuilder:
+    return (
+        KineticModelBuilder()
+        .add_variable("v", initial_value=v0)
+        .add_parameter("w", value=w0)
+        .add_reaction("r", fn=fn, args=["v", "w"], stoichiometry={"v": -1.0})
     )
 
 
@@ -221,16 +288,96 @@ def test_fluxode_from_mxlpy_translates_math_to_jnp() -> None:
 
 
 # ---------------------------------------------------------------------------
-# conditional rate laws -> jnp.where, jit-integrable
+# special functions (min/max, trig, sign, erf/gamma/...) must round-trip
+# through the jax backend with the same numeric result as plain Python
+# ---------------------------------------------------------------------------
+
+_UNARY_SPECIAL_FUNCTION_CASES: list[
+    tuple[str, Callable[[float], float], float, Callable[[float], float]]
+] = [
+    ("sqrt", _sqrt_rate, 4.0, math.sqrt),
+    ("log", _log_rate, 2.0, math.log),
+    ("sin", _sin_rate, 0.5, math.sin),
+    ("floor", _floor_rate, 2.7, math.floor),
+    ("ceiling", _ceil_rate, 2.3, math.ceil),
+    ("sign", _sign_rate, -3.0, lambda v: float(np.sign(v))),
+    ("erf", _erf_rate, 0.5, math.erf),
+    ("gamma", _gamma_rate, 2.5, math.gamma),
+    ("loggamma", _loggamma_rate, 2.5, math.lgamma),
+    # factorial is excluded here: mxlpy eagerly calls rate fns with real
+    # floats during model construction (derived-parameter caching), and
+    # math.factorial rejects non-integral floats regardless of backend.
+    # Its jax translation is covered at the string level in
+    # tests/meta/test_sympy_tools.py::test_unary_jax_translation.
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "fn", "v0", "reference"),
+    _UNARY_SPECIAL_FUNCTION_CASES,
+    ids=[case[0] for case in _UNARY_SPECIAL_FUNCTION_CASES],
+)
+def test_unary_special_function_jax_export_matches_reference(
+    name: str,
+    fn: Callable[[float], float],
+    v0: float,
+    reference: Callable[[float], float],
+) -> None:
+    ode = Ode.from_mxlpy(_unary_fn_model(fn, v0))
+    dvdt = float(ode(0.0, jnp.array([v0]), jnp.array([]))[0])
+    assert dvdt == pytest.approx(-reference(v0), rel=1e-5), name
+
+
+def test_min_rate_jax_export_matches_reference() -> None:
+    v0, w0 = 2.0, 5.0
+    ode = Ode.from_mxlpy(_min_max_model(_min_rate, v0, w0))
+    dvdt = float(ode(0.0, jnp.array([v0]), jnp.array([]))[0])
+    assert dvdt == pytest.approx(-min(v0, w0))
+
+
+def test_max_rate_jax_export_matches_reference() -> None:
+    v0, w0 = 2.0, 5.0
+    ode = Ode.from_mxlpy(_min_max_model(_max_rate, v0, w0))
+    dvdt = float(ode(0.0, jnp.array([v0]), jnp.array([]))[0])
+    assert dvdt == pytest.approx(-max(v0, w0))
+
+
+def test_min_and_sign_rates_are_jit_compatible() -> None:
+    """Regression guard: functools.reduce(jnp.minimum, ...) and jnp.sign must
+    trace under jax.jit, unlike the builtin min()/a bool-based sign ternary.
+
+    ``ode`` instances are jitted via a wrapping function rather than
+    ``jax.jit(ode)`` directly: jitting an eqx.Module instance itself makes
+    jax hash it, which fails once it holds a concrete jnp.array field.
+    """
+    ode_min = Ode.from_mxlpy(_min_max_model(_min_rate, 2.0, 5.0))
+
+    def call_min(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:
+        return ode_min(t, y, args)
+
+    dvdt_min = float(jax.jit(call_min)(0.0, jnp.array([2.0]), jnp.array([]))[0])
+    assert dvdt_min == pytest.approx(-2.0)
+
+    ode_sign = Ode.from_mxlpy(_unary_fn_model(_sign_rate, -3.0))
+
+    def call_sign(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:
+        return ode_sign(t, y, args)
+
+    dvdt_sign = float(jax.jit(call_sign)(0.0, jnp.array([-3.0]), jnp.array([]))[0])
+    assert dvdt_sign == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# conditional rate laws -> jnp.select, jit-integrable
 # ---------------------------------------------------------------------------
 
 
-def test_conditional_rate_generates_jnp_where_not_ternary() -> None:
+def test_conditional_rate_generates_jnp_select_not_ternary() -> None:
     code = meta.generate_model_code_jax(_conditional_model())
     rate_line = next(
         line for line in code.model.splitlines() if line.strip().startswith("r =")
     )
-    assert "jnp.where" in rate_line
+    assert "jnp.select" in rate_line
     assert " if " not in rate_line
     assert "else" not in rate_line
 
