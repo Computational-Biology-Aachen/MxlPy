@@ -773,10 +773,13 @@ class Ode(Base):
             free_parameters=free_parameters,
         )
 
-        generated = {}
+        # A single shared namespace, so names bound by ``codegen.imports``
+        # (e.g. ``jnp``, ``functools``) are visible to ``codegen.model``
+        # regardless of what this module happens to import at the top level.
+        generated: dict[str, object] = {}
 
-        exec(codegen.imports, globals(), generated)  # noqa: S102
-        exec(codegen.model.replace("math.", "jnp."), globals(), generated)  # noqa: S102
+        exec(codegen.imports, generated)  # noqa: S102
+        exec(codegen.model, generated)  # noqa: S102
 
         model_pars = mxlpy_model.get_parameter_values()
         pars = jnp.array([model_pars[k] for k in parameters_to_fit])
@@ -884,11 +887,15 @@ class FluxOde(Base):
             free_parameters=free_parameters,
         )
 
-        generated = {}
+        # A single shared namespace, so names bound by ``codegen.imports``
+        # (e.g. ``jnp``, ``functools``) are visible to ``codegen.fluxes``/
+        # ``codegen.nv`` regardless of what this module happens to import at
+        # the top level.
+        generated: dict[str, object] = {}
 
-        exec(codegen.imports, globals(), generated)  # noqa: S102
-        exec(codegen.fluxes.replace("math.", "jnp."), globals(), generated)  # noqa: S102
-        exec(codegen.nv.replace("math.", "jnp."), globals(), generated)  # noqa: S102
+        exec(codegen.imports, generated)  # noqa: S102
+        exec(codegen.fluxes, generated)  # noqa: S102
+        exec(codegen.nv, generated)  # noqa: S102
 
         model_pars = mxlpy_model.get_parameter_values()
         pars = jnp.array([model_pars[k] for k in parameters_to_fit])

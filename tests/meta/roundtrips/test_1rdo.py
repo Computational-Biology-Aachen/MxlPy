@@ -37,8 +37,10 @@ def model_1rdo() -> KineticModelBuilder:
 
 def test_generate_model_code_jax() -> None:
     assert meta.generate_model_code_jax(model_1rdo()).full().split("\n") == [
+        "import functools",
         "import jax",
         "import jax.numpy as jnp",
+        "import jax.scipy.special",
         "",
         "def model(ts: jax.Array, variables: jax.Array, args: jax.Array) -> jax.Array:",
         "    v1, v2 = variables",

@@ -1770,8 +1770,10 @@ def generate_model_code_jax(
         return_formatter=return_template,
         custom_fns=custom_fns if custom_fns is not None else {},
         imports=[
+            "import functools",
             "import jax",
             "import jax.numpy as jnp",
+            "import jax.scipy.special",
         ],
         name_map={name: valid_identifier(name) for name in model.ids},
         unpacked_args=False,

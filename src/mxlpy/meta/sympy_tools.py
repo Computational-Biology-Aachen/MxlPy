@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, cast
 
 import sympy
-from sympy.printing.pycode import PythonCodePrinter as _PythonCodePrinter
+from sympy.printing.numpy import JaxPrinter as _SympyJaxPrinter
+from sympy.printing.numpy import (
+    _known_constants_numpy,  # pyright: ignore[reportPrivateUsage]
+    _known_functions_numpy,  # pyright: ignore[reportPrivateUsage]
+)
 
 from mxlpy.meta import _mathml as mml
 from mxlpy.meta.source_tools import fn_to_sympy_expr
@@ -185,39 +189,51 @@ def sympy_to_inline_py(expr: sympy.Expr) -> str:
     return cast(str, sympy.pycode(expr, fully_qualified_modules=True, full_prec=False))
 
 
-class _JaxCodePrinter(_PythonCodePrinter):
-    """Python code printer that renders ``Piecewise`` as nested ``jnp.where``.
+# sympy's own function-name table for numpy-family printers (unprefixed, e.g.
+# ``exp`` -> ``exp``, ``acos`` -> ``arccos``). We re-prefix it with ``jnp.``
+# instead of sympy's hardcoded ``jax.numpy.`` so generated code matches this
+# codebase's ``import jax.numpy as jnp`` convention.
+_JAX_KNOWN_FUNCTIONS: dict[str, str] = {
+    **{k: f"jnp.{v}" for k, v in _known_functions_numpy.items()},
+    # Not available under ``jax.numpy`` at all; ``jax.scipy.special`` has them.
+    "erf": "jax.scipy.special.erf",
+    "erfc": "jax.scipy.special.erfc",
+    "gamma": "jax.scipy.special.gamma",
+    "loggamma": "jax.scipy.special.gammaln",
+    "factorial": "jax.scipy.special.factorial",
+}
+_JAX_KNOWN_CONSTANTS: dict[str, str] = {
+    k: f"jnp.{v}" for k, v in _known_constants_numpy.items()
+}
 
-    ``sympy.pycode`` renders ``Piecewise`` as a Python ternary
-    (``a if cond else b``), which calls ``bool(cond)`` and therefore fails
-    under ``jax.jit`` when ``cond`` is a traced value. ``jnp.where`` is an
-    ordinary (traceable) expression, so it composes inline like every other
-    generated term. Both branches are always evaluated; that is fine for the
-    rate laws we generate, but note that a branch which is undefined outside
-    its own regime (producing ``nan``) would poison gradients -- such cases
-    need ``lax.cond`` instead, which cannot be emitted as an inline expression.
+
+class _JaxCodePrinter(_SympyJaxPrinter):
+    """JAX code printer using the ``jnp`` alias instead of ``jax.numpy``.
+
+    Subclasses sympy's own :class:`sympy.printing.numpy.JaxPrinter`, which
+    already renders ``exp``/trig/``sqrt``/``sign`` as traceable ``jax.numpy.*``
+    calls, ``Min``/``Max`` as ``functools.reduce(jax.numpy.minimum/maximum,
+    ...)``, and ``Piecewise`` as ``jax.numpy.select(...)`` rather than a Python
+    ternary (which calls ``bool(cond)`` and fails under ``jax.jit`` when
+    ``cond`` is a traced value). We only override the function/constant tables
+    to emit the ``jnp.`` alias this codebase imports, and to redirect a few
+    special functions (``erf``, ``gamma``, ``factorial``, ...) that
+    ``jax.numpy`` doesn't provide to ``jax.scipy.special``.
     """
 
-    def _print_Piecewise(self, expr: sympy.Piecewise) -> str:
-        pieces = list(expr.args)
-        # A trailing ``(value, True)`` pair is the default/else branch.
-        if pieces[-1].cond == sympy.true:
-            acc = self._print(pieces[-1].expr)
-            pieces = pieces[:-1]
-        else:
-            acc = "jnp.nan"
-        for ecp in reversed(pieces):
-            acc = f"jnp.where({self._print(ecp.cond)}, {self._print(ecp.expr)}, {acc})"
-        return acc
+    _module = "jnp"
+    _kf = _JAX_KNOWN_FUNCTIONS
+    _kc = _JAX_KNOWN_CONSTANTS
 
 
 def sympy_to_inline_jax(expr: sympy.Expr) -> str:
     """Convert a sympy expression to inline JAX-compatible Python code.
 
-    Identical to :func:`sympy_to_inline_py` except that ``Piecewise`` is
-    rendered as nested ``jnp.where`` calls rather than a Python ternary, so the
-    result can be traced by ``jax.jit``. Other math functions are still emitted
-    as ``math.*`` and rely on the caller's ``math.`` -> ``jnp.`` substitution.
+    Unlike :func:`sympy_to_inline_py`, special functions are emitted as
+    ``jnp.*`` (or ``jax.scipy.special.*`` where ``jax.numpy`` has no
+    equivalent) instead of ``math.*``/bare builtins, and ``Piecewise`` is
+    rendered as ``jnp.select(...)`` instead of a Python ternary, so the result
+    can be traced by ``jax.jit``.
     """
     printer = _JaxCodePrinter(
         {"fully_qualified_modules": True, "full_prec": False},

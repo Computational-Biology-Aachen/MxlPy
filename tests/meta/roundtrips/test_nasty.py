@@ -71,8 +71,10 @@ def model_nasty() -> KineticModelBuilder:
 
 def test_generate_model_code_jax() -> None:
     assert meta.generate_model_code_jax(model_nasty()).full().split("\n") == [
+        "import functools",
         "import jax",
         "import jax.numpy as jnp",
+        "import jax.scipy.special",
         "",
         "def model(ts: jax.Array, variables: jax.Array, args: jax.Array) -> jax.Array:",
         "    v_minus_1, v_minus_2, v_minus_3, v_minus_4, v_minus_5, v_minus_ia6 = variables",
