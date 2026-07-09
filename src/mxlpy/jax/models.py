@@ -491,7 +491,7 @@ class SoftLatentMapper:
         jax.Array
             Decoded observations, shape ``(T, n_obs)``.
         """
-        return jax.vmap(self.decoder, in_axes=(0, None))(zs)
+        return jax.vmap(self.decoder)(zs)
 
 
 class FullLatentMapper:
@@ -568,7 +568,7 @@ class FullLatentMapper:
         jax.Array
             Decoded observations, shape ``(T, n_obs)``.
         """
-        return jax.vmap(self.decoder, in_axes=(0, None))(zs)
+        return jax.vmap(self.decoder)(zs)
 
 
 class HardLatentMapper:
@@ -672,6 +672,11 @@ class MixedLatentMapper:
             out_features=self.n_hidden,
             key=key,
         )
+        self.decoder = eqx.nn.Linear(
+            in_features=self.n_latent,
+            out_features=self.n_obs,
+            key=key,
+        )
 
     def encode(self, y0: jax.Array) -> jax.Array:
         """Encode observation into latent space by appending learned features.
@@ -705,7 +710,7 @@ class MixedLatentMapper:
             Decoded observations, shape ``(T, n_obs)``.
         """
         hard = zs[:, : self.n_obs]
-        learned = jax.vmap(self.decoder, in_axes=(0, None))(zs)
+        learned = jax.vmap(self.decoder)(zs)
         return (1 - alpha) * hard + alpha * learned
 
 
@@ -1640,9 +1645,7 @@ class Anode(Base):
         jax.Array
             Decoded trajectories, shape ``(T, n_obs)``.
         """
-        print("y0 shape", y0.shape)
         z0 = self.latent_mapper.encode(y0)
-        print("z0 shape", z0.shape)
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(self),
             method(),
@@ -1656,7 +1659,6 @@ class Anode(Base):
             max_steps=max_steps,
         )
         zs = cast(jax.Array, sol.ys)
-        print("zs shape", zs.shape)
         return lax.cond(
             sol.result == diffrax.RESULTS.successful,
             lambda: self.latent_mapper.decode(zs),
@@ -1694,6 +1696,8 @@ class FluxAnode(Base):
         Number of hidden layers for the Markov MLP.
     key : PRNGKeyArray
         JAX random key for weight initialisation.
+    nv : Nv
+        Stoichiometric map ``flux_vector -> dy/dt``.
     flux_scale : jax.Array or None
         Scalar multiplier for flux MLP output.  Defaults to 0.1.
     markov_scale : jax.Array or None
@@ -1705,10 +1709,8 @@ class FluxAnode(Base):
 
     n_obs: int
     nv: Nv
-    encoder: eqx.nn.Linear
     flux_nn: eqx.nn.MLP
     markov_nn: eqx.nn.MLP
-    decoder: eqx.nn.Linear
     flux_scale: jax.Array
     markov_scale: jax.Array
     latent_mapper: LatentMapper
@@ -1724,11 +1726,14 @@ class FluxAnode(Base):
         markov_width: int,
         markov_depth: int,
         key: PRNGKeyArray,
+        nv: Nv,
         flux_scale: jax.Array | None = None,
         markov_scale: jax.Array | None = None,
         latent_mapper: LatentMapperFn | None = None,
         derived_fn: DerivedFn | None = None,
     ) -> None:
+        self.n_obs = n_obs
+        self.nv = nv
         self.flux_scale = jnp.array([0.1]) if flux_scale is None else flux_scale
         self.markov_scale = jnp.array([0.1]) if markov_scale is None else markov_scale
         n_latent = n_obs + n_hidden
