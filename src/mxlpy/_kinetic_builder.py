@@ -3014,7 +3014,7 @@ class KineticModelBuilder:
             check_per_rxn = {}
 
             if (var_unit := var.unit) is None:
-                break
+                continue
 
             for rxn in self.get_stoichiometries_of_variable(name):
                 if (rxn_unit := units_per_fn.get(rxn)) is None:
