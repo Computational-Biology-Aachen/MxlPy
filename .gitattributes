@@ -1,5 +1,7 @@
+# GitHub syntax highlighting
+pixi.lock linguist-language=YAML linguist-generated=true
 # proper line endings
 * text=auto eol=lf
 *.{cmd,[cC][mM][dD]} text eol=crlf
-*.{bat,[bB][aA][tT]} text eol=crlf# GitHub syntax highlighting
-pixi.lock linguist-language=YAML linguist-generated=true
+*.{bat,[bB][aA][tT]} text eol=crlf
+
