@@ -1708,6 +1708,7 @@ class FluxAnode(Base):
     """
 
     n_obs: int
+    n_args: int
     nv: Nv
     flux_nn: eqx.nn.MLP
     markov_nn: eqx.nn.MLP
@@ -1720,6 +1721,7 @@ class FluxAnode(Base):
         self,
         n_obs: int,
         n_hidden: int,
+        n_args: int,
         n_flux: int,
         flux_width: int,
         flux_depth: int,
@@ -1733,12 +1735,14 @@ class FluxAnode(Base):
         derived_fn: DerivedFn | None = None,
     ) -> None:
         self.n_obs = n_obs
+        self.n_args = n_args
         self.nv = nv
         self.flux_scale = jnp.array([0.1]) if flux_scale is None else flux_scale
         self.markov_scale = jnp.array([0.1]) if markov_scale is None else markov_scale
         n_latent = n_obs + n_hidden
+
         self.flux_nn = eqx.nn.MLP(
-            in_size=n_latent,
+            in_size=n_latent + n_args,
             out_size=n_flux,
             width_size=flux_width,
             depth=flux_depth,
@@ -1746,7 +1750,7 @@ class FluxAnode(Base):
             key=key,
         )
         self.markov_nn = eqx.nn.MLP(
-            in_size=n_latent,
+            in_size=n_latent + n_args,
             out_size=n_hidden,
             width_size=markov_width,
             depth=markov_depth,
@@ -1764,7 +1768,7 @@ class FluxAnode(Base):
         self,
         t: PyTree,  # noqa: ARG002 ; for API stability
         y: PyTree,
-        args: PyTree,  # noqa: ARG002 ; for API stability
+        args: PyTree,
     ) -> jax.Array:
         """Compute scaled neural flux predictions.
 
@@ -1782,7 +1786,11 @@ class FluxAnode(Base):
         jax.Array
             Flux vector ``flux_scale * flux_nn(y)``.
         """
-        return self.flux_scale * self.flux_nn(y)
+        return self.flux_scale * self.flux_nn(jnp.concat((y, args)))
+
+    def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+        """Get derived quantitites."""
+        return self.derived_fn(t, y, args)
 
     def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the latent-space ODE right-hand side.
@@ -1807,7 +1815,7 @@ class FluxAnode(Base):
         return jnp.concat(
             (
                 self.nv(self.fluxes(t, y, args)),
-                self.flux_scale * self.markov_nn(y),
+                self.markov_scale * self.markov_nn(jnp.concat((y, args))),
             )
         )
 
