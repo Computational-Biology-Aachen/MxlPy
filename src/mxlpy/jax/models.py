@@ -417,7 +417,7 @@ class LatentMapper(Protocol):
 type LatentMapperFn = Callable[[int, int, PRNGKeyArray], LatentMapper]
 
 
-class SoftLatentMapper:
+class SoftLatentMapper(eqx.Module):
     """Maps observed states to and from a soft latent representation.
 
     The encoder appends learned hidden features to the raw observation;
@@ -494,7 +494,7 @@ class SoftLatentMapper:
         return jax.vmap(self.decoder)(zs)
 
 
-class FullLatentMapper:
+class FullLatentMapper(eqx.Module):
     """Maps observed states to and from a fully learned latent representation.
 
     No part of the raw observation is preserved verbatim; both encoder
@@ -571,7 +571,7 @@ class FullLatentMapper:
         return jax.vmap(self.decoder)(zs)
 
 
-class HardLatentMapper:
+class HardLatentMapper(eqx.Module):
     """Maps observed states to and from a latent space with a hard (slice) decoder.
 
     The encoder appends learned features; the decoder is a fixed slice
@@ -637,7 +637,7 @@ class HardLatentMapper:
         return zs[:, : self.n_obs]
 
 
-class MixedLatentMapper:
+class MixedLatentMapper(eqx.Module):
     """Maps observed states to and from a latent space with an annealed decoder.
 
     The decoder interpolates between a hard projection and a learned map
@@ -1455,7 +1455,7 @@ class FluxUde(Base):
 
         self.op = ops[op] if isinstance(op, str) else op
         self.flux_ode = flux_ode
-        self.flux_nn = flux_nn
+        self.flux_node = flux_nn
         self.derived_fn = _default_derived if derived_fn is None else derived_fn
 
     def ode_fluxes(self, ts: jax.Array, ys: jax.Array, args: jax.Array) -> jax.Array:
