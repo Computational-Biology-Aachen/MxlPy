@@ -1088,7 +1088,9 @@ def _normalized_symbolic_model(
         derived = linear + readouts
     else:
         deps = _get_dependencies_and_leaves(model, set(derived_to_calculate))
-        derived = [i for i in linear if i[0] in deps] + readouts
+        derived = [i for i in linear if i[0] in deps] + [
+            i for i in readouts if i[0] in deps
+        ]
 
     ##################################
     # Diff eqs
