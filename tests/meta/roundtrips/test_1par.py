@@ -15,7 +15,6 @@ def test_generate_model_code_jax() -> None:
         "def model(ts: jax.Array, variables: jax.Array, args: jax.Array) -> jax.Array:",
         "",
         "",
-        "    p1 = 1.0",
         "    return jnp.array([])",
         "",
         "def derived(ts: jax.Array, variables: jax.Array, args: jax.Array) -> jax.Array:",
@@ -27,7 +26,6 @@ def test_generate_model_code_jax() -> None:
         "def fluxes(ts: jax.Array, variables: jax.Array, args: jax.Array) -> jax.Array:",
         "",
         "",
-        "    p1 = 1.0",
         "    return jnp.array([])",
         "",
         "def nv(fluxes: jax.Array) -> jax.Array:",
@@ -46,7 +44,6 @@ def test_generate_model_code_cpp() -> None:
         "",
         "",
         "std::array<double, 0> model(double time, const std::array<double, 0>& variables) {",
-        "    double p1 = 1.0;",
         "    return {};",
         "}",
         "",
@@ -56,7 +53,6 @@ def test_generate_model_code_cpp() -> None:
         "}",
         "",
         "ignored fluxes(double time, const std::array<double, 0>& variables) {",
-        "    double p1 = 1.0;",
         "    return {};",
         "}",
         "",
@@ -73,7 +69,6 @@ def test_generate_model_code_cpp() -> None:
 def test_generate_model_code_jl() -> None:
     assert meta.generate_model_code_jl(model_1par()).full().split("\n") == [
         "function model(time, variables)",
-        "    p1 = 1.0",
         "    return []",
         "end",
         "",
@@ -83,7 +78,6 @@ def test_generate_model_code_jl() -> None:
         "end",
         "",
         "function fluxes(time, variables)",
-        "    p1 = 1.0",
         "    return []",
         "end",
         "",
@@ -100,7 +94,6 @@ def test_generate_model_code_jl() -> None:
 def test_generate_model_code_matlab() -> None:
     assert meta.generate_model_code_matlab(model_1par()).full().split("\n") == [
         "function dydt = model(t, variables)",
-        "    p1 = 1.0;",
         "    dydt = []';",
         "end",
         "",
@@ -110,7 +103,6 @@ def test_generate_model_code_matlab() -> None:
         "end",
         "",
         "function out = fluxes(t, variables)",
-        "    p1 = 1.0;",
         "    out = [];",
         "end",
         "",
@@ -128,7 +120,6 @@ def test_generate_model_code_matlab() -> None:
 def test_generate_model_code_rs() -> None:
     assert meta.generate_model_code_rs(model_1par()).full().split("\n") == [
         "fn model(time: f64, variables: &[f64; 0]) -> [f64; 0] {",
-        "    let p1: f64 = 1.0;",
         "    return []",
         "}",
         "",
@@ -138,7 +129,6 @@ def test_generate_model_code_rs() -> None:
         "}",
         "",
         "fn fluxes(time: f64, variables: &[f64; 0]) -> ignored {",
-        "    let p1: f64 = 1.0;",
         "    return []",
         "}",
         "",
@@ -155,7 +145,6 @@ def test_generate_model_code_rs() -> None:
 def test_generate_model_code_ts() -> None:
     assert meta.generate_model_code_ts(model_1par()).full().split("\n") == [
         "function model(time: number, variables: number[]): number[] {",
-        "    const p1: number = 1.0;",
         "    return [];",
         "};",
         "",
@@ -165,7 +154,6 @@ def test_generate_model_code_ts() -> None:
         "};",
         "",
         "function fluxes(time: number, variables: number[]): number[] {",
-        "    const p1: number = 1.0;",
         "    return [];",
         "};",
         "",

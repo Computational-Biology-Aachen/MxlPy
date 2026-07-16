@@ -1213,15 +1213,33 @@ def _generate_model_code(
         include_readouts=False,
     )
 
-    body_src = "\n".join(
-        [
-            assignment_template(
-                name_map[name],
-                expr_template(cast(sympy.Expr, expr.subs(sympy_name_map))),
-            )
-            for name, expr in nsm.body
-        ]
-    )
+    # ``fluxes`` and ``model`` don't need everything in ``nsm.body`` -- e.g.
+    # terms that only feed readouts (which neither of them return) would
+    # otherwise show up as unused local variables. Restrict each to the
+    # dependency closure of what it actually returns/computes.
+    flux_deps = _get_dependencies_and_leaves(model, set(flux_order))
+    diff_eq_symbols = {
+        s.name
+        for expr in nsm.diff_eqs.values()
+        for s in expr.free_symbols
+        if isinstance(s, sympy.Symbol)
+    }
+    model_deps = _get_dependencies_and_leaves(model, diff_eq_symbols)
+
+    def _body_src(deps: set[str]) -> str:
+        return "\n".join(
+            [
+                assignment_template(
+                    name_map[name],
+                    expr_template(cast(sympy.Expr, expr.subs(sympy_name_map))),
+                )
+                for name, expr in nsm.body
+                if name in deps
+            ]
+        )
+
+    model_body_src = _body_src(model_deps)
+    fluxes_body_src = _body_src(flux_deps)
     extended_src = "\n".join(
         [
             assignment_template(
@@ -1286,7 +1304,7 @@ def _generate_model_code(
                 ret_type_rest,
             ),
             f"{variables}\n{extra_args}" if not unpacked_args else variables,
-            body_src,
+            model_body_src,
             diff_eq_src,
             return_formatter(
                 list_formatter([f"d{name_map[x]}dt" for x in variable_order])
@@ -1301,7 +1319,7 @@ def _generate_model_code(
                 ret_type_rest,
             ),
             f"{variables}\n{extra_args}" if not unpacked_args else variables,
-            body_src,
+            fluxes_body_src,
             return_formatter(list_formatter([name_map[x] for x in flux_order])),
         ]
     )
