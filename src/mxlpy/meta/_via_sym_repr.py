@@ -1371,6 +1371,13 @@ def _generate_model_code(
             return_formatter(tuple_formatter([init_vars, init_pars])),
         ]
     )
+    # ``functools`` is only needed when a Min/Max in the model actually
+    # lowers to a ``functools.reduce`` call; skip the import otherwise so it
+    # doesn't show up as an unused import in models that never clip a rate.
+    generated_src = "\n".join([model_src, fluxes_src, derived_src, nv_src, init_src])
+    if "functools." not in generated_src:
+        imports = [i for i in imports if i != "import functools"]
+
     return Codegen(
         imports="\n".join(imports),
         model=model_src,
