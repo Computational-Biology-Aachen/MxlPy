@@ -7,8 +7,14 @@ readout dependency that only fed a readout (or wasn't requested via
 ``fluxes``/``model``.
 
 Also covers the generated ``functools`` import being unconditional even
-when nothing in the generated code actually needs ``functools.reduce``.
+when nothing in the generated code actually needs ``functools.reduce``,
+and the ``time`` parameter of ``model``/``derived``/``fluxes`` being
+named ``ts`` in the signature while the sympy symbol substituted into
+the body is ``time``, so rate laws that explicitly depend on time
+referenced an undefined name.
 """
+
+import jax.numpy as jnp
 
 from mxlpy import KineticModelBuilder, meta
 
@@ -23,6 +29,10 @@ def two_arguments(x: float, y: float) -> float:
 
 def clip_at_zero(x: float) -> float:
     return max(x, 0.0)
+
+
+def scale_by_time(x: float, time: float) -> float:
+    return x * time
 
 
 def test_unrequested_readout_dependencies_are_not_computed() -> None:
@@ -109,3 +119,29 @@ def test_functools_import_present_when_reduce_is_emitted() -> None:
 
     assert "functools.reduce" in codegen.fluxes
     assert "import functools" in codegen.imports
+
+
+def test_time_parameter_resolves_in_generated_source() -> None:
+    """A rate law that explicitly depends on ``time`` must not reference an undefined name."""
+    model = (
+        KineticModelBuilder()
+        .add_variable("v1", initial_value=1.0)
+        .add_reaction(
+            "r1",
+            fn=scale_by_time,
+            stoichiometry={"v1": -1.0},
+            args=["v1", "time"],
+        )
+    )
+
+    codegen = meta.generate_model_code_jax(model)
+
+    assert "def fluxes(time: jax.Array" in codegen.fluxes
+    assert "ts" not in codegen.fluxes
+
+    namespace: dict[str, object] = {}
+    exec(codegen.imports, namespace)  # noqa: S102
+    exec(codegen.fluxes, namespace)  # noqa: S102
+
+    (r1,) = namespace["fluxes"](jnp.array(3.0), jnp.array([2.0]), jnp.array([]))
+    assert r1 == 6.0

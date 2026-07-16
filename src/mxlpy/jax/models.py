@@ -50,17 +50,9 @@ type Encoder = Callable[[jax.Array], jax.Array]
 
 
 class DerivedFn(Protocol):
-    def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Calculate derived quantitites."""
         ...
-
-
-def _default_derived(
-    t: PyTree,  # noqa: ARG001
-    y: PyTree,  # noqa: ARG001
-    args: PyTree,  # noqa: ARG001
-) -> jax.Array:
-    return jnp.array([])
 
 
 class JaxModel(Protocol):
@@ -70,7 +62,7 @@ class JaxModel(Protocol):
     with the training utilities in ``train.py``.
     """
 
-    def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the ODE right-hand side at time ``t`` and state ``y``."""
         ...
 
@@ -102,6 +94,14 @@ class JaxModel(Protocol):
         ...
 
 
+def _default_derived(
+    time: PyTree,  # noqa: ARG001
+    y: PyTree,  # noqa: ARG001
+    args: PyTree,  # noqa: ARG001
+) -> jax.Array:
+    return jnp.array([])
+
+
 ###############################################################################
 # ABC
 ###############################################################################
@@ -115,7 +115,7 @@ class Base(eqx.Module, ABC):
     """
 
     @abstractmethod
-    def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the ODE right-hand side at time ``t`` and state ``y``."""
         ...
 
@@ -753,7 +753,7 @@ class Ode(Base):
         self.derived_fn = _default_derived if derived_fn is None else derived_fn
         self.out_scale = jnp.array([1.0]) if out_scale is None else out_scale
 
-    def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the ODE right-hand side.
 
         Parameters
@@ -770,7 +770,7 @@ class Ode(Base):
         jax.Array
             State derivative ``dy/dt``.
         """
-        return self.out_scale * self.rhs(t, y, jnp.concat((args, self.pars)))
+        return self.out_scale * self.rhs(time, y, jnp.concat((args, self.pars)))
 
     def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Get derived quantitites."""
@@ -873,7 +873,7 @@ class FluxOde(Base):
         self.flux_names = flux_names
         self.derived_fn = _default_derived if derived_fn is None else derived_fn
 
-    def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the ODE right-hand side via fluxes.
 
         Parameters
@@ -891,7 +891,7 @@ class FluxOde(Base):
         jax.Array
             State derivative ``dy/dt``.
         """
-        return self.nv(self.fluxes(t, y, jnp.concat((args, self.pars))))
+        return self.nv(self.fluxes(time, y, jnp.concat((args, self.pars))))
 
     def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Get derived quantitites."""
@@ -1228,7 +1228,7 @@ class Node(Base):
 
     def __call__(
         self,
-        t: PyTree,  # noqa: ARG002 ; for API stability
+        time: PyTree,  # noqa: ARG002 ; for API stability
         y: PyTree,
         args: PyTree,
     ) -> jax.Array:
@@ -1334,7 +1334,7 @@ class FluxNode(Base):
         """Get derived quantitites."""
         return self.derived_fn(t, y, args)
 
-    def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the neural ODE right-hand side via fluxes.
 
         Parameters
@@ -1351,7 +1351,7 @@ class FluxNode(Base):
         jax.Array
             State derivative ``nv(fluxes(t, y, args))``.
         """
-        return self.nv(self.fluxes(t, y, args))
+        return self.nv(self.fluxes(time, y, args))
 
 
 ###############################################################################
@@ -1396,7 +1396,7 @@ class Ude(Base):
         self.nn = nn
         self.op = ops[op] if isinstance(op, str) else op
 
-    def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the UDE right-hand side.
 
         Parameters
@@ -1413,7 +1413,7 @@ class Ude(Base):
         jax.Array
             ``op(ode(t, y, args), nn(t, y, args))``.
         """
-        return self.op(self.ode(t, y, args), self.nn(t, y, args))
+        return self.op(self.ode(time, y, args), self.nn(time, y, args))
 
     def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Get derived quantitites."""
@@ -1496,7 +1496,7 @@ class FluxUde(Base):
         """
         return jax.vmap(self.flux_node.fluxes, in_axes=(0, 0, None))(ts, ys, args)
 
-    def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the FluxUDE right-hand side.
 
         Parameters
@@ -1513,7 +1513,7 @@ class FluxUde(Base):
         jax.Array
             Element-wise product of ODE and neural dy/dt outputs.
         """
-        return self.op(self.flux_ode(t, y, args), self.flux_nn(t, y, args))
+        return self.op(self.flux_ode(time, y, args), self.flux_nn(time, y, args))
 
 
 ###############################################################################
@@ -1587,7 +1587,7 @@ class Anode(Base):
 
     def __call__(
         self,
-        t: PyTree,  # noqa: ARG002 ; for API stability
+        time: PyTree,  # noqa: ARG002 ; for API stability
         y: PyTree,
         args: PyTree,
     ) -> jax.Array:
@@ -1792,7 +1792,7 @@ class FluxAnode(Base):
         """Get derived quantitites."""
         return self.derived_fn(t, y, args)
 
-    def __call__(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the latent-space ODE right-hand side.
 
         Concatenates the stoichiometric flux term with the Markov
@@ -1814,7 +1814,7 @@ class FluxAnode(Base):
         """
         return jnp.concat(
             (
-                self.nv(self.fluxes(t, y, args)),
+                self.nv(self.fluxes(time, y, args)),
                 self.markov_scale * self.markov_nn(jnp.concat((y, args))),
             )
         )
