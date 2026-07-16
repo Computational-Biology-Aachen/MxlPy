@@ -1753,10 +1753,14 @@ def generate_model_code_jax(
     ) -> str:
         # ``nv`` maps a flux vector to state derivatives, so it takes the flux
         # vector as its single argument (matching every other backend), rather
-        # than the ``(ts, variables, args)`` signature of the other functions.
+        # than the ``(time, variables, args)`` signature of the other functions.
         if name == "nv":
             return f"def nv(fluxes: jax.Array) -> {return_type}:"
-        return f"def {name}(ts: jax.Array, variables: jax.Array, args: jax.Array) -> {return_type}:"
+        # ``time`` matches the sympy symbol used internally for the ODE time
+        # variable, so expressions that reference it (e.g. explicit time
+        # dependence in a rate law) resolve to the actual function parameter
+        # instead of an undefined name.
+        return f"def {name}(time: jax.Array, variables: jax.Array, args: jax.Array) -> {return_type}:"
 
     def variable_unpacking(variables: list[str], target: str) -> str:
         if len(variables) == 0:
