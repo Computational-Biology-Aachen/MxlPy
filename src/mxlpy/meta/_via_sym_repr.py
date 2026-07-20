@@ -16,11 +16,11 @@ from mxlpy.meta.source_tools import fn_to_sympy_expr, fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
     sympy_to_inline_cxx,
+    sympy_to_inline_jax,
     sympy_to_inline_js,
     sympy_to_inline_julia,
     sympy_to_inline_matlab,
     sympy_to_inline_mxlweb,
-    sympy_to_inline_jax,
     sympy_to_inline_py,
     sympy_to_inline_rust,
     sympy_to_python_fn,
@@ -868,9 +868,9 @@ def model_to_symbolic_repr(
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
 ) -> SymbolicRepr:
     # We need the local imports here to avoid a Model -> meta -> Model import loop
-    from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy._ode_builder import OdeModelBuilder
-    from mxlpy._steady_state_builder import SteadyStateModelBuilder
+    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+    from mxlpy._ode_builder import OdeModelBuilder  # noqa: PLC0415
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder  # noqa: PLC0415
 
     if isinstance(model, KineticModelBuilder):
         return _kinetic_builder_to_symbolic_repr(
@@ -1374,7 +1374,7 @@ def _generate_model_code(
     # ``functools`` is only needed when a Min/Max in the model actually
     # lowers to a ``functools.reduce`` call; skip the import otherwise so it
     # doesn't show up as an unused import in models that never clip a rate.
-    generated_src = "\n".join([model_src, fluxes_src, derived_src, nv_src, init_src])
+    generated_src = f"{model_src}\n{fluxes_src}\n{derived_src}\n{nv_src}\n{init_src}"
     if "functools." not in generated_src:
         imports = [i for i in imports if i != "import functools"]
 

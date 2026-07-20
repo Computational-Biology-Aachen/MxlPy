@@ -51,6 +51,20 @@ def _distinguishable_model() -> KineticModelBuilder:
     )
 
 
+def _derived_ab(a: float, b: float) -> float:
+    return a + 100.0 * b
+
+
+def _distinguishable_model_with_derived() -> KineticModelBuilder:
+    """Adds a ``d = a + 100*b`` derived value to :func:`_distinguishable_model`.
+
+    ``a``/``b``'s wildly different coefficients make any mix-up between
+    which value lands in the free-arg slot vs. the trainable-par slot
+    numerically obvious.
+    """
+    return _distinguishable_model().add_derived("d", fn=_derived_ab, args=["a", "b"])
+
+
 def _cond_rate(v: float, thr: float) -> float:
     if v > thr:
         return v
@@ -130,7 +144,9 @@ def _max_rate(v: float, w: float) -> float:
     return max(v, w)
 
 
-def _unary_fn_model(fn: Callable[[float], float], initial_value: float) -> KineticModelBuilder:
+def _unary_fn_model(
+    fn: Callable[[float], float], initial_value: float
+) -> KineticModelBuilder:
     return (
         KineticModelBuilder()
         .add_variable("v", initial_value=initial_value)
@@ -262,6 +278,50 @@ def test_ode_and_fluxode_from_mxlpy_agree() -> None:
 
 
 # ---------------------------------------------------------------------------
+# from_mxlpy wires up the generated derived function, with free args and
+# fit pars landing in the same order derived() actually unpacks them
+# ---------------------------------------------------------------------------
+
+
+def test_ode_from_mxlpy_wires_derived_fn_in_correct_arg_order() -> None:
+    ode = Ode.from_mxlpy(
+        _distinguishable_model_with_derived(),
+        parameters_to_fit=["b"],
+        free_parameters=["a"],
+        derived_to_calculate=["d"],
+    )
+    # a=5 (free/call-time), b=3 (fit/default) -> d = 5 + 100*3 = 305.
+    # A swapped concat order would instead compute 3 + 100*5 = 503.
+    d = float(ode.derived(0.0, jnp.array([0.0]), jnp.array([5.0]))[0])
+    assert d == pytest.approx(305.0)
+
+
+def test_fluxode_from_mxlpy_wires_derived_fn_in_correct_arg_order() -> None:
+    fode = FluxOde.from_mxlpy(
+        _distinguishable_model_with_derived(),
+        parameters_to_fit=["b"],
+        free_parameters=["a"],
+        derived_to_calculate=["d"],
+    )
+    d = float(fode.derived(0.0, jnp.array([0.0]), jnp.array([5.0]))[0])
+    assert d == pytest.approx(305.0)
+
+
+def test_ode_derived_scale_multiplies_derived_fn_output() -> None:
+    def rhs(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
+        return y
+
+    def derived_fn(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
+        return jnp.array([7.0])
+
+    ode = Ode(
+        rhs=rhs, pars=jnp.array([]), derived_fn=derived_fn, derived_scale=jnp.array(2.0)
+    )
+    d = float(ode.derived(0.0, jnp.array([1.0]), jnp.array([]))[0])
+    assert d == pytest.approx(14.0)
+
+
+# ---------------------------------------------------------------------------
 # generated nv is a single-argument flux -> dydt map
 # ---------------------------------------------------------------------------
 
@@ -388,7 +448,9 @@ def test_conditional_model_from_mxlpy_integrates_under_jit() -> None:
     ode = Ode.from_mxlpy(_conditional_model())
     ts = jnp.array([0.0, 1.0])
     # would raise TracerBoolConversionError with the old Python-ternary codegen
-    ys = ode.integrate(ts, jnp.array([1.0, 1.0]), jnp.array([]), method=diffrax.Tsit5)
+    ys = ode.integrate(
+        ts, jnp.array([1.0, 1.0]), 8192, args=jnp.array([]), method=diffrax.Tsit5
+    )
     assert bool(jnp.all(jnp.isfinite(ys)))
 
 
@@ -409,7 +471,9 @@ def test_single_variable_model_integrates_with_correct_shape() -> None:
     ode = Ode.from_mxlpy(_single_variable_model())
     ts = jnp.array([0.0, 1.0])
     # previously produced a (1, 1) rhs and failed to broadcast against y0 (1,)
-    ys = ode.integrate(ts, jnp.array([1.0]), jnp.array([]), method=diffrax.Tsit5)
+    ys = ode.integrate(
+        ts, jnp.array([1.0]), 8192, args=jnp.array([]), method=diffrax.Tsit5
+    )
     assert ys.shape == (2, 1)
     assert bool(jnp.all(jnp.isfinite(ys)))
     # exponential decay from v0=1, k=1 -> v(1) ~ e^-1
@@ -434,7 +498,7 @@ def test_fluxode_direct_construction_has_no_names() -> None:
 
     with pytest.raises(ValueError, match="variable_names"):
         fo.simulate_time_course(
-            jnp.array([0.0, 1.0]), jnp.array([1.0]), jnp.array([])
+            jnp.array([0.0, 1.0]), jnp.array([1.0]), 8192, args=jnp.array([])
         )
 
 
@@ -456,7 +520,7 @@ def test_fluxode_simulate_time_course() -> None:
         free_parameters=["a"],
     )
     ts = jnp.array([0.0, 1.0, 2.0])
-    sim = fode.simulate_time_course(ts, jnp.array([0.0]), jnp.array([5.0]))
+    sim = fode.simulate_time_course(ts, jnp.array([0.0]), 8192, args=jnp.array([5.0]))
 
     variables = sim.variables
     assert list(variables.columns) == ["v"]
@@ -483,14 +547,12 @@ def test_fluxode_simulate_protocol_time_course_prepends_t0() -> None:
     protocol = jnp.array([[1.0], [2.0], [3.0]])
     y0 = jnp.array([0.0])
 
-    sim = fode.simulate_protocol_time_course(ts, y0, protocol)
+    sim = fode.simulate_protocol_time_course(ts, y0, protocol, 8192)
 
     variables = sim.variables
     assert np.allclose(variables.index.to_numpy(), [0.0, 1.0, 2.0, 3.0])
     # v(1)=31, v(2)=31+32=63, v(3)=63+33=96 (dv/dt = a + 30 per step)
-    assert np.allclose(
-        variables["v"].to_numpy(), [0.0, 31.0, 63.0, 96.0], atol=1e-4
-    )
+    assert np.allclose(variables["v"].to_numpy(), [0.0, 31.0, 63.0, 96.0], atol=1e-4)
 
     fluxes = sim.fluxes
     # t=0 row uses the first step's args (a=1); each subsequent row uses the
@@ -501,7 +563,7 @@ def test_fluxode_simulate_protocol_time_course_prepends_t0() -> None:
 
 def test_integrate_to_steady_state_returns_time_and_state() -> None:
     ode = Ode.from_mxlpy(_single_variable_model())
-    t, y = ode.integrate_to_steady_state(jnp.array([1.0]), jnp.array([]))
+    t, y = ode.integrate_to_steady_state(jnp.array([1.0]), 8192, args=jnp.array([]))
     assert t.shape == ()
     assert float(t) > 0.0
     assert y.shape == (1,)
@@ -510,7 +572,7 @@ def test_integrate_to_steady_state_returns_time_and_state() -> None:
 
 def test_fluxode_simulate_to_steady_state() -> None:
     fode = FluxOde.from_mxlpy(_single_variable_model())
-    sim = fode.simulate_to_steady_state(jnp.array([1.0]), jnp.array([]))
+    sim = fode.simulate_to_steady_state(jnp.array([1.0]), 8192, args=jnp.array([]))
 
     variables = sim.variables
     assert variables.shape == (1, 1)
