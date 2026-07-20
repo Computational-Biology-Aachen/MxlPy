@@ -231,6 +231,45 @@ class Base(eqx.Module, ABC):
             method=method,
         )
 
+    def _integrate_protocol_raw(
+        self,
+        y0: jax.Array,
+        ts: list[jax.Array],
+        protocol: jax.Array,
+        max_steps: int,
+        args: jax.Array | None,
+        rtol: float,
+        atol: float,
+        method: Method,
+    ) -> jax.Array:
+        """Run the per-step solve loop shared by :meth:`integrate_protocol` overrides.
+
+        Operates on whatever space ``y0`` is already in (state or latent);
+        callers that integrate in a transformed space (:class:`Anode`,
+        :class:`FluxAnode`) are responsible for encoding ``y0`` beforehand
+        and decoding the result afterwards.
+        """
+        y = y0
+        t_start = jnp.zeros_like(ts[0][0])
+        results = []
+        for step_ts, step_args in zip(ts, protocol, strict=True):
+            combined_args = step_args if args is None else jnp.concat((args, step_args))
+            ys = self._solve(
+                t0=t_start,
+                t1=step_ts[-1],
+                y0=y,
+                args=combined_args,
+                saveat_ts=step_ts,
+                max_steps=max_steps,
+                rtol=rtol,
+                atol=atol,
+                method=method,
+            )
+            results.append(ys)
+            y = ys[-1]
+            t_start = step_ts[-1]
+        return jnp.concatenate(results, axis=0)
+
     def integrate_protocol(
         self,
         ts: list[jax.Array],
@@ -250,11 +289,6 @@ class Base(eqx.Module, ABC):
         the duration of that step, and the trajectory is continuous across
         step boundaries (each step's initial condition is the previous
         step's final saved state).
-
-        Note that this default implementation integrates in state space
-        directly; subclasses that override :meth:`integrate` to run in a
-        transformed space (:class:`Anode`, :class:`FluxAnode`) would need a
-        matching override here to encode/decode around the per-step loop.
 
         Parameters
         ----------
@@ -292,26 +326,54 @@ class Base(eqx.Module, ABC):
             ``y0`` itself; prepend it if the initial condition is also an
             observation.
         """
-        y = y0
-        t_start = jnp.zeros_like(ts[0][0])
-        results = []
-        for step_ts, step_args in zip(ts, protocol, strict=True):
-            combined_args = step_args if args is None else jnp.concat((args, step_args))
-            ys = self._solve(
-                t0=t_start,
-                t1=step_ts[-1],
-                y0=y,
-                args=combined_args,
-                saveat_ts=step_ts,
-                max_steps=max_steps,
-                rtol=rtol,
-                atol=atol,
-                method=method,
-            )
-            results.append(ys)
-            y = ys[-1]
-            t_start = step_ts[-1]
-        return jnp.concatenate(results, axis=0)
+        return self._integrate_protocol_raw(
+            y0, ts, protocol, max_steps, args, rtol, atol, method
+        )
+
+    def _integrate_to_steady_state_raw(
+        self,
+        y0: jax.Array,
+        max_steps: int,
+        args: jax.Array | None,
+        t1: float,
+        rtol: float,
+        atol: float,
+        steady_state_rtol: float | None,
+        steady_state_atol: float | None,
+        method: Method,
+    ) -> tuple[jax.Array, jax.Array]:
+        """Run the steady-state event solve shared by :meth:`integrate_to_steady_state` overrides.
+
+        Operates on whatever space ``y0`` is already in (state or latent);
+        callers that integrate in a transformed space (:class:`Anode`,
+        :class:`FluxAnode`) are responsible for encoding ``y0`` beforehand
+        and decoding the result afterwards.
+        """
+        sol = diffrax.diffeqsolve(
+            diffrax.ODETerm(self),
+            method(),
+            t0=0.0,
+            t1=t1,
+            dt0=None,
+            y0=y0,
+            args=args,
+            stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
+            saveat=diffrax.SaveAt(t1=True),
+            event=diffrax.Event(
+                diffrax.steady_state_event(
+                    rtol=steady_state_rtol,
+                    atol=steady_state_atol,
+                )
+            ),
+            max_steps=max_steps,
+        )
+        t = cast(jax.Array, sol.ts)[-1]
+        y = cast(jax.Array, sol.ys)[-1]
+        return t, lax.cond(
+            sol.result == diffrax.RESULTS.event_occurred,
+            lambda: y,
+            lambda: jnp.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0),
+        )
 
     def integrate_to_steady_state(
         self,
@@ -368,30 +430,16 @@ class Base(eqx.Module, ABC):
             ``t1``, or a genuine solver failure) return the real time paired
             with a zeroed-out state.
         """
-        sol = diffrax.diffeqsolve(
-            diffrax.ODETerm(self),
-            method(),
-            t0=0.0,
-            t1=t1,
-            dt0=None,
-            y0=y0,
-            args=args,
-            stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
-            saveat=diffrax.SaveAt(t1=True),
-            event=diffrax.Event(
-                diffrax.steady_state_event(
-                    rtol=steady_state_rtol,
-                    atol=steady_state_atol,
-                )
-            ),
-            max_steps=max_steps,
-        )
-        t = cast(jax.Array, sol.ts)[-1]
-        y = cast(jax.Array, sol.ys)[-1]
-        return t, lax.cond(
-            sol.result == diffrax.RESULTS.event_occurred,
-            lambda: y,
-            lambda: jnp.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0),
+        return self._integrate_to_steady_state_raw(
+            y0,
+            max_steps,
+            args,
+            t1,
+            rtol,
+            atol,
+            steady_state_rtol,
+            steady_state_atol,
+            method,
         )
 
 
@@ -739,6 +787,7 @@ class Ode(Base):
     rhs: Rhs
     out_scale: jax.Array
     pars: jax.Array  # trainable parameters
+    derived_scale: jax.Array | float
     derived_fn: DerivedFn
 
     def __init__(
@@ -746,11 +795,16 @@ class Ode(Base):
         rhs: Rhs,
         pars: jax.Array,
         derived_fn: DerivedFn | None = None,
+        derived_scale: jax.Array | float | None = None,
         out_scale: jax.Array | None = None,
     ) -> None:
         self.rhs = rhs
         self.pars = pars
         self.derived_fn = _default_derived if derived_fn is None else derived_fn
+        # A plain float (not a jax.Array) so it's excluded from
+        # eqx.is_inexact_array's filter by default and isn't trained;
+        # pass an explicit jax.Array to opt a model into learning it.
+        self.derived_scale = 1.0 if derived_scale is None else derived_scale
         self.out_scale = jnp.array([1.0]) if out_scale is None else out_scale
 
     def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
@@ -774,7 +828,7 @@ class Ode(Base):
 
     def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Get derived quantitites."""
-        return self.derived_fn(t, y, jnp.concat((self.pars, args)))
+        return self.derived_scale * self.derived_fn(t, y, jnp.concat((args, self.pars)))
 
     @classmethod
     def from_mxlpy(
@@ -782,6 +836,7 @@ class Ode(Base):
         mxlpy_model: KineticModelBuilder,
         parameters_to_fit: list[str] | None = None,
         free_parameters: list[str] | None = None,
+        derived_to_calculate: list[str] | None = None,
     ) -> Self:
         """Construct an :class:`Ode` from an mxlpy :class:`~mxlpy.Model`.
 
@@ -800,13 +855,17 @@ class Ode(Base):
             Names of parameters that are passed as external ``args`` at
             call time rather than baked into the RHS.  If ``None``, no
             parameters are treated as free.
+        derived_to_calculate : list[str] or None
+            Subset of derived component names ``derived_fn`` should emit.
+            ``None`` emits everything.
 
         Returns
         -------
         Self
             A new :class:`Ode` instance whose ``rhs`` is the generated JAX
-            function and whose ``pars`` are initialised from the model's
-            current parameter values for the keys in ``parameters_to_fit``.
+            function, whose ``derived_fn`` is the generated derived function,
+            and whose ``pars`` are initialised from the model's current
+            parameter values for the keys in ``parameters_to_fit``.
         """
         parameters_to_fit = [] if parameters_to_fit is None else parameters_to_fit
         free_parameters = [] if free_parameters is None else free_parameters
@@ -814,6 +873,7 @@ class Ode(Base):
             mxlpy_model,
             parameters_to_fit=parameters_to_fit,
             free_parameters=free_parameters,
+            derived_to_calculate=derived_to_calculate,
         )
 
         # A single shared namespace, so names bound by ``codegen.imports``
@@ -823,10 +883,11 @@ class Ode(Base):
 
         exec(codegen.imports, generated)  # noqa: S102
         exec(codegen.model, generated)  # noqa: S102
+        exec(codegen.derived, generated)  # noqa: S102
 
         model_pars = mxlpy_model.get_parameter_values()
         pars = jnp.array([model_pars[k] for k in parameters_to_fit])
-        return cls(rhs=generated["model"], pars=pars)
+        return cls(rhs=generated["model"], pars=pars, derived_fn=generated["derived"])
 
 
 class FluxOde(Base):
@@ -853,9 +914,11 @@ class FluxOde(Base):
     fluxes: Rhs
     nv: Nv
     pars: jax.Array  # trainable parameters
+    out_scale: jax.Array
+    derived_scale: jax.Array | float
+    derived_fn: DerivedFn
     variable_names: tuple[str, ...] | None = eqx.field(static=True, default=None)
     flux_names: tuple[str, ...] | None = eqx.field(static=True, default=None)
-    derived_fn: DerivedFn
 
     def __init__(
         self,
@@ -864,14 +927,21 @@ class FluxOde(Base):
         pars: jax.Array,
         variable_names: tuple[str, ...] | None = None,
         flux_names: tuple[str, ...] | None = None,
+        out_scale: jax.Array | None = None,
         derived_fn: DerivedFn | None = None,
+        derived_scale: jax.Array | float | None = None,
     ) -> None:
         self.fluxes = fluxes
         self.nv = nv
         self.pars = pars
         self.variable_names = variable_names
         self.flux_names = flux_names
+        self.out_scale = jnp.array([1.0]) if out_scale is None else out_scale
         self.derived_fn = _default_derived if derived_fn is None else derived_fn
+        # A plain float (not a jax.Array) so it's excluded from
+        # eqx.is_inexact_array's filter by default and isn't trained;
+        # pass an explicit jax.Array to opt a model into learning it.
+        self.derived_scale = 1.0 if derived_scale is None else derived_scale
 
     def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the ODE right-hand side via fluxes.
@@ -891,11 +961,13 @@ class FluxOde(Base):
         jax.Array
             State derivative ``dy/dt``.
         """
-        return self.nv(self.fluxes(time, y, jnp.concat((args, self.pars))))
+        return self.out_scale * self.nv(
+            self.fluxes(time, y, jnp.concat((args, self.pars)))
+        )
 
     def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Get derived quantitites."""
-        return self.derived_fn(t, y, jnp.concat((self.pars, args)))
+        return self.derived_scale * self.derived_fn(t, y, jnp.concat((args, self.pars)))
 
     @classmethod
     def from_mxlpy(
@@ -903,6 +975,7 @@ class FluxOde(Base):
         mxlpy_model: KineticModelBuilder,
         parameters_to_fit: list[str] | None = None,
         free_parameters: list[str] | None = None,
+        derived_to_calculate: list[str] | None = None,
     ) -> Self:
         """Construct an :class:`Ode` from an mxlpy :class:`~mxlpy.Model`.
 
@@ -921,13 +994,17 @@ class FluxOde(Base):
             Names of parameters that are passed as external ``args`` at
             call time rather than baked into the RHS.  If ``None``, no
             parameters are treated as free.
+        derived_to_calculate : list[str] or None
+            Subset of derived component names ``derived_fn`` should emit.
+            ``None`` emits everything.
 
         Returns
         -------
         Self
             A new :class:`Ode` instance whose ``rhs`` is the generated JAX
-            function and whose ``pars`` are initialised from the model's
-            current parameter values for the keys in ``parameters_to_fit``.
+            function, whose ``derived_fn`` is the generated derived function,
+            and whose ``pars`` are initialised from the model's current
+            parameter values for the keys in ``parameters_to_fit``.
         """
         parameters_to_fit = [] if parameters_to_fit is None else parameters_to_fit
         free_parameters = [] if free_parameters is None else free_parameters
@@ -935,6 +1012,7 @@ class FluxOde(Base):
             mxlpy_model,
             parameters_to_fit=parameters_to_fit,
             free_parameters=free_parameters,
+            derived_to_calculate=derived_to_calculate,
         )
 
         # A single shared namespace, so names bound by ``codegen.imports``
@@ -946,6 +1024,7 @@ class FluxOde(Base):
         exec(codegen.imports, generated)  # noqa: S102
         exec(codegen.fluxes, generated)  # noqa: S102
         exec(codegen.nv, generated)  # noqa: S102
+        exec(codegen.derived, generated)  # noqa: S102
 
         model_pars = mxlpy_model.get_parameter_values()
         pars = jnp.array([model_pars[k] for k in parameters_to_fit])
@@ -969,6 +1048,7 @@ class FluxOde(Base):
             pars=pars,
             variable_names=variable_names,
             flux_names=flux_names,
+            derived_fn=generated["derived"],
         )
 
     def _require_names(self) -> None:
@@ -1016,7 +1096,7 @@ class FluxOde(Base):
         """
         self._require_names()
         ys = self.integrate(
-            ts, y0, args, max_steps=max_steps, rtol=rtol, atol=atol, method=method
+            ts, y0, max_steps, args=args, rtol=rtol, atol=atol, method=method
         )
         row_args = jnp.zeros((0,)) if args is None else args
         args_per_row = jnp.broadcast_to(row_args, (ts.shape[0], row_args.shape[0]))
@@ -1079,8 +1159,8 @@ class FluxOde(Base):
             ts,
             y0,
             protocol,
-            args,
-            max_steps=max_steps,
+            max_steps,
+            args=args,
             rtol=rtol,
             atol=atol,
             method=method,
@@ -1156,13 +1236,13 @@ class FluxOde(Base):
         self._require_names()
         t, y = self.integrate_to_steady_state(
             y0,
-            args,
+            max_steps,
+            args=args,
             t1=t1,
             rtol=rtol,
             atol=atol,
             steady_state_rtol=steady_state_rtol,
             steady_state_atol=steady_state_atol,
-            max_steps=max_steps,
             method=method,
         )
         row_args = jnp.zeros((0,)) if args is None else args
@@ -1203,6 +1283,7 @@ class Node(Base):
 
     out_scale: jax.Array
     nn: eqx.nn.MLP
+    derived_scale: jax.Array | float
     derived_fn: DerivedFn
 
     def __init__(
@@ -1214,6 +1295,7 @@ class Node(Base):
         n_args: int = 0,
         out_scale: jax.Array | None = None,
         derived_fn: DerivedFn | None = None,
+        derived_scale: jax.Array | float | None = None,
     ) -> None:
         self.out_scale = jnp.array([0.1]) if out_scale is None else out_scale
         self.nn = eqx.nn.MLP(
@@ -1225,6 +1307,10 @@ class Node(Base):
             key=key,
         )
         self.derived_fn = _default_derived if derived_fn is None else derived_fn
+        # A plain float (not a jax.Array) so it's excluded from
+        # eqx.is_inexact_array's filter by default and isn't trained;
+        # pass an explicit jax.Array to opt a model into learning it.
+        self.derived_scale = 1.0 if derived_scale is None else derived_scale
 
     def __call__(
         self,
@@ -1252,7 +1338,7 @@ class Node(Base):
 
     def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Get derived quantitites."""
-        return self.derived_fn(t, y, args)
+        return self.derived_scale * self.derived_fn(t, y, args)
 
 
 class FluxNode(Base):
@@ -1281,6 +1367,7 @@ class FluxNode(Base):
     out_scale: jax.Array
     flux_nn: eqx.nn.MLP
     nv: Nv
+    derived_scale: jax.Array | float
     derived_fn: DerivedFn
 
     def __init__(
@@ -1291,12 +1378,14 @@ class FluxNode(Base):
         depth: int,
         key: PRNGKeyArray,
         nv: Nv,
+        n_args: int = 0,
         out_scale: jax.Array | None = None,
         derived_fn: DerivedFn | None = None,
+        derived_scale: jax.Array | float | None = None,
     ) -> None:
         self.out_scale = jnp.array([0.1]) if out_scale is None else out_scale
         self.flux_nn = eqx.nn.MLP(
-            in_size=n_obs,
+            in_size=n_obs + n_args,
             out_size=n_flux,
             width_size=width,
             depth=depth,
@@ -1305,6 +1394,10 @@ class FluxNode(Base):
         )
         self.nv = nv
         self.derived_fn = _default_derived if derived_fn is None else derived_fn
+        # A plain float (not a jax.Array) so it's excluded from
+        # eqx.is_inexact_array's filter by default and isn't trained;
+        # pass an explicit jax.Array to opt a model into learning it.
+        self.derived_scale = 1.0 if derived_scale is None else derived_scale
 
     def fluxes(
         self,
@@ -1332,7 +1425,7 @@ class FluxNode(Base):
 
     def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Get derived quantitites."""
-        return self.derived_fn(t, y, args)
+        return self.derived_scale * self.derived_fn(t, y, args)
 
     def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the neural ODE right-hand side via fluxes.
@@ -1352,6 +1445,491 @@ class FluxNode(Base):
             State derivative ``nv(fluxes(t, y, args))``.
         """
         return self.nv(self.fluxes(time, y, args))
+
+
+###############################################################################
+# Anodes
+###############################################################################
+
+
+class Anode(Base):
+    """Augmented Neural ODE: integrates in latent space, decodes to observations.
+
+    The initial condition is encoded into a higher-dimensional latent
+    space via ``latent_mapper``; the ODE runs there; the trajectory is
+    decoded back to observation space on return.
+
+    Parameters
+    ----------
+    n_obs : int
+        Number of observed state dimensions.
+    n_hidden : int
+        Number of additional latent dimensions.
+    width : int
+        MLP hidden layer width.
+    depth : int
+        Number of MLP hidden layers.
+    key : PRNGKeyArray
+        JAX random key for weight initialisation.
+    out_scale : jax.Array or None
+        Scalar multiplier applied to the MLP output.  Defaults to 0.1.
+    latent_mapper : LatentMapperFn or None
+        Factory that constructs the latent mapper.
+        Defaults to :class:`SoftLatentMapper`.
+    """
+
+    n_obs: int
+    n_args: int
+    out_scale: jax.Array
+    nn: eqx.nn.MLP
+    latent_mapper: LatentMapper
+    derived_scale: jax.Array | float
+    derived_fn: DerivedFn
+
+    def __init__(
+        self,
+        n_obs: int,
+        n_hidden: int,
+        width: int,
+        depth: int,
+        key: PRNGKeyArray,
+        n_args: int = 0,
+        out_scale: jax.Array | None = None,
+        latent_mapper: LatentMapperFn | None = None,
+        derived_fn: DerivedFn | None = None,
+        derived_scale: jax.Array | float | None = None,
+    ) -> None:
+        self.out_scale = jnp.array([0.1]) if out_scale is None else out_scale
+        self.n_obs = n_obs
+        self.n_args = n_obs + n_args
+
+        self.nn = eqx.nn.MLP(
+            in_size=n_obs + n_args + n_hidden,
+            out_size=n_obs + n_hidden,
+            width_size=width,
+            depth=depth,
+            activation=jax.nn.softplus,
+            key=key,
+        )
+        self.latent_mapper = (
+            SoftLatentMapper(n_obs=self.n_obs, n_hidden=n_hidden, key=key)
+            if latent_mapper is None
+            else latent_mapper(n_obs=self.n_obs, n_hidden=n_hidden, key=key)
+        )
+        self.derived_fn = _default_derived if derived_fn is None else derived_fn
+        # A plain float (not a jax.Array) so it's excluded from
+        # eqx.is_inexact_array's filter by default and isn't trained;
+        # pass an explicit jax.Array to opt a model into learning it.
+        self.derived_scale = 1.0 if derived_scale is None else derived_scale
+
+    def __call__(
+        self,
+        time: PyTree,  # noqa: ARG002 ; for API stability
+        y: PyTree,
+        args: PyTree,
+    ) -> jax.Array:
+        """Evaluate the latent-space ODE right-hand side.
+
+        Parameters
+        ----------
+        t : PyTree
+            Current time (unused; kept for API compatibility).
+        y : PyTree
+            Current latent state vector.
+        args : PyTree
+            Additional arguments (unused; kept for API compatibility).
+
+        Returns
+        -------
+        jax.Array
+            Latent derivative ``out_scale * nn(y)``.
+        """
+        return self.out_scale * self.nn(jnp.concat((y, args)))
+
+    def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+        """Get derived quantitites."""
+        return self.derived_scale * self.derived_fn(t, y, args)
+
+    def integrate(
+        self,
+        ts: jax.Array,
+        y0: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> jax.Array:
+        """Integrate in latent space and decode to observation space.
+
+        Parameters
+        ----------
+        ts : jax.Array
+            Time points, shape ``(T,)``.
+        y0 : jax.Array
+            Initial observation, shape ``(n_obs,)``.
+        max_steps : int
+            Maximum solver steps.
+        rtol : float
+            Relative tolerance.
+        atol : float
+            Absolute tolerance.
+        method : Method
+            Diffrax solver class.
+
+        Returns
+        -------
+        jax.Array
+            Decoded trajectories, shape ``(T, n_obs)``.  Failed solves decode
+            an all-zero latent state.
+        """
+        z0 = self.latent_mapper.encode(y0)
+        zs = self._solve(
+            t0=ts[0],
+            t1=ts[-1],
+            y0=z0,
+            args=args,
+            saveat_ts=ts,
+            max_steps=max_steps,
+            rtol=rtol,
+            atol=atol,
+            method=method,
+        )
+        return self.latent_mapper.decode(zs)
+
+    def integrate_protocol(
+        self,
+        ts: list[jax.Array],
+        y0: jax.Array,
+        protocol: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> jax.Array:
+        """Integrate a protocol in latent space and decode to observation space.
+
+        See :meth:`Base.integrate_protocol` for the step semantics; this
+        override encodes ``y0`` once before the per-step loop and decodes
+        the full latent trajectory once afterwards.
+
+        Returns
+        -------
+        jax.Array
+            Decoded trajectories, shape ``(sum(len(t) for t in ts), n_obs)``.
+        """
+        z0 = self.latent_mapper.encode(y0)
+        zs = self._integrate_protocol_raw(
+            z0, ts, protocol, max_steps, args, rtol, atol, method
+        )
+        return self.latent_mapper.decode(zs)
+
+    def integrate_to_steady_state(
+        self,
+        y0: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        t1: float = 1e6,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        steady_state_rtol: float | None = None,
+        steady_state_atol: float | None = None,
+        method: Method = diffrax.Tsit5,
+    ) -> tuple[jax.Array, jax.Array]:
+        """Integrate to steady state in latent space and decode the final state.
+
+        See :meth:`Base.integrate_to_steady_state` for the event semantics;
+        this override encodes ``y0`` before solving and decodes the final
+        latent state afterwards.
+
+        Returns
+        -------
+        tuple[jax.Array, jax.Array]
+            Convergence time (scalar) and decoded final state, shape
+            ``(n_obs,)``.
+        """
+        z0 = self.latent_mapper.encode(y0)
+        t, z = self._integrate_to_steady_state_raw(
+            z0,
+            max_steps,
+            args,
+            t1,
+            rtol,
+            atol,
+            steady_state_rtol,
+            steady_state_atol,
+            method,
+        )
+        return t, self.latent_mapper.decode(z[None, :])[0]
+
+
+class FluxAnode(Base):
+    """Augmented flux Neural ODE with a Markov correction term.
+
+    Integrates in latent space using two MLPs: one predicts reaction
+    fluxes (``flux_nn``), the other predicts dynamics for the hidden
+    latent dimensions (``markov_nn``).
+
+    Parameters
+    ----------
+    n_obs : int
+        Number of observed state dimensions.
+    n_hidden : int
+        Number of additional latent dimensions.
+    n_flux : int
+        Number of reaction fluxes.
+    flux_width : int
+        Hidden layer width for the flux MLP.
+    flux_depth : int
+        Number of hidden layers for the flux MLP.
+    markov_width : int
+        Hidden layer width for the Markov MLP.
+    markov_depth : int
+        Number of hidden layers for the Markov MLP.
+    key : PRNGKeyArray
+        JAX random key for weight initialisation.
+    nv : Nv
+        Stoichiometric map ``flux_vector -> dy/dt``.
+    flux_scale : jax.Array or None
+        Scalar multiplier for flux MLP output.  Defaults to 0.1.
+    markov_scale : jax.Array or None
+        Scalar multiplier for Markov MLP output.  Defaults to 0.1.
+    latent_mapper : LatentMapperFn or None
+        Factory that constructs the latent mapper.
+        Defaults to :class:`HardLatentMapper`.
+    """
+
+    n_obs: int
+    n_args: int
+    nv: Nv
+    flux_nn: eqx.nn.MLP
+    markov_nn: eqx.nn.MLP
+    flux_scale: jax.Array
+    markov_scale: jax.Array
+    derived_scale: jax.Array | float
+    latent_mapper: LatentMapper
+    derived_fn: DerivedFn
+
+    def __init__(
+        self,
+        n_obs: int,
+        n_hidden: int,
+        n_flux: int,
+        flux_width: int,
+        flux_depth: int,
+        markov_width: int,
+        markov_depth: int,
+        key: PRNGKeyArray,
+        nv: Nv,
+        n_args: int = 0,
+        flux_scale: jax.Array | None = None,
+        markov_scale: jax.Array | None = None,
+        derived_scale: jax.Array | float | None = None,
+        latent_mapper: LatentMapperFn | None = None,
+        derived_fn: DerivedFn | None = None,
+    ) -> None:
+        self.n_obs = n_obs
+        self.n_args = n_args
+        self.nv = nv
+        self.flux_scale = jnp.array([0.1]) if flux_scale is None else flux_scale
+        self.markov_scale = jnp.array([0.1]) if markov_scale is None else markov_scale
+        # A plain float (not a jax.Array) so it's excluded from
+        # eqx.is_inexact_array's filter by default and isn't trained;
+        # pass an explicit jax.Array to opt a model into learning it.
+        self.derived_scale = 1.0 if derived_scale is None else derived_scale
+        n_latent = n_obs + n_hidden
+
+        self.flux_nn = eqx.nn.MLP(
+            in_size=n_latent + n_args,
+            out_size=n_flux,
+            width_size=flux_width,
+            depth=flux_depth,
+            activation=jax.nn.softplus,
+            key=key,
+        )
+        self.markov_nn = eqx.nn.MLP(
+            in_size=n_latent + n_args,
+            out_size=n_hidden,
+            width_size=markov_width,
+            depth=markov_depth,
+            activation=jax.nn.softplus,
+            key=key,
+        )
+        self.latent_mapper = (
+            HardLatentMapper(n_obs, n_hidden, key)
+            if latent_mapper is None
+            else latent_mapper(n_obs, n_hidden, key)
+        )
+        self.derived_fn = _default_derived if derived_fn is None else derived_fn
+
+    def fluxes(
+        self,
+        t: PyTree,  # noqa: ARG002 ; for API stability
+        y: PyTree,
+        args: PyTree,
+    ) -> jax.Array:
+        """Compute scaled neural flux predictions.
+
+        Parameters
+        ----------
+        t : PyTree
+            Current time (unused; kept for API compatibility).
+        y : PyTree
+            Current latent state vector.
+        args : PyTree
+            Additional arguments (unused; kept for API compatibility).
+
+        Returns
+        -------
+        jax.Array
+            Flux vector ``flux_scale * flux_nn(y)``.
+        """
+        return self.flux_scale * self.flux_nn(jnp.concat((y, args)))
+
+    def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+        """Get derived quantitites."""
+        return self.derived_scale * self.derived_fn(t, y, args)
+
+    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+        """Evaluate the latent-space ODE right-hand side.
+
+        Concatenates the stoichiometric flux term with the Markov
+        correction term for the hidden latent dimensions.
+
+        Parameters
+        ----------
+        t : PyTree
+            Current time.
+        y : PyTree
+            Current latent state vector.
+        args : PyTree
+            Additional arguments forwarded to ``fluxes``.
+
+        Returns
+        -------
+        jax.Array
+            Latent derivative ``concat(nv(fluxes), markov_scale * markov_nn(y))``.
+        """
+        return jnp.concat(
+            (
+                self.nv(self.fluxes(time, y, args)),
+                self.markov_scale * self.markov_nn(jnp.concat((y, args))),
+            )
+        )
+
+    def integrate(
+        self,
+        ts: jax.Array,
+        y0: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> jax.Array:
+        """Integrate in latent space and decode to observation space.
+
+        Parameters
+        ----------
+        ts : jax.Array
+            Time points, shape ``(T,)``.
+        y0 : jax.Array
+            Initial observation, shape ``(n_obs,)``.
+        max_steps : int
+            Maximum solver steps.
+        rtol : float
+            Relative tolerance.
+        atol : float
+            Absolute tolerance.
+        method : Method
+            Diffrax solver class.
+
+        Returns
+        -------
+        jax.Array
+            Decoded trajectories, shape ``(T, n_obs)``.  Failed solves decode
+            an all-zero latent state.
+        """
+        z0 = self.latent_mapper.encode(y0)
+        zs = self._solve(
+            t0=ts[0],
+            t1=ts[-1],
+            y0=z0,
+            args=args,
+            saveat_ts=ts,
+            max_steps=max_steps,
+            rtol=rtol,
+            atol=atol,
+            method=method,
+        )
+        return self.latent_mapper.decode(zs)
+
+    def integrate_protocol(
+        self,
+        ts: list[jax.Array],
+        y0: jax.Array,
+        protocol: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> jax.Array:
+        """Integrate a protocol in latent space and decode to observation space.
+
+        See :meth:`Base.integrate_protocol` for the step semantics; this
+        override encodes ``y0`` once before the per-step loop and decodes
+        the full latent trajectory once afterwards.
+
+        Returns
+        -------
+        jax.Array
+            Decoded trajectories, shape ``(sum(len(t) for t in ts), n_obs)``.
+        """
+        z0 = self.latent_mapper.encode(y0)
+        zs = self._integrate_protocol_raw(
+            z0, ts, protocol, max_steps, args, rtol, atol, method
+        )
+        return self.latent_mapper.decode(zs)
+
+    def integrate_to_steady_state(
+        self,
+        y0: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        t1: float = 1e6,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        steady_state_rtol: float | None = None,
+        steady_state_atol: float | None = None,
+        method: Method = diffrax.Tsit5,
+    ) -> tuple[jax.Array, jax.Array]:
+        """Integrate to steady state in latent space and decode the final state.
+
+        See :meth:`Base.integrate_to_steady_state` for the event semantics;
+        this override encodes ``y0`` before solving and decodes the final
+        latent state afterwards.
+
+        Returns
+        -------
+        tuple[jax.Array, jax.Array]
+            Convergence time (scalar) and decoded final state, shape
+            ``(n_obs,)``.
+        """
+        z0 = self.latent_mapper.encode(y0)
+        t, z = self._integrate_to_steady_state_raw(
+            z0,
+            max_steps,
+            args,
+            t1,
+            rtol,
+            atol,
+            steady_state_rtol,
+            steady_state_atol,
+            method,
+        )
+        return t, self.latent_mapper.decode(z[None, :])[0]
 
 
 ###############################################################################
@@ -1435,16 +2013,14 @@ class FluxUde(Base):
     """
 
     flux_ode: FluxOde
-    flux_node: FluxNode
+    flux_nn: FluxNode
     op: Callable[[jax.Array, jax.Array], jax.Array]
-    derived_fn: DerivedFn
 
     def __init__(
         self,
         flux_ode: FluxOde,
         flux_nn: FluxNode,
         op: Literal["+", "-", "*", "/"] | Callable[[jax.Array, jax.Array], jax.Array],
-        derived_fn: DerivedFn | None = None,
     ) -> None:
         ops = {
             "+": operator.add,
@@ -1455,8 +2031,7 @@ class FluxUde(Base):
 
         self.op = ops[op] if isinstance(op, str) else op
         self.flux_ode = flux_ode
-        self.flux_node = flux_nn
-        self.derived_fn = _default_derived if derived_fn is None else derived_fn
+        self.flux_nn = flux_nn
 
     def ode_fluxes(self, ts: jax.Array, ys: jax.Array, args: jax.Array) -> jax.Array:
         """Return the mechanistic flux vector.
@@ -1494,7 +2069,7 @@ class FluxUde(Base):
         jax.Array
             Flux vector from the neural network component.
         """
-        return jax.vmap(self.flux_node.fluxes, in_axes=(0, 0, None))(ts, ys, args)
+        return jax.vmap(self.flux_nn.fluxes, in_axes=(0, 0, None))(ts, ys, args)
 
     def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Evaluate the FluxUDE right-hand side.
@@ -1515,363 +2090,6 @@ class FluxUde(Base):
         """
         return self.op(self.flux_ode(time, y, args), self.flux_nn(time, y, args))
 
-
-###############################################################################
-# Anodes
-###############################################################################
-
-
-class Anode(Base):
-    """Augmented Neural ODE: integrates in latent space, decodes to observations.
-
-    The initial condition is encoded into a higher-dimensional latent
-    space via ``latent_mapper``; the ODE runs there; the trajectory is
-    decoded back to observation space on return.
-
-    Parameters
-    ----------
-    n_obs : int
-        Number of observed state dimensions.
-    n_hidden : int
-        Number of additional latent dimensions.
-    width : int
-        MLP hidden layer width.
-    depth : int
-        Number of MLP hidden layers.
-    key : PRNGKeyArray
-        JAX random key for weight initialisation.
-    out_scale : jax.Array or None
-        Scalar multiplier applied to the MLP output.  Defaults to 0.1.
-    latent_mapper : LatentMapperFn or None
-        Factory that constructs the latent mapper.
-        Defaults to :class:`SoftLatentMapper`.
-    """
-
-    n_obs: int
-    n_args: int
-    out_scale: jax.Array
-    nn: eqx.nn.MLP
-    latent_mapper: LatentMapper
-    derived_fn: DerivedFn
-
-    def __init__(
-        self,
-        n_obs: int,
-        n_hidden: int,
-        width: int,
-        depth: int,
-        key: PRNGKeyArray,
-        n_args: int = 0,
-        out_scale: jax.Array | None = None,
-        latent_mapper: LatentMapperFn | None = None,
-        derived_fn: DerivedFn | None = None,
-    ) -> None:
-        self.out_scale = jnp.array([0.1]) if out_scale is None else out_scale
-        self.n_obs = n_obs
-        self.n_args = n_obs + n_args
-
-        self.nn = eqx.nn.MLP(
-            in_size=n_obs + n_args + n_hidden,
-            out_size=n_obs + n_hidden,
-            width_size=width,
-            depth=depth,
-            activation=jax.nn.softplus,
-            key=key,
-        )
-        self.latent_mapper = (
-            SoftLatentMapper(n_obs=self.n_obs, n_hidden=n_hidden, key=key)
-            if latent_mapper is None
-            else latent_mapper(n_obs=self.n_obs, n_hidden=n_hidden, key=key)
-        )
-        self.derived_fn = _default_derived if derived_fn is None else derived_fn
-
-    def __call__(
-        self,
-        time: PyTree,  # noqa: ARG002 ; for API stability
-        y: PyTree,
-        args: PyTree,
-    ) -> jax.Array:
-        """Evaluate the latent-space ODE right-hand side.
-
-        Parameters
-        ----------
-        t : PyTree
-            Current time (unused; kept for API compatibility).
-        y : PyTree
-            Current latent state vector.
-        args : PyTree
-            Additional arguments (unused; kept for API compatibility).
-
-        Returns
-        -------
-        jax.Array
-            Latent derivative ``out_scale * nn(y)``.
-        """
-        return self.out_scale * self.nn(jnp.concat((y, args)))
-
     def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Get derived quantitites."""
-        return self.derived_fn(t, y, args)
-
-    def integrate(
-        self,
-        ts: jax.Array,
-        y0: jax.Array,
-        max_steps: int,
-        args: jax.Array | None = None,
-        rtol: float = 1e-6,
-        atol: float = 1e-6,
-        method: Method = diffrax.Tsit5,
-    ) -> jax.Array:
-        """Integrate in latent space and decode to observation space.
-
-        Parameters
-        ----------
-        ts : jax.Array
-            Time points, shape ``(T,)``.
-        y0 : jax.Array
-            Initial observation, shape ``(n_obs,)``.
-        max_steps : int
-            Maximum solver steps.
-        rtol : float
-            Relative tolerance.
-        atol : float
-            Absolute tolerance.
-        method : Method
-            Diffrax solver class.
-
-        Returns
-        -------
-        jax.Array
-            Decoded trajectories, shape ``(T, n_obs)``.
-        """
-        z0 = self.latent_mapper.encode(y0)
-        sol = diffrax.diffeqsolve(
-            diffrax.ODETerm(self),
-            method(),
-            t0=ts[0],
-            t1=ts[-1],
-            dt0=None,
-            args=args,
-            y0=z0,
-            stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
-            saveat=diffrax.SaveAt(ts=ts),
-            max_steps=max_steps,
-        )
-        zs = cast(jax.Array, sol.ys)
-        return lax.cond(
-            sol.result == diffrax.RESULTS.successful,
-            lambda: self.latent_mapper.decode(zs),
-            lambda: jnp.nan_to_num(
-                zs[:, : self.n_obs],
-                nan=0.0,
-                posinf=0.0,
-                neginf=0.0,
-            ),
-        )
-
-
-class FluxAnode(Base):
-    """Augmented flux Neural ODE with a Markov correction term.
-
-    Integrates in latent space using two MLPs: one predicts reaction
-    fluxes (``flux_nn``), the other predicts dynamics for the hidden
-    latent dimensions (``markov_nn``).
-
-    Parameters
-    ----------
-    n_obs : int
-        Number of observed state dimensions.
-    n_hidden : int
-        Number of additional latent dimensions.
-    n_flux : int
-        Number of reaction fluxes.
-    flux_width : int
-        Hidden layer width for the flux MLP.
-    flux_depth : int
-        Number of hidden layers for the flux MLP.
-    markov_width : int
-        Hidden layer width for the Markov MLP.
-    markov_depth : int
-        Number of hidden layers for the Markov MLP.
-    key : PRNGKeyArray
-        JAX random key for weight initialisation.
-    nv : Nv
-        Stoichiometric map ``flux_vector -> dy/dt``.
-    flux_scale : jax.Array or None
-        Scalar multiplier for flux MLP output.  Defaults to 0.1.
-    markov_scale : jax.Array or None
-        Scalar multiplier for Markov MLP output.  Defaults to 0.1.
-    latent_mapper : LatentMapperFn or None
-        Factory that constructs the latent mapper.
-        Defaults to :class:`HardLatentMapper`.
-    """
-
-    n_obs: int
-    n_args: int
-    nv: Nv
-    flux_nn: eqx.nn.MLP
-    markov_nn: eqx.nn.MLP
-    flux_scale: jax.Array
-    markov_scale: jax.Array
-    latent_mapper: LatentMapper
-    derived_fn: DerivedFn
-
-    def __init__(
-        self,
-        n_obs: int,
-        n_hidden: int,
-        n_args: int,
-        n_flux: int,
-        flux_width: int,
-        flux_depth: int,
-        markov_width: int,
-        markov_depth: int,
-        key: PRNGKeyArray,
-        nv: Nv,
-        flux_scale: jax.Array | None = None,
-        markov_scale: jax.Array | None = None,
-        latent_mapper: LatentMapperFn | None = None,
-        derived_fn: DerivedFn | None = None,
-    ) -> None:
-        self.n_obs = n_obs
-        self.n_args = n_args
-        self.nv = nv
-        self.flux_scale = jnp.array([0.1]) if flux_scale is None else flux_scale
-        self.markov_scale = jnp.array([0.1]) if markov_scale is None else markov_scale
-        n_latent = n_obs + n_hidden
-
-        self.flux_nn = eqx.nn.MLP(
-            in_size=n_latent + n_args,
-            out_size=n_flux,
-            width_size=flux_width,
-            depth=flux_depth,
-            activation=jax.nn.softplus,
-            key=key,
-        )
-        self.markov_nn = eqx.nn.MLP(
-            in_size=n_latent + n_args,
-            out_size=n_hidden,
-            width_size=markov_width,
-            depth=markov_depth,
-            activation=jax.nn.softplus,
-            key=key,
-        )
-        self.latent_mapper = (
-            HardLatentMapper(n_obs, n_hidden, key)
-            if latent_mapper is None
-            else latent_mapper(n_obs, n_hidden, key)
-        )
-        self.derived_fn = _default_derived if derived_fn is None else derived_fn
-
-    def fluxes(
-        self,
-        t: PyTree,  # noqa: ARG002 ; for API stability
-        y: PyTree,
-        args: PyTree,
-    ) -> jax.Array:
-        """Compute scaled neural flux predictions.
-
-        Parameters
-        ----------
-        t : PyTree
-            Current time (unused; kept for API compatibility).
-        y : PyTree
-            Current latent state vector.
-        args : PyTree
-            Additional arguments (unused; kept for API compatibility).
-
-        Returns
-        -------
-        jax.Array
-            Flux vector ``flux_scale * flux_nn(y)``.
-        """
-        return self.flux_scale * self.flux_nn(jnp.concat((y, args)))
-
-    def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
-        """Get derived quantitites."""
-        return self.derived_fn(t, y, args)
-
-    def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
-        """Evaluate the latent-space ODE right-hand side.
-
-        Concatenates the stoichiometric flux term with the Markov
-        correction term for the hidden latent dimensions.
-
-        Parameters
-        ----------
-        t : PyTree
-            Current time.
-        y : PyTree
-            Current latent state vector.
-        args : PyTree
-            Additional arguments forwarded to ``fluxes``.
-
-        Returns
-        -------
-        jax.Array
-            Latent derivative ``concat(nv(fluxes), markov_scale * markov_nn(y))``.
-        """
-        return jnp.concat(
-            (
-                self.nv(self.fluxes(time, y, args)),
-                self.markov_scale * self.markov_nn(jnp.concat((y, args))),
-            )
-        )
-
-    def integrate(
-        self,
-        ts: jax.Array,
-        y0: jax.Array,
-        max_steps: int,
-        args: jax.Array | None = None,
-        rtol: float = 1e-6,
-        atol: float = 1e-6,
-        method: Method = diffrax.Tsit5,
-    ) -> jax.Array:
-        """Integrate in latent space and decode to observation space.
-
-        Parameters
-        ----------
-        ts : jax.Array
-            Time points, shape ``(T,)``.
-        y0 : jax.Array
-            Initial observation, shape ``(n_obs,)``.
-        max_steps : int
-            Maximum solver steps.
-        rtol : float
-            Relative tolerance.
-        atol : float
-            Absolute tolerance.
-        method : Method
-            Diffrax solver class.
-
-        Returns
-        -------
-        jax.Array
-            Decoded trajectories, shape ``(T, n_obs)``.
-        """
-        z0 = self.latent_mapper.encode(y0)
-        sol = diffrax.diffeqsolve(
-            diffrax.ODETerm(self),
-            method(),
-            t0=ts[0],
-            t1=ts[-1],
-            args=args,
-            dt0=None,
-            y0=z0,
-            stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
-            saveat=diffrax.SaveAt(ts=ts),
-            max_steps=max_steps,
-        )
-        zs = cast(jax.Array, sol.ys)
-        return lax.cond(
-            sol.result == diffrax.RESULTS.successful,
-            lambda: self.latent_mapper.decode(zs),
-            lambda: jnp.nan_to_num(
-                zs[:, : self.n_obs],
-                nan=0.0,
-                posinf=0.0,
-                neginf=0.0,
-            ),
-        )
+        return self.flux_ode.derived(t, y, args)
