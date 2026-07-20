@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING, cast
 import sympy
 from wadler_lindig import pformat
 
-from mxlpy.meta.sympy_tools import fn_to_sympy_expr, list_of_symbols
+from mxlpy.meta._via_sym_repr import (
+    _get_dependencies_and_leaves,
+    _get_order,
+    model_to_symbolic_repr,
+)
+from mxlpy.meta.sympy_tools import list_of_symbols
 
 if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
@@ -41,13 +46,20 @@ class SymbolicModel:
         )
 
 
-def to_symbolic_model(model: KineticModelBuilder) -> SymbolicModel:
+def to_symbolic_model(
+    model: KineticModelBuilder,
+    *,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
+) -> SymbolicModel:
     """Convert model into symbolic representation.
 
     Parameters
     ----------
     model
         Model to convert
+    custom_fns
+        Sympy expressions to substitute for functions that cannot be parsed
+        from source.
 
     Returns
     -------
@@ -55,8 +67,15 @@ def to_symbolic_model(model: KineticModelBuilder) -> SymbolicModel:
         Symbolic representation with sympy variables, parameters and equations
 
     """
-    cache = model._create_cache()  # noqa: SLF001
+    sr = model_to_symbolic_repr(
+        model,
+        only_warn=False,
+        custom_fns={} if custom_fns is None else custom_fns,
+    )
+    rsr = sr.reduce()
+
     initial_conditions = model.get_initial_conditions()
+    parameter_values = model.get_parameter_values()
 
     variables: dict[str, sympy.Symbol] = dict(
         zip(
@@ -67,73 +86,71 @@ def to_symbolic_model(model: KineticModelBuilder) -> SymbolicModel:
     )
     parameters: dict[str, sympy.Symbol] = dict(
         zip(
-            model.get_parameter_values(),
-            cast(list[sympy.Symbol], list_of_symbols(model.get_parameter_values())),
+            parameter_values,
+            cast(list[sympy.Symbol], list_of_symbols(parameter_values)),
             strict=True,
         )
     )
-    # data
-    data = dict(
+    data: dict[str, sympy.Symbol] = dict(
         zip(
             model._data,  # noqa: SLF001
             cast(list[sympy.Symbol], list_of_symbols(model._data)),  # noqa: SLF001
             strict=True,
         )
     )
-    # Insert surrogates?
-    _surr = model.get_surrogate_output_names(include_fluxes=True)
-    surrogates: dict[str, sympy.Symbol] = dict(
-        zip(
-            _surr,
-            cast(list[sympy.Symbol], list_of_symbols(_surr)),
-            strict=True,
+
+    # Every derived/reaction/surrogate expression only refers to its own
+    # immediate arguments (by name), which is exactly what per-language,
+    # per-statement codegen wants. A Jacobian instead needs one closed-form
+    # expression per diff eq, so we walk components in dependency order,
+    # substituting each one's already-fully-expanded value into its
+    # dependents, until only variables/parameters/data/time remain.
+    subs_map: dict[str, sympy.Expr] = {
+        **variables,
+        **parameters,
+        **data,
+        "time": sympy.Symbol("time"),
+    }
+
+    diff_eq_symbols = {
+        s.name
+        for expr in rsr.diffeqs.values()
+        for s in expr.free_symbols
+        if isinstance(s, sympy.Symbol)
+    }
+    deps = _get_dependencies_and_leaves(model, diff_eq_symbols)
+
+    def _expand(name: str) -> None:
+        fn = rsr.derived.get(name) or rsr.reactions.get(name)
+        if fn is None:
+            return
+        subs_map[name] = cast(
+            sympy.Expr,
+            fn.expr.subs({sympy.Symbol(a): subs_map[a] for a in fn.args}),
         )
-    )
 
-    symbols: dict[str, sympy.Symbol | sympy.Expr] = variables | parameters | data  # type: ignore
+    for name in _get_order(model):
+        if name in variables or name in parameters:
+            continue
+        if (srg := sr.surrogates.get(name)) is not None:
+            for output in srg.outputs:
+                if output in deps:
+                    _expand(output)
+            continue
+        if name in deps:
+            _expand(name)
 
-    # Insert derived into symbols
-    for k, v in model.get_raw_derived().items():
-        if (
-            expr := fn_to_sympy_expr(
-                v.fn, origin=k, model_args=[symbols[i] for i in v.args]
-            )
-        ) is None:
-            msg = f"Unable to parse derived value '{k}'"
-            raise ValueError(msg)
-        symbols[k] = expr
-
-    # Insert derived into reaction via args
-    rxns: dict[str, sympy.Expr] = {}
-    for k, v in model.get_raw_reactions().items():
-        if (
-            expr := fn_to_sympy_expr(
-                v.fn, origin=k, model_args=[symbols[i] for i in v.args]
-            )
-        ) is None:
-            msg = f"Unable to parse reaction '{k}'"
-            raise ValueError(msg)
-        rxns[k] = expr
-
-    # Go through stoichiometries & derived stoichiometries
-    eqs: dict[str, sympy.Expr] = {}
-    for cpd, stoich in cache.stoich_by_cpds.items():
-        for rxn, stoich_value in stoich.items():
-            eqs[cpd] = (
-                eqs.get(cpd, sympy.Float(0.0)) + sympy.Float(stoich_value) * rxns[rxn]  # type: ignore
-            )
-    for cpd, dstoich in cache.dyn_stoich_by_cpds.items():
-        for rxn, der in dstoich.items():
-            eqs[cpd] = eqs.get(cpd, sympy.Float(0.0)) + fn_to_sympy_expr(
-                der.fn,
-                [symbols[i] for i in der.args] * rxns[rxn],  # type: ignore
-            )  # type: ignore
+    full_subs = {sympy.Symbol(k): v for k, v in subs_map.items()}
+    eqs = [
+        cast(sympy.Expr, rsr.diffeqs[name].subs(full_subs))
+        for name in model.get_variable_names()
+    ]
 
     return SymbolicModel(
         variables=variables,
         parameters=parameters,
-        eqs=[eqs[i] for i in cache.var_names],
-        initial_conditions=model.get_initial_conditions(),
-        parameter_values=model.get_parameter_values(),
-        external=data | surrogates,
+        eqs=eqs,
+        initial_conditions=initial_conditions,
+        parameter_values=parameter_values,
+        external=data,
     )
