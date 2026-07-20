@@ -151,6 +151,22 @@ def test_anode_integrate_to_steady_state_decodes_to_n_obs() -> None:
     assert bool(jnp.all(jnp.isfinite(y)))
 
 
+def test_anode_integrate_protocol_from_steady_state_decodes_to_n_obs() -> None:
+    """Regression: the composed Base method must dispatch through the
+    (latent-aware) public integrate_to_steady_state/integrate_protocol
+    overrides, not the raw state-space helpers, without needing its own
+    override on Anode.
+    """
+    anode = _anode()
+    ts = [jnp.array([1.0]), jnp.array([2.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = anode.integrate_protocol_from_steady_state(
+        ts, jnp.array([1.0, 2.0]), protocol, 4096
+    )
+    assert ys.shape == (2, 2)
+    assert bool(jnp.all(jnp.isfinite(ys)))
+
+
 def test_anode_derived_scale_multiplies_derived_fn_output() -> None:
     def derived_fn(_t: float, _y: jnp.ndarray, _args: jnp.ndarray) -> jnp.ndarray:
         return jnp.array([3.0])
@@ -222,6 +238,17 @@ def test_fluxanode_integrate_to_steady_state_decodes_to_n_obs() -> None:
     assert t.shape == ()
     assert y.shape == (2,)
     assert bool(jnp.all(jnp.isfinite(y)))
+
+
+def test_fluxanode_integrate_protocol_from_steady_state_decodes_to_n_obs() -> None:
+    fanode = _fluxanode()
+    ts = [jnp.array([1.0]), jnp.array([2.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = fanode.integrate_protocol_from_steady_state(
+        ts, jnp.array([1.0, 2.0]), protocol, 4096
+    )
+    assert ys.shape == (2, 2)
+    assert bool(jnp.all(jnp.isfinite(ys)))
 
 
 def test_fluxanode_derived_scale_multiplies_derived_fn_output() -> None:

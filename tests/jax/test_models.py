@@ -582,3 +582,55 @@ def test_fluxode_simulate_to_steady_state() -> None:
     fluxes = sim.fluxes
     assert list(fluxes.columns) == ["r"]
     assert float(fluxes["r"].iloc[0]) == pytest.approx(0.0, abs=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# integrate_protocol is lax.scan-based internally; per-step save-point
+# counts may still differ (ragged), padded/unpadded transparently
+# ---------------------------------------------------------------------------
+
+
+def test_fluxode_integrate_protocol_with_ragged_step_lengths() -> None:
+    # dv/dt = a + 10*b, b fit = 3 (constant); a switches 1 -> 2 -> 3 per step.
+    # Steps save a different number of points each (2, 1, 3) to exercise the
+    # scan implementation's per-step padding/unpadding.
+    fode = FluxOde.from_mxlpy(
+        _distinguishable_model(),
+        parameters_to_fit=["b"],
+        free_parameters=["a"],
+    )
+    ts = [
+        jnp.array([0.5, 1.0]),
+        jnp.array([1.5]),
+        jnp.array([2.0, 2.5, 3.0]),
+    ]
+    protocol = jnp.array([[1.0], [2.0], [3.0]])
+    y0 = jnp.array([0.0])
+
+    ys = fode.integrate_protocol(ts, y0, protocol, 8192)
+    assert ys.shape == (6, 1)
+
+    # slope per step = a + 30 (10*b): 31, 32, 33; each step continues from
+    # the previous step's last saved value, at its own last saved time.
+    expected = jnp.array([15.5, 31.0, 47.0, 63.5, 80.0, 96.5])
+    assert np.allclose(np.asarray(ys[:, 0]), np.asarray(expected), atol=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# integrate_protocol_from_steady_state composes integrate_to_steady_state
+# and integrate_protocol
+# ---------------------------------------------------------------------------
+
+
+def test_ode_integrate_protocol_from_steady_state_preequilibrates_first() -> None:
+    ode = Ode.from_mxlpy(_single_variable_model())
+    ts = [jnp.array([1.0]), jnp.array([2.0])]
+    protocol = jnp.zeros((2, 0))
+    y0 = jnp.array([5.0])  # far from the steady state (0)
+
+    ys = ode.integrate_protocol_from_steady_state(ts, y0, protocol, 8192)
+    assert ys.shape == (2, 1)
+    # Already pre-equilibrated to ~0 before the protocol starts, so the
+    # trajectory stays near zero throughout -- not decaying from y0=5 as it
+    # would if the protocol ran directly from y0 without pre-equilibrating.
+    assert np.allclose(np.asarray(ys[:, 0]), 0.0, atol=1e-3)

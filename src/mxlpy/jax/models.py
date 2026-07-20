@@ -248,11 +248,30 @@ class Base(eqx.Module, ABC):
         callers that integrate in a transformed space (:class:`Anode`,
         :class:`FluxAnode`) are responsible for encoding ``y0`` beforehand
         and decoding the result afterwards.
+
+        Implemented via ``lax.scan`` rather than a Python loop, so this
+        compiles once regardless of the number of protocol steps (a Python
+        loop would unroll every step at trace time, making compile time
+        grow with step count). ``ts``'s per-step save-point counts may
+        differ (ragged); each step's array is padded up to the longest
+        step's length by repeating its own final timestamp -- diffrax
+        accepts repeated ``SaveAt`` entries (the same mechanism used to
+        sample state just before/after a jump) -- so every step has a
+        uniform shape for ``scan``'s ``xs``, and the padded rows are sliced
+        back off again below before concatenating, so the padding never
+        surfaces to the caller.
         """
-        y = y0
-        t_start = jnp.zeros_like(ts[0][0])
-        results = []
-        for step_ts, step_args in zip(ts, protocol, strict=True):
+        step_lengths = [t.shape[0] for t in ts]
+        max_len = max(step_lengths)
+        ts_padded = jnp.stack(
+            [jnp.concatenate([t, jnp.full((max_len - t.shape[0],), t[-1])]) for t in ts]
+        )
+
+        def _step(
+            carry: tuple[jax.Array, jax.Array], xs: tuple[jax.Array, jax.Array]
+        ) -> tuple[tuple[jax.Array, jax.Array], jax.Array]:
+            y, t_start = carry
+            step_ts, step_args = xs
             combined_args = step_args if args is None else jnp.concat((args, step_args))
             ys = self._solve(
                 t0=t_start,
@@ -265,10 +284,13 @@ class Base(eqx.Module, ABC):
                 atol=atol,
                 method=method,
             )
-            results.append(ys)
-            y = ys[-1]
-            t_start = step_ts[-1]
-        return jnp.concatenate(results, axis=0)
+            return (ys[-1], step_ts[-1]), ys
+
+        t_start = jnp.zeros_like(ts[0][0])
+        _, ys_padded = lax.scan(_step, (y0, t_start), (ts_padded, protocol))
+        return jnp.concatenate(
+            [ys_padded[i, :n] for i, n in enumerate(step_lengths)], axis=0
+        )
 
     def integrate_protocol(
         self,
@@ -440,6 +462,96 @@ class Base(eqx.Module, ABC):
             steady_state_rtol,
             steady_state_atol,
             method,
+        )
+
+    def integrate_protocol_from_steady_state(
+        self,
+        ts: list[jax.Array],
+        y0: jax.Array,
+        protocol: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        preeq_args: jax.Array | None = None,
+        t1: float = 1e6,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        steady_state_rtol: float | None = None,
+        steady_state_atol: float | None = None,
+        method: Method = diffrax.Tsit5,
+    ) -> jax.Array:
+        """Pre-equilibrate ``y0`` to steady state, then integrate a protocol from there.
+
+        Composes :meth:`integrate_to_steady_state` and
+        :meth:`integrate_protocol`; calls the (possibly overridden) public
+        methods rather than the ``_raw`` helpers directly, so it's already
+        latent-aware for :class:`Anode`/:class:`FluxAnode` without needing
+        its own override -- the steady-state result is decoded to
+        observation space by ``integrate_to_steady_state``, then
+        re-encoded by ``integrate_protocol``.
+
+        Parameters
+        ----------
+        ts : list[jax.Array]
+            Per-step, ascending, absolute time points; see
+            :meth:`integrate_protocol`.
+        y0 : jax.Array
+            Initial condition to pre-equilibrate from.
+        protocol : jax.Array
+            Per-step external argument; see :meth:`integrate_protocol`.
+        max_steps : int
+            Maximum number of adaptive solver steps, both for the
+            pre-equilibration and for each protocol step.
+        args : jax.Array or None
+            Additional arguments held constant across all protocol steps;
+            see :meth:`integrate_protocol`.  Not used for pre-equilibration
+            -- see ``preeq_args``.
+        preeq_args : jax.Array or None
+            Arguments held constant during pre-equilibration (e.g. the
+            steady driving condition ``y0`` is assumed to already be at).
+            Defaults to ``protocol[0]`` -- the argument that becomes active
+            for the first protocol step -- since pre-equilibrating under
+            whatever condition the protocol is about to start from is the
+            common case.
+        t1 : float
+            Upper bound on pre-equilibration time; see
+            :meth:`integrate_to_steady_state`.
+        rtol, atol : float
+            Tolerances shared by both the pre-equilibration and the
+            protocol steps.
+        steady_state_rtol, steady_state_atol : float or None
+            Steady-state event tolerances; see
+            :meth:`integrate_to_steady_state`.
+        method : Method
+            Diffrax Runge-Kutta solver class.
+
+        Returns
+        -------
+        jax.Array
+            Saved states across the protocol, shape
+            ``(sum(len(t) for t in ts), n_state)``; see
+            :meth:`integrate_protocol`.  Does **not** include the
+            steady-state itself.
+        """
+        _, y_ss = self.integrate_to_steady_state(
+            y0,
+            max_steps,
+            args=protocol[0] if preeq_args is None else preeq_args,
+            t1=t1,
+            rtol=rtol,
+            atol=atol,
+            steady_state_rtol=steady_state_rtol,
+            steady_state_atol=steady_state_atol,
+            method=method,
+        )
+        return self.integrate_protocol(
+            ts,
+            y_ss,
+            protocol,
+            max_steps,
+            args=args,
+            rtol=rtol,
+            atol=atol,
+            method=method,
         )
 
 
