@@ -458,52 +458,61 @@ def _handle_fn_body_outputs(
 
 
 def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
-    pieces = []
-    remaining_body = list(body)
+    """Convert a function body to a single sympy expression.
 
-    while remaining_body:
-        node = remaining_body.pop(0)
+    Statements are processed in order, folding straight-line assignments
+    into ``ctx.symbols``. An ``if``/``elif``/``else`` chain forks execution:
+    each branch is evaluated together with *every* statement that follows
+    the chain in the enclosing body -- so a pattern like::
 
+        if cond:
+            x = a
+        else:
+            x = b
+        return x * 2
+
+    sees the ``* 2`` applied on both branches, rather than the branches'
+    own (implicit) values being taken as the function's return value and
+    the trailing statements silently dropped. Each branch gets its own
+    copy of the symbol table so bindings made in one branch can't leak
+    into the other. The branches are recombined into a ``sympy.Piecewise``
+    at the point where they diverge.
+    """
+    for index, node in enumerate(body):
         if isinstance(node, ast.If):
+            rest = body[index + 1 :]
             condition = _handle_expr(node.test, ctx)
-            if_expr = _handle_fn_body(node.body, ctx)
-            pieces.append((if_expr, condition))
+            if condition is None:
+                return None
 
-            # If there's an else clause
-            if node.orelse:
-                # Check if it's an elif (an If node in orelse)
-                if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
-                    # Push the elif back to the beginning of remaining_body to process next
-                    remaining_body.insert(0, node.orelse[0])
-                else:
-                    # It's a regular else
-                    else_expr = _handle_fn_body(node.orelse, ctx)  # FIXME: copy here
-                    pieces.append((else_expr, True))
-                    break  # We're done with this chain
+            if_result = _handle_fn_body(
+                [*node.body, *rest], ctx.updated(symbols=dict(ctx.symbols))
+            )
+            else_body = [*node.orelse, *rest] if node.orelse else rest
+            else_result = _handle_fn_body(
+                else_body, ctx.updated(symbols=dict(ctx.symbols))
+            )
+            if if_result is None or else_result is None:
+                return None
+            # else_result is itself a Piecewise for elif chains (each nested
+            # call hits another ast.If) - splice its pieces in rather than
+            # nesting, so e.g. `if a: ... elif b: ... else: ...` still
+            # produces one flat 3-piece Piecewise instead of a Piecewise
+            # nested inside the 'True' branch of another.
+            if isinstance(else_result, sympy.Piecewise):
+                return sympy.Piecewise((if_result, condition), *else_result.args)
+            return sympy.Piecewise((if_result, condition), (else_result, True))
 
-            elif not remaining_body and any(
-                isinstance(n, ast.Return) for n in body[body.index(node) + 1 :]
-            ):
-                else_expr = _handle_fn_body(
-                    body[body.index(node) + 1 :], ctx
-                )  # FIXME: copy here
-                pieces.append((else_expr, True))
-
-        elif isinstance(node, ast.Return):
-            if (value := node.value) is None:
+        if isinstance(node, ast.Return):
+            if node.value is None:
                 msg = (
                     "Bare 'return' with no value is not supported in rate functions"
                     " - return a float expression"
                 )
                 raise ValueError(msg)
+            return _handle_expr(node.value, ctx)
 
-            expr = _handle_expr(value, ctx)
-            if not pieces:
-                return expr
-            pieces.append((expr, True))
-            break
-
-        elif isinstance(node, ast.Assign):
+        if isinstance(node, ast.Assign):
             # Handle tuple assignments like c, d = a, b
             if isinstance(node.targets[0], ast.Tuple):
                 # Handle tuple unpacking
@@ -522,7 +531,7 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
                             ctx.symbols[target.id] = expr
                 else:
                     # Handle potential iterable unpacking
-                    value = _handle_expr(node.value, ctx)
+                    _handle_expr(node.value, ctx)
             else:
                 # Regular single assignment
                 if not isinstance(target := node.targets[0], ast.Name):
@@ -560,15 +569,11 @@ def _handle_fn_body(body: list[ast.stmt], ctx: Context) -> sympy.Expr | None:
         else:
             _LOGGER.debug("Skipping node of type %s", type(node))
 
-    # If we have pieces to combine into a Piecewise
-    if pieces:
-        return sympy.Piecewise(*pieces)
-
-    # If no return was found but we have assignments, return the last assigned variable
+    # No return was found on this path - fall back to the last assigned
+    # symbol (e.g. a derived-value function that ends in a bare assignment).
     for node in reversed(body):
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
-            target_name = node.targets[0].id
-            return ctx.symbols[target_name]
+            return ctx.symbols[node.targets[0].id]
 
     msg = "Rate function has no return statement - add 'return <float_expr>' at the end of the function"
     raise ValueError(msg)
@@ -616,9 +621,13 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
             elif isinstance(op, ast.LtE):
                 comparisons.append(prev_value <= right)
             elif isinstance(op, ast.Eq):
-                comparisons.append(prev_value == right)
+                # NOTE: `prev_value == right` would use sympy's structural
+                # `__eq__` (a plain Python bool), not a symbolic relational -
+                # so e.g. `Symbol('x') == Float(0)` is just `False`, and any
+                # Piecewise branch gated on it gets silently eliminated.
+                comparisons.append(sympy.Eq(prev_value, right))
             elif isinstance(op, ast.NotEq):
-                comparisons.append(prev_value != right)
+                comparisons.append(sympy.Ne(prev_value, right))
 
             prev_value = right
 
