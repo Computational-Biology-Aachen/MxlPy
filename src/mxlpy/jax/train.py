@@ -2,6 +2,7 @@
 
 import logging
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import diffrax
@@ -18,13 +19,18 @@ __all__ = [
     "GradNormsPerLesson",
     "IntegrationSettings",
     "LossesPerLesson",
+    "ProtoSimulationFn",
     "grad_loss",
     "grad_loss_split",
+    "integrate_protocol_states",
     "make_step",
     "make_step_split",
+    "proto_grad_loss",
+    "proto_make_step",
     "squeeze_derived",
     "train",
     "train_only_nde",
+    "train_protocol",
 ]
 
 logger = logging.getLogger(__name__)
@@ -141,15 +147,49 @@ def grad_loss(
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
 
+type ProtoSimulationFn = Callable[
+    [JaxModel, list[jax.Array], jax.Array, jax.Array, IntegrationSettings], jax.Array
+]
+
+
+def integrate_protocol_states(
+    model: JaxModel,
+    ts: list[jax.Array],
+    y0: jax.Array,
+    protocol: jax.Array,
+    ctx: IntegrationSettings,
+) -> jax.Array:
+    """Default ``simulation_fn`` for :func:`train_protocol`: raw integrated state.
+
+    Compares predictions directly in state space (``ys`` must hold the raw
+    ODE state, not a derived quantity). Models that need to fit a derived
+    observable (e.g. fluorescence) instead of the raw state should pass a
+    different ``simulation_fn`` that maps ``model.integrate_protocol``'s
+    output through ``model.derived(...)`` (see :func:`squeeze_derived` for
+    collapsing single-quantity derived output).
+    """
+    return model.integrate_protocol(
+        ts=ts,
+        y0=y0,
+        protocol=protocol,
+        max_steps=ctx.max_steps,
+        rtol=ctx.rtol,
+        atol=ctx.atol,
+        method=ctx.method,
+    )
+
+
 @eqx.filter_value_and_grad
 def proto_grad_loss(
     model: JaxModel,
-    ts: jax.Array,
+    y0: jax.Array,
+    ts: list[jax.Array],
     ys: jax.Array,
     protocol: jax.Array,
     y_mean: jax.Array,
     y_scale: jax.Array,
     ctx: IntegrationSettings,
+    simulation_fn: ProtoSimulationFn,
 ) -> jax.Array:
     """Compute normalised MSE loss and its gradient w.r.t. model parameters.
 
@@ -157,44 +197,41 @@ def proto_grad_loss(
     ----------
     model : JaxModel
         Model to differentiate.
-    ts : jax.Array
-        Protocol transition times, shape ``(n_steps,)``.  ``ts[i]`` is the
-        time at which ``protocol[i]`` stops being active; ``ys[i + 1]`` is
-        the observation at that time.
+    y0 : jax.Array
+        Physiological state at ``t=0``, used to seed integration. Kept
+        separate from ``ys[0]`` since ``ys`` lives in observation space
+        (e.g. fluorescence) which need not coincide with the raw state
+        ``simulation_fn`` integrates from.
+    ts : list[jax.Array]
+        Per-step, ascending, absolute time points at which to save the
+        solution -- one array per protocol step, mirroring
+        :meth:`JaxModel.integrate_protocol`. The last entry of each array
+        must be that step's transition time (where ``protocol`` switches to
+        its next row).
     ys : jax.Array
-        Observed trajectories, shape ``(n_steps + 1, n_obs)``.  ``ys[0]`` is
-        the initial condition at ``t=0``.
+        Observed trajectories, shape ``(sum(len(t) for t in ts) + 1, n_obs)``.
+        ``ys[0]`` is the observation at ``t=0``; the rest align in order with
+        the concatenated ``ts``.
     protocol : jax.Array
-        Per-step external argument, shape ``(n_steps, n_args)``.
+        Per-step external argument, shape ``(len(ts), n_args)``.
     y_mean : jax.Array
         Mean used for normalisation.
     y_scale : jax.Array
         Standard deviation used for normalisation.
     ctx : IntegrationSettings
         ODE solver settings.
+    simulation_fn : ProtoSimulationFn
+        Maps ``(model, ts, y0, protocol, ctx)`` to predictions aligned with
+        ``ys[1:]``; see :func:`integrate_protocol_states` for the raw-state
+        default.
 
     Returns
     -------
     tuple[jax.Array, PyTree]
         Scalar loss value and gradient PyTree.
     """
-    y0 = ys[0]
-    ts_segments = [ts[i : i + 1] for i in range(ts.shape[0])]
-    y_pred = jnp.concatenate(
-        (
-            y0[None, :],
-            model.integrate_protocol(
-                ts=ts_segments,
-                y0=y0,
-                protocol=protocol,
-                max_steps=ctx.max_steps,
-                rtol=ctx.rtol,
-                atol=ctx.atol,
-                method=ctx.method,
-            ),
-        ),
-        axis=0,
-    )
+    pred = simulation_fn(model, ts, y0, protocol, ctx)
+    y_pred = jnp.concatenate((ys[0][None], pred), axis=0)
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
 
@@ -316,7 +353,8 @@ def make_step[T: JaxModel](
 def proto_make_step[T: JaxModel](
     *,
     model: T,
-    ts: jax.Array,
+    y0: jax.Array,
+    ts: list[jax.Array],
     ys: jax.Array,
     protocol: jax.Array,
     y_mean: jax.Array,
@@ -324,7 +362,8 @@ def proto_make_step[T: JaxModel](
     opt_state: optax.OptState,
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
-) -> tuple[jax.Array, T, optax.OptState]:
+    simulation_fn: ProtoSimulationFn,
+) -> tuple[jax.Array, T, optax.OptState, jax.Array]:
     """Perform one gradient update step on the full model.
 
     NaN gradients (from failed ODE solves) are zeroed before the update.
@@ -334,10 +373,14 @@ def proto_make_step[T: JaxModel](
     ----------
     model : T
         Current model state.
-    ts : jax.Array
-        Time points.
+    y0 : jax.Array
+        Physiological state at ``t=0``; see :func:`proto_grad_loss`.
+    ts : list[jax.Array]
+        Per-step time points.
     ys : jax.Array
         Observed trajectories.
+    protocol : jax.Array
+        Per-step external argument.
     y_mean : jax.Array
         Mean for normalisation.
     y_scale : jax.Array
@@ -348,20 +391,25 @@ def proto_make_step[T: JaxModel](
         Optimiser.
     ctx : IntegrationSettings
         ODE solver settings.
+    simulation_fn : ProtoSimulationFn
+        See :func:`proto_grad_loss`.
 
     Returns
     -------
-    tuple[jax.Array, T, optax.OptState]
-        Scalar loss, updated model, updated optimiser state.
+    tuple[jax.Array, T, optax.OptState, jax.Array]
+        Scalar loss, updated model, updated optimiser state, and the
+        gradient norm (computed before clipping, for diagnostics).
     """
     loss, grads = proto_grad_loss(
         model,  # needs to be by pos, is differentiated
+        y0=y0,
         ts=ts,
         ys=ys,
         protocol=protocol,
         y_mean=y_mean,
         y_scale=y_scale,
         ctx=ctx,
+        simulation_fn=simulation_fn,
     )
     # Failed solves can produce NaN in y_pred -> NaN gradients; zero them out
     # so the optimizer state isn't corrupted.
@@ -378,7 +426,7 @@ def proto_make_step[T: JaxModel](
         opt_state,
         eqx.filter(model, eqx.is_array),
     )
-    return loss, eqx.apply_updates(model, updates), opt_state
+    return loss, eqx.apply_updates(model, updates), opt_state, grad_norm
 
 
 @eqx.filter_jit
@@ -752,7 +800,8 @@ def train_only_nde[T: Ude](
 def train_protocol[Model: JaxModel](
     model: Model,
     *,
-    ts: jax.Array,
+    y0: jax.Array,
+    ts: list[jax.Array],
     ys: jax.Array,
     protocol: jax.Array,
     training_steps: list[tuple[int, float]],
@@ -760,25 +809,48 @@ def train_protocol[Model: JaxModel](
     avg_every: int = 1000,
     optim: optax.GradientTransformationExtraArgs | None = None,
     integration_settings: IntegrationSettings | None = None,
-) -> tuple[Model, LossesPerLesson]:
+    simulation_fn: ProtoSimulationFn = integrate_protocol_states,
+    max_consecutive_solver_errors: int = 10,
+    perturbation_scale: float = 1e-3,
+    key: jax.Array | None = None,
+) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
     Each curriculum stage re-initialises the optimiser and uses a
     different fraction of the data.  Early stopping triggers when
     ``loss < target_loss`` during the **last** stage.
 
+    A solver failure that raises (``eqx.EquinoxRuntimeError``, e.g. from a
+    diffrax/lineax integration hitting a stiff or singular domain) is
+    recovered from by perturbing the model's trainable weights with small
+    multiplicative noise and retrying the same step, up to
+    ``max_consecutive_solver_errors`` failures in a row before giving up on
+    that curriculum stage and moving to the next one; the failure counter
+    resets at the start of each stage. Without this, such a failure would
+    propagate and abort the whole run -- and since nothing else in this
+    function is stochastic, simply retrying the run from scratch would hit
+    the identical failure again.
+
     Parameters
     ----------
     model : T
         Initial model state.
-    ts : jax.Array
-        Full protocol transition-time array, shape ``(n_steps,)``.
+    y0 : jax.Array
+        Physiological state at ``t=0``, used to seed integration; see
+        :func:`proto_grad_loss`.
+    ts : list[jax.Array]
+        Full per-step, ascending, absolute time points, one array per
+        protocol step; see :meth:`JaxModel.integrate_protocol`.
     ys : jax.Array
-        Full observed trajectory, shape ``(n_steps + 1, n_obs)``.
+        Full observed trajectory, shape
+        ``(sum(len(t) for t in ts) + 1, n_obs)``. ``ys[0]`` is the
+        observation at ``t=0``.
     protocol : jax.Array
-        Full per-step external argument, shape ``(n_steps, n_args)``.
+        Full per-step external argument, shape ``(len(ts), n_args)``.
     training_steps : list[tuple[int, float]]
-        Sequence of ``(n_steps, data_fraction)`` pairs.
+        Sequence of ``(n_steps, data_fraction)`` pairs; ``data_fraction``
+        selects a prefix of ``ts``/``protocol`` (by step count) and the
+        matching prefix of ``ys`` (by observation count).
     target_loss : float
         Early-stopping threshold, checked during the last stage only.
     avg_every : int
@@ -787,11 +859,27 @@ def train_protocol[Model: JaxModel](
         Optimiser; defaults to AdaBelief with ``lr=1e-4``.
     integration_settings : IntegrationSettings or None
         ODE solver settings; defaults to ``IntegrationSettings()``.
+    simulation_fn : ProtoSimulationFn
+        Maps ``(model, ts, y0, protocol, ctx)`` to predictions aligned with
+        ``ys[1:]``; defaults to raw-state integration
+        (:func:`integrate_protocol_states`). Pass a different function for
+        models that fit a derived observable instead of raw state.
+    max_consecutive_solver_errors : int
+        Consecutive solver failures (``eqx.EquinoxRuntimeError``) tolerated
+        -- via perturb-and-retry -- before giving up on the current
+        curriculum stage.
+    perturbation_scale : float
+        Relative magnitude of the weight perturbation applied after a
+        solver failure; see :func:`_perturb_model`.
+    key : jax.Array or None
+        PRNG key seeding the weight perturbations; defaults to
+        ``jax.random.PRNGKey(0)``.
 
     Returns
     -------
-    tuple[T, dict[int, float]]
-        Best model encountered during training and losses per curriculum lesson.
+    tuple[T, LossesPerLesson, GradNormsPerLesson]
+        Best model encountered during training, losses per curriculum
+        lesson, and per-step gradient norms per curriculum lesson.
     """
     loss = 0
     acc_loss = 0
@@ -799,6 +887,7 @@ def train_protocol[Model: JaxModel](
     optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
     best_training_loss = jnp.inf
     best_model = model
+    perturb_key: jax.Array = jax.random.PRNGKey(0) if key is None else key
 
     ctx = (
         IntegrationSettings() if integration_settings is None else integration_settings
@@ -806,29 +895,64 @@ def train_protocol[Model: JaxModel](
 
     y_mean = jnp.mean(ys)
     y_scale = jnp.std(ys)
-    losses_per_lesson = []
+    losses_per_lesson: LossesPerLesson = []
+    grad_norms_per_lesson: GradNormsPerLesson = []
     for i, (steps, frac) in enumerate(training_steps, start=1):
         opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
-        length = math.ceil(len(ts) * frac)
-        _ts = ts[:length]
-        _ys = ys[: length + 1]
-        _protocol = protocol[:length]
-        losses = {}
+        # Fresh per stage, same as opt_state/losses/grad_norms below -- a
+        # stage's retry budget must not be affected by failures that
+        # already happened in a previous stage.
+        consecutive_solver_errors = 0
+        n_windows = math.ceil(len(ts) * frac)
+        _ts = ts[:n_windows]
+        _protocol = protocol[:n_windows]
+        n_obs = sum(t.shape[0] for t in _ts)
+        _ys = ys[: n_obs + 1]
+        losses: dict[int, float] = {}
+        grad_norms: dict[int, float] = {}
         losses_per_lesson.append(losses)
+        grad_norms_per_lesson.append(grad_norms)
 
         with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
             for step in pbar:
-                loss, model, opt_state = proto_make_step(
-                    model=model,
-                    ts=_ts,
-                    ys=_ys,
-                    protocol=_protocol,
-                    opt_state=opt_state,
-                    optim=optim,
-                    y_mean=y_mean,
-                    y_scale=y_scale,
-                    ctx=ctx,
-                )
+                try:
+                    loss, model, opt_state, grad_norm = proto_make_step(
+                        model=model,
+                        y0=y0,
+                        ts=_ts,
+                        ys=_ys,
+                        protocol=_protocol,
+                        opt_state=opt_state,
+                        optim=optim,
+                        y_mean=y_mean,
+                        y_scale=y_scale,
+                        ctx=ctx,
+                        simulation_fn=simulation_fn,
+                    )
+                except eqx.EquinoxRuntimeError as e:
+                    consecutive_solver_errors += 1
+                    if consecutive_solver_errors > max_consecutive_solver_errors:
+                        logger.warning(
+                            "Lesson %d, step %d: solver failed %d times in a "
+                            "row (%s); moving to the next curriculum stage.",
+                            i,
+                            step,
+                            consecutive_solver_errors,
+                            e,
+                        )
+                        break
+                    perturb_key, subkey = jax.random.split(perturb_key)
+                    model = _perturb_model(model, subkey, perturbation_scale)
+                    logger.warning(
+                        "Lesson %d, step %d: solver hit a stiff domain (%s); "
+                        "nudging model parameters and retrying.",
+                        i,
+                        step,
+                        e,
+                    )
+                    continue
+                consecutive_solver_errors = 0
+                grad_norms[step] = float(grad_norm)
                 acc_loss += loss
                 acc_count += 1
 
@@ -837,7 +961,11 @@ def train_protocol[Model: JaxModel](
                     best_training_loss = loss
 
                 if i == len(training_steps) and loss < target_loss:
-                    return (model, [pd.Series(i) for i in losses_per_lesson])
+                    return (
+                        model,
+                        [pd.Series(i) for i in losses_per_lesson],
+                        [pd.Series(i) for i in grad_norms_per_lesson],
+                    )
 
                 if (step % avg_every) == 0 or step == steps - 1:
                     avg_loss = acc_loss / acc_count
@@ -848,4 +976,8 @@ def train_protocol[Model: JaxModel](
                     acc_count = 0
                     losses[step] = float(avg_loss)
 
-    return best_model, [pd.Series(i) for i in losses_per_lesson]
+    return (
+        best_model,
+        [pd.Series(i) for i in losses_per_lesson],
+        [pd.Series(i) for i in grad_norms_per_lesson],
+    )
