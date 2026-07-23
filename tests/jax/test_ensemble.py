@@ -13,9 +13,12 @@ Also covers two regressions in batch_simulate found in review:
   dataclass as one opaque, non-batched leaf.
 """
 
+from pathlib import Path
+
 import jax.numpy as jnp
 
 from mxlpy.jax import ensemble as jax_ensemble
+from mxlpy.jax import io as jax_io
 from mxlpy.jax.models import FluxOde, Ode
 
 
@@ -132,3 +135,24 @@ def test_unstack_models_round_trips_stack_models() -> None:
     for member, model in zip(members, models, strict=True):
         assert jnp.allclose(member.pars, model.pars)
         assert member.rhs is model.rhs
+
+
+# ---------------------------------------------------------------------------
+# load_stacked_models: load + recast_to_template + stack_models in one call
+# ---------------------------------------------------------------------------
+
+
+def test_load_stacked_models_loads_recasts_and_stacks(tmp_path: Path) -> None:
+    models = [Ode(rhs=_rhs, pars=jnp.array([float(k) + 1.0])) for k in range(3)]
+    paths = []
+    for i, model in enumerate(models):
+        path = tmp_path / f"{i}.dill"
+        jax_io.save(path, model)
+        paths.append(path)
+
+    template = Ode(rhs=_rhs, pars=jnp.array([0.0]))
+    stacked = jax_ensemble.load_stacked_models(paths, template)
+
+    assert stacked.pars.shape == (3, 1)
+    assert jnp.allclose(stacked.pars[:, 0], jnp.array([1.0, 2.0, 3.0]))
+    assert stacked.rhs is template.rhs
