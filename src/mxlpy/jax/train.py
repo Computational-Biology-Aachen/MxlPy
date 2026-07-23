@@ -599,6 +599,7 @@ def train[Model: JaxModel](
     key: jax.Array | None = None,
     args: jax.Array | None = None,
     grad_fn: GradLossFn = grad_loss,
+    stop_exceptions: tuple[type[BaseException], ...] = (KeyboardInterrupt,),
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -616,9 +617,14 @@ def train[Model: JaxModel](
     and moving on to the next step (not retrying the failed one), up to
     ``max_consecutive_solver_errors`` failures in a row before giving up on
     that curriculum stage and moving to the next one; the failure counter
-    resets at the start of each stage. A ``KeyboardInterrupt`` during
-    training returns the best model and losses/grad-norms accumulated so
-    far instead of propagating.
+    resets at the start of each stage. A ``KeyboardInterrupt`` (or any other
+    exception listed in ``stop_exceptions``) during training returns the
+    best model and losses/grad-norms accumulated so far instead of
+    propagating -- e.g. a scheduler-issued shutdown signal translated into a
+    custom exception (SLURM sends SIGTERM shortly before killing a job that
+    hit its hard time limit; a signal handler can raise a caller-defined
+    exception from it, which this can then wind down gracefully from the
+    same as a manual Ctrl-C, by passing it in ``stop_exceptions``).
 
     Parameters
     ----------
@@ -666,6 +672,13 @@ def train[Model: JaxModel](
         signature to train against a different loss (e.g. a residual
         against a frozen prior prediction) without reimplementing this
         curriculum/robustness loop.
+    stop_exceptions : tuple[type[BaseException], ...]
+        Exception types that trigger a graceful stop (return the best
+        model and history accumulated so far) instead of propagating;
+        defaults to just ``KeyboardInterrupt``. Pass a tuple including a
+        caller-defined exception (e.g. one raised from a SIGTERM handler)
+        to also wind down gracefully from a scheduler-issued shutdown
+        signal.
 
     Returns
     -------
@@ -775,8 +788,8 @@ def train[Model: JaxModel](
                         acc_loss = 0
                         acc_count = 0
                         losses[step] = float(avg_loss)
-    except KeyboardInterrupt:
-        logger.warning("Training interrupted manually.")
+    except stop_exceptions as e:
+        logger.warning("Training stopped (%s).", type(e).__name__)
 
     return _finish()
 
@@ -798,6 +811,7 @@ def train_only_nde[T: Ude](
     key: jax.Array | None = None,
     args: jax.Array | None = None,
     grad_fn: GradLossSplitFn = grad_loss_split,
+    stop_exceptions: tuple[type[BaseException], ...] = (KeyboardInterrupt,),
 ) -> tuple[T, LossesPerLesson, GradNormsPerLesson]:
     """Train only the neural-network part of a UDE, keeping the ODE frozen.
 
@@ -805,8 +819,9 @@ def train_only_nde[T: Ude](
     parts before the training loop.  The returned model recombines both.
     Otherwise mirrors :func:`train`: same curriculum/early-stopping/
     best-model semantics, the same ``apply_if_finite``/``adaptive_grad_clip``
-    optimiser wrapping, and the same perturb-and-retry recovery from a
-    solver failure that raises ``eqx.EquinoxRuntimeError``.
+    optimiser wrapping, the same perturb-and-retry recovery from a solver
+    failure that raises ``eqx.EquinoxRuntimeError``, and the same graceful
+    stop on ``stop_exceptions``.
 
     Parameters
     ----------
@@ -853,6 +868,10 @@ def train_only_nde[T: Ude](
         different ``@eqx.filter_value_and_grad`` function with the same
         call signature to train against a different loss without
         reimplementing this curriculum/robustness loop.
+    stop_exceptions : tuple[type[BaseException], ...]
+        Exception types that trigger a graceful stop (return the best
+        model and history accumulated so far) instead of propagating;
+        defaults to just ``KeyboardInterrupt``. See :func:`train`.
 
     Returns
     -------
@@ -973,8 +992,8 @@ def train_only_nde[T: Ude](
                         acc_loss = 0
                         acc_count = 0
                         losses[step] = float(avg_loss)
-    except KeyboardInterrupt:
-        logger.warning("Training interrupted manually.")
+    except stop_exceptions as e:
+        logger.warning("Training stopped (%s).", type(e).__name__)
 
     return _finish()
 
@@ -996,6 +1015,7 @@ def train_protocol[Model: JaxModel](
     perturbation_scale: float = 1e-3,
     key: jax.Array | None = None,
     grad_fn: ProtoGradLossFn = proto_grad_loss,
+    stop_exceptions: tuple[type[BaseException], ...] = (KeyboardInterrupt,),
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -1012,7 +1032,9 @@ def train_protocol[Model: JaxModel](
     resets at the start of each stage. Without this, such a failure would
     propagate and abort the whole run -- and since nothing else in this
     function is stochastic, simply retrying the run from scratch would hit
-    the identical failure again.
+    the identical failure again. A ``KeyboardInterrupt`` (or any other
+    exception listed in ``stop_exceptions``) returns the best model and
+    history accumulated so far instead of propagating; see :func:`train`.
 
     Parameters
     ----------
@@ -1063,6 +1085,10 @@ def train_protocol[Model: JaxModel](
         different ``@eqx.filter_value_and_grad`` function with the same
         call signature to train against a different loss without
         reimplementing this curriculum/robustness loop.
+    stop_exceptions : tuple[type[BaseException], ...]
+        Exception types that trigger a graceful stop (return the best
+        model and history accumulated so far) instead of propagating;
+        defaults to just ``KeyboardInterrupt``. See :func:`train`.
 
     Returns
     -------
@@ -1086,88 +1112,91 @@ def train_protocol[Model: JaxModel](
     y_scale = jnp.std(ys)
     losses_per_lesson: LossesPerLesson = []
     grad_norms_per_lesson: GradNormsPerLesson = []
-    for i, (steps, frac) in enumerate(training_steps, start=1):
-        opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
-        # Fresh per stage, same as opt_state/losses/grad_norms below -- a
-        # stage's retry budget must not be affected by failures that
-        # already happened in a previous stage.
-        consecutive_solver_errors = 0
-        n_windows = math.ceil(len(ts) * frac)
-        _ts = ts[:n_windows]
-        _protocol = protocol[:n_windows]
-        n_obs = sum(t.shape[0] for t in _ts)
-        _ys = ys[: n_obs + 1]
-        losses: dict[int, float] = {}
-        grad_norms: dict[int, float] = {}
-        losses_per_lesson.append(losses)
-        grad_norms_per_lesson.append(grad_norms)
 
-        with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
-            for step in pbar:
-                try:
-                    loss, model, opt_state, grad_norm = proto_make_step(
-                        model=model,
-                        y0=y0,
-                        ts=_ts,
-                        ys=_ys,
-                        protocol=_protocol,
-                        opt_state=opt_state,
-                        optim=optim,
-                        y_mean=y_mean,
-                        y_scale=y_scale,
-                        ctx=ctx,
-                        simulation_fn=simulation_fn,
-                        grad_fn=grad_fn,
-                    )
-                except eqx.EquinoxRuntimeError as e:
-                    consecutive_solver_errors += 1
-                    if consecutive_solver_errors > max_consecutive_solver_errors:
+    def _finish() -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
+        return (
+            best_model,
+            [pd.Series(i) for i in losses_per_lesson],
+            [pd.Series(i) for i in grad_norms_per_lesson],
+        )
+
+    try:
+        for i, (steps, frac) in enumerate(training_steps, start=1):
+            opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
+            # Fresh per stage, same as opt_state/losses/grad_norms below -- a
+            # stage's retry budget must not be affected by failures that
+            # already happened in a previous stage.
+            consecutive_solver_errors = 0
+            n_windows = math.ceil(len(ts) * frac)
+            _ts = ts[:n_windows]
+            _protocol = protocol[:n_windows]
+            n_obs = sum(t.shape[0] for t in _ts)
+            _ys = ys[: n_obs + 1]
+            losses: dict[int, float] = {}
+            grad_norms: dict[int, float] = {}
+            losses_per_lesson.append(losses)
+            grad_norms_per_lesson.append(grad_norms)
+
+            with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
+                for step in pbar:
+                    try:
+                        loss, model, opt_state, grad_norm = proto_make_step(
+                            model=model,
+                            y0=y0,
+                            ts=_ts,
+                            ys=_ys,
+                            protocol=_protocol,
+                            opt_state=opt_state,
+                            optim=optim,
+                            y_mean=y_mean,
+                            y_scale=y_scale,
+                            ctx=ctx,
+                            simulation_fn=simulation_fn,
+                            grad_fn=grad_fn,
+                        )
+                    except eqx.EquinoxRuntimeError as e:
+                        consecutive_solver_errors += 1
+                        if consecutive_solver_errors > max_consecutive_solver_errors:
+                            logger.warning(
+                                "Lesson %d, step %d: solver failed %d times in a "
+                                "row (%s); moving to the next curriculum stage.",
+                                i,
+                                step,
+                                consecutive_solver_errors,
+                                e,
+                            )
+                            break
+                        perturb_key, subkey = jax.random.split(perturb_key)
+                        model = perturb_model(model, subkey, perturbation_scale)
                         logger.warning(
-                            "Lesson %d, step %d: solver failed %d times in a "
-                            "row (%s); moving to the next curriculum stage.",
+                            "Lesson %d, step %d: solver hit a stiff domain (%s); "
+                            "nudging model parameters and retrying.",
                             i,
                             step,
-                            consecutive_solver_errors,
                             e,
                         )
-                        break
-                    perturb_key, subkey = jax.random.split(perturb_key)
-                    model = perturb_model(model, subkey, perturbation_scale)
-                    logger.warning(
-                        "Lesson %d, step %d: solver hit a stiff domain (%s); "
-                        "nudging model parameters and retrying.",
-                        i,
-                        step,
-                        e,
-                    )
-                    continue
-                consecutive_solver_errors = 0
-                grad_norms[step] = float(grad_norm)
-                acc_loss += loss
-                acc_count += 1
+                        continue
+                    consecutive_solver_errors = 0
+                    grad_norms[step] = float(grad_norm)
+                    acc_loss += loss
+                    acc_count += 1
 
-                if loss < best_training_loss:
-                    best_model = model
-                    best_training_loss = loss
+                    if loss < best_training_loss:
+                        best_model = model
+                        best_training_loss = loss
 
-                if i == len(training_steps) and loss < target_loss:
-                    return (
-                        best_model,
-                        [pd.Series(i) for i in losses_per_lesson],
-                        [pd.Series(i) for i in grad_norms_per_lesson],
-                    )
+                    if i == len(training_steps) and loss < target_loss:
+                        return _finish()
 
-                if (step % avg_every) == 0 or step == steps - 1:
-                    avg_loss = acc_loss / acc_count
-                    pbar.set_postfix_str(
-                        f"Avg. loss {(avg_loss):.2e} over last {acc_count} runs"
-                    )
-                    acc_loss = 0
-                    acc_count = 0
-                    losses[step] = float(avg_loss)
+                    if (step % avg_every) == 0 or step == steps - 1:
+                        avg_loss = acc_loss / acc_count
+                        pbar.set_postfix_str(
+                            f"Avg. loss {(avg_loss):.2e} over last {acc_count} runs"
+                        )
+                        acc_loss = 0
+                        acc_count = 0
+                        losses[step] = float(avg_loss)
+    except stop_exceptions as e:
+        logger.warning("Training stopped (%s).", type(e).__name__)
 
-    return (
-        best_model,
-        [pd.Series(i) for i in losses_per_lesson],
-        [pd.Series(i) for i in grad_norms_per_lesson],
-    )
+    return _finish()
