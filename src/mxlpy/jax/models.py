@@ -1617,7 +1617,7 @@ class Anode(Base):
     ) -> None:
         self.out_scale = jnp.array([0.1]) if out_scale is None else out_scale
         self.n_obs = n_obs
-        self.n_args = n_obs + n_args
+        self.n_args = n_args
 
         self.nn = eqx.nn.MLP(
             in_size=n_obs + n_args + n_hidden,
