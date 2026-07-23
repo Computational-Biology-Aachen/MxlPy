@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from mxlpy import KineticModelBuilder, meta
-from mxlpy.jax.models import FluxOde, Ode
+from mxlpy.jax.models import FluxOde, Ode, boundaries_to_ts
 
 # ---------------------------------------------------------------------------
 # helper models
@@ -750,3 +750,50 @@ def test_freeze_preeq_gradient_cuts_preeq_path_sensitivity() -> None:
 
     grad_manual = jax.grad(_protocol_only_loss)(ode.pars)
     assert np.allclose(np.asarray(grad_frozen), np.asarray(grad_manual), atol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# boundaries_to_ts: flat boundary-time array -> integrate_protocol's
+# list[jax.Array] ts format
+# ---------------------------------------------------------------------------
+
+
+def test_boundaries_to_ts_converts_flat_array_to_per_step_singletons() -> None:
+    boundaries = jnp.array([1.0, 2.0, 3.5])
+    ts = boundaries_to_ts(boundaries)
+
+    assert len(ts) == 3
+    assert [t.shape for t in ts] == [(1,), (1,), (1,)]
+    assert np.allclose([float(t[0]) for t in ts], [1.0, 2.0, 3.5])
+
+
+def test_boundaries_to_ts_matches_hand_built_ts_in_integrate_protocol() -> None:
+    fode = FluxOde.from_mxlpy(
+        _distinguishable_model(), parameters_to_fit=["b"], free_parameters=["a"]
+    )
+    y0 = jnp.array([0.0])
+    protocol = jnp.array([[1.0], [2.0], [3.0]])
+    boundaries = jnp.array([1.0, 2.0, 3.0])
+
+    ys_from_helper = fode.integrate_protocol(
+        boundaries_to_ts(boundaries), y0, protocol, 8192
+    )
+    ys_hand_built = fode.integrate_protocol(
+        [jnp.array([1.0]), jnp.array([2.0]), jnp.array([3.0])], y0, protocol, 8192
+    )
+    assert np.allclose(np.asarray(ys_from_helper), np.asarray(ys_hand_built))
+
+
+def test_boundaries_to_ts_is_jit_compatible() -> None:
+    fode = FluxOde.from_mxlpy(
+        _distinguishable_model(), parameters_to_fit=["b"], free_parameters=["a"]
+    )
+    y0 = jnp.array([0.0])
+    protocol = jnp.array([[1.0], [2.0], [3.0]])
+
+    @jax.jit
+    def _run(boundaries: jax.Array) -> jax.Array:
+        return fode.integrate_protocol(boundaries_to_ts(boundaries), y0, protocol, 8192)
+
+    ys = _run(jnp.array([1.0, 2.0, 3.0]))
+    assert ys.shape == (3, 1)
