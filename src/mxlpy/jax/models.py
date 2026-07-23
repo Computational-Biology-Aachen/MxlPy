@@ -93,6 +93,10 @@ class JaxModel(Protocol):
         """Integrate through a sequence of protocol steps and return saved states."""
         ...
 
+    def derived(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+        """Get derived quantities."""
+        ...
+
 
 def _default_derived(
     time: PyTree,  # noqa: ARG001
