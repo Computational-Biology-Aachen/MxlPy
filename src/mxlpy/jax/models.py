@@ -486,6 +486,8 @@ class Base(eqx.Module, ABC):
         steady_state_rtol: float | None = None,
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
+        *,
+        freeze_preeq_gradient: bool = False,
     ) -> jax.Array:
         """Pre-equilibrate ``y0`` to steady state, then integrate a protocol from there.
 
@@ -531,6 +533,22 @@ class Base(eqx.Module, ABC):
             :meth:`integrate_to_steady_state`.
         method : Method
             Diffrax Runge-Kutta solver class.
+        freeze_preeq_gradient : bool
+            Detach every inexact-array leaf of the model (not ``y0``)
+            before the pre-equilibration solve, so that solve runs -- and
+            is skipped during differentiation -- as if the model were a
+            constant. The steady-state event drives the solver through a
+            stiff regime, and differentiating through it involves a linear
+            solve at each implicit stage that can be singular for models
+            with extreme eigenvalue spread. Stop-gradient on the *output*
+            alone does not help: the failure happens inside the solve,
+            triggered while the (still-differentiable) model is perturbed
+            to compute the JVP, so the input has to be detached before the
+            call is made in the first place. This sacrifices gradient
+            information about how the model shifts the steady state, but
+            keeps training tractable for otherwise-intractable models. The
+            subsequent :meth:`integrate_protocol` call is unaffected and
+            remains fully differentiable. Off by default.
 
         Returns
         -------
@@ -540,7 +558,12 @@ class Base(eqx.Module, ABC):
             :meth:`integrate_protocol`.  Does **not** include the
             steady-state itself.
         """
-        _, y_ss = self.integrate_to_steady_state(
+        if freeze_preeq_gradient:
+            params, static = eqx.partition(self, eqx.is_inexact_array)
+            preeq_model = eqx.combine(jax.tree.map(lax.stop_gradient, params), static)
+        else:
+            preeq_model = self
+        _, y_ss = preeq_model.integrate_to_steady_state(
             y0,
             max_steps,
             args=protocol[0] if preeq_args is None else preeq_args,
