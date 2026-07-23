@@ -7,12 +7,11 @@ from functools import cached_property, partial
 from typing import TYPE_CHECKING
 
 import jax
-import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
-    from mxlpy.jax.models import FluxOde
+    from mxlpy.jax.models import FluxAnode, FluxNode, FluxOde
 
 __all__ = ["FluxOdeSimulation"]
 
@@ -24,11 +23,20 @@ __all__ = ["FluxOdeSimulation"]
 )
 @dataclass(slots=False)  # cached_property needs an instance __dict__
 class FluxOdeSimulation:
-    """Named simulation result for a :class:`~mxlpy.jax.models.FluxOde`.
+    """Named simulation result for a flux-based JAX model.
 
-    Bridges the raw ``jax.Array`` output of ``FluxOde.integrate*`` back to
-    named, pandas-based results, mirroring :class:`mxlpy.simulation.Simulation`
-    for the (much narrower) set of things a frozen JAX model can report.
+    Bridges the raw ``jax.Array`` output of ``integrate*``/``simulate_*``
+    back to named, pandas-based results, mirroring
+    :class:`mxlpy.simulation.Simulation` for the (much narrower) set of
+    things a frozen JAX model can report. Returned by
+    :class:`~mxlpy.jax.models.FluxOde`, :class:`~mxlpy.jax.models.FluxNode`,
+    and :class:`~mxlpy.jax.models.FluxAnode`'s ``simulate_time_course``/
+    ``simulate_protocol_time_course``/``simulate_to_steady_state`` -- each
+    model class implements its own ``simulate_flux_row(t, y, args)`` so
+    :attr:`fluxes` can recompute correctly regardless of what ``args`` a
+    particular model class additionally needs (e.g. ``FluxOde`` re-appends
+    its trainable ``pars``; ``FluxAnode`` re-encodes ``y`` through its
+    latent mapper first).
 
     Registered as a JAX pytree (``model``/``ts``/``ys``/``args`` as dynamic
     data, ``variable_names``/``flux_names`` as static metadata) so it
@@ -39,7 +47,7 @@ class FluxOdeSimulation:
 
     Parameters
     ----------
-    model : FluxOde
+    model : FluxOde or FluxNode or FluxAnode
         Model the trajectory was produced from; used to recompute fluxes.
     ts : jax.Array
         Time points, shape ``(T,)``.
@@ -54,7 +62,7 @@ class FluxOdeSimulation:
         Column names for :attr:`fluxes`, in ``model.fluxes``'s output order.
     """
 
-    model: FluxOde
+    model: FluxOde | FluxNode | FluxAnode
     ts: jax.Array
     ys: jax.Array
     args: jax.Array
@@ -74,12 +82,10 @@ class FluxOdeSimulation:
     def fluxes(self) -> pd.DataFrame:
         """Flux trajectory as a time-indexed DataFrame.
 
-        Recomputed from ``model.fluxes``, since ``integrate*`` only ever
-        saves state, not fluxes.
+        Recomputed via ``model.simulate_flux_row``, since ``integrate*``
+        only ever saves state, not fluxes.
         """
-        flux_ys = jax.vmap(
-            lambda t, y, a: self.model.fluxes(t, y, jnp.concat((a, self.model.pars)))
-        )(self.ts, self.ys, self.args)
+        flux_ys = jax.vmap(self.model.simulate_flux_row)(self.ts, self.ys, self.args)
         return pd.DataFrame(
             np.asarray(flux_ys),
             index=np.asarray(self.ts),

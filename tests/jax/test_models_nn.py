@@ -24,6 +24,30 @@ from mxlpy.jax.models import (
 
 _KEY = jax.random.PRNGKey(0)
 
+
+def _flux_ode(*, with_names: bool = True) -> FluxOde:
+    # n_obs == n_flux == 2 throughout, so nv (flux_vector -> dy/dt) can be a
+    # simple shape-preserving map -- self-consistent enough to actually
+    # integrate, not just construct.
+    def fluxes(_t: float, y: jnp.ndarray, _args: jnp.ndarray) -> jnp.ndarray:
+        return jnp.stack([y[0], y[1]])
+
+    def nv(flux_vector: jnp.ndarray) -> jnp.ndarray:
+        return flux_vector
+
+    def derived_fn(_t: float, _y: jnp.ndarray, _args: jnp.ndarray) -> jnp.ndarray:
+        return jnp.array([7.0])
+
+    return FluxOde(
+        fluxes=fluxes,
+        nv=nv,
+        pars=jnp.array([]),
+        variable_names=("a", "b") if with_names else None,
+        flux_names=("ra", "rb") if with_names else None,
+        derived_fn=derived_fn,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Node
 # ---------------------------------------------------------------------------
@@ -99,6 +123,66 @@ def test_fluxnode_derived_scale_multiplies_derived_fn_output() -> None:
     )
     d = fnode.derived(0.0, jnp.ones(2), jnp.array([]))
     assert float(d[0]) == pytest.approx(15.0)
+
+
+def test_fluxnode_from_flux_ode_reuses_dims_nv_and_derived_fn() -> None:
+    """Regression: constructing a FluxNode alongside its mechanistic
+    FluxOde used to require the caller to separately compute n_obs/n_flux
+    (e.g. len(model.get_variable_names())) and pass the same nv/derived_fn
+    to both by hand.
+    """
+    flux_ode = _flux_ode()
+
+    fnode = FluxNode.from_flux_ode(flux_ode, width=4, depth=1, key=_KEY)
+
+    assert fnode.nv is flux_ode.nv
+    assert fnode.derived_fn is flux_ode.derived_fn
+    dy = fnode(0.0, jnp.ones(2), jnp.array([]))
+    assert dy.shape == (2,)  # n_obs, derived from flux_ode
+    assert bool(jnp.all(jnp.isfinite(dy)))
+
+
+def test_fluxnode_from_flux_ode_requires_names() -> None:
+    flux_ode = _flux_ode(with_names=False)
+
+    with pytest.raises(ValueError, match="variable_names/flux_names"):
+        FluxNode.from_flux_ode(flux_ode, width=4, depth=1, key=_KEY)
+
+
+def test_fluxnode_simulate_time_course() -> None:
+    fnode = FluxNode.from_flux_ode(_flux_ode(), width=4, depth=1, key=_KEY)
+    sim = fnode.simulate_time_course(jnp.array([0.0, 1.0]), jnp.ones(2), 4096)
+
+    assert list(sim.variables.columns) == ["a", "b"]
+    assert sim.variables.shape == (2, 2)
+    assert list(sim.fluxes.columns) == ["ra", "rb"]
+    assert sim.fluxes.shape == (2, 2)
+    assert bool(jnp.all(jnp.isfinite(sim.ys)))
+
+
+def test_fluxnode_simulate_protocol_time_course_prepends_t0() -> None:
+    fnode = FluxNode.from_flux_ode(_flux_ode(), width=4, depth=1, key=_KEY)
+    ts = [jnp.array([1.0]), jnp.array([2.0])]
+    protocol = jnp.zeros((2, 0))
+    sim = fnode.simulate_protocol_time_course(ts, jnp.ones(2), protocol, 4096)
+
+    assert sim.variables.shape == (3, 2)  # t=0 row prepended
+    assert float(sim.ts[0]) == 0.0
+
+
+def test_fluxnode_simulate_to_steady_state() -> None:
+    fnode = FluxNode.from_flux_ode(_flux_ode(), width=4, depth=1, key=_KEY)
+    sim = fnode.simulate_to_steady_state(jnp.ones(2), 8192)
+
+    assert sim.variables.shape == (1, 2)
+    assert sim.fluxes.shape == (1, 2)
+
+
+def test_fluxnode_simulate_requires_names() -> None:
+    fnode = FluxNode(n_obs=2, n_flux=2, width=4, depth=1, key=_KEY, nv=lambda f: f)
+
+    with pytest.raises(ValueError, match="variable_names/flux_names"):
+        fnode.simulate_time_course(jnp.array([0.0, 1.0]), jnp.ones(2), 4096)
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +390,107 @@ def test_fluxanode_derived_scale_multiplies_derived_fn_output() -> None:
     )
     d = fanode.derived(0.0, jnp.ones(3), jnp.array([]))
     assert float(d[0]) == pytest.approx(10.0)
+
+
+def test_fluxanode_from_flux_ode_reuses_dims_nv_and_derived_fn() -> None:
+    """Regression: constructing a FluxAnode alongside its mechanistic
+    FluxOde (e.g. for residual training on top of the FluxOde's own
+    prediction) used to require the caller to separately compute
+    n_obs/n_flux and pass the same nv/derived_fn to both by hand.
+    """
+    flux_ode = _flux_ode()
+
+    fanode = FluxAnode.from_flux_ode(
+        flux_ode, n_hidden=1, key=_KEY, latent_mapper=HardLatentMapper
+    )
+
+    assert fanode.nv is flux_ode.nv
+    assert fanode.derived_fn is flux_ode.derived_fn
+    assert fanode.n_obs == 2  # len(flux_ode.variable_names)
+    ys = fanode.integrate(jnp.array([0.0, 1.0]), jnp.array([1.0, 2.0]), 4096)
+    assert ys.shape == (2, 2)
+    assert bool(jnp.all(jnp.isfinite(ys)))
+
+
+def test_fluxanode_from_flux_ode_defaults_widths_from_dims() -> None:
+    flux_ode = _flux_ode()
+
+    fanode = FluxAnode.from_flux_ode(
+        flux_ode, n_hidden=1, key=_KEY, n_args=3, latent_mapper=HardLatentMapper
+    )
+
+    # flux_width defaults to n_flux + n_args, markov_width to
+    # n_obs + n_hidden + n_args -- verified indirectly via the MLPs
+    # actually accepting inputs of those sizes without a matmul shape error.
+    dy = fanode(
+        0.0, jnp.ones(3), jnp.ones(3)
+    )  # latent (n_obs+n_hidden=3), args (n_args=3)
+    assert dy.shape == (3,)
+    assert bool(jnp.all(jnp.isfinite(dy)))
+
+
+def test_fluxanode_from_flux_ode_requires_names() -> None:
+    flux_ode = _flux_ode(with_names=False)
+
+    with pytest.raises(ValueError, match="variable_names/flux_names"):
+        FluxAnode.from_flux_ode(flux_ode, n_hidden=1, key=_KEY)
+
+
+def test_fluxanode_simulate_time_course_decodes_and_recomputes_fluxes() -> None:
+    """Regression: fluxes must be recomputed by re-encoding the decoded
+    trajectory through latent_mapper, not by feeding decoded (n_obs-length)
+    state straight into flux_nn (which expects the latent n_obs+n_hidden
+    state) -- that would either shape-error or silently produce garbage.
+    """
+    fanode = FluxAnode.from_flux_ode(
+        _flux_ode(), n_hidden=1, key=_KEY, latent_mapper=HardLatentMapper
+    )
+    sim = fanode.simulate_time_course(jnp.array([0.0, 1.0]), jnp.ones(2), 4096)
+
+    assert list(sim.variables.columns) == ["a", "b"]
+    assert sim.variables.shape == (2, 2)  # decoded to n_obs, not n_obs+n_hidden
+    assert list(sim.fluxes.columns) == ["ra", "rb"]
+    assert bool(jnp.all(jnp.isfinite(sim.fluxes.to_numpy())))
+
+
+def test_fluxanode_simulate_protocol_time_course_prepends_t0() -> None:
+    fanode = FluxAnode.from_flux_ode(
+        _flux_ode(), n_hidden=1, key=_KEY, latent_mapper=HardLatentMapper
+    )
+    ts = [jnp.array([1.0]), jnp.array([2.0])]
+    protocol = jnp.zeros((2, 0))
+    sim = fanode.simulate_protocol_time_course(ts, jnp.ones(2), protocol, 4096)
+
+    assert sim.variables.shape == (3, 2)
+    assert float(sim.ts[0]) == 0.0
+
+
+def test_fluxanode_simulate_to_steady_state() -> None:
+    fanode = FluxAnode.from_flux_ode(
+        _flux_ode(), n_hidden=1, key=_KEY, latent_mapper=HardLatentMapper
+    )
+    sim = fanode.simulate_to_steady_state(jnp.ones(2), 8192)
+
+    assert sim.variables.shape == (1, 2)
+    assert sim.fluxes.shape == (1, 2)
+
+
+def test_fluxanode_simulate_requires_names() -> None:
+    fanode = FluxAnode(
+        n_obs=2,
+        n_hidden=1,
+        n_flux=2,
+        flux_width=4,
+        flux_depth=1,
+        markov_width=4,
+        markov_depth=1,
+        key=_KEY,
+        nv=lambda f: f,
+        latent_mapper=HardLatentMapper,
+    )
+
+    with pytest.raises(ValueError, match="variable_names/flux_names"):
+        fanode.simulate_time_course(jnp.array([0.0, 1.0]), jnp.ones(2), 4096)
 
 
 # ---------------------------------------------------------------------------

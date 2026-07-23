@@ -1089,6 +1089,16 @@ class FluxOde(Base):
         """Get derived quantitites."""
         return self.derived_scale * self.derived_fn(t, y, jnp.concat((args, self.pars)))
 
+    def simulate_flux_row(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+        """Recompute a flux row from a recorded ``(t, y, args)`` triple.
+
+        Used by :class:`~mxlpy.jax.simulation.FluxOdeSimulation` to
+        recompute fluxes after the fact; ``args`` there deliberately
+        excludes the trainable ``pars`` (see :attr:`FluxOdeSimulation.args`),
+        so they're re-appended here, mirroring :meth:`__call__`.
+        """
+        return self.fluxes(t, y, jnp.concat((args, self.pars)))
+
     @classmethod
     def from_mxlpy(
         cls,
@@ -1376,6 +1386,24 @@ class FluxOde(Base):
         )
 
 
+def _flux_ode_dims(flux_ode: FluxOde) -> tuple[int, int]:
+    """Read ``(n_obs, n_flux)`` off an already-built :class:`FluxOde`.
+
+    Shared by :meth:`FluxNode.from_flux_ode` and :meth:`FluxAnode.from_flux_ode`
+    so they can derive their own dimensions/``nv``/``derived_fn`` from a
+    mechanistic ``FluxOde`` instead of requiring those be hand-computed
+    (e.g. ``len(mxlpy_model.get_variable_names())``) and separately wired up.
+    """
+    if flux_ode.variable_names is None or flux_ode.flux_names is None:
+        msg = (
+            "flux_ode has no variable_names/flux_names set; construct it "
+            "via FluxOde.from_mxlpy(...), or set them explicitly, before "
+            "building a neural component from it."
+        )
+        raise ValueError(msg)
+    return len(flux_ode.variable_names), len(flux_ode.flux_names)
+
+
 ###############################################################################
 # Nodes
 ###############################################################################
@@ -1489,6 +1517,8 @@ class FluxNode(Base):
     nv: Nv
     derived_scale: jax.Array | float
     derived_fn: DerivedFn
+    variable_names: tuple[str, ...] | None = eqx.field(static=True, default=None)
+    flux_names: tuple[str, ...] | None = eqx.field(static=True, default=None)
 
     def __init__(
         self,
@@ -1502,6 +1532,8 @@ class FluxNode(Base):
         out_scale: jax.Array | None = None,
         derived_fn: DerivedFn | None = None,
         derived_scale: jax.Array | float | None = None,
+        variable_names: tuple[str, ...] | None = None,
+        flux_names: tuple[str, ...] | None = None,
     ) -> None:
         self.out_scale = jnp.array([0.1]) if out_scale is None else out_scale
         self.flux_nn = eqx.nn.MLP(
@@ -1518,6 +1550,208 @@ class FluxNode(Base):
         # eqx.is_inexact_array's filter by default and isn't trained;
         # pass an explicit jax.Array to opt a model into learning it.
         self.derived_scale = 1.0 if derived_scale is None else derived_scale
+        self.variable_names = variable_names
+        self.flux_names = flux_names
+
+    @classmethod
+    def from_flux_ode(
+        cls,
+        flux_ode: FluxOde,
+        width: int,
+        depth: int,
+        key: PRNGKeyArray,
+        n_args: int = 0,
+        out_scale: jax.Array | None = None,
+        derived_scale: jax.Array | float | None = None,
+    ) -> Self:
+        """Construct a :class:`FluxNode` reusing an already-built :class:`FluxOde`.
+
+        Reads ``n_obs``/``n_flux``/``variable_names``/``flux_names`` off
+        ``flux_ode`` (typically built via :meth:`FluxOde.from_mxlpy`) and
+        reuses its ``nv``/``derived_fn``, instead of requiring those be
+        hand-computed and separately wired up.
+
+        Parameters
+        ----------
+        flux_ode : FluxOde
+            Source of ``n_obs``, ``n_flux``, ``nv``, ``derived_fn``,
+            ``variable_names``, and ``flux_names``; must have
+            ``variable_names``/``flux_names`` set (i.e. built via
+            :meth:`FluxOde.from_mxlpy`, or with them set explicitly).
+        width : int
+            Hidden layer width.
+        depth : int
+            Number of hidden layers.
+        key : PRNGKeyArray
+            JAX random key for weight initialisation.
+        n_args : int
+            Number of external arguments the MLP additionally consumes.
+        out_scale : jax.Array or None
+            Scalar multiplier applied to the flux MLP output.  Defaults to 0.1.
+        derived_scale : jax.Array or float or None
+            See :class:`FluxNode`'s ``derived_scale``.
+
+        Returns
+        -------
+        Self
+            A new :class:`FluxNode` with ``flux_ode``'s ``nv``/``derived_fn``
+            and matching dimensions/names, ready for ``simulate_*``.
+        """
+        n_obs, n_flux = _flux_ode_dims(flux_ode)
+        return cls(
+            n_obs=n_obs,
+            n_flux=n_flux,
+            width=width,
+            depth=depth,
+            key=key,
+            nv=flux_ode.nv,
+            n_args=n_args,
+            out_scale=out_scale,
+            derived_fn=flux_ode.derived_fn,
+            derived_scale=derived_scale,
+            variable_names=flux_ode.variable_names,
+            flux_names=flux_ode.flux_names,
+        )
+
+    def _require_names(self) -> None:
+        if self.variable_names is None or self.flux_names is None:
+            msg = (
+                "FluxNode has no variable_names/flux_names set; construct "
+                "it via FluxNode.from_flux_ode(...), or set them explicitly, "
+                "before calling simulate_*."
+            )
+            raise ValueError(msg)
+
+    def simulate_flux_row(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+        """Recompute a flux row from a recorded ``(t, y, args)`` triple.
+
+        Used by :class:`~mxlpy.jax.simulation.FluxOdeSimulation` to
+        recompute fluxes after the fact; unlike :class:`FluxOde` (which
+        needs its trainable ``pars`` re-appended), :meth:`fluxes` already
+        takes exactly ``(t, y, args)``, so this is a thin pass-through.
+        """
+        return self.fluxes(t, y, args)
+
+    def simulate_time_course(
+        self,
+        ts: jax.Array,
+        y0: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> FluxOdeSimulation:
+        """Integrate and return a named, DataFrame-based simulation result.
+
+        See :meth:`FluxOde.simulate_time_course`; identical here except
+        flux recomputation doesn't need trainable parameters re-appended.
+        """
+        self._require_names()
+        ys = self.integrate(
+            ts, y0, max_steps, args=args, rtol=rtol, atol=atol, method=method
+        )
+        row_args = jnp.zeros((0,)) if args is None else args
+        args_per_row = jnp.broadcast_to(row_args, (ts.shape[0], row_args.shape[0]))
+        return FluxOdeSimulation(
+            model=self,
+            ts=ts,
+            ys=ys,
+            args=args_per_row,
+            variable_names=cast(tuple, self.variable_names),
+            flux_names=cast(tuple, self.flux_names),
+        )
+
+    def simulate_protocol_time_course(
+        self,
+        ts: list[jax.Array],
+        y0: jax.Array,
+        protocol: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> FluxOdeSimulation:
+        """Integrate through a protocol and return a named simulation result.
+
+        See :meth:`FluxOde.simulate_protocol_time_course`; identical here
+        except flux recomputation doesn't need trainable parameters
+        re-appended.
+        """
+        self._require_names()
+        ys = self.integrate_protocol(
+            ts,
+            y0,
+            protocol,
+            max_steps,
+            args=args,
+            rtol=rtol,
+            atol=atol,
+            method=method,
+        )
+        full_ts = jnp.concatenate((jnp.zeros((1,)), jnp.concatenate(ts)))
+        full_ys = jnp.concatenate((y0[None, :], ys), axis=0)
+
+        combined_args = [
+            step_args if args is None else jnp.concat((args, step_args))
+            for step_args in protocol
+        ]
+        args_per_row = jnp.concatenate(
+            [jnp.broadcast_to(combined_args[0], (1, combined_args[0].shape[0]))]
+            + [
+                jnp.broadcast_to(a, (step_ts.shape[0], a.shape[0]))
+                for a, step_ts in zip(combined_args, ts, strict=True)
+            ],
+            axis=0,
+        )
+        return FluxOdeSimulation(
+            model=self,
+            ts=full_ts,
+            ys=full_ys,
+            args=args_per_row,
+            variable_names=cast(tuple, self.variable_names),
+            flux_names=cast(tuple, self.flux_names),
+        )
+
+    def simulate_to_steady_state(
+        self,
+        y0: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        t1: float = 1e6,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        steady_state_rtol: float | None = None,
+        steady_state_atol: float | None = None,
+        method: Method = diffrax.Tsit5,
+    ) -> FluxOdeSimulation:
+        """Integrate to steady state and return a named, 1-row simulation result.
+
+        See :meth:`FluxOde.simulate_to_steady_state`; identical here except
+        flux recomputation doesn't need trainable parameters re-appended.
+        """
+        self._require_names()
+        t, y = self.integrate_to_steady_state(
+            y0,
+            max_steps,
+            args=args,
+            t1=t1,
+            rtol=rtol,
+            atol=atol,
+            steady_state_rtol=steady_state_rtol,
+            steady_state_atol=steady_state_atol,
+            method=method,
+        )
+        row_args = jnp.zeros((0,)) if args is None else args
+        return FluxOdeSimulation(
+            model=self,
+            ts=t[None],
+            ys=y[None, :],
+            args=row_args[None, :],
+            variable_names=cast(tuple, self.variable_names),
+            flux_names=cast(tuple, self.flux_names),
+        )
 
     def fluxes(
         self,
@@ -1830,6 +2064,8 @@ class FluxAnode(Base):
     derived_scale: jax.Array | float
     latent_mapper: LatentMapper
     derived_fn: DerivedFn
+    variable_names: tuple[str, ...] | None = eqx.field(static=True, default=None)
+    flux_names: tuple[str, ...] | None = eqx.field(static=True, default=None)
 
     def __init__(
         self,
@@ -1848,6 +2084,8 @@ class FluxAnode(Base):
         derived_scale: jax.Array | float | None = None,
         latent_mapper: LatentMapperFn | None = None,
         derived_fn: DerivedFn | None = None,
+        variable_names: tuple[str, ...] | None = None,
+        flux_names: tuple[str, ...] | None = None,
     ) -> None:
         self.n_obs = n_obs
         self.n_args = n_args
@@ -1882,6 +2120,243 @@ class FluxAnode(Base):
             else latent_mapper(n_obs, n_hidden, key)
         )
         self.derived_fn = _default_derived if derived_fn is None else derived_fn
+        self.variable_names = variable_names
+        self.flux_names = flux_names
+
+    @classmethod
+    def from_flux_ode(
+        cls,
+        flux_ode: FluxOde,
+        n_hidden: int,
+        key: PRNGKeyArray,
+        n_args: int = 0,
+        flux_width: int | None = None,
+        flux_depth: int = 2,
+        markov_width: int | None = None,
+        markov_depth: int = 2,
+        flux_scale: jax.Array | None = None,
+        markov_scale: jax.Array | None = None,
+        derived_scale: jax.Array | float | None = None,
+        latent_mapper: LatentMapperFn | None = None,
+    ) -> Self:
+        """Construct a :class:`FluxAnode` reusing an already-built :class:`FluxOde`.
+
+        Reads ``n_obs``/``n_flux``/``variable_names``/``flux_names`` off
+        ``flux_ode`` (typically built via :meth:`FluxOde.from_mxlpy`) and
+        reuses its ``nv``/``derived_fn``, instead of requiring those be
+        hand-computed and separately wired up -- useful in particular when
+        ``flux_ode`` is *also* used standalone as a frozen mechanistic
+        prior (e.g. a residual-training setup where this ``FluxAnode``
+        learns a correction on top of ``flux_ode``'s own prediction), since
+        both then share the exact same mechanistic pieces.
+
+        Parameters
+        ----------
+        flux_ode : FluxOde
+            Source of ``n_obs``, ``n_flux``, ``nv``, ``derived_fn``,
+            ``variable_names``, and ``flux_names``; must have
+            ``variable_names``/``flux_names`` set (i.e. built via
+            :meth:`FluxOde.from_mxlpy`, or with them set explicitly).
+        n_hidden : int
+            Number of additional latent dimensions.
+        key : PRNGKeyArray
+            JAX random key for weight initialisation.
+        n_args : int
+            Number of external arguments both MLPs additionally consume.
+        flux_width : int or None
+            Hidden layer width for the flux MLP.  Defaults to
+            ``n_flux + n_args``.
+        flux_depth : int
+            Number of hidden layers for the flux MLP.
+        markov_width : int or None
+            Hidden layer width for the Markov MLP.  Defaults to
+            ``n_obs + n_hidden + n_args``.
+        markov_depth : int
+            Number of hidden layers for the Markov MLP.
+        flux_scale : jax.Array or None
+            Scalar multiplier for flux MLP output.  Defaults to 0.1.
+        markov_scale : jax.Array or None
+            Scalar multiplier for Markov MLP output.  Defaults to 0.1.
+        derived_scale : jax.Array or float or None
+            See :class:`FluxAnode`'s ``derived_scale``.
+        latent_mapper : LatentMapperFn or None
+            Factory that constructs the latent mapper.  Defaults to
+            :class:`HardLatentMapper`.
+
+        Returns
+        -------
+        Self
+            A new :class:`FluxAnode` with ``flux_ode``'s ``nv``/``derived_fn``
+            and matching dimensions/names, ready for ``simulate_*``.
+        """
+        n_obs, n_flux = _flux_ode_dims(flux_ode)
+        resolved_flux_width = n_flux + n_args if flux_width is None else flux_width
+        resolved_markov_width = (
+            n_obs + n_hidden + n_args if markov_width is None else markov_width
+        )
+        return cls(
+            n_obs=n_obs,
+            n_hidden=n_hidden,
+            n_flux=n_flux,
+            flux_width=resolved_flux_width,
+            flux_depth=flux_depth,
+            markov_width=resolved_markov_width,
+            markov_depth=markov_depth,
+            key=key,
+            nv=flux_ode.nv,
+            n_args=n_args,
+            flux_scale=flux_scale,
+            markov_scale=markov_scale,
+            derived_scale=derived_scale,
+            latent_mapper=latent_mapper,
+            derived_fn=flux_ode.derived_fn,
+            variable_names=flux_ode.variable_names,
+            flux_names=flux_ode.flux_names,
+        )
+
+    def _require_names(self) -> None:
+        if self.variable_names is None or self.flux_names is None:
+            msg = (
+                "FluxAnode has no variable_names/flux_names set; construct "
+                "it via FluxAnode.from_flux_ode(...), or set them "
+                "explicitly, before calling simulate_*."
+            )
+            raise ValueError(msg)
+
+    def simulate_flux_row(self, t: PyTree, y: PyTree, args: PyTree) -> jax.Array:
+        """Recompute a flux row from a recorded, decoded ``(t, y, args)`` triple.
+
+        Used by :class:`~mxlpy.jax.simulation.FluxOdeSimulation`.
+        ``simulate_*`` (via :meth:`integrate`/:meth:`integrate_protocol`)
+        records ``y`` in decoded observation space, but :meth:`fluxes`
+        expects the latent state -- so ``y`` is re-encoded through
+        :attr:`latent_mapper` first, mirroring
+        ``mxlpy.jax.models.FluxAnode``'s own established usage pattern for
+        recomputing fluxes from a decoded trajectory.
+        """
+        return self.fluxes(t, self.latent_mapper.encode(y), args)
+
+    def simulate_time_course(
+        self,
+        ts: jax.Array,
+        y0: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> FluxOdeSimulation:
+        """Integrate and return a named, DataFrame-based simulation result.
+
+        See :meth:`FluxOde.simulate_time_course`; ``ts``/``ys`` are already
+        decoded to observation space (via :meth:`integrate`), and flux
+        recomputation re-encodes them (see :meth:`simulate_flux_row`).
+        """
+        self._require_names()
+        ys = self.integrate(
+            ts, y0, max_steps, args=args, rtol=rtol, atol=atol, method=method
+        )
+        row_args = jnp.zeros((0,)) if args is None else args
+        args_per_row = jnp.broadcast_to(row_args, (ts.shape[0], row_args.shape[0]))
+        return FluxOdeSimulation(
+            model=self,
+            ts=ts,
+            ys=ys,
+            args=args_per_row,
+            variable_names=cast(tuple, self.variable_names),
+            flux_names=cast(tuple, self.flux_names),
+        )
+
+    def simulate_protocol_time_course(
+        self,
+        ts: list[jax.Array],
+        y0: jax.Array,
+        protocol: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        method: Method = diffrax.Tsit5,
+    ) -> FluxOdeSimulation:
+        """Integrate through a protocol and return a named simulation result.
+
+        See :meth:`FluxOde.simulate_protocol_time_course`; ``ys`` are
+        already decoded to observation space (via :meth:`integrate_protocol`).
+        """
+        self._require_names()
+        ys = self.integrate_protocol(
+            ts,
+            y0,
+            protocol,
+            max_steps,
+            args=args,
+            rtol=rtol,
+            atol=atol,
+            method=method,
+        )
+        full_ts = jnp.concatenate((jnp.zeros((1,)), jnp.concatenate(ts)))
+        full_ys = jnp.concatenate((y0[None, :], ys), axis=0)
+
+        combined_args = [
+            step_args if args is None else jnp.concat((args, step_args))
+            for step_args in protocol
+        ]
+        args_per_row = jnp.concatenate(
+            [jnp.broadcast_to(combined_args[0], (1, combined_args[0].shape[0]))]
+            + [
+                jnp.broadcast_to(a, (step_ts.shape[0], a.shape[0]))
+                for a, step_ts in zip(combined_args, ts, strict=True)
+            ],
+            axis=0,
+        )
+        return FluxOdeSimulation(
+            model=self,
+            ts=full_ts,
+            ys=full_ys,
+            args=args_per_row,
+            variable_names=cast(tuple, self.variable_names),
+            flux_names=cast(tuple, self.flux_names),
+        )
+
+    def simulate_to_steady_state(
+        self,
+        y0: jax.Array,
+        max_steps: int,
+        args: jax.Array | None = None,
+        t1: float = 1e6,
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        steady_state_rtol: float | None = None,
+        steady_state_atol: float | None = None,
+        method: Method = diffrax.Tsit5,
+    ) -> FluxOdeSimulation:
+        """Integrate to steady state and return a named, 1-row simulation result.
+
+        See :meth:`FluxOde.simulate_to_steady_state`; the returned state is
+        already decoded to observation space (via
+        :meth:`integrate_to_steady_state`).
+        """
+        self._require_names()
+        t, y = self.integrate_to_steady_state(
+            y0,
+            max_steps,
+            args=args,
+            t1=t1,
+            rtol=rtol,
+            atol=atol,
+            steady_state_rtol=steady_state_rtol,
+            steady_state_atol=steady_state_atol,
+            method=method,
+        )
+        row_args = jnp.zeros((0,)) if args is None else args
+        return FluxOdeSimulation(
+            model=self,
+            ts=t[None],
+            ys=y[None, :],
+            args=row_args[None, :],
+            variable_names=cast(tuple, self.variable_names),
+            flux_names=cast(tuple, self.flux_names),
+        )
 
     def fluxes(
         self,
