@@ -269,6 +269,69 @@ def test_train_keyboard_interrupt_returns_best_so_far(
     assert len(grad_norms[0]) == 2
 
 
+class _SchedulerShutdown(Exception):
+    """Stand-in for a caller-defined exception raised from e.g. a SIGTERM
+    handler (mirrors a downstream project's TrainingStopRequested)."""
+
+
+def test_train_stops_on_custom_stop_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A caller-defined exception (e.g. from a SIGTERM handler translating
+    a scheduler's shutdown signal) is wound down from gracefully, the same
+    as a manual KeyboardInterrupt, when listed in stop_exceptions.
+    """
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+    real_make_step = jax_train.make_step
+    calls = {"n": 0}
+
+    def _interrupting_make_step(**kwargs: object) -> object:
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise _SchedulerShutdown
+        return real_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "make_step", _interrupting_make_step)
+
+    trained, losses, grad_norms = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(10, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        stop_exceptions=(KeyboardInterrupt, _SchedulerShutdown),
+    )
+    assert calls["n"] == 3
+    assert isinstance(trained, Ode)
+    assert len(losses[0]) == 2
+    assert len(grad_norms[0]) == 2
+
+
+def test_train_does_not_catch_unlisted_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """stop_exceptions is not a catch-all: an exception not listed still
+    propagates, unlike KeyboardInterrupt/whatever's explicitly passed.
+    """
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+
+    def _raising_make_step(**_kwargs: object) -> object:
+        raise _SchedulerShutdown
+
+    monkeypatch.setattr(jax_train, "make_step", _raising_make_step)
+
+    with pytest.raises(_SchedulerShutdown):
+        jax_train.train(
+            model,
+            ts=ts,
+            ys=ys,
+            training_steps=[(2, 1.0)],
+            avg_every=1,
+            target_loss=-1.0,
+        )
+
+
 # ---------------------------------------------------------------------------
 # proto_make_step: gradient clipping must only scale down, never up
 # ---------------------------------------------------------------------------
@@ -427,6 +490,100 @@ def test_train_protocol_early_stop_returns_best_model_not_current_model(
     assert _allclose_models(trained, stage1_model)
     assert not _allclose_models(trained, stage2_model)
     assert not _allclose_models(trained, initial_model)
+
+
+# ---------------------------------------------------------------------------
+# train_protocol(): graceful stop -- previously had NO handling at all, so a
+# KeyboardInterrupt (or any other exception) during training propagated and
+# aborted the whole run instead of returning the best model/history so far.
+# ---------------------------------------------------------------------------
+
+
+def test_train_protocol_keyboard_interrupt_returns_best_so_far(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _decay_model()
+    real_proto_make_step = jax_train.proto_make_step
+    calls = {"n": 0}
+
+    def _interrupting_proto_make_step(**kwargs: object) -> object:
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise KeyboardInterrupt
+        return real_proto_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "proto_make_step", _interrupting_proto_make_step)
+
+    # Must not raise -- KeyboardInterrupt is caught and the best model so
+    # far (plus partial loss/grad-norm history) is returned instead.
+    trained, losses, grad_norms = jax_train.train_protocol(
+        model,
+        y0=jnp.array([1.0]),
+        ts=[jnp.array([1.0])],
+        ys=jnp.array([[1.0], [0.5]]),
+        protocol=jnp.zeros((1, 0)),
+        training_steps=[(10, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+    )
+    assert calls["n"] == 3
+    assert isinstance(trained, Ode)
+    assert len(losses[0]) == 2
+    assert len(grad_norms[0]) == 2
+
+
+def test_train_protocol_stops_on_custom_stop_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _decay_model()
+    real_proto_make_step = jax_train.proto_make_step
+    calls = {"n": 0}
+
+    def _interrupting_proto_make_step(**kwargs: object) -> object:
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise _SchedulerShutdown
+        return real_proto_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "proto_make_step", _interrupting_proto_make_step)
+
+    trained, losses, _ = jax_train.train_protocol(
+        model,
+        y0=jnp.array([1.0]),
+        ts=[jnp.array([1.0])],
+        ys=jnp.array([[1.0], [0.5]]),
+        protocol=jnp.zeros((1, 0)),
+        training_steps=[(10, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        stop_exceptions=(KeyboardInterrupt, _SchedulerShutdown),
+    )
+    assert calls["n"] == 3
+    assert isinstance(trained, Ode)
+    assert len(losses[0]) == 2
+
+
+def test_train_protocol_does_not_catch_unlisted_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _decay_model()
+
+    def _raising_proto_make_step(**_kwargs: object) -> object:
+        raise _SchedulerShutdown
+
+    monkeypatch.setattr(jax_train, "proto_make_step", _raising_proto_make_step)
+
+    with pytest.raises(_SchedulerShutdown):
+        jax_train.train_protocol(
+            model,
+            y0=jnp.array([1.0]),
+            ts=[jnp.array([1.0])],
+            ys=jnp.array([[1.0], [0.5]]),
+            protocol=jnp.zeros((1, 0)),
+            training_steps=[(2, 1.0)],
+            avg_every=1,
+            target_loss=-1.0,
+        )
 
 
 # ---------------------------------------------------------------------------
