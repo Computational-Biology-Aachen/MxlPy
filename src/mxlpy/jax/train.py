@@ -244,6 +244,7 @@ def grad_loss_split(
     y_mean: jax.Array,
     y_scale: jax.Array,
     ctx: IntegrationSettings,
+    args: jax.Array | None = None,
 ) -> jax.Array:
     """Compute normalised MSE loss and gradient for a partitioned model.
 
@@ -263,6 +264,9 @@ def grad_loss_split(
         Standard deviation used for normalisation.
     ctx : IntegrationSettings
         ODE solver settings.
+    args : jax.Array or None
+        External arguments forwarded to ``model.integrate``; see
+        :func:`grad_loss`.
 
     Returns
     -------
@@ -274,6 +278,7 @@ def grad_loss_split(
         ts,
         ys[0],
         max_steps=ctx.max_steps,
+        args=jnp.zeros((0,)) if args is None else args,
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
@@ -415,12 +420,13 @@ def proto_make_step[T: JaxModel](
     # so the optimizer state isn't corrupted.
     grads = jax.tree.map(lambda g: jnp.where(jnp.isfinite(g), g, 0.0), grads)
 
-    # Clip gradients to prevent sudden entry into stiff regions and exploding adjoints
+    # Clip gradients by global norm to guard against exploding adjoints;
+    # only scales down (never up) so small, well-behaved gradients are left
+    # alone.
     grad_norm = optax.global_norm(grads)
     clip_value = 1.0
-    grads = jax.tree_util.tree_map(
-        lambda g: g * (clip_value / (grad_norm + 1e-6)), grads
-    )
+    scale = jnp.minimum(1.0, clip_value / (grad_norm + 1e-6))
+    grads = jax.tree_util.tree_map(lambda g: g * scale, grads)
     updates, opt_state = optim.update(
         grads,
         opt_state,
@@ -441,8 +447,14 @@ def make_step_split[T: JaxModel](
     opt_state: optax.OptState,
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
-) -> tuple[jax.Array, T, optax.OptState]:
+    args: jax.Array | None = None,
+) -> tuple[jax.Array, T, optax.OptState, jax.Array]:
     """Perform one gradient update step on the trainable model partition.
+
+    Non-finite gradients (from a failed ODE solve) and exploding adjoints
+    are expected to be handled by ``optim`` itself -- see :func:`train_only_nde`'s
+    use of ``optax.apply_if_finite``/``optax.adaptive_grad_clip`` -- rather
+    than here, mirroring :func:`make_step`.
 
     Parameters
     ----------
@@ -464,11 +476,16 @@ def make_step_split[T: JaxModel](
         Optimiser.
     ctx : IntegrationSettings
         ODE solver settings.
+    args : jax.Array or None
+        External arguments forwarded to ``model.integrate``; see
+        :func:`grad_loss`.
 
     Returns
     -------
-    tuple[jax.Array, T, optax.OptState]
-        Scalar loss, updated trainable partition, updated optimiser state.
+    tuple[jax.Array, T, optax.OptState, jax.Array]
+        Scalar loss, updated trainable partition, updated optimiser state,
+        and the gradient norm (computed before ``optim`` does any clipping,
+        for diagnostics).
     """
     loss, grads = grad_loss_split(
         trainable,  # needs to be by pos, is differentiated
@@ -478,23 +495,15 @@ def make_step_split[T: JaxModel](
         y_mean=y_mean,
         y_scale=y_scale,
         ctx=ctx,
+        args=args,
     )
-    # Failed solves can produce NaN in y_pred -> NaN gradients; zero them out
-    # so the optimizer state isn't corrupted.
-    # grads = jax.tree.map(lambda g: jnp.where(jnp.isfinite(g), g, 0.0), grads)
-
-    # Clip gradients to prevent sudden entry into stiff regions and exploding adjoints
-    # grad_norm = optax.global_norm(grads)
-    # clip_value = 1.0
-    # grads = jax.tree_util.tree_map(
-    #     lambda g: g * (clip_value / (grad_norm + 1e-6)), grads
-    # )
+    grad_norm = optax.global_norm(grads)
     updates, opt_state = optim.update(
         grads,
         opt_state,
         eqx.filter(trainable, eqx.is_array),
     )
-    return loss, eqx.apply_updates(trainable, updates), opt_state
+    return loss, eqx.apply_updates(trainable, updates), opt_state, grad_norm
 
 
 def train[Model: JaxModel](
@@ -697,11 +706,21 @@ def train_only_nde[T: Ude](
     target_loss: float = 1e-4,
     optim: optax.GradientTransformationExtraArgs | None = None,
     integration_settings: IntegrationSettings | None = None,
-) -> tuple[T, LossesPerLesson]:
+    clip_norm: float = 1.0,
+    max_consecutive_nonfinite: int = 50,
+    max_consecutive_solver_errors: int = 10,
+    perturbation_scale: float = 1e-3,
+    key: jax.Array | None = None,
+    args: jax.Array | None = None,
+) -> tuple[T, LossesPerLesson, GradNormsPerLesson]:
     """Train only the neural-network part of a UDE, keeping the ODE frozen.
 
     Partitions ``model`` into trainable (neural network) and frozen (ODE)
     parts before the training loop.  The returned model recombines both.
+    Otherwise mirrors :func:`train`: same curriculum/early-stopping/
+    best-model semantics, the same ``apply_if_finite``/``adaptive_grad_clip``
+    optimiser wrapping, and the same perturb-and-retry recovery from a
+    solver failure that raises ``eqx.EquinoxRuntimeError``.
 
     Parameters
     ----------
@@ -718,20 +737,48 @@ def train_only_nde[T: Ude](
     target_loss : float
         Early-stopping threshold, checked during the last stage only.
     optim : optax.GradientTransformationExtraArgs or None
-        Optimiser; defaults to AdaBelief with ``lr=1e-4``.
+        Optimiser; defaults to AdaBelief with ``lr=1e-4``.  Wrapped in
+        ``apply_if_finite``/``adaptive_grad_clip`` before use; pass the raw
+        optimiser here, not a pre-wrapped one.
     integration_settings : IntegrationSettings or None
         ODE solver settings; defaults to ``IntegrationSettings()``.
+    clip_norm : float
+        Per-parameter weight-norm clip threshold for
+        ``optax.adaptive_grad_clip``.
+    max_consecutive_nonfinite : int
+        Consecutive non-finite updates ``optax.apply_if_finite`` skips
+        before giving up and applying one anyway (it never raises).
+    max_consecutive_solver_errors : int
+        Consecutive solver failures (``eqx.EquinoxRuntimeError``) tolerated
+        -- via perturb-and-retry -- before giving up on the current
+        curriculum stage.
+    perturbation_scale : float
+        Relative magnitude of the weight perturbation applied after a
+        solver failure; see :func:`_perturb_model`.
+    key : jax.Array or None
+        PRNG key seeding the weight perturbations; defaults to
+        ``jax.random.PRNGKey(0)``.
+    args : jax.Array or None
+        External arguments forwarded to ``model.integrate`` at every step;
+        see :func:`grad_loss`.
 
     Returns
     -------
-    tuple[T, dict[int, float]]
-        Best model encountered during training and losses per curriculum lesson.
+    tuple[T, LossesPerLesson, GradNormsPerLesson]
+        Best model encountered during training, losses per curriculum
+        lesson, and per-step gradient norms per curriculum lesson.
     """
     loss = 0
     acc_loss = 0
     acc_count = 0
-    global_step = 0
-    optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
+    perturb_key: jax.Array = jax.random.PRNGKey(0) if key is None else key
+
+    raw_optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
+    optim = optax.apply_if_finite(
+        optax.chain(optax.adaptive_grad_clip(clip_norm), raw_optim),
+        max_consecutive_errors=max_consecutive_nonfinite,
+    )
+
     best_training_loss = jnp.inf
     best_model = model
 
@@ -747,54 +794,96 @@ def train_only_nde[T: Ude](
     )
     trainable, frozen = eqx.partition(model, filter_spec)
 
-    losses_per_lesson = []
     y_mean = jnp.mean(ys)
     y_scale = jnp.std(ys)
-    losses = {}
-    for i, (steps, frac) in enumerate(training_steps):
-        opt_state = optim.init(trainable)
-        length = math.ceil(len(ts) * frac)
-        _ts = ts[:length]
-        _ys = ys[:length]
-        losses = {}
-        losses_per_lesson.append(losses)
+    losses_per_lesson: LossesPerLesson = []
+    grad_norms_per_lesson: GradNormsPerLesson = []
 
-        with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
-            for step in pbar:
-                loss, trainable, opt_state = make_step_split(
-                    trainable=trainable,
-                    frozen=frozen,
-                    ts=_ts,
-                    ys=_ys,
-                    opt_state=opt_state,
-                    optim=optim,
-                    y_mean=y_mean,
-                    y_scale=y_scale,
-                    ctx=ctx,
-                )
-                acc_loss += loss
-                acc_count += 1
+    def _finish() -> tuple[T, LossesPerLesson, GradNormsPerLesson]:
+        return (
+            best_model,
+            [pd.Series(i) for i in losses_per_lesson],
+            [pd.Series(i) for i in grad_norms_per_lesson],
+        )
 
-                if i == len(training_steps) and loss < best_training_loss:
-                    best_model = eqx.combine(trainable, frozen)
-                    best_training_loss = loss
+    try:
+        for i, (steps, frac) in enumerate(training_steps, start=1):
+            opt_state = optim.init(trainable)
+            # Fresh per stage, same as opt_state/losses/grad_norms below --
+            # a stage's retry budget must not be affected by failures that
+            # already happened in a previous stage.
+            consecutive_solver_errors = 0
+            length = math.ceil(len(ts) * frac)
+            _ts = ts[:length]
+            _ys = ys[:length]
+            losses: dict[int, float] = {}
+            grad_norms: dict[int, float] = {}
+            losses_per_lesson.append(losses)
+            grad_norms_per_lesson.append(grad_norms)
 
-                if i == len(training_steps) and loss < target_loss:
-                    return (
-                        eqx.combine(trainable, frozen),
-                        [pd.Series(i) for i in losses_per_lesson],
-                    )
+            with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
+                for step in pbar:
+                    try:
+                        loss, trainable, opt_state, grad_norm = make_step_split(
+                            trainable=trainable,
+                            frozen=frozen,
+                            ts=_ts,
+                            ys=_ys,
+                            opt_state=opt_state,
+                            optim=optim,
+                            y_mean=y_mean,
+                            y_scale=y_scale,
+                            ctx=ctx,
+                            args=args,
+                        )
+                    except eqx.EquinoxRuntimeError as e:
+                        consecutive_solver_errors += 1
+                        if consecutive_solver_errors > max_consecutive_solver_errors:
+                            logger.warning(
+                                "Lesson %d, step %d: solver failed %d times in a "
+                                "row (%s); moving to the next curriculum stage.",
+                                i,
+                                step,
+                                consecutive_solver_errors,
+                                e,
+                            )
+                            break
+                        perturb_key, subkey = jax.random.split(perturb_key)
+                        trainable = _perturb_model(
+                            trainable, subkey, perturbation_scale
+                        )
+                        logger.warning(
+                            "Lesson %d, step %d: solver hit a stiff domain (%s); "
+                            "nudging model parameters and retrying.",
+                            i,
+                            step,
+                            e,
+                        )
+                        continue
+                    consecutive_solver_errors = 0
+                    grad_norms[step] = float(grad_norm)
+                    acc_loss += loss
+                    acc_count += 1
 
-                if (step % avg_every) == 0 or step == steps - 1:
-                    avg_loss = acc_loss / acc_count
-                    pbar.set_postfix_str(
-                        f"Avg. loss {(avg_loss):.2e} over last {acc_count} runs"
-                    )
-                    global_step += acc_count
-                    acc_loss = 0
-                    acc_count = 0
-                    losses[global_step] = float(avg_loss)
-    return best_model, [pd.Series(i) for i in losses_per_lesson]
+                    if loss < best_training_loss:
+                        best_model = eqx.combine(trainable, frozen)
+                        best_training_loss = loss
+
+                    if i == len(training_steps) and loss < target_loss:
+                        return _finish()
+
+                    if (step % avg_every) == 0 or step == steps - 1:
+                        avg_loss = acc_loss / acc_count
+                        pbar.set_postfix_str(
+                            f"Avg. loss {(avg_loss):.2e} over last {acc_count} runs"
+                        )
+                        acc_loss = 0
+                        acc_count = 0
+                        losses[step] = float(avg_loss)
+    except KeyboardInterrupt:
+        logger.warning("Training interrupted manually.")
+
+    return _finish()
 
 
 def train_protocol[Model: JaxModel](
@@ -962,7 +1051,7 @@ def train_protocol[Model: JaxModel](
 
                 if i == len(training_steps) and loss < target_loss:
                     return (
-                        model,
+                        best_model,
                         [pd.Series(i) for i in losses_per_lesson],
                         [pd.Series(i) for i in grad_norms_per_lesson],
                     )
