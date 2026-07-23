@@ -20,6 +20,8 @@ __all__ = [
     "GradLossFn",
     "GradLossSplitFn",
     "GradNormsPerLesson",
+    "GradParsHistory",
+    "GradParsPerLesson",
     "IntegrationSettings",
     "LossesPerLesson",
     "ProtoGradLossFn",
@@ -42,6 +44,70 @@ logger = logging.getLogger(__name__)
 
 type LossesPerLesson = list[pd.Series]
 type GradNormsPerLesson = list[pd.Series]
+type GradParsPerLesson = list[pd.DataFrame]
+
+
+class GradParsHistory:
+    """Optional per-step, per-parameter gradient tracker for :func:`train`/:func:`train_protocol`.
+
+    Records the raw gradient of ``model.pars`` (:class:`~mxlpy.jax.models.Ode`/
+    :class:`~mxlpy.jax.models.FluxOde`'s flat trainable parameter vector) at
+    every step, alongside the aggregate :data:`GradNormsPerLesson` already
+    returned -- useful for diagnosing which specific parameters drive
+    instability or fail to learn. Pass an instance via ``train``'s/
+    ``train_protocol``'s ``grad_pars_history`` parameter; this doesn't
+    change either function's return signature, so passing one in is fully
+    opt-in and every other caller is unaffected. Only supported for models
+    with a flat ``.pars`` array; :func:`train_only_nde` trains a neural
+    network partition (no such flat vector), so it isn't supported there.
+
+    Retrieve the recorded history afterwards via :meth:`to_frames`.
+    """
+
+    def __init__(self) -> None:
+        self._by_lesson: list[dict[int, jax.Array]] = []
+
+    def _start_lesson(self) -> None:
+        self._by_lesson.append({})
+
+    def _record(self, step: int, grad_pars: jax.Array) -> None:
+        self._by_lesson[-1][step] = grad_pars
+
+    def to_frames(self, par_names: list[str] | None = None) -> GradParsPerLesson:
+        """Stack the recorded per-step gradients into one DataFrame per lesson.
+
+        Parameters
+        ----------
+        par_names : list[str] or None
+            Column names, in ``model.pars``'s order; defaults to
+            positional indices ``0, 1, ...`` if not given.
+
+        Returns
+        -------
+        GradParsPerLesson
+            One DataFrame per lesson, indexed by step, columns named by
+            ``par_names`` (or positional indices). A lesson with no
+            recorded steps (e.g. every step failed and was skipped) yields
+            an empty DataFrame.
+        """
+        frames: GradParsPerLesson = []
+        for lesson in self._by_lesson:
+            if not lesson:
+                frames.append(pd.DataFrame(index=pd.Index([], name="step")))
+                continue
+            steps = list(lesson)
+            values = jnp.stack([lesson[s] for s in steps])
+            columns = (
+                par_names if par_names is not None else list(range(values.shape[-1]))
+            )
+            frames.append(
+                pd.DataFrame(
+                    jax.device_get(values),
+                    index=pd.Index(steps, name="step"),
+                    columns=columns,
+                )
+            )
+        return frames
 
 
 def squeeze_derived(derived: jax.Array) -> jax.Array:
@@ -419,6 +485,48 @@ def make_step[T: JaxModel](
 
 
 @eqx.filter_jit
+def _make_step_with_grad_pars[T: JaxModel](
+    *,
+    model: T,
+    ts: jax.Array,
+    ys: jax.Array,
+    y_mean: jax.Array,
+    y_scale: jax.Array,
+    opt_state: optax.OptState,
+    optim: optax.GradientTransformationExtraArgs,
+    ctx: IntegrationSettings,
+    args: jax.Array | None = None,
+    grad_fn: GradLossFn = grad_loss,
+) -> tuple[jax.Array, T, optax.OptState, jax.Array, jax.Array]:
+    """Same as :func:`make_step`, additionally returning ``grads.pars``.
+
+    Used internally by :func:`train` when a :class:`GradParsHistory` is
+    passed; a separate function (rather than an always-present return
+    value on :func:`make_step` itself) so :func:`make_step`'s existing
+    signature/callers are unaffected, and so this doesn't assume every
+    model has a flat ``.pars`` attribute (:func:`make_step` works for any
+    :class:`~mxlpy.jax.models.JaxModel`, but ``model.pars`` only exists on
+    :class:`~mxlpy.jax.models.Ode`/:class:`~mxlpy.jax.models.FluxOde`).
+    """
+    loss, grads = grad_fn(
+        model,  # needs to be by pos, is differentiated
+        ts=ts,
+        ys=ys,
+        y_mean=y_mean,
+        y_scale=y_scale,
+        ctx=ctx,
+        args=args,
+    )
+    grad_norm = optax.global_norm(grads)
+    updates, opt_state = optim.update(
+        grads,
+        opt_state,
+        eqx.filter(model, eqx.is_array),
+    )
+    return loss, eqx.apply_updates(model, updates), opt_state, grad_norm, grads.pars
+
+
+@eqx.filter_jit
 def proto_make_step[T: JaxModel](
     *,
     model: T,
@@ -503,6 +611,53 @@ def proto_make_step[T: JaxModel](
         eqx.filter(model, eqx.is_array),
     )
     return loss, eqx.apply_updates(model, updates), opt_state, grad_norm
+
+
+@eqx.filter_jit
+def _proto_make_step_with_grad_pars[T: JaxModel](
+    *,
+    model: T,
+    y0: jax.Array,
+    ts: list[jax.Array],
+    ys: jax.Array,
+    protocol: jax.Array,
+    y_mean: jax.Array,
+    y_scale: jax.Array,
+    opt_state: optax.OptState,
+    optim: optax.GradientTransformationExtraArgs,
+    ctx: IntegrationSettings,
+    simulation_fn: ProtoSimulationFn,
+    grad_fn: ProtoGradLossFn = proto_grad_loss,
+) -> tuple[jax.Array, T, optax.OptState, jax.Array, jax.Array]:
+    """Same as :func:`proto_make_step`, additionally returning ``grads.pars``.
+
+    Used internally by :func:`train_protocol` when a
+    :class:`GradParsHistory` is passed; see
+    :func:`_make_step_with_grad_pars` for why this is a separate function
+    rather than an always-present return value on :func:`proto_make_step`.
+    """
+    loss, grads = grad_fn(
+        model,  # needs to be by pos, is differentiated
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        y_mean=y_mean,
+        y_scale=y_scale,
+        ctx=ctx,
+        simulation_fn=simulation_fn,
+    )
+    grads = jax.tree.map(lambda g: jnp.where(jnp.isfinite(g), g, 0.0), grads)
+    grad_norm = optax.global_norm(grads)
+    clip_value = 1.0
+    scale = jnp.minimum(1.0, clip_value / (grad_norm + 1e-6))
+    grads = jax.tree_util.tree_map(lambda g: g * scale, grads)
+    updates, opt_state = optim.update(
+        grads,
+        opt_state,
+        eqx.filter(model, eqx.is_array),
+    )
+    return loss, eqx.apply_updates(model, updates), opt_state, grad_norm, grads.pars
 
 
 @eqx.filter_jit
@@ -602,6 +757,7 @@ def train[Model: JaxModel](
     stop_exceptions: tuple[type[BaseException], ...] = (KeyboardInterrupt,),
     prior_losses: LossesPerLesson | None = None,
     prior_grad_norms: GradNormsPerLesson | None = None,
+    grad_pars_history: GradParsHistory | None = None,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -690,6 +846,14 @@ def train[Model: JaxModel](
         from lesson 0.
     prior_grad_norms : GradNormsPerLesson or None
         Grad-norm history to resume from; see ``prior_losses``.
+    grad_pars_history : GradParsHistory or None
+        If given, records the raw gradient of ``model.pars`` at every
+        successful step into it (requires ``model`` to have a flat
+        ``.pars`` array, as :class:`~mxlpy.jax.models.Ode`/
+        :class:`~mxlpy.jax.models.FluxOde` do); retrieve the recorded
+        history afterwards via its ``to_frames()``. Off by default (no
+        behaviour change, no extra cost) since not every model has a
+        flat ``.pars`` to track.
 
     Returns
     -------
@@ -746,22 +910,47 @@ def train[Model: JaxModel](
             grad_norms: dict[int, float] = {}
             losses_per_lesson.append(losses)
             grad_norms_per_lesson.append(grad_norms)
+            if grad_pars_history is not None:
+                grad_pars_history._start_lesson()  # noqa: SLF001
 
             with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
                 for step in pbar:
                     try:
-                        loss, model, opt_state, grad_norm = make_step(
-                            model=model,
-                            ts=_ts,
-                            ys=_ys,
-                            opt_state=opt_state,
-                            optim=optim,
-                            y_mean=y_mean,
-                            y_scale=y_scale,
-                            ctx=ctx,
-                            args=args,
-                            grad_fn=grad_fn,
-                        )
+                        # make_step's returned loss describes the model as
+                        # it was BEFORE this step's update (it's computed,
+                        # then the update is applied) -- so pre_step_model
+                        # (not the post-update model make_step returns) is
+                        # what pairs with it for best-model tracking below.
+                        pre_step_model = model
+                        if grad_pars_history is None:
+                            loss, model, opt_state, grad_norm = make_step(
+                                model=model,
+                                ts=_ts,
+                                ys=_ys,
+                                opt_state=opt_state,
+                                optim=optim,
+                                y_mean=y_mean,
+                                y_scale=y_scale,
+                                ctx=ctx,
+                                args=args,
+                                grad_fn=grad_fn,
+                            )
+                        else:
+                            loss, model, opt_state, grad_norm, grad_pars = (
+                                _make_step_with_grad_pars(
+                                    model=model,
+                                    ts=_ts,
+                                    ys=_ys,
+                                    opt_state=opt_state,
+                                    optim=optim,
+                                    y_mean=y_mean,
+                                    y_scale=y_scale,
+                                    ctx=ctx,
+                                    args=args,
+                                    grad_fn=grad_fn,
+                                )
+                            )
+                            grad_pars_history._record(step, grad_pars)  # noqa: SLF001
                     except eqx.EquinoxRuntimeError as e:
                         consecutive_solver_errors += 1
                         if consecutive_solver_errors > max_consecutive_solver_errors:
@@ -790,7 +979,7 @@ def train[Model: JaxModel](
                     acc_count += 1
 
                     if loss < best_training_loss:
-                        best_model = model
+                        best_model = pre_step_model
                         best_training_loss = loss
 
                     if i == len(training_steps) and loss < target_loss:
@@ -961,6 +1150,10 @@ def train_only_nde[T: Ude](
 
             with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
                 for step in pbar:
+                    # make_step_split's returned loss describes trainable as
+                    # it was BEFORE this step's update; see train()'s
+                    # equivalent comment.
+                    pre_step_trainable = trainable
                     try:
                         loss, trainable, opt_state, grad_norm = make_step_split(
                             trainable=trainable,
@@ -1005,7 +1198,7 @@ def train_only_nde[T: Ude](
                     acc_count += 1
 
                     if loss < best_training_loss:
-                        best_model = eqx.combine(trainable, frozen)
+                        best_model = eqx.combine(pre_step_trainable, frozen)
                         best_training_loss = loss
 
                     if i == len(training_steps) and loss < target_loss:
@@ -1045,6 +1238,7 @@ def train_protocol[Model: JaxModel](
     stop_exceptions: tuple[type[BaseException], ...] = (KeyboardInterrupt,),
     prior_losses: LossesPerLesson | None = None,
     prior_grad_norms: GradNormsPerLesson | None = None,
+    grad_pars_history: GradParsHistory | None = None,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -1122,6 +1316,9 @@ def train_protocol[Model: JaxModel](
         Loss history to resume from; see :func:`train`.
     prior_grad_norms : GradNormsPerLesson or None
         Grad-norm history to resume from; see :func:`train`.
+    grad_pars_history : GradParsHistory or None
+        If given, records the raw gradient of ``model.pars`` at every
+        successful step into it; see :func:`train`.
 
     Returns
     -------
@@ -1174,24 +1371,49 @@ def train_protocol[Model: JaxModel](
             grad_norms: dict[int, float] = {}
             losses_per_lesson.append(losses)
             grad_norms_per_lesson.append(grad_norms)
+            if grad_pars_history is not None:
+                grad_pars_history._start_lesson()  # noqa: SLF001
 
             with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
                 for step in pbar:
+                    # proto_make_step's returned loss describes the model
+                    # as it was BEFORE this step's update; see train()'s
+                    # equivalent comment.
+                    pre_step_model = model
                     try:
-                        loss, model, opt_state, grad_norm = proto_make_step(
-                            model=model,
-                            y0=y0,
-                            ts=_ts,
-                            ys=_ys,
-                            protocol=_protocol,
-                            opt_state=opt_state,
-                            optim=optim,
-                            y_mean=y_mean,
-                            y_scale=y_scale,
-                            ctx=ctx,
-                            simulation_fn=simulation_fn,
-                            grad_fn=grad_fn,
-                        )
+                        if grad_pars_history is None:
+                            loss, model, opt_state, grad_norm = proto_make_step(
+                                model=model,
+                                y0=y0,
+                                ts=_ts,
+                                ys=_ys,
+                                protocol=_protocol,
+                                opt_state=opt_state,
+                                optim=optim,
+                                y_mean=y_mean,
+                                y_scale=y_scale,
+                                ctx=ctx,
+                                simulation_fn=simulation_fn,
+                                grad_fn=grad_fn,
+                            )
+                        else:
+                            loss, model, opt_state, grad_norm, grad_pars = (
+                                _proto_make_step_with_grad_pars(
+                                    model=model,
+                                    y0=y0,
+                                    ts=_ts,
+                                    ys=_ys,
+                                    protocol=_protocol,
+                                    opt_state=opt_state,
+                                    optim=optim,
+                                    y_mean=y_mean,
+                                    y_scale=y_scale,
+                                    ctx=ctx,
+                                    simulation_fn=simulation_fn,
+                                    grad_fn=grad_fn,
+                                )
+                            )
+                            grad_pars_history._record(step, grad_pars)  # noqa: SLF001
                     except eqx.EquinoxRuntimeError as e:
                         consecutive_solver_errors += 1
                         if consecutive_solver_errors > max_consecutive_solver_errors:
@@ -1220,7 +1442,7 @@ def train_protocol[Model: JaxModel](
                     acc_count += 1
 
                     if loss < best_training_loss:
-                        best_model = model
+                        best_model = pre_step_model
                         best_training_loss = loss
 
                     if i == len(training_steps) and loss < target_loss:
