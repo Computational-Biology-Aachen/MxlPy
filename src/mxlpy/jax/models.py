@@ -37,6 +37,7 @@ __all__ = [
     "Rhs",
     "SoftLatentMapper",
     "Ude",
+    "boundaries_to_ts",
 ]
 
 ###############################################################################
@@ -104,6 +105,38 @@ def _default_derived(
     args: PyTree,  # noqa: ARG001
 ) -> jax.Array:
     return jnp.array([])
+
+
+def boundaries_to_ts(boundaries: jax.Array) -> list[jax.Array]:
+    """Convert a flat per-step boundary-time array to ``integrate_protocol``'s ``ts`` format.
+
+    ``integrate_protocol``/``integrate_protocol_from_steady_state`` take
+    ``ts`` as one array of save points per protocol step; the common case
+    used throughout this module (and by every existing caller) is a single
+    save point per step -- that step's own transition time, with nothing
+    saved in between. Hand-writing that as
+    ``[boundaries[i : i + 1] for i in range(len(boundaries))]`` at every
+    call site is easy to get subtly wrong (e.g. ``boundaries[i]`` instead
+    of the required ``boundaries[i : i + 1]`` -- ``integrate_protocol``
+    needs one-dimensional per-step arrays, not scalars), so this is the
+    convenience constructor for it.
+
+    Parameters
+    ----------
+    boundaries : jax.Array
+        Ascending, one-dimensional array of per-step transition times,
+        shape ``(n_steps,)``. Does **not** include ``t=0`` -- the first
+        step is always integrated from ``t=0`` to ``boundaries[0]``; see
+        ``integrate_protocol``.
+
+    Returns
+    -------
+    list[jax.Array]
+        One length-1 array per step, each holding that step's own
+        transition time -- directly usable as ``integrate_protocol``'s
+        ``ts``.
+    """
+    return [boundaries[i : i + 1] for i in range(boundaries.shape[0])]
 
 
 ###############################################################################
@@ -327,7 +360,10 @@ class Base(eqx.Module, ABC):
             each array must be that step's transition time (the point at
             which ``protocol`` switches to its next row), since that value
             both bounds the integration and seeds the next step's initial
-            condition. The first step is integrated from ``t=0``.
+            condition. The first step is integrated from ``t=0``. For the
+            common case of one save point per step (that step's own
+            transition time), build this from a flat boundary-time array
+            via :func:`boundaries_to_ts`.
         y0 : jax.Array
             Initial condition at ``t=0``.
         protocol : jax.Array
