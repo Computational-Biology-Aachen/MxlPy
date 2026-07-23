@@ -600,6 +600,8 @@ def train[Model: JaxModel](
     args: jax.Array | None = None,
     grad_fn: GradLossFn = grad_loss,
     stop_exceptions: tuple[type[BaseException], ...] = (KeyboardInterrupt,),
+    prior_losses: LossesPerLesson | None = None,
+    prior_grad_norms: GradNormsPerLesson | None = None,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -679,12 +681,22 @@ def train[Model: JaxModel](
         caller-defined exception (e.g. one raised from a SIGTERM handler)
         to also wind down gracefully from a scheduler-issued shutdown
         signal.
+    prior_losses : LossesPerLesson or None
+        Loss history from an earlier call to resume from (e.g. after
+        checkpointing ``model``/losses/grad-norms to disk and reloading in
+        a later process) -- prepended to this call's own per-lesson
+        history in the returned value, so the result reads as one
+        continuous record across the resume boundary instead of restarting
+        from lesson 0.
+    prior_grad_norms : GradNormsPerLesson or None
+        Grad-norm history to resume from; see ``prior_losses``.
 
     Returns
     -------
     tuple[Model, LossesPerLesson, GradNormsPerLesson]
         Best model encountered during training, losses per curriculum
-        lesson, and per-step gradient norms per curriculum lesson.
+        lesson, and per-step gradient norms per curriculum lesson --
+        including any ``prior_losses``/``prior_grad_norms`` prepended.
     """
     loss = 0
     acc_loss = 0
@@ -706,8 +718,12 @@ def train[Model: JaxModel](
 
     y_mean = jnp.mean(ys)
     y_scale = jnp.std(ys)
-    losses_per_lesson: LossesPerLesson = []
-    grad_norms_per_lesson: GradNormsPerLesson = []
+    losses_per_lesson: LossesPerLesson = (
+        [] if prior_losses is None else list(prior_losses)
+    )
+    grad_norms_per_lesson: GradNormsPerLesson = (
+        [] if prior_grad_norms is None else list(prior_grad_norms)
+    )
 
     def _finish() -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
         return (
@@ -812,6 +828,8 @@ def train_only_nde[T: Ude](
     args: jax.Array | None = None,
     grad_fn: GradLossSplitFn = grad_loss_split,
     stop_exceptions: tuple[type[BaseException], ...] = (KeyboardInterrupt,),
+    prior_losses: LossesPerLesson | None = None,
+    prior_grad_norms: GradNormsPerLesson | None = None,
 ) -> tuple[T, LossesPerLesson, GradNormsPerLesson]:
     """Train only the neural-network part of a UDE, keeping the ODE frozen.
 
@@ -872,12 +890,17 @@ def train_only_nde[T: Ude](
         Exception types that trigger a graceful stop (return the best
         model and history accumulated so far) instead of propagating;
         defaults to just ``KeyboardInterrupt``. See :func:`train`.
+    prior_losses : LossesPerLesson or None
+        Loss history to resume from; see :func:`train`.
+    prior_grad_norms : GradNormsPerLesson or None
+        Grad-norm history to resume from; see :func:`train`.
 
     Returns
     -------
     tuple[T, LossesPerLesson, GradNormsPerLesson]
         Best model encountered during training, losses per curriculum
-        lesson, and per-step gradient norms per curriculum lesson.
+        lesson, and per-step gradient norms per curriculum lesson --
+        including any ``prior_losses``/``prior_grad_norms`` prepended.
     """
     loss = 0
     acc_loss = 0
@@ -907,8 +930,12 @@ def train_only_nde[T: Ude](
 
     y_mean = jnp.mean(ys)
     y_scale = jnp.std(ys)
-    losses_per_lesson: LossesPerLesson = []
-    grad_norms_per_lesson: GradNormsPerLesson = []
+    losses_per_lesson: LossesPerLesson = (
+        [] if prior_losses is None else list(prior_losses)
+    )
+    grad_norms_per_lesson: GradNormsPerLesson = (
+        [] if prior_grad_norms is None else list(prior_grad_norms)
+    )
 
     def _finish() -> tuple[T, LossesPerLesson, GradNormsPerLesson]:
         return (
@@ -1016,6 +1043,8 @@ def train_protocol[Model: JaxModel](
     key: jax.Array | None = None,
     grad_fn: ProtoGradLossFn = proto_grad_loss,
     stop_exceptions: tuple[type[BaseException], ...] = (KeyboardInterrupt,),
+    prior_losses: LossesPerLesson | None = None,
+    prior_grad_norms: GradNormsPerLesson | None = None,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -1089,12 +1118,17 @@ def train_protocol[Model: JaxModel](
         Exception types that trigger a graceful stop (return the best
         model and history accumulated so far) instead of propagating;
         defaults to just ``KeyboardInterrupt``. See :func:`train`.
+    prior_losses : LossesPerLesson or None
+        Loss history to resume from; see :func:`train`.
+    prior_grad_norms : GradNormsPerLesson or None
+        Grad-norm history to resume from; see :func:`train`.
 
     Returns
     -------
     tuple[T, LossesPerLesson, GradNormsPerLesson]
         Best model encountered during training, losses per curriculum
-        lesson, and per-step gradient norms per curriculum lesson.
+        lesson, and per-step gradient norms per curriculum lesson --
+        including any ``prior_losses``/``prior_grad_norms`` prepended.
     """
     loss = 0
     acc_loss = 0
@@ -1110,8 +1144,12 @@ def train_protocol[Model: JaxModel](
 
     y_mean = jnp.mean(ys)
     y_scale = jnp.std(ys)
-    losses_per_lesson: LossesPerLesson = []
-    grad_norms_per_lesson: GradNormsPerLesson = []
+    losses_per_lesson: LossesPerLesson = (
+        [] if prior_losses is None else list(prior_losses)
+    )
+    grad_norms_per_lesson: GradNormsPerLesson = (
+        [] if prior_grad_norms is None else list(prior_grad_norms)
+    )
 
     def _finish() -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
         return (
