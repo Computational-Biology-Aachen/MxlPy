@@ -25,6 +25,7 @@ __all__ = [
     "integrate_protocol_states",
     "make_step",
     "make_step_split",
+    "perturb_model",
     "proto_grad_loss",
     "proto_make_step",
     "squeeze_derived",
@@ -54,14 +55,33 @@ def squeeze_derived(derived: jax.Array) -> jax.Array:
     return derived
 
 
-def _perturb_model[T: JaxModel](model: T, key: jax.Array, scale: float) -> T:
+def perturb_model[T: JaxModel](model: T, key: jax.Array, scale: float) -> T:
     """Nudge a model's trainable weights with small multiplicative noise.
 
-    Used to recover from a solver failure (e.g. the model has drifted into
-    a stiff numerical domain): perturbing the weights before moving on to
-    the next training step gives the model a chance to land somewhere the
-    solver can handle, instead of failing identically on every subsequent
-    step too.
+    Used by :func:`train`/:func:`train_protocol`/:func:`train_only_nde` to
+    recover from a solver failure (e.g. the model has drifted into a stiff
+    numerical domain): perturbing the weights before moving on to the next
+    training step gives the model a chance to land somewhere the solver can
+    handle, instead of failing identically on every subsequent step too.
+    Exported so custom training loops can reuse this recovery primitive
+    without reimplementing it.
+
+    Parameters
+    ----------
+    model : T
+        Model (or a partitioned subset of one, e.g. the trainable half of
+        an :func:`eqx.partition`) to perturb.
+    key : jax.Array
+        PRNG key for the per-leaf noise.
+    scale : float
+        Relative magnitude of the perturbation: each inexact-array leaf is
+        nudged by ``scale * N(0, 1) * (abs(leaf) + 1e-12)``, elementwise.
+
+    Returns
+    -------
+    T
+        A new model with the same non-array/static structure as ``model``
+        and every inexact-array leaf perturbed.
     """
     params, static = eqx.partition(model, eqx.is_inexact_array)
     leaves, treedef = jax.tree.flatten(params)
@@ -575,7 +595,7 @@ def train[Model: JaxModel](
         curriculum stage.
     perturbation_scale : float
         Relative magnitude of the weight perturbation applied after a
-        solver failure; see :func:`_perturb_model`.
+        solver failure; see :func:`perturb_model`.
     key : jax.Array or None
         PRNG key seeding the weight perturbations; defaults to
         ``jax.random.PRNGKey(0)``.
@@ -661,7 +681,7 @@ def train[Model: JaxModel](
                             )
                             break
                         perturb_key, subkey = jax.random.split(perturb_key)
-                        model = _perturb_model(model, subkey, perturbation_scale)
+                        model = perturb_model(model, subkey, perturbation_scale)
                         logger.warning(
                             "Lesson %d, step %d: solver hit a stiff domain (%s); "
                             "nudging model parameters and retrying.",
@@ -754,7 +774,7 @@ def train_only_nde[T: Ude](
         curriculum stage.
     perturbation_scale : float
         Relative magnitude of the weight perturbation applied after a
-        solver failure; see :func:`_perturb_model`.
+        solver failure; see :func:`perturb_model`.
     key : jax.Array or None
         PRNG key seeding the weight perturbations; defaults to
         ``jax.random.PRNGKey(0)``.
@@ -849,7 +869,7 @@ def train_only_nde[T: Ude](
                             )
                             break
                         perturb_key, subkey = jax.random.split(perturb_key)
-                        trainable = _perturb_model(
+                        trainable = perturb_model(
                             trainable, subkey, perturbation_scale
                         )
                         logger.warning(
@@ -959,7 +979,7 @@ def train_protocol[Model: JaxModel](
         curriculum stage.
     perturbation_scale : float
         Relative magnitude of the weight perturbation applied after a
-        solver failure; see :func:`_perturb_model`.
+        solver failure; see :func:`perturb_model`.
     key : jax.Array or None
         PRNG key seeding the weight perturbations; defaults to
         ``jax.random.PRNGKey(0)``.
@@ -1031,7 +1051,7 @@ def train_protocol[Model: JaxModel](
                         )
                         break
                     perturb_key, subkey = jax.random.split(perturb_key)
-                    model = _perturb_model(model, subkey, perturbation_scale)
+                    model = perturb_model(model, subkey, perturbation_scale)
                     logger.warning(
                         "Lesson %d, step %d: solver hit a stiff domain (%s); "
                         "nudging model parameters and retrying.",
