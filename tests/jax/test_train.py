@@ -474,7 +474,9 @@ def test_train_protocol_early_stop_returns_best_model_not_current_model(
     sequence = [(0.02, stage1_new_model), (0.5, stage2_new_model)]
     calls = {"n": 0}
 
-    def _fake_proto_make_step(**kwargs: object) -> tuple[jnp.ndarray, Ode, object, jnp.ndarray]:
+    def _fake_proto_make_step(
+        **kwargs: object,
+    ) -> tuple[jnp.ndarray, Ode, object, jnp.ndarray]:
         loss, new_model = sequence[calls["n"]]
         calls["n"] += 1
         return jnp.array(loss), new_model, kwargs["opt_state"], jnp.array(0.1)
@@ -640,9 +642,16 @@ def test_train_only_nde_triggers_early_stopping_on_last_stage(
     ts, ys = _tiny_training_data()
     calls = {"n": 0}
 
-    def _fake_make_step_split(**kwargs: object) -> tuple[jnp.ndarray, object, object, jnp.ndarray]:
+    def _fake_make_step_split(
+        **kwargs: object,
+    ) -> tuple[jnp.ndarray, object, object, jnp.ndarray]:
         calls["n"] += 1
-        return jnp.array(0.001), kwargs["trainable"], kwargs["opt_state"], jnp.array(0.1)
+        return (
+            jnp.array(0.001),
+            kwargs["trainable"],
+            kwargs["opt_state"],
+            jnp.array(0.1),
+        )
 
     monkeypatch.setattr(jax_train, "make_step_split", _fake_make_step_split)
 
@@ -691,7 +700,9 @@ def test_train_only_nde_returns_best_model_not_last_model(
     ]
     calls = {"n": 0}
 
-    def _fake_make_step_split(**kwargs: object) -> tuple[jnp.ndarray, object, object, jnp.ndarray]:
+    def _fake_make_step_split(
+        **kwargs: object,
+    ) -> tuple[jnp.ndarray, object, object, jnp.ndarray]:
         loss, new_trainable = sequence[calls["n"]]
         calls["n"] += 1
         return jnp.array(loss), new_trainable, kwargs["opt_state"], jnp.array(0.1)
@@ -1144,3 +1155,104 @@ def test_grad_pars_history_multiple_lessons_kept_separate() -> None:
     assert len(frames) == 2
     assert len(frames[0]) == 2
     assert len(frames[1]) == 3
+
+
+# ---------------------------------------------------------------------------
+# training_steps cutoffs: float fraction-of-data vs. explicit int count
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("total", "cutoff", "expected"),
+    [
+        (5, 1.0, 5),  # float: fraction of the full length
+        (5, 0.5, 3),  # float: rounded up (ceil(2.5) == 3)
+        (5, 3, 3),  # int: explicit count, within range
+        (5, 10, 5),  # int: explicit count, clipped to total
+    ],
+)
+def test_curriculum_length(total: int, cutoff: float, expected: int) -> None:
+    assert jax_train._curriculum_length(total, cutoff) == expected
+
+
+def test_train_explicit_int_cutoff_slices_exact_point_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _decay_model()
+    ts, ys = _tiny_training_data()  # 5 points
+    real_make_step = jax_train.make_step
+    seen_lengths = []
+
+    def _capturing_make_step(**kwargs: object) -> object:
+        seen_lengths.append(kwargs["ts"].shape[0])  # type: ignore[union-attr]
+        return real_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "make_step", _capturing_make_step)
+
+    jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(1, 3)],  # explicit cutoff: first 3 points, not 3/5
+        avg_every=1,
+        target_loss=-1.0,
+    )
+
+    assert seen_lengths == [3]
+
+
+def test_train_protocol_explicit_int_cutoff_slices_exact_window_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _decay_model()
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0]), jnp.array([1.5])]
+    protocol = jnp.zeros((3, 0))
+    ys = jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0, 1.5]))[:, None]
+    real_proto_make_step = jax_train.proto_make_step
+    seen_lengths = []
+
+    def _capturing_proto_make_step(**kwargs: object) -> object:
+        seen_lengths.append(len(kwargs["ts"]))  # type: ignore[arg-type]
+        return real_proto_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "proto_make_step", _capturing_proto_make_step)
+
+    jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(1, 2)],  # explicit cutoff: first 2 windows, not 2/3
+        avg_every=1,
+        target_loss=-1.0,
+    )
+
+    assert seen_lengths == [2]
+
+
+def test_train_only_nde_explicit_int_cutoff_slices_exact_point_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _ude_model()
+    ts, ys = _tiny_training_data()  # 5 points
+    real_make_step_split = jax_train.make_step_split
+    seen_lengths = []
+
+    def _capturing_make_step_split(**kwargs: object) -> object:
+        seen_lengths.append(kwargs["ts"].shape[0])  # type: ignore[union-attr]
+        return real_make_step_split(**kwargs)
+
+    monkeypatch.setattr(jax_train, "make_step_split", _capturing_make_step_split)
+
+    jax_train.train_only_nde(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(1, 3)],  # explicit cutoff: first 3 points, not 3/5
+        avg_every=1,
+        target_loss=-1.0,
+    )
+
+    assert seen_lengths == [3]
