@@ -1,4 +1,4 @@
-"""Tests for mxlpy.jax.train: squeeze_derived, _perturb_model, and train()'s
+"""Tests for mxlpy.jax.train: squeeze_derived, perturb_model, and train()'s
 solver-retry / KeyboardInterrupt / grad-norm-history behaviour.
 
 Also covers regressions for four bugs found in a review of this module:
@@ -75,19 +75,19 @@ def test_squeeze_derived_leaves_multi_quantity_unchanged() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _perturb_model
+# perturb_model
 # ---------------------------------------------------------------------------
 
 
 def test_perturb_model_changes_trainable_leaves() -> None:
     model = _decay_model()
-    perturbed = jax_train._perturb_model(model, _KEY, scale=0.1)
+    perturbed = jax_train.perturb_model(model, _KEY, scale=0.1)
     assert not jnp.allclose(model.pars, perturbed.pars)
 
 
 def test_perturb_model_leaves_zero_scale_unchanged() -> None:
     model = _decay_model()
-    perturbed = jax_train._perturb_model(model, _KEY, scale=0.0)
+    perturbed = jax_train.perturb_model(model, _KEY, scale=0.0)
     assert jnp.allclose(model.pars, perturbed.pars)
 
 
@@ -520,8 +520,8 @@ def test_train_only_nde_returns_best_model_not_last_model(
     filter_spec = jax.tree.map(eqx.is_inexact_array, model)
     filter_spec = eqx.tree_at(lambda m: m.ode, filter_spec, replace_fn=lambda _: False)
     trainable0, frozen = eqx.partition(model, filter_spec)
-    trainable_mid = jax_train._perturb_model(trainable0, jax.random.PRNGKey(1), 1.0)
-    trainable_last = jax_train._perturb_model(trainable0, jax.random.PRNGKey(2), 1.0)
+    trainable_mid = jax_train.perturb_model(trainable0, jax.random.PRNGKey(1), 1.0)
+    trainable_last = jax_train.perturb_model(trainable0, jax.random.PRNGKey(2), 1.0)
 
     losses = [0.5, 0.01, 0.9]  # best is the middle step
     trainables = [trainable0, trainable_mid, trainable_last]
