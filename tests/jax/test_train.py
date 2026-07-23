@@ -861,3 +861,111 @@ def test_train_only_nde_uses_custom_grad_fn() -> None:
     )
 
     assert all(v == pytest.approx(42.0) for v in losses[0].to_numpy())
+
+
+# ---------------------------------------------------------------------------
+# prior_losses/prior_grad_norms: resume training across a checkpoint boundary
+# ---------------------------------------------------------------------------
+
+
+def test_train_resume_prepends_prior_history() -> None:
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+
+    trained1, losses1, grad_norms1 = jax_train.train(
+        model, ts=ts, ys=ys, training_steps=[(3, 1.0)], avg_every=1, target_loss=-1.0
+    )
+    assert len(losses1) == 1
+
+    # Simulate resuming in a fresh process from a checkpointed
+    # (model, losses, grad_norms) tuple.
+    trained2, losses2, grad_norms2 = jax_train.train(
+        trained1,
+        ts=ts,
+        ys=ys,
+        training_steps=[(3, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        prior_losses=losses1,
+        prior_grad_norms=grad_norms1,
+    )
+
+    assert len(losses2) == 2
+    assert len(grad_norms2) == 2
+    assert losses2[0].equals(losses1[0])  # prior lesson preserved verbatim
+    assert grad_norms2[0].equals(grad_norms1[0])
+    assert isinstance(trained2, Ode)
+
+
+def test_train_without_prior_history_starts_fresh() -> None:
+    """Omitting prior_losses/prior_grad_norms (the default) must not change
+    existing behaviour -- a single fresh lesson list, as before.
+    """
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+
+    _, losses, grad_norms = jax_train.train(
+        model, ts=ts, ys=ys, training_steps=[(3, 1.0)], avg_every=1, target_loss=-1.0
+    )
+    assert len(losses) == 1
+    assert len(grad_norms) == 1
+
+
+def test_train_protocol_resume_prepends_prior_history() -> None:
+    model = _decay_model()
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([1.0])]
+    ys = jnp.array([[1.0], [0.5]])
+    protocol = jnp.zeros((1, 0))
+
+    trained1, losses1, grad_norms1 = jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+    )
+    trained2, losses2, grad_norms2 = jax_train.train_protocol(
+        trained1,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        prior_losses=losses1,
+        prior_grad_norms=grad_norms1,
+    )
+
+    assert len(losses2) == 2
+    assert len(grad_norms2) == 2
+    assert losses2[0].equals(losses1[0])
+    assert isinstance(trained2, Ode)
+
+
+def test_train_only_nde_resume_prepends_prior_history() -> None:
+    model = _ude_model()
+    ts, ys = _tiny_training_data()
+
+    trained1, losses1, grad_norms1 = jax_train.train_only_nde(
+        model, ts=ts, ys=ys, training_steps=[(2, 1.0)], avg_every=1, target_loss=-1.0
+    )
+    trained2, losses2, grad_norms2 = jax_train.train_only_nde(
+        trained1,
+        ts=ts,
+        ys=ys,
+        training_steps=[(2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        prior_losses=losses1,
+        prior_grad_norms=grad_norms1,
+    )
+
+    assert len(losses2) == 2
+    assert len(grad_norms2) == 2
+    assert losses2[0].equals(losses1[0])
+    assert isinstance(trained2, Ude)
