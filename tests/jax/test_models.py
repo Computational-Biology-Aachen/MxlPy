@@ -481,6 +481,37 @@ def test_single_variable_model_integrates_with_correct_shape() -> None:
 
 
 # ---------------------------------------------------------------------------
+# args=None (the documented default on integrate/integrate_to_steady_state)
+# must not crash: every JaxModel.__call__ unconditionally concatenates args
+# with its own state, so a bare ``None`` used to blow up as soon as it
+# reached diffrax's vector-field call.
+# ---------------------------------------------------------------------------
+
+
+def test_ode_integrate_defaults_args_to_empty_array() -> None:
+    ode = Ode.from_mxlpy(_single_variable_model())
+    ts = jnp.array([0.0, 1.0])
+    ys = ode.integrate(ts, jnp.array([1.0]), 8192)  # no args= at all
+    assert ys.shape == (2, 1)
+    assert bool(jnp.all(jnp.isfinite(ys)))
+    assert float(ys[-1, 0]) == pytest.approx(float(np.exp(-1.0)), rel=1e-3)
+
+
+def test_ode_integrate_to_steady_state_defaults_args_to_empty_array() -> None:
+    ode = Ode.from_mxlpy(_single_variable_model())
+    t, y = ode.integrate_to_steady_state(jnp.array([1.0]), 8192)  # no args= at all
+    assert t.shape == ()
+    assert y.shape == (1,)
+    assert float(y[0]) == pytest.approx(0.0, abs=1e-4)
+
+
+def test_fluxode_simulate_time_course_defaults_args_to_empty_array() -> None:
+    fode = FluxOde.from_mxlpy(_single_variable_model())
+    sim = fode.simulate_time_course(jnp.array([0.0, 1.0]), jnp.array([1.0]), 8192)
+    assert sim.variables.shape == (2, 1)
+
+
+# ---------------------------------------------------------------------------
 # FluxOde.simulate_* / FluxOdeSimulation
 # ---------------------------------------------------------------------------
 
