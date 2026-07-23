@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, partial
 from typing import TYPE_CHECKING
 
 import jax
@@ -17,6 +17,11 @@ if TYPE_CHECKING:
 __all__ = ["FluxOdeSimulation"]
 
 
+@partial(
+    jax.tree_util.register_dataclass,
+    data_fields=["model", "ts", "ys", "args"],
+    meta_fields=["variable_names", "flux_names"],
+)
 @dataclass(slots=False)  # cached_property needs an instance __dict__
 class FluxOdeSimulation:
     """Named simulation result for a :class:`~mxlpy.jax.models.FluxOde`.
@@ -24,6 +29,13 @@ class FluxOdeSimulation:
     Bridges the raw ``jax.Array`` output of ``FluxOde.integrate*`` back to
     named, pandas-based results, mirroring :class:`mxlpy.simulation.Simulation`
     for the (much narrower) set of things a frozen JAX model can report.
+
+    Registered as a JAX pytree (``model``/``ts``/``ys``/``args`` as dynamic
+    data, ``variable_names``/``flux_names`` as static metadata) so it
+    composes with JAX transformations -- in particular
+    :func:`~mxlpy.jax.ensemble.batch_simulate`, which would otherwise treat
+    an unregistered dataclass as a single opaque leaf and silently return
+    leaked tracers instead of a properly batched result.
 
     Parameters
     ----------
