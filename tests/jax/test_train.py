@@ -456,22 +456,28 @@ def test_train_protocol_early_stop_returns_best_model_not_current_model(
 ) -> None:
     """Regression: the early-stopping return path used to return ``model``
     (the just-computed model for the triggering step) instead of
-    ``best_model``. Here stage 1 reaches a lower loss than stage 2, but
-    stage 2's (worse) loss is still below target_loss and is the first to
-    trigger the check (stage 1 isn't the last curriculum stage, so its own
-    below-target loss doesn't trigger early stopping) -- so the two paths
-    disagree on which model to return.
+    ``best_model``. Here stage 1's step reports a good loss for
+    ``initial_model`` (the model it was actually called with), then stage
+    2's step reports a worse (but still below target_loss) loss for
+    whatever stage 1 produced -- proto_make_step's real contract is that
+    the returned loss describes the model it was CALLED with (computed
+    before that step's update is applied), so the tracked best is
+    ``initial_model``, not either of the two models proto_make_step
+    returns as its "new" model.
     """
-    initial_model = Ode(rhs=_decay_rhs, pars=jnp.array([0.1]))
-    stage1_model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))  # the true best
-    stage2_model = Ode(rhs=_decay_rhs, pars=jnp.array([0.9]))  # current, but worse
-    sequence = [(0.02, stage1_model), (0.5, stage2_model)]
+    initial_model = Ode(rhs=_decay_rhs, pars=jnp.array([0.1]))  # the true best
+    stage1_new_model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))  # stage 1's update
+    stage2_new_model = Ode(rhs=_decay_rhs, pars=jnp.array([0.9]))  # stage 2's update
+    # Each entry's loss describes kwargs["model"] as passed into that call
+    # (0.02 for initial_model, 0.5 for stage1_new_model) -- matching
+    # proto_make_step's real pre-update-loss/post-update-model contract.
+    sequence = [(0.02, stage1_new_model), (0.5, stage2_new_model)]
     calls = {"n": 0}
 
     def _fake_proto_make_step(**kwargs: object) -> tuple[jnp.ndarray, Ode, object, jnp.ndarray]:
-        loss, m = sequence[calls["n"]]
+        loss, new_model = sequence[calls["n"]]
         calls["n"] += 1
-        return jnp.array(loss), m, kwargs["opt_state"], jnp.array(0.1)
+        return jnp.array(loss), new_model, kwargs["opt_state"], jnp.array(0.1)
 
     monkeypatch.setattr(jax_train, "proto_make_step", _fake_proto_make_step)
 
@@ -487,9 +493,9 @@ def test_train_protocol_early_stop_returns_best_model_not_current_model(
     )
 
     assert calls["n"] == 2
-    assert _allclose_models(trained, stage1_model)
-    assert not _allclose_models(trained, stage2_model)
-    assert not _allclose_models(trained, initial_model)
+    assert _allclose_models(trained, initial_model)
+    assert not _allclose_models(trained, stage1_new_model)
+    assert not _allclose_models(trained, stage2_new_model)
 
 
 # ---------------------------------------------------------------------------
@@ -658,7 +664,14 @@ def test_train_only_nde_returns_best_model_not_last_model(
     """Regression: with the dead best-model-tracking code, train_only_nde
     always returned the *last* step's model (or, prior to any step
     running, the untrained initial model) rather than the best one seen.
-    Here the middle of three steps has the lowest loss.
+
+    make_step_split's real contract is that the returned loss describes
+    ``trainable`` as it was CALLED with (computed before that step's
+    update is applied) -- so each fake call's loss below describes the
+    PREVIOUS call's returned trainable (trainable0 for call 0, trainable_a
+    for call 1, trainable_b for call 2), and the best (lowest, 0.01) is
+    reported for trainable_a -- the input to call 1, not either of the two
+    trainables make_step_split returns as "new" results.
     """
     model = _ude_model()
     ts, ys = _tiny_training_data()
@@ -666,17 +679,22 @@ def test_train_only_nde_returns_best_model_not_last_model(
     filter_spec = jax.tree.map(eqx.is_inexact_array, model)
     filter_spec = eqx.tree_at(lambda m: m.ode, filter_spec, replace_fn=lambda _: False)
     trainable0, frozen = eqx.partition(model, filter_spec)
-    trainable_mid = jax_train.perturb_model(trainable0, jax.random.PRNGKey(1), 1.0)
-    trainable_last = jax_train.perturb_model(trainable0, jax.random.PRNGKey(2), 1.0)
+    trainable_a = jax_train.perturb_model(trainable0, jax.random.PRNGKey(1), 1.0)
+    trainable_b = jax_train.perturb_model(trainable0, jax.random.PRNGKey(2), 1.0)
+    trainable_c = jax_train.perturb_model(trainable0, jax.random.PRNGKey(3), 1.0)
 
-    losses = [0.5, 0.01, 0.9]  # best is the middle step
-    trainables = [trainable0, trainable_mid, trainable_last]
+    # (loss describing the call's input, new trainable to return)
+    sequence = [
+        (0.5, trainable_a),  # loss describes trainable0 (call 0's input)
+        (0.01, trainable_b),  # loss describes trainable_a -- the true best
+        (0.9, trainable_c),  # loss describes trainable_b (call 2's input)
+    ]
     calls = {"n": 0}
 
     def _fake_make_step_split(**kwargs: object) -> tuple[jnp.ndarray, object, object, jnp.ndarray]:
-        i = calls["n"]
+        loss, new_trainable = sequence[calls["n"]]
         calls["n"] += 1
-        return jnp.array(losses[i]), trainables[i], kwargs["opt_state"], jnp.array(0.1)
+        return jnp.array(loss), new_trainable, kwargs["opt_state"], jnp.array(0.1)
 
     monkeypatch.setattr(jax_train, "make_step_split", _fake_make_step_split)
 
@@ -689,10 +707,11 @@ def test_train_only_nde_returns_best_model_not_last_model(
         target_loss=-1.0,  # never trip early stopping; exercise all 3 steps
     )
 
-    expected_best = eqx.combine(trainable_mid, frozen)
+    expected_best = eqx.combine(trainable_a, frozen)
     assert calls["n"] == 3
     assert _allclose_models(trained, expected_best)
-    assert not _allclose_models(trained, eqx.combine(trainable_last, frozen))
+    assert not _allclose_models(trained, eqx.combine(trainable_b, frozen))
+    assert not _allclose_models(trained, eqx.combine(trainable_c, frozen))
 
 
 # ---------------------------------------------------------------------------
@@ -897,6 +916,50 @@ def test_train_resume_prepends_prior_history() -> None:
     assert isinstance(trained2, Ode)
 
 
+def test_train_resume_never_regresses_below_the_starting_model() -> None:
+    """Regression: best_training_loss started at jnp.inf on every call, so
+    a resumed call whose optimiser (re-initialised for the new call)
+    immediately overshoots could return a best_model objectively WORSE
+    than the model resuming started from -- exactly the scenario a
+    checkpoint/resume feature exists to protect against. Root cause was a
+    separate, pre-existing off-by-one: make_step's returned loss describes
+    the model as it was BEFORE that step's update, but the loop paired it
+    with the (already updated) returned model instead of the pre-update
+    one.
+    """
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+
+    trained1, losses1, _ = jax_train.train(
+        model, ts=ts, ys=ys, training_steps=[(20, 1.0)], avg_every=100, target_loss=-1.0
+    )
+    ctx = jax_train.IntegrationSettings()
+    y_mean, y_scale = jnp.mean(ys), jnp.std(ys)
+    loss_before_resume, _ = jax_train.grad_loss(
+        trained1, ts=ts, ys=ys, y_mean=y_mean, y_scale=y_scale, ctx=ctx
+    )
+
+    # A deliberately huge learning rate simulates an optimiser overshoot
+    # right after resuming (e.g. AdaBelief's momentum/variance state reset
+    # to zero by a fresh optim.init(), same as this project's own
+    # optax.adabelief default would do on any resumed call).
+    trained2, _, _ = jax_train.train(
+        trained1,
+        ts=ts,
+        ys=ys,
+        training_steps=[(3, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        optim=optax.sgd(learning_rate=50.0),
+        prior_losses=losses1,
+    )
+    loss_after_resume, _ = jax_train.grad_loss(
+        trained2, ts=ts, ys=ys, y_mean=y_mean, y_scale=y_scale, ctx=ctx
+    )
+
+    assert float(loss_after_resume) <= float(loss_before_resume) + 1e-4
+
+
 def test_train_without_prior_history_starts_fresh() -> None:
     """Omitting prior_losses/prior_grad_norms (the default) must not change
     existing behaviour -- a single fresh lesson list, as before.
@@ -969,3 +1032,115 @@ def test_train_only_nde_resume_prepends_prior_history() -> None:
     assert len(grad_norms2) == 2
     assert losses2[0].equals(losses1[0])
     assert isinstance(trained2, Ude)
+
+
+# ---------------------------------------------------------------------------
+# GradParsHistory: optional per-parameter gradient tracking for train()/
+# train_protocol() (Ode/FluxOde's flat .pars vector specifically)
+# ---------------------------------------------------------------------------
+
+
+def test_train_grad_pars_history_records_per_parameter_gradients() -> None:
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5, 0.2]))
+    ts, ys = _tiny_training_data()
+    history = jax_train.GradParsHistory()
+
+    trained, _, _ = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(3, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_pars_history=history,
+    )
+
+    frames = history.to_frames(par_names=["k1", "k2"])
+    assert isinstance(trained, Ode)
+    assert len(frames) == 1
+    assert list(frames[0].columns) == ["k1", "k2"]
+    assert len(frames[0]) == 3
+    # _decay_rhs uses args[-1] (pars[-1] = k2) only, so k1's gradient is
+    # exactly zero throughout -- a real, checkable per-parameter signal,
+    # not just "some numbers came back".
+    assert (frames[0]["k1"] == 0.0).all()
+    assert not (frames[0]["k2"] == 0.0).any()
+
+
+def test_train_grad_pars_history_defaults_columns_to_positional_index() -> None:
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5, 0.2]))
+    ts, ys = _tiny_training_data()
+    history = jax_train.GradParsHistory()
+
+    jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_pars_history=history,
+    )
+
+    frames = history.to_frames()
+    assert list(frames[0].columns) == [0, 1]
+
+
+def test_train_without_grad_pars_history_is_unaffected() -> None:
+    """Omitting grad_pars_history (the default) must not change existing
+    behaviour or require the model to have a flat .pars at all.
+    """
+    model = _ude_model()  # no flat .pars -- would break if tracking were forced on
+    ts, ys = _tiny_training_data()
+
+    trained, losses, _ = jax_train.train_only_nde(
+        model, ts=ts, ys=ys, training_steps=[(2, 1.0)], avg_every=1, target_loss=-1.0
+    )
+    assert isinstance(trained, Ude)
+    assert len(losses) == 1
+
+
+def test_train_protocol_grad_pars_history_records_per_parameter_gradients() -> None:
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5, 0.2]))
+    history = jax_train.GradParsHistory()
+
+    trained, _, _ = jax_train.train_protocol(
+        model,
+        y0=jnp.array([1.0]),
+        ts=[jnp.array([1.0])],
+        ys=jnp.array([[1.0], [0.5]]),
+        protocol=jnp.zeros((1, 0)),
+        training_steps=[(2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_pars_history=history,
+    )
+
+    frames = history.to_frames(par_names=["k1", "k2"])
+    assert isinstance(trained, Ode)
+    assert len(frames) == 1
+    assert list(frames[0].columns) == ["k1", "k2"]
+    assert len(frames[0]) == 2
+    assert (frames[0]["k1"] == 0.0).all()
+    assert not (frames[0]["k2"] == 0.0).any()
+
+
+def test_grad_pars_history_multiple_lessons_kept_separate() -> None:
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))
+    ts, ys = _tiny_training_data()
+    history = jax_train.GradParsHistory()
+
+    jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(2, 1.0), (3, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_pars_history=history,
+    )
+
+    frames = history.to_frames()
+    assert len(frames) == 2
+    assert len(frames[0]) == 2
+    assert len(frames[1]) == 3
