@@ -14,6 +14,7 @@ Focus areas (all regressions that were previously broken):
 import math
 from collections.abc import Callable
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -176,6 +177,28 @@ def _single_variable_model() -> KineticModelBuilder:
         .add_variable("v", initial_value=1.0)
         .add_parameter("k", value=1.0)
         .add_reaction("r", fn=_decay, args=["v", "k"], stoichiometry={"v": -1.0})
+    )
+
+
+def _rate_source(a: float) -> float:
+    return a
+
+
+def _source_decay_model() -> KineticModelBuilder:
+    """``dv/dt = a - k*v``; nonzero steady state ``v_ss = a/k`` depends on ``k``.
+
+    Unlike :func:`_single_variable_model` (whose steady state is always 0,
+    regardless of ``k``), this model's steady state actually shifts with the
+    trainable parameter -- needed to distinguish "pre-equilibration
+    contributes gradient" from "pre-equilibration contributes none".
+    """
+    return (
+        KineticModelBuilder()
+        .add_variable("v", initial_value=0.0)
+        .add_parameter("a", value=6.0)
+        .add_parameter("k", value=2.0)
+        .add_reaction("source", fn=_rate_source, args=["a"], stoichiometry={"v": 1.0})
+        .add_reaction("decay", fn=_decay, args=["v", "k"], stoichiometry={"v": -1.0})
     )
 
 
@@ -665,3 +688,65 @@ def test_ode_integrate_protocol_from_steady_state_preequilibrates_first() -> Non
     # trajectory stays near zero throughout -- not decaying from y0=5 as it
     # would if the protocol ran directly from y0 without pre-equilibrating.
     assert np.allclose(np.asarray(ys[:, 0]), 0.0, atol=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# integrate_protocol_from_steady_state(freeze_preeq_gradient=True): the
+# pre-equilibration solve runs identically, but its sensitivity to the
+# model's trainable parameters is cut from the gradient
+# ---------------------------------------------------------------------------
+
+
+def test_freeze_preeq_gradient_does_not_change_forward_value() -> None:
+    ode = Ode.from_mxlpy(
+        _source_decay_model(), parameters_to_fit=["k"], free_parameters=["a"]
+    )
+    ts = [jnp.array([1.0]), jnp.array([2.0])]
+    protocol = jnp.array([[6.0], [6.0]])
+    y0 = jnp.array([0.0])
+
+    ys_normal = ode.integrate_protocol_from_steady_state(ts, y0, protocol, 8192)
+    ys_frozen = ode.integrate_protocol_from_steady_state(
+        ts, y0, protocol, 8192, freeze_preeq_gradient=True
+    )
+    # stop_gradient is the identity on forward values -- only backward
+    # sensitivity should differ, never the actual trajectory.
+    assert np.allclose(np.asarray(ys_normal), np.asarray(ys_frozen))
+
+
+def test_freeze_preeq_gradient_cuts_preeq_path_sensitivity() -> None:
+    ode = Ode.from_mxlpy(
+        _source_decay_model(), parameters_to_fit=["k"], free_parameters=["a"]
+    )
+    ts = [jnp.array([1.0]), jnp.array([2.0])]
+    protocol = jnp.array([[6.0], [6.0]])
+    y0 = jnp.array([0.0])
+
+    def _loss(pars: jax.Array, *, freeze: bool) -> jax.Array:
+        m = eqx.tree_at(lambda m: m.pars, ode, pars)
+        return jnp.sum(
+            m.integrate_protocol_from_steady_state(
+                ts, y0, protocol, 8192, freeze_preeq_gradient=freeze
+            )
+        )
+
+    grad_normal = jax.grad(lambda p: _loss(p, freeze=False))(ode.pars)
+    grad_frozen = jax.grad(lambda p: _loss(p, freeze=True))(ode.pars)
+
+    assert bool(jnp.all(jnp.isfinite(grad_normal)))
+    assert bool(jnp.all(jnp.isfinite(grad_frozen)))
+    # The frozen gradient is missing the preeq-path sensitivity (how k
+    # shifts the steady state itself), so it must differ from the full one.
+    assert not np.allclose(np.asarray(grad_normal), np.asarray(grad_frozen))
+
+    # It should match *exactly* differentiating integrate_protocol alone,
+    # seeded from a steady state fixed to a concrete (non-differentiable)
+    # value -- i.e. only the preeq-path sensitivity was cut, nothing more.
+    _, y_ss = ode.integrate_to_steady_state(y0, 8192, args=protocol[0])
+
+    def _protocol_only_loss(pars: jax.Array) -> jax.Array:
+        m = eqx.tree_at(lambda m: m.pars, ode, pars)
+        return jnp.sum(m.integrate_protocol(ts, y_ss, protocol, 8192))
+
+    grad_manual = jax.grad(_protocol_only_loss)(ode.pars)
+    assert np.allclose(np.asarray(grad_frozen), np.asarray(grad_manual), atol=1e-6)
