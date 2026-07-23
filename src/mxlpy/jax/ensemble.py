@@ -1,12 +1,21 @@
 """Batched ensemble simulation utilities for JAX/equinox models."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from pathlib import Path
+from typing import Any
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-__all__ = ["batch_simulate", "stack_models", "unstack_models"]
+from mxlpy.jax import io as jax_io
+
+__all__ = [
+    "batch_simulate",
+    "load_stacked_models",
+    "stack_models",
+    "unstack_models",
+]
 
 
 def stack_models[T: eqx.Module](models: list[T]) -> T:
@@ -40,6 +49,46 @@ def stack_models[T: eqx.Module](models: list[T]) -> T:
     )
     params_batched = jax.tree.map(lambda *xs: jnp.stack(xs, axis=0), *params_list)
     return eqx.combine(params_batched, static_list[0])
+
+
+def load_stacked_models[T: eqx.Module](
+    paths: Iterable[Path | str],
+    template: T,
+    *,
+    backfill: dict[str, Any] | None = None,
+) -> T:
+    """Load N dill-pickled models from disk and stack them into one batched pytree.
+
+    Combines the common "load each per-seed trained ensemble member cached
+    to disk, fix up its class identity, then batch" workflow into one call:
+    :func:`~mxlpy.jax.io.load` each path, :func:`~mxlpy.jax.io.recast_to_template`
+    it against ``template`` (fixing a stale ``__main__`` class identity from
+    being pickled as a standalone script, and optionally backfilling fields
+    added to the class since some of the files were saved), then
+    :func:`stack_models` the result.
+
+    Parameters
+    ----------
+    paths : Iterable[Path | str]
+        Files written by :func:`~mxlpy.jax.io.save`, one per ensemble member.
+    template : T
+        A freshly-constructed instance of the same class and architecture as
+        every loaded model; see :func:`~mxlpy.jax.io.recast_to_template`.
+    backfill : dict[str, Any] or None
+        Forwarded to :func:`~mxlpy.jax.io.recast_to_template` for every
+        loaded model; see its docstring.
+
+    Returns
+    -------
+    T
+        A single model instance whose array leaves have an extra leading
+        ``(len(paths),)`` axis; see :func:`stack_models`.
+    """
+    models = [
+        jax_io.recast_to_template(jax_io.load(path), template, backfill=backfill)
+        for path in paths
+    ]
+    return stack_models(models)
 
 
 def unstack_models[T](batched: T, n: int) -> list[T]:
