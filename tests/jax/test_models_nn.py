@@ -167,6 +167,15 @@ def test_anode_integrate_protocol_from_steady_state_decodes_to_n_obs() -> None:
     assert bool(jnp.all(jnp.isfinite(ys)))
 
 
+def test_anode_n_args_field_stores_raw_n_args() -> None:
+    """Regression: Anode used to store n_obs + n_args in self.n_args, while
+    FluxAnode stored plain n_args for the same-named field -- see
+    test_fluxanode_n_args_field_stores_raw_n_args for the counterpart.
+    """
+    anode = _anode(n_args=3)
+    assert anode.n_args == 3
+
+
 def test_anode_derived_scale_multiplies_derived_fn_output() -> None:
     def derived_fn(_t: float, _y: jnp.ndarray, _args: jnp.ndarray) -> jnp.ndarray:
         return jnp.array([3.0])
@@ -211,6 +220,30 @@ def test_fluxanode_n_args_defaults_to_zero() -> None:
     # Regression: n_args used to be a required positional argument even
     # though Anode's equivalent already defaulted to 0.
     _fluxanode()
+
+
+def test_fluxanode_n_args_field_stores_raw_n_args() -> None:
+    """Regression: see test_anode_n_args_field_stores_raw_n_args -- both
+    classes must store the same, unmodified quantity in self.n_args.
+    """
+
+    def nv(flux_vector: jnp.ndarray) -> jnp.ndarray:
+        return flux_vector
+
+    fanode = FluxAnode(
+        n_obs=2,
+        n_hidden=1,
+        n_flux=2,
+        flux_width=4,
+        flux_depth=1,
+        markov_width=4,
+        markov_depth=1,
+        key=_KEY,
+        nv=nv,
+        n_args=3,
+        latent_mapper=HardLatentMapper,
+    )
+    assert fanode.n_args == 3
 
 
 def test_fluxanode_integrate_decodes_to_n_obs() -> None:
