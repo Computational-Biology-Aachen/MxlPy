@@ -26,6 +26,7 @@ __all__ = [
     "LossesPerLesson",
     "ProtoGradLossFn",
     "ProtoSimulationFn",
+    "TrainingSteps",
     "grad_loss",
     "grad_loss_split",
     "integrate_protocol_states",
@@ -45,6 +46,19 @@ logger = logging.getLogger(__name__)
 type LossesPerLesson = list[pd.Series]
 type GradNormsPerLesson = list[pd.Series]
 type GradParsPerLesson = list[pd.DataFrame]
+type TrainingSteps = list[tuple[int, float]]
+
+
+def _curriculum_length(total: int, cutoff: float) -> int:
+    """Resolve a training_steps cutoff to an absolute prefix length.
+
+    A ``float`` cutoff is a fraction of ``total``, rounded up. An ``int``
+    cutoff is an explicit element count (points or protocol windows,
+    depending on caller), clipped to ``total`` if it overshoots.
+    """
+    if isinstance(cutoff, int):
+        return min(cutoff, total)
+    return math.ceil(total * cutoff)
 
 
 class GradParsHistory:
@@ -742,7 +756,7 @@ def train[Model: JaxModel](
     *,
     ts: jax.Array,
     ys: jax.Array,
-    training_steps: list[tuple[int, float]],
+    training_steps: TrainingSteps,
     target_loss: float = 1e-4,
     avg_every: int = 1000,
     optim: optax.GradientTransformationExtraArgs | None = None,
@@ -792,8 +806,11 @@ def train[Model: JaxModel](
         Full time-point array.
     ys : jax.Array
         Full observed trajectory, shape ``(T, n_obs)``.
-    training_steps : list[tuple[int, float]]
-        Sequence of ``(n_steps, data_fraction)`` pairs.
+    training_steps : TrainingSteps
+        Sequence of ``(n_steps, cutoff)`` pairs. ``cutoff`` selects a
+        prefix of ``ts``/``ys``: a ``float`` is a fraction of the full
+        length (rounded up); an ``int`` is an explicit point count,
+        clipped to the full length if it overshoots.
     target_loss : float
         Early-stopping threshold, checked during the last stage only.
     avg_every : int
@@ -897,13 +914,13 @@ def train[Model: JaxModel](
         )
 
     try:
-        for i, (steps, frac) in enumerate(training_steps, start=1):
+        for i, (steps, cutoff) in enumerate(training_steps, start=1):
             opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
             # Fresh per stage, same as opt_state/losses/grad_norms below --
             # a stage's retry budget must not be affected by failures that
             # already happened in a previous stage.
             consecutive_solver_errors = 0
-            length = math.ceil(len(ts) * frac)
+            length = _curriculum_length(len(ts), cutoff)
             _ts = ts[:length]
             _ys = ys[:length]
             losses: dict[int, float] = {}
@@ -1004,7 +1021,7 @@ def train_only_nde[T: Ude](
     *,
     ts: jax.Array,
     ys: jax.Array,
-    training_steps: list[tuple[int, float]],
+    training_steps: TrainingSteps,
     avg_every: int = 1000,
     target_loss: float = 1e-4,
     optim: optax.GradientTransformationExtraArgs | None = None,
@@ -1038,8 +1055,8 @@ def train_only_nde[T: Ude](
         Full time-point array.
     ys : jax.Array
         Full observed trajectory, shape ``(T, n_obs)``.
-    training_steps : list[tuple[int, float]]
-        Sequence of ``(n_steps, data_fraction)`` pairs.
+    training_steps : TrainingSteps
+        Sequence of ``(n_steps, cutoff)`` pairs; see :func:`train`.
     avg_every : int
         Average and log loss every this many steps.
     target_loss : float
@@ -1134,13 +1151,13 @@ def train_only_nde[T: Ude](
         )
 
     try:
-        for i, (steps, frac) in enumerate(training_steps, start=1):
+        for i, (steps, cutoff) in enumerate(training_steps, start=1):
             opt_state = optim.init(trainable)
             # Fresh per stage, same as opt_state/losses/grad_norms below --
             # a stage's retry budget must not be affected by failures that
             # already happened in a previous stage.
             consecutive_solver_errors = 0
-            length = math.ceil(len(ts) * frac)
+            length = _curriculum_length(len(ts), cutoff)
             _ts = ts[:length]
             _ys = ys[:length]
             losses: dict[int, float] = {}
@@ -1181,9 +1198,7 @@ def train_only_nde[T: Ude](
                             )
                             break
                         perturb_key, subkey = jax.random.split(perturb_key)
-                        trainable = perturb_model(
-                            trainable, subkey, perturbation_scale
-                        )
+                        trainable = perturb_model(trainable, subkey, perturbation_scale)
                         logger.warning(
                             "Lesson %d, step %d: solver hit a stiff domain (%s); "
                             "nudging model parameters and retrying.",
@@ -1225,7 +1240,7 @@ def train_protocol[Model: JaxModel](
     ts: list[jax.Array],
     ys: jax.Array,
     protocol: jax.Array,
-    training_steps: list[tuple[int, float]],
+    training_steps: TrainingSteps,
     target_loss: float = 1e-4,
     avg_every: int = 1000,
     optim: optax.GradientTransformationExtraArgs | None = None,
@@ -1275,10 +1290,12 @@ def train_protocol[Model: JaxModel](
         observation at ``t=0``.
     protocol : jax.Array
         Full per-step external argument, shape ``(len(ts), n_args)``.
-    training_steps : list[tuple[int, float]]
-        Sequence of ``(n_steps, data_fraction)`` pairs; ``data_fraction``
-        selects a prefix of ``ts``/``protocol`` (by step count) and the
-        matching prefix of ``ys`` (by observation count).
+    training_steps : TrainingSteps
+        Sequence of ``(n_steps, cutoff)`` pairs; ``cutoff`` selects a
+        prefix of ``ts``/``protocol`` (by step count) and the matching
+        prefix of ``ys`` (by observation count). A ``float`` is a fraction
+        of the full step count (rounded up); an ``int`` is an explicit
+        step count, clipped to the full step count if it overshoots.
     target_loss : float
         Early-stopping threshold, checked during the last stage only.
     avg_every : int
@@ -1356,13 +1373,13 @@ def train_protocol[Model: JaxModel](
         )
 
     try:
-        for i, (steps, frac) in enumerate(training_steps, start=1):
+        for i, (steps, cutoff) in enumerate(training_steps, start=1):
             opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
             # Fresh per stage, same as opt_state/losses/grad_norms below -- a
             # stage's retry budget must not be affected by failures that
             # already happened in a previous stage.
             consecutive_solver_errors = 0
-            n_windows = math.ceil(len(ts) * frac)
+            n_windows = _curriculum_length(len(ts), cutoff)
             _ts = ts[:n_windows]
             _protocol = protocol[:n_windows]
             n_obs = sum(t.shape[0] for t in _ts)
