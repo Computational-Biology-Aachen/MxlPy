@@ -288,20 +288,16 @@ def _fixed_grad_proto_grad_loss(magnitude: float) -> object:
 
 
 def _run_proto_make_step_with_fixed_grad(
-    monkeypatch: pytest.MonkeyPatch, magnitude: float
+    magnitude: float,
 ) -> tuple[Ode, Ode, jnp.ndarray]:
-    """Runs proto_make_step with a monkeypatched proto_grad_loss under
-    jax.disable_jit(), so the patched global is honoured on every call
-    instead of risking a cached compilation from another shape/value.
+    """Runs proto_make_step with a fixed-magnitude grad_fn under
+    jax.disable_jit(), so results don't depend on a cached compilation
+    from another shape/value.
     """
     model = _decay_model()
     optim = optax.sgd(learning_rate=1.0)
     opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
     ctx = jax_train.IntegrationSettings()
-
-    monkeypatch.setattr(
-        jax_train, "proto_grad_loss", _fixed_grad_proto_grad_loss(magnitude)
-    )
 
     with jax.disable_jit():
         _, new_model, _, grad_norm = jax_train.proto_make_step(
@@ -316,21 +312,18 @@ def _run_proto_make_step_with_fixed_grad(
             optim=optim,
             ctx=ctx,
             simulation_fn=jax_train.integrate_protocol_states,
+            grad_fn=_fixed_grad_proto_grad_loss(magnitude),
         )
     return model, new_model, grad_norm
 
 
-def test_proto_make_step_does_not_rescale_small_gradients_upward(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_proto_make_step_does_not_rescale_small_gradients_upward() -> None:
     """Regression: clipping used to always rescale the gradient to unit
     global norm (``g * clip_value / (grad_norm + 1e-6)``), even when the
     raw gradient was already tiny -- a norm-0.0001 gradient got blown up
     by a factor of ~10000 instead of being left alone.
     """
-    model, new_model, grad_norm = _run_proto_make_step_with_fixed_grad(
-        monkeypatch, magnitude=1e-4
-    )
+    model, new_model, grad_norm = _run_proto_make_step_with_fixed_grad(magnitude=1e-4)
     assert float(grad_norm) == pytest.approx(1e-4 * (2**0.5), rel=1e-3)
 
     # SGD(lr=1) with an unclipped (scale ~= 1) gradient moves each leaf by
@@ -344,16 +337,12 @@ def test_proto_make_step_does_not_rescale_small_gradients_upward(
     )
 
 
-def test_proto_make_step_clips_large_gradients_to_unit_norm(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_proto_make_step_clips_large_gradients_to_unit_norm() -> None:
     """A genuinely large gradient must still be scaled down to (approximately)
     the clip norm, i.e. clipping in the "should actually clip" direction
     still works after the fix.
     """
-    model, new_model, grad_norm = _run_proto_make_step_with_fixed_grad(
-        monkeypatch, magnitude=5.0
-    )
+    model, new_model, grad_norm = _run_proto_make_step_with_fixed_grad(magnitude=5.0)
     assert float(grad_norm) == pytest.approx(5.0 * (2**0.5), rel=1e-3)
 
     step_norm = jnp.sqrt(
@@ -611,3 +600,107 @@ def test_train_only_nde_gives_up_after_max_consecutive_solver_errors(
     assert trained is model
     assert len(losses[0]) == 0
     assert len(grad_norms[0]) == 0
+
+
+# ---------------------------------------------------------------------------
+# grad_fn: pluggable loss for train()/train_protocol()/train_only_nde()
+# ---------------------------------------------------------------------------
+
+
+def test_train_uses_custom_grad_fn() -> None:
+    """A custom grad_fn (e.g. a residual loss against a frozen prior, or a
+    different error metric) replaces the default normalised-MSE loss
+    end-to-end, without needing to reimplement train()'s curriculum loop.
+    """
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+
+    @eqx.filter_value_and_grad
+    def constant_loss_grad_fn(
+        model: Ode,
+        ts: jnp.ndarray,  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,  # noqa: ARG001
+        y_scale: jnp.ndarray,  # noqa: ARG001
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        args: jnp.ndarray | None = None,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        # A loss value real training could never produce, so recording it
+        # in the returned history proves this function -- not the default
+        # grad_loss -- actually ran.
+        return jnp.sum(model.pars) * 0.0 + 42.0
+
+    _, losses, _ = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=constant_loss_grad_fn,
+    )
+
+    assert all(v == pytest.approx(42.0) for v in losses[0].to_numpy())
+
+
+def test_train_protocol_uses_custom_grad_fn() -> None:
+    model = _decay_model()
+
+    @eqx.filter_value_and_grad
+    def constant_loss_grad_fn(
+        model: Ode,
+        y0: jnp.ndarray,  # noqa: ARG001
+        ts: list[jnp.ndarray],  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        protocol: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,  # noqa: ARG001
+        y_scale: jnp.ndarray,  # noqa: ARG001
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        simulation_fn: jax_train.ProtoSimulationFn,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + 42.0
+
+    _, losses, _ = jax_train.train_protocol(
+        model,
+        y0=jnp.array([1.0]),
+        ts=[jnp.array([1.0])],
+        ys=jnp.array([[1.0], [0.5]]),
+        protocol=jnp.zeros((1, 0)),
+        training_steps=[(2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=constant_loss_grad_fn,
+    )
+
+    assert all(v == pytest.approx(42.0) for v in losses[0].to_numpy())
+
+
+def test_train_only_nde_uses_custom_grad_fn() -> None:
+    model = _ude_model()
+    ts, ys = _tiny_training_data()
+
+    @eqx.filter_value_and_grad
+    def constant_loss_grad_fn(
+        trainable: Ude,
+        frozen: Ude,  # noqa: ARG001
+        ts: jnp.ndarray,  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,  # noqa: ARG001
+        y_scale: jnp.ndarray,  # noqa: ARG001
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        args: jnp.ndarray | None = None,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        leaves = jax.tree_util.tree_leaves(eqx.filter(trainable, eqx.is_array))
+        return sum((jnp.sum(leaf) * 0.0 for leaf in leaves), jnp.array(0.0)) + 42.0
+
+    _, losses, _ = jax_train.train_only_nde(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=constant_loss_grad_fn,
+    )
+
+    assert all(v == pytest.approx(42.0) for v in losses[0].to_numpy())

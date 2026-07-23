@@ -11,14 +11,18 @@ import jax
 import jax.numpy as jnp
 import optax
 import pandas as pd
+from jaxtyping import PyTree
 from tqdm.auto import trange
 
 from mxlpy.jax.models import JaxModel, Method, Ude
 
 __all__ = [
+    "GradLossFn",
+    "GradLossSplitFn",
     "GradNormsPerLesson",
     "IntegrationSettings",
     "LossesPerLesson",
+    "ProtoGradLossFn",
     "ProtoSimulationFn",
     "grad_loss",
     "grad_loss_split",
@@ -116,6 +120,12 @@ class IntegrationSettings:
     max_steps: int = 8192
 
 
+type GradLossFn = Callable[
+    ...,
+    tuple[jax.Array, PyTree],
+]
+
+
 @eqx.filter_value_and_grad
 def grad_loss(
     model: JaxModel,
@@ -127,6 +137,13 @@ def grad_loss(
     args: jax.Array | None = None,
 ) -> jax.Array:
     """Compute normalised MSE loss and its gradient w.r.t. model parameters.
+
+    Default ``grad_fn`` for :func:`train`/:func:`make_step`. Pass a
+    different ``@eqx.filter_value_and_grad``-decorated function with this
+    same ``(model, ts, ys, y_mean, y_scale, ctx, args)`` call signature to
+    train against a different loss (e.g. a residual against a frozen prior
+    prediction, or a different error metric) without reimplementing the
+    curriculum/robustness machinery in :func:`train`.
 
     Parameters
     ----------
@@ -199,6 +216,12 @@ def integrate_protocol_states(
     )
 
 
+type ProtoGradLossFn = Callable[
+    ...,
+    tuple[jax.Array, PyTree],
+]
+
+
 @eqx.filter_value_and_grad
 def proto_grad_loss(
     model: JaxModel,
@@ -212,6 +235,10 @@ def proto_grad_loss(
     simulation_fn: ProtoSimulationFn,
 ) -> jax.Array:
     """Compute normalised MSE loss and its gradient w.r.t. model parameters.
+
+    Default ``grad_fn`` for :func:`train_protocol`/:func:`proto_make_step`.
+    Pass a different ``@eqx.filter_value_and_grad``-decorated function with
+    this same call signature to train against a different loss.
 
     Parameters
     ----------
@@ -255,6 +282,12 @@ def proto_grad_loss(
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
 
+type GradLossSplitFn = Callable[
+    ...,
+    tuple[jax.Array, PyTree],
+]
+
+
 @eqx.filter_value_and_grad
 def grad_loss_split(
     trainable: JaxModel,
@@ -267,6 +300,11 @@ def grad_loss_split(
     args: jax.Array | None = None,
 ) -> jax.Array:
     """Compute normalised MSE loss and gradient for a partitioned model.
+
+    Default ``grad_fn`` for :func:`train_only_nde`/:func:`make_step_split`.
+    Pass a different ``@eqx.filter_value_and_grad``-decorated function with
+    this same ``(trainable, frozen, ts, ys, y_mean, y_scale, ctx, args)``
+    call signature to train against a different loss.
 
     Parameters
     ----------
@@ -318,6 +356,7 @@ def make_step[T: JaxModel](
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
     args: jax.Array | None = None,
+    grad_fn: GradLossFn = grad_loss,
 ) -> tuple[jax.Array, T, optax.OptState, jax.Array]:
     """Perform one gradient update step on the full model.
 
@@ -348,6 +387,11 @@ def make_step[T: JaxModel](
     args : jax.Array or None
         External arguments forwarded to ``model.integrate``; see
         :func:`grad_loss`.
+    grad_fn : GradLossFn
+        Computes the (loss, grads) pair to apply; defaults to
+        :func:`grad_loss`. Pass a different ``@eqx.filter_value_and_grad``
+        function with the same call signature to train against a different
+        loss.
 
     Returns
     -------
@@ -356,7 +400,7 @@ def make_step[T: JaxModel](
         gradient norm (computed before ``optim`` does any clipping, for
         diagnostics).
     """
-    loss, grads = grad_loss(
+    loss, grads = grad_fn(
         model,  # needs to be by pos, is differentiated
         ts=ts,
         ys=ys,
@@ -388,6 +432,7 @@ def proto_make_step[T: JaxModel](
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
     simulation_fn: ProtoSimulationFn,
+    grad_fn: ProtoGradLossFn = proto_grad_loss,
 ) -> tuple[jax.Array, T, optax.OptState, jax.Array]:
     """Perform one gradient update step on the full model.
 
@@ -418,6 +463,11 @@ def proto_make_step[T: JaxModel](
         ODE solver settings.
     simulation_fn : ProtoSimulationFn
         See :func:`proto_grad_loss`.
+    grad_fn : ProtoGradLossFn
+        Computes the (loss, grads) pair to apply; defaults to
+        :func:`proto_grad_loss`. Pass a different
+        ``@eqx.filter_value_and_grad`` function with the same call
+        signature to train against a different loss.
 
     Returns
     -------
@@ -425,7 +475,7 @@ def proto_make_step[T: JaxModel](
         Scalar loss, updated model, updated optimiser state, and the
         gradient norm (computed before clipping, for diagnostics).
     """
-    loss, grads = proto_grad_loss(
+    loss, grads = grad_fn(
         model,  # needs to be by pos, is differentiated
         y0=y0,
         ts=ts,
@@ -468,6 +518,7 @@ def make_step_split[T: JaxModel](
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
     args: jax.Array | None = None,
+    grad_fn: GradLossSplitFn = grad_loss_split,
 ) -> tuple[jax.Array, T, optax.OptState, jax.Array]:
     """Perform one gradient update step on the trainable model partition.
 
@@ -499,6 +550,11 @@ def make_step_split[T: JaxModel](
     args : jax.Array or None
         External arguments forwarded to ``model.integrate``; see
         :func:`grad_loss`.
+    grad_fn : GradLossSplitFn
+        Computes the (loss, grads) pair to apply; defaults to
+        :func:`grad_loss_split`. Pass a different
+        ``@eqx.filter_value_and_grad`` function with the same call
+        signature to train against a different loss.
 
     Returns
     -------
@@ -507,7 +563,7 @@ def make_step_split[T: JaxModel](
         and the gradient norm (computed before ``optim`` does any clipping,
         for diagnostics).
     """
-    loss, grads = grad_loss_split(
+    loss, grads = grad_fn(
         trainable,  # needs to be by pos, is differentiated
         frozen=frozen,
         ts=ts,
@@ -542,6 +598,7 @@ def train[Model: JaxModel](
     perturbation_scale: float = 1e-3,
     key: jax.Array | None = None,
     args: jax.Array | None = None,
+    grad_fn: GradLossFn = grad_loss,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -602,6 +659,13 @@ def train[Model: JaxModel](
     args : jax.Array or None
         External arguments forwarded to ``model.integrate`` at every step;
         see :func:`grad_loss`.
+    grad_fn : GradLossFn
+        Computes the (loss, grads) pair to apply at every step; defaults to
+        :func:`grad_loss` (normalised MSE against ``ys``). Pass a different
+        ``@eqx.filter_value_and_grad`` function with the same call
+        signature to train against a different loss (e.g. a residual
+        against a frozen prior prediction) without reimplementing this
+        curriculum/robustness loop.
 
     Returns
     -------
@@ -667,6 +731,7 @@ def train[Model: JaxModel](
                             y_scale=y_scale,
                             ctx=ctx,
                             args=args,
+                            grad_fn=grad_fn,
                         )
                     except eqx.EquinoxRuntimeError as e:
                         consecutive_solver_errors += 1
@@ -732,6 +797,7 @@ def train_only_nde[T: Ude](
     perturbation_scale: float = 1e-3,
     key: jax.Array | None = None,
     args: jax.Array | None = None,
+    grad_fn: GradLossSplitFn = grad_loss_split,
 ) -> tuple[T, LossesPerLesson, GradNormsPerLesson]:
     """Train only the neural-network part of a UDE, keeping the ODE frozen.
 
@@ -781,6 +847,12 @@ def train_only_nde[T: Ude](
     args : jax.Array or None
         External arguments forwarded to ``model.integrate`` at every step;
         see :func:`grad_loss`.
+    grad_fn : GradLossSplitFn
+        Computes the (loss, grads) pair to apply at every step; defaults
+        to :func:`grad_loss_split` (normalised MSE against ``ys``). Pass a
+        different ``@eqx.filter_value_and_grad`` function with the same
+        call signature to train against a different loss without
+        reimplementing this curriculum/robustness loop.
 
     Returns
     -------
@@ -855,6 +927,7 @@ def train_only_nde[T: Ude](
                             y_scale=y_scale,
                             ctx=ctx,
                             args=args,
+                            grad_fn=grad_fn,
                         )
                     except eqx.EquinoxRuntimeError as e:
                         consecutive_solver_errors += 1
@@ -922,6 +995,7 @@ def train_protocol[Model: JaxModel](
     max_consecutive_solver_errors: int = 10,
     perturbation_scale: float = 1e-3,
     key: jax.Array | None = None,
+    grad_fn: ProtoGradLossFn = proto_grad_loss,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -983,6 +1057,12 @@ def train_protocol[Model: JaxModel](
     key : jax.Array or None
         PRNG key seeding the weight perturbations; defaults to
         ``jax.random.PRNGKey(0)``.
+    grad_fn : ProtoGradLossFn
+        Computes the (loss, grads) pair to apply at every step; defaults
+        to :func:`proto_grad_loss` (normalised MSE against ``ys``). Pass a
+        different ``@eqx.filter_value_and_grad`` function with the same
+        call signature to train against a different loss without
+        reimplementing this curriculum/robustness loop.
 
     Returns
     -------
@@ -1037,6 +1117,7 @@ def train_protocol[Model: JaxModel](
                         y_scale=y_scale,
                         ctx=ctx,
                         simulation_fn=simulation_fn,
+                        grad_fn=grad_fn,
                     )
                 except eqx.EquinoxRuntimeError as e:
                     consecutive_solver_errors += 1
