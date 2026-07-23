@@ -149,7 +149,10 @@ class Base(eqx.Module, ABC):
         y0 : jax.Array
             Initial condition at ``t0``.
         args : jax.Array or None
-            Additional arguments forwarded to the RHS.
+            Additional arguments forwarded to the RHS. Every current
+            ``JaxModel``'s ``__call__`` unconditionally concatenates ``args``
+            with its own state, so ``None`` is translated to an empty array
+            here rather than forwarded as-is.
         saveat_ts : jax.Array
             Time points at which to save the solution; must lie within
             ``[t0, t1]``.
@@ -174,7 +177,7 @@ class Base(eqx.Module, ABC):
             t1=t1,
             dt0=None,
             y0=y0,
-            args=args,
+            args=jnp.zeros((0,)) if args is None else args,
             stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
             saveat=diffrax.SaveAt(ts=saveat_ts),
             max_steps=max_steps,
@@ -373,7 +376,8 @@ class Base(eqx.Module, ABC):
         Operates on whatever space ``y0`` is already in (state or latent);
         callers that integrate in a transformed space (:class:`Anode`,
         :class:`FluxAnode`) are responsible for encoding ``y0`` beforehand
-        and decoding the result afterwards.
+        and decoding the result afterwards. ``args=None`` is translated to
+        an empty array; see :meth:`_solve`.
         """
         sol = diffrax.diffeqsolve(
             diffrax.ODETerm(self),
@@ -382,7 +386,7 @@ class Base(eqx.Module, ABC):
             t1=t1,
             dt0=None,
             y0=y0,
-            args=args,
+            args=jnp.zeros((0,)) if args is None else args,
             stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
             saveat=diffrax.SaveAt(t1=True),
             event=diffrax.Event(
