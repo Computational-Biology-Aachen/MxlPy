@@ -772,6 +772,7 @@ def train[Model: JaxModel](
     prior_losses: LossesPerLesson | None = None,
     prior_grad_norms: GradNormsPerLesson | None = None,
     grad_pars_history: GradParsHistory | None = None,
+    normalize_axis: int | None = None,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -871,6 +872,16 @@ def train[Model: JaxModel](
         history afterwards via its ``to_frames()``. Off by default (no
         behaviour change, no extra cost) since not every model has a
         flat ``.pars`` to track.
+    normalize_axis : int or None
+        Axis passed to ``jnp.mean``/``jnp.std`` when computing ``y_mean``/
+        ``y_scale`` from ``ys``. ``None`` (the default) normalises over the
+        flattened array, i.e. one scalar shared across every observed
+        quantity. Pass ``0`` to normalise each column of ``ys`` (each
+        observed quantity, for a ``(T, n_obs)`` array with ``n_obs > 1``)
+        independently instead -- needed when the fitted quantities have
+        different scales (e.g. jointly fitting ``Fluo`` and ``NPQ``), since
+        a shared scalar otherwise lets the higher-magnitude quantity
+        dominate the loss.
 
     Returns
     -------
@@ -897,8 +908,8 @@ def train[Model: JaxModel](
         IntegrationSettings() if integration_settings is None else integration_settings
     )
 
-    y_mean = jnp.mean(ys)
-    y_scale = jnp.std(ys)
+    y_mean = jnp.mean(ys, axis=normalize_axis)
+    y_scale = jnp.std(ys, axis=normalize_axis)
     losses_per_lesson: LossesPerLesson = (
         [] if prior_losses is None else list(prior_losses)
     )
@@ -1254,6 +1265,7 @@ def train_protocol[Model: JaxModel](
     prior_losses: LossesPerLesson | None = None,
     prior_grad_norms: GradNormsPerLesson | None = None,
     grad_pars_history: GradParsHistory | None = None,
+    normalize_axis: int | None = None,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -1336,6 +1348,9 @@ def train_protocol[Model: JaxModel](
     grad_pars_history : GradParsHistory or None
         If given, records the raw gradient of ``model.pars`` at every
         successful step into it; see :func:`train`.
+    normalize_axis : int or None
+        Axis passed to ``jnp.mean``/``jnp.std`` when computing ``y_mean``/
+        ``y_scale`` from ``ys``; see :func:`train`.
 
     Returns
     -------
@@ -1356,8 +1371,8 @@ def train_protocol[Model: JaxModel](
         IntegrationSettings() if integration_settings is None else integration_settings
     )
 
-    y_mean = jnp.mean(ys)
-    y_scale = jnp.std(ys)
+    y_mean = jnp.mean(ys, axis=normalize_axis)
+    y_scale = jnp.std(ys, axis=normalize_axis)
     losses_per_lesson: LossesPerLesson = (
         [] if prior_losses is None else list(prior_losses)
     )

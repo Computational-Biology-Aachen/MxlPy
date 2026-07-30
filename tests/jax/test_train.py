@@ -46,6 +46,16 @@ def _tiny_training_data() -> tuple[jnp.ndarray, jnp.ndarray]:
     return ts, ys
 
 
+def _multi_quantity_training_data() -> tuple[jnp.ndarray, jnp.ndarray]:
+    # Two observed quantities on very different scales, so per-quantity
+    # (axis=0) and flattened (axis=None) mean/std differ measurably.
+    ts = jnp.linspace(0.0, 1.0, 5)
+    a = jnp.exp(-0.3 * ts)
+    b = 100.0 * jnp.exp(-0.1 * ts)
+    ys = jnp.stack([a, b], axis=1)
+    return ts, ys
+
+
 def _array_leaves(model: eqx.Module) -> list[jnp.ndarray]:
     return jax.tree_util.tree_leaves(eqx.filter(model, eqx.is_array))
 
@@ -860,6 +870,150 @@ def test_train_protocol_uses_custom_grad_fn() -> None:
     )
 
     assert all(v == pytest.approx(42.0) for v in losses[0].to_numpy())
+
+
+# ---------------------------------------------------------------------------
+# train()/train_protocol(): normalize_axis
+# ---------------------------------------------------------------------------
+
+
+def test_train_normalize_axis_defaults_to_flattened_scalar() -> None:
+    """The default (axis=None) matches the pre-existing behaviour: one
+    scalar y_mean/y_scale shared across every observed quantity.
+    """
+    model = _decay_model()
+    ts, ys = _multi_quantity_training_data()
+    expected = float(jnp.mean(ys)) + float(jnp.std(ys))
+
+    @eqx.filter_value_and_grad
+    def probe_grad_fn(
+        model: Ode,
+        ts: jnp.ndarray,  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,
+        y_scale: jnp.ndarray,
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        args: jnp.ndarray | None = None,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
+
+    _, losses, _ = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(1, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=probe_grad_fn,
+    )
+
+    assert losses[0].to_numpy()[0] == pytest.approx(expected)
+
+
+def test_train_normalize_axis_zero_normalizes_per_quantity() -> None:
+    """axis=0 normalises each column of ys independently -- needed when
+    jointly-fit quantities have different scales, so a shared scalar
+    doesn't let the higher-magnitude quantity dominate the loss.
+    """
+    model = _decay_model()
+    ts, ys = _multi_quantity_training_data()
+    expected = float(jnp.sum(jnp.mean(ys, axis=0)) + jnp.sum(jnp.std(ys, axis=0)))
+    assert expected != pytest.approx(float(jnp.mean(ys)) + float(jnp.std(ys)))
+
+    @eqx.filter_value_and_grad
+    def probe_grad_fn(
+        model: Ode,
+        ts: jnp.ndarray,  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,
+        y_scale: jnp.ndarray,
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        args: jnp.ndarray | None = None,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
+
+    _, losses, _ = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(1, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=probe_grad_fn,
+        normalize_axis=0,
+    )
+
+    assert losses[0].to_numpy()[0] == pytest.approx(expected)
+
+
+def test_train_protocol_normalize_axis_defaults_to_flattened_scalar() -> None:
+    model = _decay_model()
+    ys = jnp.array([[1.0, 2.0], [0.5, 3.0]])
+    expected = float(jnp.mean(ys)) + float(jnp.std(ys))
+
+    @eqx.filter_value_and_grad
+    def probe_grad_fn(
+        model: Ode,
+        y0: jnp.ndarray,  # noqa: ARG001
+        ts: list[jnp.ndarray],  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        protocol: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,
+        y_scale: jnp.ndarray,
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        simulation_fn: jax_train.ProtoSimulationFn,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
+
+    _, losses, _ = jax_train.train_protocol(
+        model,
+        y0=jnp.array([1.0]),
+        ts=[jnp.array([1.0])],
+        ys=ys,
+        protocol=jnp.zeros((1, 0)),
+        training_steps=[(1, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=probe_grad_fn,
+    )
+
+    assert losses[0].to_numpy()[0] == pytest.approx(expected)
+
+
+def test_train_protocol_normalize_axis_zero_normalizes_per_quantity() -> None:
+    model = _decay_model()
+    ys = jnp.array([[1.0, 2.0], [0.5, 3.0]])
+    expected = float(jnp.sum(jnp.mean(ys, axis=0)) + jnp.sum(jnp.std(ys, axis=0)))
+    assert expected != pytest.approx(float(jnp.mean(ys)) + float(jnp.std(ys)))
+
+    @eqx.filter_value_and_grad
+    def probe_grad_fn(
+        model: Ode,
+        y0: jnp.ndarray,  # noqa: ARG001
+        ts: list[jnp.ndarray],  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        protocol: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,
+        y_scale: jnp.ndarray,
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        simulation_fn: jax_train.ProtoSimulationFn,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
+
+    _, losses, _ = jax_train.train_protocol(
+        model,
+        y0=jnp.array([1.0]),
+        ts=[jnp.array([1.0])],
+        ys=ys,
+        protocol=jnp.zeros((1, 0)),
+        training_steps=[(1, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=probe_grad_fn,
+        normalize_axis=0,
+    )
+
+    assert losses[0].to_numpy()[0] == pytest.approx(expected)
 
 
 def test_train_only_nde_uses_custom_grad_fn() -> None:
