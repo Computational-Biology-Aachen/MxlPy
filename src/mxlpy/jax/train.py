@@ -773,6 +773,7 @@ def train[Model: JaxModel](
     prior_grad_norms: GradNormsPerLesson | None = None,
     grad_pars_history: GradParsHistory | None = None,
     normalize_axis: int | None = None,
+    disable_tqdm: bool = False,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -882,6 +883,10 @@ def train[Model: JaxModel](
         different scales (e.g. jointly fitting ``Fluo`` and ``NPQ``), since
         a shared scalar otherwise lets the higher-magnitude quantity
         dominate the loss.
+    disable_tqdm : bool
+        Suppress the per-step progress bar. Useful when running under a
+        scheduler that captures stdout to a log file (a live progress bar's
+        carriage-return updates otherwise bloat the file with escape codes).
 
     Returns
     -------
@@ -941,7 +946,9 @@ def train[Model: JaxModel](
             if grad_pars_history is not None:
                 grad_pars_history._start_lesson()  # noqa: SLF001
 
-            with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
+            with trange(
+                steps, position=1, leave=True, dynamic_ncols=True, disable=disable_tqdm
+            ) as pbar:
                 for step in pbar:
                     try:
                         # make_step's returned loss describes the model as
@@ -1266,6 +1273,7 @@ def train_protocol[Model: JaxModel](
     prior_grad_norms: GradNormsPerLesson | None = None,
     grad_pars_history: GradParsHistory | None = None,
     normalize_axis: int | None = None,
+    disable_tqdm: bool = False,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -1351,6 +1359,8 @@ def train_protocol[Model: JaxModel](
     normalize_axis : int or None
         Axis passed to ``jnp.mean``/``jnp.std`` when computing ``y_mean``/
         ``y_scale`` from ``ys``; see :func:`train`.
+    disable_tqdm : bool
+        Suppress the per-step progress bar; see :func:`train`.
 
     Returns
     -------
@@ -1406,7 +1416,9 @@ def train_protocol[Model: JaxModel](
             if grad_pars_history is not None:
                 grad_pars_history._start_lesson()  # noqa: SLF001
 
-            with trange(steps, position=1, leave=True, dynamic_ncols=True) as pbar:
+            with trange(
+                steps, position=1, leave=True, dynamic_ncols=True, disable=disable_tqdm
+            ) as pbar:
                 for step in pbar:
                     # proto_make_step's returned loss describes the model
                     # as it was BEFORE this step's update; see train()'s
