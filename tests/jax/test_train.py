@@ -132,6 +132,73 @@ def test_train_returns_losses_and_grad_norms_per_lesson() -> None:
     assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
 
 
+def test_train_disable_tqdm_defaults_to_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+    seen_disable: list[bool] = []
+    real_trange = jax_train.trange
+
+    def _spy_trange(*args: object, **kwargs: object) -> object:
+        seen_disable.append(kwargs["disable"])
+        return real_trange(*args, **kwargs)
+
+    monkeypatch.setattr(jax_train, "trange", _spy_trange)
+    jax_train.train(model, ts=ts, ys=ys, training_steps=[(2, 1.0)], target_loss=-1.0)
+
+    assert seen_disable == [False]
+
+
+def test_train_disable_tqdm_true_suppresses_progress_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+    seen_disable: list[bool] = []
+    real_trange = jax_train.trange
+
+    def _spy_trange(*args: object, **kwargs: object) -> object:
+        seen_disable.append(kwargs["disable"])
+        return real_trange(*args, **kwargs)
+
+    monkeypatch.setattr(jax_train, "trange", _spy_trange)
+    jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(2, 1.0)],
+        target_loss=-1.0,
+        disable_tqdm=True,
+    )
+
+    assert seen_disable == [True]
+
+
+def test_train_protocol_disable_tqdm_true_suppresses_progress_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _decay_model()
+    seen_disable: list[bool] = []
+    real_trange = jax_train.trange
+
+    def _spy_trange(*args: object, **kwargs: object) -> object:
+        seen_disable.append(kwargs["disable"])
+        return real_trange(*args, **kwargs)
+
+    monkeypatch.setattr(jax_train, "trange", _spy_trange)
+    jax_train.train_protocol(
+        model,
+        y0=jnp.array([1.0]),
+        ts=[jnp.array([1.0])],
+        ys=jnp.array([[1.0], [0.5]]),
+        protocol=jnp.zeros((1, 0)),
+        training_steps=[(2, 1.0)],
+        target_loss=-1.0,
+        disable_tqdm=True,
+    )
+
+    assert seen_disable == [True]
+
+
 # ---------------------------------------------------------------------------
 # train(): solver-failure retry
 # ---------------------------------------------------------------------------
