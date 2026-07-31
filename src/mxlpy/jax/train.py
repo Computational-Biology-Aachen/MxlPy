@@ -35,6 +35,7 @@ __all__ = [
     "perturb_model",
     "proto_grad_loss",
     "proto_make_step",
+    "sigmoid_schedule",
     "squeeze_derived",
     "train",
     "train_only_nde",
@@ -139,6 +140,44 @@ def squeeze_derived(derived: jax.Array) -> jax.Array:
     return derived
 
 
+def sigmoid_schedule(
+    global_step: jax.Array,
+    total_steps: jax.Array,
+    steepness: float,
+    midpoint: float,
+) -> jax.Array:
+    """Sigmoid annealing schedule over the whole curriculum.
+
+    Returns ~1 early in training, smoothly decaying to ~0 as ``global_step``
+    approaches ``total_steps``; not specific to any one use (e.g. blending
+    :class:`~mxlpy.jax.models.MixedLatentMapper`/
+    :class:`~mxlpy.jax.models.TrainableZ0LatentMapper`'s hard/learned
+    decode) -- any custom ``grad_fn`` can use it against the ``global_step``/
+    ``total_steps`` :func:`train`/:func:`train_protocol` already forward to
+    it.
+
+    Parameters
+    ----------
+    global_step : jax.Array
+        Current step, monotonic across the whole curriculum (not reset per
+        lesson); see :func:`grad_loss`.
+    total_steps : jax.Array
+        Total step count across every curriculum lesson.
+    steepness : float
+        How sharp the transition is; larger is sharper.
+    midpoint : float
+        Fraction of ``total_steps`` (in ``[0, 1]``) at which the schedule
+        crosses ``0.5``.
+
+    Returns
+    -------
+    jax.Array
+        Scalar in ``(0, 1)``.
+    """
+    x = (global_step / total_steps - midpoint) * steepness
+    return 1.0 / (1.0 + jnp.exp(x))
+
+
 def perturb_model[T: JaxModel](model: T, key: jax.Array, scale: float) -> T:
     """Nudge a model's trainable weights with small multiplicative noise.
 
@@ -214,16 +253,19 @@ def grad_loss(
     y_mean: jax.Array,
     y_scale: jax.Array,
     ctx: IntegrationSettings,
+    global_step: jax.Array,  # noqa: ARG001
+    total_steps: jax.Array,  # noqa: ARG001
     args: jax.Array | None = None,
 ) -> jax.Array:
     """Compute normalised MSE loss and its gradient w.r.t. model parameters.
 
     Default ``grad_fn`` for :func:`train`/:func:`make_step`. Pass a
     different ``@eqx.filter_value_and_grad``-decorated function with this
-    same ``(model, ts, ys, y_mean, y_scale, ctx, args)`` call signature to
-    train against a different loss (e.g. a residual against a frozen prior
-    prediction, or a different error metric) without reimplementing the
-    curriculum/robustness machinery in :func:`train`.
+    same ``(model, ts, ys, y_mean, y_scale, ctx, global_step, total_steps,
+    args)`` call signature to train against a different loss (e.g. a
+    residual against a frozen prior prediction, or a different error
+    metric) without reimplementing the curriculum/robustness machinery in
+    :func:`train`.
 
     Parameters
     ----------
@@ -239,6 +281,16 @@ def grad_loss(
         Standard deviation used for normalisation.
     ctx : IntegrationSettings
         ODE solver settings.
+    global_step : jax.Array
+        Monotonic step count spanning the whole curriculum (not reset per
+        lesson); unused here, but available to a custom ``grad_fn`` for a
+        training-progress-dependent computation (e.g. an annealed loss
+        term or model parameter via :func:`sigmoid_schedule`). A traced
+        array, not a plain Python int, so its changing value each step
+        doesn't force a JIT recompile.
+    total_steps : jax.Array
+        Total step count across every lesson in ``training_steps``; see
+        ``global_step``.
     args : jax.Array or None
         External arguments forwarded to ``model.integrate``, held constant
         across the trajectory (e.g. free/runtime parameters). Every current
@@ -313,6 +365,8 @@ def proto_grad_loss(
     y_scale: jax.Array,
     ctx: IntegrationSettings,
     simulation_fn: ProtoSimulationFn,
+    global_step: jax.Array,  # noqa: ARG001
+    total_steps: jax.Array,  # noqa: ARG001
 ) -> jax.Array:
     """Compute normalised MSE loss and its gradient w.r.t. model parameters.
 
@@ -351,6 +405,11 @@ def proto_grad_loss(
         Maps ``(model, ts, y0, protocol, ctx)`` to predictions aligned with
         ``ys[1:]``; see :func:`integrate_protocol_states` for the raw-state
         default.
+    global_step : jax.Array
+        Monotonic step count spanning the whole curriculum; see
+        :func:`grad_loss`.
+    total_steps : jax.Array
+        Total step count across every lesson; see :func:`grad_loss`.
 
     Returns
     -------
@@ -435,6 +494,8 @@ def make_step[T: JaxModel](
     opt_state: optax.OptState,
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
+    global_step: jax.Array,
+    total_steps: jax.Array,
     args: jax.Array | None = None,
     grad_fn: GradLossFn = grad_loss,
 ) -> tuple[jax.Array, T, optax.OptState, jax.Array]:
@@ -464,6 +525,10 @@ def make_step[T: JaxModel](
         Optimiser.
     ctx : IntegrationSettings
         ODE solver settings.
+    global_step : jax.Array
+        Forwarded to ``grad_fn``; see :func:`grad_loss`.
+    total_steps : jax.Array
+        Forwarded to ``grad_fn``; see :func:`grad_loss`.
     args : jax.Array or None
         External arguments forwarded to ``model.integrate``; see
         :func:`grad_loss`.
@@ -487,6 +552,8 @@ def make_step[T: JaxModel](
         y_mean=y_mean,
         y_scale=y_scale,
         ctx=ctx,
+        global_step=global_step,
+        total_steps=total_steps,
         args=args,
     )
     grad_norm = optax.global_norm(grads)
@@ -509,6 +576,8 @@ def _make_step_with_grad_pars[T: JaxModel](
     opt_state: optax.OptState,
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
+    global_step: jax.Array,
+    total_steps: jax.Array,
     args: jax.Array | None = None,
     grad_fn: GradLossFn = grad_loss,
 ) -> tuple[jax.Array, T, optax.OptState, jax.Array, jax.Array]:
@@ -529,6 +598,8 @@ def _make_step_with_grad_pars[T: JaxModel](
         y_mean=y_mean,
         y_scale=y_scale,
         ctx=ctx,
+        global_step=global_step,
+        total_steps=total_steps,
         args=args,
     )
     grad_norm = optax.global_norm(grads)
@@ -554,6 +625,8 @@ def proto_make_step[T: JaxModel](
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
     simulation_fn: ProtoSimulationFn,
+    global_step: jax.Array,
+    total_steps: jax.Array,
     grad_fn: ProtoGradLossFn = proto_grad_loss,
 ) -> tuple[jax.Array, T, optax.OptState, jax.Array]:
     """Perform one gradient update step on the full model.
@@ -585,6 +658,10 @@ def proto_make_step[T: JaxModel](
         ODE solver settings.
     simulation_fn : ProtoSimulationFn
         See :func:`proto_grad_loss`.
+    global_step : jax.Array
+        Forwarded to ``grad_fn``; see :func:`grad_loss`.
+    total_steps : jax.Array
+        Forwarded to ``grad_fn``; see :func:`grad_loss`.
     grad_fn : ProtoGradLossFn
         Computes the (loss, grads) pair to apply; defaults to
         :func:`proto_grad_loss`. Pass a different
@@ -607,6 +684,8 @@ def proto_make_step[T: JaxModel](
         y_scale=y_scale,
         ctx=ctx,
         simulation_fn=simulation_fn,
+        global_step=global_step,
+        total_steps=total_steps,
     )
     # Failed solves can produce NaN in y_pred -> NaN gradients; zero them out
     # so the optimizer state isn't corrupted.
@@ -641,6 +720,8 @@ def _proto_make_step_with_grad_pars[T: JaxModel](
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
     simulation_fn: ProtoSimulationFn,
+    global_step: jax.Array,
+    total_steps: jax.Array,
     grad_fn: ProtoGradLossFn = proto_grad_loss,
 ) -> tuple[jax.Array, T, optax.OptState, jax.Array, jax.Array]:
     """Same as :func:`proto_make_step`, additionally returning ``grads.pars``.
@@ -660,6 +741,8 @@ def _proto_make_step_with_grad_pars[T: JaxModel](
         y_scale=y_scale,
         ctx=ctx,
         simulation_fn=simulation_fn,
+        global_step=global_step,
+        total_steps=total_steps,
     )
     grads = jax.tree.map(lambda g: jnp.where(jnp.isfinite(g), g, 0.0), grads)
     grad_norm = optax.global_norm(grads)
@@ -898,6 +981,8 @@ def train[Model: JaxModel](
     loss = 0
     acc_loss = 0
     acc_count = 0
+    global_step = 0
+    total_steps = sum(s for s, _ in training_steps)
     perturb_key: jax.Array = jax.random.PRNGKey(0) if key is None else key
 
     raw_optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
@@ -967,6 +1052,8 @@ def train[Model: JaxModel](
                                 y_mean=y_mean,
                                 y_scale=y_scale,
                                 ctx=ctx,
+                                global_step=jnp.asarray(global_step),
+                                total_steps=jnp.asarray(total_steps),
                                 args=args,
                                 grad_fn=grad_fn,
                             )
@@ -981,6 +1068,8 @@ def train[Model: JaxModel](
                                     y_mean=y_mean,
                                     y_scale=y_scale,
                                     ctx=ctx,
+                                    global_step=jnp.asarray(global_step),
+                                    total_steps=jnp.asarray(total_steps),
                                     args=args,
                                     grad_fn=grad_fn,
                                 )
@@ -1009,6 +1098,7 @@ def train[Model: JaxModel](
                         )
                         continue
                     consecutive_solver_errors = 0
+                    global_step += 1
                     grad_norms[step] = float(grad_norm)
                     acc_loss += loss
                     acc_count += 1
@@ -1372,6 +1462,8 @@ def train_protocol[Model: JaxModel](
     loss = 0
     acc_loss = 0
     acc_count = 0
+    global_step = 0
+    total_steps = sum(s for s, _ in training_steps)
     optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
     best_training_loss = jnp.inf
     best_model = model
@@ -1438,6 +1530,8 @@ def train_protocol[Model: JaxModel](
                                 y_scale=y_scale,
                                 ctx=ctx,
                                 simulation_fn=simulation_fn,
+                                global_step=jnp.asarray(global_step),
+                                total_steps=jnp.asarray(total_steps),
                                 grad_fn=grad_fn,
                             )
                         else:
@@ -1454,6 +1548,8 @@ def train_protocol[Model: JaxModel](
                                     y_scale=y_scale,
                                     ctx=ctx,
                                     simulation_fn=simulation_fn,
+                                    global_step=jnp.asarray(global_step),
+                                    total_steps=jnp.asarray(total_steps),
                                     grad_fn=grad_fn,
                                 )
                             )
@@ -1481,6 +1577,7 @@ def train_protocol[Model: JaxModel](
                         )
                         continue
                     consecutive_solver_errors = 0
+                    global_step += 1
                     grad_norms[step] = float(grad_norm)
                     acc_loss += loss
                     acc_count += 1

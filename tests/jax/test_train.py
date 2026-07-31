@@ -85,6 +85,41 @@ def test_squeeze_derived_leaves_multi_quantity_unchanged() -> None:
 
 
 # ---------------------------------------------------------------------------
+# sigmoid_schedule
+# ---------------------------------------------------------------------------
+
+
+def test_sigmoid_schedule_is_close_to_one_early_in_training() -> None:
+    alpha = jax_train.sigmoid_schedule(
+        jnp.asarray(0), jnp.asarray(1000), steepness=10.0, midpoint=0.5
+    )
+    assert float(alpha) == pytest.approx(1.0, abs=1e-2)
+
+
+def test_sigmoid_schedule_is_close_to_zero_late_in_training() -> None:
+    alpha = jax_train.sigmoid_schedule(
+        jnp.asarray(999), jnp.asarray(1000), steepness=10.0, midpoint=0.5
+    )
+    assert float(alpha) == pytest.approx(0.0, abs=1e-2)
+
+
+def test_sigmoid_schedule_is_one_half_at_the_midpoint() -> None:
+    alpha = jax_train.sigmoid_schedule(
+        jnp.asarray(500), jnp.asarray(1000), steepness=10.0, midpoint=0.5
+    )
+    assert float(alpha) == pytest.approx(0.5, abs=1e-6)
+
+
+def test_sigmoid_schedule_decreases_monotonically() -> None:
+    steps = jnp.arange(0, 1001, 100)
+    alphas = [
+        float(jax_train.sigmoid_schedule(s, jnp.asarray(1000), steepness=5.0, midpoint=0.5))
+        for s in steps
+    ]
+    assert alphas == sorted(alphas, reverse=True)
+
+
+# ---------------------------------------------------------------------------
 # perturb_model
 # ---------------------------------------------------------------------------
 
@@ -452,6 +487,8 @@ def _run_proto_make_step_with_fixed_grad(
             optim=optim,
             ctx=ctx,
             simulation_fn=jax_train.integrate_protocol_states,
+            global_step=jnp.asarray(0),
+            total_steps=jnp.asarray(1),
             grad_fn=_fixed_grad_proto_grad_loss(magnitude),
         )
     return model, new_model, grad_norm
@@ -887,6 +924,8 @@ def test_train_uses_custom_grad_fn() -> None:
         y_mean: jnp.ndarray,  # noqa: ARG001
         y_scale: jnp.ndarray,  # noqa: ARG001
         ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,  # noqa: ARG001
         args: jnp.ndarray | None = None,  # noqa: ARG001
     ) -> jnp.ndarray:
         # A loss value real training could never produce, so recording it
@@ -921,6 +960,8 @@ def test_train_protocol_uses_custom_grad_fn() -> None:
         y_scale: jnp.ndarray,  # noqa: ARG001
         ctx: jax_train.IntegrationSettings,  # noqa: ARG001
         simulation_fn: jax_train.ProtoSimulationFn,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,  # noqa: ARG001
     ) -> jnp.ndarray:
         return jnp.sum(model.pars) * 0.0 + 42.0
 
@@ -960,6 +1001,8 @@ def test_train_normalize_axis_defaults_to_flattened_scalar() -> None:
         y_mean: jnp.ndarray,
         y_scale: jnp.ndarray,
         ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,  # noqa: ARG001
         args: jnp.ndarray | None = None,  # noqa: ARG001
     ) -> jnp.ndarray:
         return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
@@ -995,6 +1038,8 @@ def test_train_normalize_axis_zero_normalizes_per_quantity() -> None:
         y_mean: jnp.ndarray,
         y_scale: jnp.ndarray,
         ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,  # noqa: ARG001
         args: jnp.ndarray | None = None,  # noqa: ARG001
     ) -> jnp.ndarray:
         return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
@@ -1029,6 +1074,8 @@ def test_train_protocol_normalize_axis_defaults_to_flattened_scalar() -> None:
         y_scale: jnp.ndarray,
         ctx: jax_train.IntegrationSettings,  # noqa: ARG001
         simulation_fn: jax_train.ProtoSimulationFn,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,  # noqa: ARG001
     ) -> jnp.ndarray:
         return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
 
@@ -1064,6 +1111,8 @@ def test_train_protocol_normalize_axis_zero_normalizes_per_quantity() -> None:
         y_scale: jnp.ndarray,
         ctx: jax_train.IntegrationSettings,  # noqa: ARG001
         simulation_fn: jax_train.ProtoSimulationFn,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,  # noqa: ARG001
     ) -> jnp.ndarray:
         return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
 
@@ -1081,6 +1130,117 @@ def test_train_protocol_normalize_axis_zero_normalizes_per_quantity() -> None:
     )
 
     assert losses[0].to_numpy()[0] == pytest.approx(expected)
+
+
+# ---------------------------------------------------------------------------
+# train()/train_protocol(): global_step/total_steps threading
+# ---------------------------------------------------------------------------
+
+
+def test_train_global_step_persists_across_curriculum_stages() -> None:
+    """global_step must not reset between lessons -- it's a monotonic count
+    across the WHOLE curriculum, not per-stage (needed e.g. to anneal a
+    schedule like sigmoid_schedule smoothly across stage boundaries).
+    """
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+
+    @eqx.filter_value_and_grad
+    def probe_grad_fn(
+        model: Ode,
+        ts: jnp.ndarray,  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,  # noqa: ARG001
+        y_scale: jnp.ndarray,  # noqa: ARG001
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        global_step: jnp.ndarray,
+        total_steps: jnp.ndarray,  # noqa: ARG001
+        args: jnp.ndarray | None = None,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + global_step.astype(jnp.float32)
+
+    _, losses, _ = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(3, 1.0), (2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=probe_grad_fn,
+    )
+
+    assert len(losses) == 2
+    assert losses[0].to_numpy().tolist() == pytest.approx([0.0, 1.0, 2.0])
+    assert losses[1].to_numpy().tolist() == pytest.approx([3.0, 4.0])
+
+
+def test_train_total_steps_is_the_curriculum_sum_throughout() -> None:
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+
+    @eqx.filter_value_and_grad
+    def probe_grad_fn(
+        model: Ode,
+        ts: jnp.ndarray,  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,  # noqa: ARG001
+        y_scale: jnp.ndarray,  # noqa: ARG001
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,
+        args: jnp.ndarray | None = None,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + total_steps.astype(jnp.float32)
+
+    _, losses, _ = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(3, 1.0), (2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=probe_grad_fn,
+    )
+
+    assert losses[0].to_numpy().tolist() == pytest.approx([5.0, 5.0, 5.0])
+    assert losses[1].to_numpy().tolist() == pytest.approx([5.0, 5.0])
+
+
+def test_train_protocol_global_step_persists_across_curriculum_stages() -> None:
+    model = _decay_model()
+    ys = jnp.array([[1.0], [0.9], [0.8], [0.7]])
+
+    @eqx.filter_value_and_grad
+    def probe_grad_fn(
+        model: Ode,
+        y0: jnp.ndarray,  # noqa: ARG001
+        ts: list[jnp.ndarray],  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        protocol: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,  # noqa: ARG001
+        y_scale: jnp.ndarray,  # noqa: ARG001
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        simulation_fn: jax_train.ProtoSimulationFn,  # noqa: ARG001
+        global_step: jnp.ndarray,
+        total_steps: jnp.ndarray,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + global_step.astype(jnp.float32)
+
+    _, losses, _ = jax_train.train_protocol(
+        model,
+        y0=jnp.array([1.0]),
+        ts=[jnp.array([1.0]), jnp.array([2.0]), jnp.array([3.0])],
+        ys=ys,
+        protocol=jnp.zeros((3, 0)),
+        training_steps=[(2, 1.0), (2, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=probe_grad_fn,
+    )
+
+    assert len(losses) == 2
+    assert losses[0].to_numpy().tolist() == pytest.approx([0.0, 1.0])
+    assert losses[1].to_numpy().tolist() == pytest.approx([2.0, 3.0])
 
 
 def test_train_only_nde_uses_custom_grad_fn() -> None:
@@ -1168,7 +1328,14 @@ def test_train_resume_never_regresses_below_the_starting_model() -> None:
     ctx = jax_train.IntegrationSettings()
     y_mean, y_scale = jnp.mean(ys), jnp.std(ys)
     loss_before_resume, _ = jax_train.grad_loss(
-        trained1, ts=ts, ys=ys, y_mean=y_mean, y_scale=y_scale, ctx=ctx
+        trained1,
+        ts=ts,
+        ys=ys,
+        y_mean=y_mean,
+        y_scale=y_scale,
+        ctx=ctx,
+        global_step=jnp.asarray(0),
+        total_steps=jnp.asarray(1),
     )
 
     # A deliberately huge learning rate simulates an optimiser overshoot
@@ -1186,7 +1353,14 @@ def test_train_resume_never_regresses_below_the_starting_model() -> None:
         prior_losses=losses1,
     )
     loss_after_resume, _ = jax_train.grad_loss(
-        trained2, ts=ts, ys=ys, y_mean=y_mean, y_scale=y_scale, ctx=ctx
+        trained2,
+        ts=ts,
+        ys=ys,
+        y_mean=y_mean,
+        y_scale=y_scale,
+        ctx=ctx,
+        global_step=jnp.asarray(0),
+        total_steps=jnp.asarray(1),
     )
 
     assert float(loss_after_resume) <= float(loss_before_resume) + 1e-4
