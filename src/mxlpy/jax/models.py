@@ -36,6 +36,7 @@ __all__ = [
     "Ode",
     "Rhs",
     "SoftLatentMapper",
+    "TrainableZ0LatentMapper",
     "Ude",
     "boundaries_to_ts",
 ]
@@ -636,8 +637,17 @@ class LatentMapper(Protocol):
         """Encode an observation vector into the latent space."""
         ...
 
-    def decode(self, zs: jax.Array) -> jax.Array:
-        """Decode latent trajectories back to observation space."""
+    def decode(self, zs: jax.Array, *, alpha: float | None = None) -> jax.Array:
+        """Decode latent trajectories back to observation space.
+
+        ``alpha`` is ignored by every implementation except
+        :class:`MixedLatentMapper`/:class:`TrainableZ0LatentMapper`, whose
+        decode is an annealed hard/learned blend; see their docstrings. Kept
+        on the shared Protocol (rather than only on those two classes) so
+        callers that thread an annealing schedule through
+        :meth:`Anode.integrate`/:meth:`FluxAnode.integrate` don't need to
+        know which concrete mapper is in use.
+        """
         ...
 
 
@@ -705,7 +715,7 @@ class SoftLatentMapper(eqx.Module):
         """
         return jnp.concat((y0, self.encoder(y0)))
 
-    def decode(self, zs: jax.Array) -> jax.Array:
+    def decode(self, zs: jax.Array, *, alpha: float | None = None) -> jax.Array:  # noqa: ARG002
         """Decode latent trajectories to observation space.
 
         Parameters
@@ -782,7 +792,7 @@ class FullLatentMapper(eqx.Module):
         """
         return self.encoder(y0)
 
-    def decode(self, zs: jax.Array) -> jax.Array:
+    def decode(self, zs: jax.Array, *, alpha: float | None = None) -> jax.Array:  # noqa: ARG002
         """Decode latent trajectories to observation space.
 
         Parameters
@@ -848,7 +858,7 @@ class HardLatentMapper(eqx.Module):
         """
         return jnp.concat((y0, self.encoder(y0)))
 
-    def decode(self, zs: jax.Array) -> jax.Array:
+    def decode(self, zs: jax.Array, *, alpha: float | None = None) -> jax.Array:  # noqa: ARG002
         """Decode latent trajectories by slicing the first ``n_obs`` dimensions.
 
         Parameters
@@ -862,6 +872,53 @@ class HardLatentMapper(eqx.Module):
             Observed states, shape ``(T, n_obs)``.
         """
         return zs[:, : self.n_obs]
+
+
+def _annealed_decode(
+    zs: jax.Array,
+    decoder: eqx.nn.Linear,
+    n_obs: int,
+    alpha: float | None,
+) -> jax.Array:
+    """Shared decode body for :class:`MixedLatentMapper`/:class:`TrainableZ0LatentMapper`.
+
+    ``(1 - alpha) * hard + alpha * learned``, where ``hard`` is a plain slice
+    of the first ``n_obs`` latent dimensions and ``learned`` is
+    ``decoder`` applied to the full latent vector.
+
+    Parameters
+    ----------
+    zs : jax.Array
+        Latent trajectories, shape ``(T, n_latent)``.
+    decoder : eqx.nn.Linear
+        Learned latent-to-observation map.
+    n_obs : int
+        Number of observed state dimensions.
+    alpha : float or None
+        Mixing coefficient. ``0`` returns pure hard (slice) decoding; ``1``
+        returns pure learned decoding. Required (not actually optional)
+        despite the ``| None`` -- kept nullable only so the signature
+        matches :class:`LatentMapper`'s shared Protocol, which defaults
+        ``alpha`` to ``None`` for mappers that ignore it entirely; a caller
+        using an annealed mapper without threading a real ``alpha`` through
+        is a bug, not a case to silently paper over with a guessed default.
+
+    Returns
+    -------
+    jax.Array
+        Decoded observations, shape ``(T, n_obs)``.
+    """
+    if alpha is None:
+        msg = (
+            "alpha is required for an annealed hard/learned decode "
+            "(MixedLatentMapper/TrainableZ0LatentMapper) -- thread it "
+            "through Anode.integrate/FluxAnode.integrate's own alpha "
+            "parameter."
+        )
+        raise ValueError(msg)
+    hard = zs[:, :n_obs]
+    learned = jax.vmap(decoder)(zs)
+    return (1 - alpha) * hard + alpha * learned
 
 
 class MixedLatentMapper(eqx.Module):
@@ -920,25 +977,96 @@ class MixedLatentMapper(eqx.Module):
         """
         return jnp.concat((y0, self.encoder(y0)))
 
-    def decode(self, zs: jax.Array, alpha: float) -> jax.Array:
+    def decode(self, zs: jax.Array, *, alpha: float | None = None) -> jax.Array:
         """Decode latent trajectories using an annealed mixture of hard and learned maps.
+
+        See :func:`_annealed_decode`.
+        """
+        return _annealed_decode(zs, self.decoder, self.n_obs, alpha)
+
+
+class TrainableZ0LatentMapper(eqx.Module):
+    """Maps observed states to and from a latent space with a free, trainable hidden init.
+
+    Unlike every other :class:`LatentMapper`, the hidden dimensions of the
+    initial latent state are not a function of ``y0`` at all: they're a
+    single trainable vector shared across every trajectory the model is
+    ever trained or evaluated on. The observed dimensions are still carried
+    through ``y0`` verbatim, and the decoder is the same annealed
+    hard/learned blend as :class:`MixedLatentMapper` (see
+    :func:`_annealed_decode`) -- the two share that decode logic via a
+    module-level helper rather than inheritance, since inheriting from
+    MixedLatentMapper would carry along its (here unused) ``encoder`` field.
+
+    z0 <- concat((y0, self.z0))
+    ys <- (1 - alpha) * zs[:, :n_obs] + alpha * linear(zs)
+
+    Parameters
+    ----------
+    n_obs : int
+        Number of observed state dimensions.
+    n_hidden : int
+        Number of additional trainable latent dimensions.
+    key : PRNGKeyArray
+        JAX random key for weight initialisation.
+    z0_minval : float
+        Lower bound for ``z0``'s uniform initialisation. Defaults to 0.0.
+    z0_maxval : float
+        Upper bound for ``z0``'s uniform initialisation. Defaults to 1.0.
+    """
+
+    n_obs: int
+    n_hidden: int
+    n_latent: int
+    z0: jax.Array
+    decoder: eqx.nn.Linear
+
+    def __init__(
+        self,
+        n_obs: int,
+        n_hidden: int,
+        key: PRNGKeyArray,
+        z0_minval: float = 0.0,
+        z0_maxval: float = 1.0,
+    ) -> None:
+        self.n_obs = n_obs
+        self.n_hidden = n_hidden
+        self.n_latent = n_obs + n_hidden
+
+        z0_key, decoder_key = jax.random.split(key)
+        self.z0 = jax.random.uniform(
+            key=z0_key,
+            shape=(n_hidden,),
+            minval=z0_minval,
+            maxval=z0_maxval,
+        )
+        self.decoder = eqx.nn.Linear(
+            in_features=self.n_latent,
+            out_features=self.n_obs,
+            key=decoder_key,
+        )
+
+    def encode(self, y0: jax.Array) -> jax.Array:
+        """Encode observation into latent space, appending the trainable ``z0``.
 
         Parameters
         ----------
-        zs : jax.Array
-            Latent trajectories, shape ``(T, n_latent)``.
-        alpha : float
-            Mixing coefficient. ``0`` returns pure hard (slice) decoding;
-            ``1`` returns pure learned decoding.
+        y0 : jax.Array
+            Observation vector, shape ``(n_obs,)``.
 
         Returns
         -------
         jax.Array
-            Decoded observations, shape ``(T, n_obs)``.
+            Latent vector, shape ``(n_latent,)``.
         """
-        hard = zs[:, : self.n_obs]
-        learned = jax.vmap(self.decoder)(zs)
-        return (1 - alpha) * hard + alpha * learned
+        return jnp.concat((y0, self.z0))
+
+    def decode(self, zs: jax.Array, *, alpha: float | None = None) -> jax.Array:
+        """Decode latent trajectories using an annealed mixture of hard and learned maps.
+
+        See :func:`_annealed_decode`.
+        """
+        return _annealed_decode(zs, self.decoder, self.n_obs, alpha)
 
 
 ###############################################################################
@@ -1972,6 +2100,7 @@ class Anode(Base):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        alpha: float | None = None,
     ) -> jax.Array:
         """Integrate in latent space and decode to observation space.
 
@@ -1989,6 +2118,10 @@ class Anode(Base):
             Absolute tolerance.
         method : Method
             Diffrax solver class.
+        alpha : float or None
+            Forwarded to :meth:`latent_mapper`'s ``decode``; only meaningful
+            for an annealed mapper (e.g. :class:`MixedLatentMapper`,
+            :class:`TrainableZ0LatentMapper`), ignored otherwise.
 
         Returns
         -------
@@ -2008,7 +2141,7 @@ class Anode(Base):
             atol=atol,
             method=method,
         )
-        return self.latent_mapper.decode(zs)
+        return self.latent_mapper.decode(zs, alpha=alpha)
 
     def integrate_protocol(
         self,
@@ -2020,12 +2153,14 @@ class Anode(Base):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        alpha: float | None = None,
     ) -> jax.Array:
         """Integrate a protocol in latent space and decode to observation space.
 
         See :meth:`Base.integrate_protocol` for the step semantics; this
         override encodes ``y0`` once before the per-step loop and decodes
-        the full latent trajectory once afterwards.
+        the full latent trajectory once afterwards. ``alpha`` is forwarded
+        to :meth:`latent_mapper`'s ``decode``; see :meth:`integrate`.
 
         Returns
         -------
@@ -2036,7 +2171,7 @@ class Anode(Base):
         zs = self._integrate_protocol_raw(
             z0, ts, protocol, max_steps, args, rtol, atol, method
         )
-        return self.latent_mapper.decode(zs)
+        return self.latent_mapper.decode(zs, alpha=alpha)
 
     def integrate_to_steady_state(
         self,
@@ -2049,12 +2184,14 @@ class Anode(Base):
         steady_state_rtol: float | None = None,
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
+        alpha: float | None = None,
     ) -> tuple[jax.Array, jax.Array]:
         """Integrate to steady state in latent space and decode the final state.
 
         See :meth:`Base.integrate_to_steady_state` for the event semantics;
         this override encodes ``y0`` before solving and decodes the final
-        latent state afterwards.
+        latent state afterwards. ``alpha`` is forwarded to
+        :meth:`latent_mapper`'s ``decode``; see :meth:`integrate`.
 
         Returns
         -------
@@ -2074,7 +2211,7 @@ class Anode(Base):
             steady_state_atol,
             method,
         )
-        return t, self.latent_mapper.decode(z[None, :])[0]
+        return t, self.latent_mapper.decode(z[None, :], alpha=alpha)[0]
 
 
 class FluxAnode(Base):
@@ -2304,16 +2441,25 @@ class FluxAnode(Base):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        alpha: float | None = None,
     ) -> FluxOdeSimulation:
         """Integrate and return a named, DataFrame-based simulation result.
 
         See :meth:`FluxOde.simulate_time_course`; ``ts``/``ys`` are already
         decoded to observation space (via :meth:`integrate`), and flux
         recomputation re-encodes them (see :meth:`simulate_flux_row`).
+        ``alpha`` is forwarded to :meth:`integrate`.
         """
         self._require_names()
         ys = self.integrate(
-            ts, y0, max_steps, args=args, rtol=rtol, atol=atol, method=method
+            ts,
+            y0,
+            max_steps,
+            args=args,
+            rtol=rtol,
+            atol=atol,
+            method=method,
+            alpha=alpha,
         )
         row_args = jnp.zeros((0,)) if args is None else args
         args_per_row = jnp.broadcast_to(row_args, (ts.shape[0], row_args.shape[0]))
@@ -2336,11 +2482,13 @@ class FluxAnode(Base):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        alpha: float | None = None,
     ) -> FluxOdeSimulation:
         """Integrate through a protocol and return a named simulation result.
 
         See :meth:`FluxOde.simulate_protocol_time_course`; ``ys`` are
         already decoded to observation space (via :meth:`integrate_protocol`).
+        ``alpha`` is forwarded to :meth:`integrate_protocol`.
         """
         self._require_names()
         ys = self.integrate_protocol(
@@ -2352,6 +2500,7 @@ class FluxAnode(Base):
             rtol=rtol,
             atol=atol,
             method=method,
+            alpha=alpha,
         )
         full_ts = jnp.concatenate((jnp.zeros((1,)), jnp.concatenate(ts)))
         full_ys = jnp.concatenate((y0[None, :], ys), axis=0)
@@ -2388,12 +2537,14 @@ class FluxAnode(Base):
         steady_state_rtol: float | None = None,
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
+        alpha: float | None = None,
     ) -> FluxOdeSimulation:
         """Integrate to steady state and return a named, 1-row simulation result.
 
         See :meth:`FluxOde.simulate_to_steady_state`; the returned state is
         already decoded to observation space (via
-        :meth:`integrate_to_steady_state`).
+        :meth:`integrate_to_steady_state`). ``alpha`` is forwarded to
+        :meth:`integrate_to_steady_state`.
         """
         self._require_names()
         t, y = self.integrate_to_steady_state(
@@ -2406,6 +2557,7 @@ class FluxAnode(Base):
             steady_state_rtol=steady_state_rtol,
             steady_state_atol=steady_state_atol,
             method=method,
+            alpha=alpha,
         )
         row_args = jnp.zeros((0,)) if args is None else args
         return FluxOdeSimulation(
@@ -2481,6 +2633,7 @@ class FluxAnode(Base):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        alpha: float | None = None,
     ) -> jax.Array:
         """Integrate in latent space and decode to observation space.
 
@@ -2498,6 +2651,10 @@ class FluxAnode(Base):
             Absolute tolerance.
         method : Method
             Diffrax solver class.
+        alpha : float or None
+            Forwarded to :meth:`latent_mapper`'s ``decode``; only meaningful
+            for an annealed mapper (e.g. :class:`MixedLatentMapper`,
+            :class:`TrainableZ0LatentMapper`), ignored otherwise.
 
         Returns
         -------
@@ -2517,7 +2674,7 @@ class FluxAnode(Base):
             atol=atol,
             method=method,
         )
-        return self.latent_mapper.decode(zs)
+        return self.latent_mapper.decode(zs, alpha=alpha)
 
     def integrate_protocol(
         self,
@@ -2529,12 +2686,14 @@ class FluxAnode(Base):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        alpha: float | None = None,
     ) -> jax.Array:
         """Integrate a protocol in latent space and decode to observation space.
 
         See :meth:`Base.integrate_protocol` for the step semantics; this
         override encodes ``y0`` once before the per-step loop and decodes
-        the full latent trajectory once afterwards.
+        the full latent trajectory once afterwards. ``alpha`` is forwarded
+        to :meth:`latent_mapper`'s ``decode``; see :meth:`integrate`.
 
         Returns
         -------
@@ -2545,7 +2704,7 @@ class FluxAnode(Base):
         zs = self._integrate_protocol_raw(
             z0, ts, protocol, max_steps, args, rtol, atol, method
         )
-        return self.latent_mapper.decode(zs)
+        return self.latent_mapper.decode(zs, alpha=alpha)
 
     def integrate_to_steady_state(
         self,
@@ -2558,12 +2717,14 @@ class FluxAnode(Base):
         steady_state_rtol: float | None = None,
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
+        alpha: float | None = None,
     ) -> tuple[jax.Array, jax.Array]:
         """Integrate to steady state in latent space and decode the final state.
 
         See :meth:`Base.integrate_to_steady_state` for the event semantics;
         this override encodes ``y0`` before solving and decodes the final
-        latent state afterwards.
+        latent state afterwards. ``alpha`` is forwarded to
+        :meth:`latent_mapper`'s ``decode``; see :meth:`integrate`.
 
         Returns
         -------
@@ -2583,7 +2744,7 @@ class FluxAnode(Base):
             steady_state_atol,
             method,
         )
-        return t, self.latent_mapper.decode(z[None, :])[0]
+        return t, self.latent_mapper.decode(z[None, :], alpha=alpha)[0]
 
 
 ###############################################################################
