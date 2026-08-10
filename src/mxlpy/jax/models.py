@@ -19,6 +19,7 @@ from mxlpy.meta._via_sym_repr import generate_model_code_jax
 __all__ = [
     "Anode",
     "Base",
+    "DerivedFn",
     "Encoder",
     "FluxAnode",
     "FluxNode",
@@ -52,6 +53,8 @@ type Encoder = Callable[[jax.Array], jax.Array]
 
 
 class DerivedFn(Protocol):
+    """Protocol for a model's derived-quantity function."""
+
     def __call__(self, time: PyTree, y: PyTree, args: PyTree) -> jax.Array:
         """Calculate derived quantitites."""
         ...
@@ -77,6 +80,7 @@ class JaxModel(Protocol):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        dt0: jax.Array | float | None = None,
     ) -> jax.Array:
         """Integrate the model from ``ts[0]`` to ``ts[-1]`` and return saved states."""
         ...
@@ -168,6 +172,7 @@ class Base(eqx.Module, ABC):
         rtol: float,
         atol: float,
         method: Method,
+        dt0: jax.Array | float | None = None,
     ) -> jax.Array:
         """Integrate from ``t0`` to ``t1``, saving at ``saveat_ts``.
 
@@ -198,6 +203,13 @@ class Base(eqx.Module, ABC):
             Absolute tolerance for the PID step-size controller.
         method : Method
             Diffrax Runge-Kutta solver class.
+        dt0 : jax.Array, float, or None
+            Initial step size hint passed to ``diffrax.diffeqsolve``.
+            ``None`` (the default) lets diffrax select one automatically;
+            pass an explicit value for a model whose RHS needs a specific
+            initial step (e.g. to line up with the spacing of a driver
+            signal evaluated only at fixed points) instead of the
+            heuristic diffrax would otherwise pick.
 
         Returns
         -------
@@ -209,7 +221,7 @@ class Base(eqx.Module, ABC):
             method(),
             t0=t0,
             t1=t1,
-            dt0=None,
+            dt0=dt0,
             y0=y0,
             args=jnp.zeros((0,)) if args is None else args,
             stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
@@ -237,6 +249,7 @@ class Base(eqx.Module, ABC):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        dt0: jax.Array | float | None = None,
     ) -> jax.Array:
         """Integrate from ``ts[0]`` to ``ts[-1]`` and return saved states.
 
@@ -254,6 +267,8 @@ class Base(eqx.Module, ABC):
             Absolute tolerance for the PID step-size controller.
         method : Method
             Diffrax Runge-Kutta solver class.
+        dt0 : jax.Array, float, or None
+            Initial step size hint; see :meth:`_solve`.
 
         Returns
         -------
@@ -270,6 +285,7 @@ class Base(eqx.Module, ABC):
             rtol=rtol,
             atol=atol,
             method=method,
+            dt0=dt0,
         )
 
     def _integrate_protocol_raw(
@@ -2100,6 +2116,7 @@ class Anode(Base):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        dt0: jax.Array | float | None = None,
         alpha: float | None = None,
     ) -> jax.Array:
         """Integrate in latent space and decode to observation space.
@@ -2118,6 +2135,8 @@ class Anode(Base):
             Absolute tolerance.
         method : Method
             Diffrax solver class.
+        dt0 : jax.Array, float, or None
+            Initial step size hint; see :meth:`Base._solve`.
         alpha : float or None
             Forwarded to :meth:`latent_mapper`'s ``decode``; only meaningful
             for an annealed mapper (e.g. :class:`MixedLatentMapper`,
@@ -2140,6 +2159,7 @@ class Anode(Base):
             rtol=rtol,
             atol=atol,
             method=method,
+            dt0=dt0,
         )
         return self.latent_mapper.decode(zs, alpha=alpha)
 
@@ -2633,6 +2653,7 @@ class FluxAnode(Base):
         rtol: float = 1e-6,
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
+        dt0: jax.Array | float | None = None,
         alpha: float | None = None,
     ) -> jax.Array:
         """Integrate in latent space and decode to observation space.
@@ -2651,6 +2672,8 @@ class FluxAnode(Base):
             Absolute tolerance.
         method : Method
             Diffrax solver class.
+        dt0 : jax.Array, float, or None
+            Initial step size hint; see :meth:`Base._solve`.
         alpha : float or None
             Forwarded to :meth:`latent_mapper`'s ``decode``; only meaningful
             for an annealed mapper (e.g. :class:`MixedLatentMapper`,
@@ -2673,6 +2696,7 @@ class FluxAnode(Base):
             rtol=rtol,
             atol=atol,
             method=method,
+            dt0=dt0,
         )
         return self.latent_mapper.decode(zs, alpha=alpha)
 

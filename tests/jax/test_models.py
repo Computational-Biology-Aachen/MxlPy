@@ -210,7 +210,7 @@ def _source_decay_model() -> KineticModelBuilder:
 def test_ode_call_appends_pars_after_free_args() -> None:
     captured: dict[str, jnp.ndarray] = {}
 
-    def rhs(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:
+    def rhs(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
         captured["args"] = args
         return y
 
@@ -224,7 +224,7 @@ def test_ode_call_appends_pars_after_free_args() -> None:
 def test_ode_call_with_empty_pars_passes_args_unchanged() -> None:
     captured: dict[str, jnp.ndarray] = {}
 
-    def rhs(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:
+    def rhs(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
         captured["args"] = args
         return y
 
@@ -237,7 +237,7 @@ def test_ode_call_with_empty_pars_passes_args_unchanged() -> None:
 def test_fluxode_call_appends_pars_after_free_args() -> None:
     captured: dict[str, jnp.ndarray] = {}
 
-    def fluxes(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:
+    def fluxes(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
         captured["args"] = args
         return jnp.zeros_like(y)
 
@@ -518,6 +518,42 @@ def test_ode_integrate_defaults_args_to_empty_array() -> None:
     assert ys.shape == (2, 1)
     assert bool(jnp.all(jnp.isfinite(ys)))
     assert float(ys[-1, 0]) == pytest.approx(float(np.exp(-1.0)), rel=1e-3)
+
+
+def test_ode_integrate_dt0_defaults_to_none_and_is_unaffected() -> None:
+    ode = Ode.from_mxlpy(_single_variable_model())
+    ts = jnp.array([0.0, 1.0])
+    y0 = jnp.array([1.0])
+
+    ys_omitted = ode.integrate(ts, y0, 8192, args=jnp.array([]))
+    ys_explicit_none = ode.integrate(ts, y0, 8192, args=jnp.array([]), dt0=None)
+
+    assert jnp.array_equal(ys_omitted, ys_explicit_none)
+
+
+def test_ode_integrate_accepts_explicit_dt0() -> None:
+    """A model whose RHS needs a specific initial step (e.g. to line up
+    with a driver signal's fixed spacing) can pass dt0 through integrate()
+    instead of reimplementing _solve just to set it.
+
+    Asserts more than shape/finiteness: with a PID step-size controller,
+    "integration succeeds and is accurate" stays true even if dt0 were
+    silently dropped (the controller quickly corrects any initial guess),
+    so this also checks the explicit dt0 measurably changes the result
+    relative to the auto-selected default -- proof dt0 actually reaches
+    diffrax's solve rather than being ignored somewhere along the way.
+    """
+    ode = Ode.from_mxlpy(_single_variable_model())
+    ts = jnp.array([0.0, 1.0])
+    y0 = jnp.array([1.0])
+
+    ys_default = ode.integrate(ts, y0, 8192, args=jnp.array([]))
+    ys_explicit = ode.integrate(ts, y0, 8192, args=jnp.array([]), dt0=ts[1] - ts[0])
+
+    assert ys_explicit.shape == (2, 1)
+    assert bool(jnp.all(jnp.isfinite(ys_explicit)))
+    assert float(ys_explicit[-1, 0]) == pytest.approx(float(np.exp(-1.0)), rel=1e-2)
+    assert not jnp.array_equal(ys_default, ys_explicit)
 
 
 def test_ode_integrate_to_steady_state_defaults_args_to_empty_array() -> None:
