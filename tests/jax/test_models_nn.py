@@ -454,6 +454,39 @@ def test_fluxanode_integrate_decodes_to_n_obs() -> None:
     assert bool(jnp.all(jnp.isfinite(ys)))
 
 
+def test_fluxanode_integrate_dt0_defaults_to_none_and_is_unaffected() -> None:
+    fanode = _fluxanode()
+    ts = jnp.array([0.0, 1.0])
+    y0 = jnp.array([1.0, 2.0])
+
+    ys_omitted = fanode.integrate(ts, y0, 4096, args=jnp.array([]))
+    ys_explicit_none = fanode.integrate(ts, y0, 4096, args=jnp.array([]), dt0=None)
+
+    assert jnp.array_equal(ys_omitted, ys_explicit_none)
+
+
+def test_fluxanode_integrate_accepts_explicit_dt0() -> None:
+    """A model whose RHS needs a specific initial step (e.g. to line up
+    with a driver signal's fixed spacing) can pass dt0 through integrate()
+    instead of reimplementing _solve just to set it.
+
+    Asserts more than shape/finiteness -- see
+    test_ode_integrate_accepts_explicit_dt0's docstring for why a
+    silently-dropped dt0 would still pass a shape/finiteness-only check
+    under a PID step-size controller.
+    """
+    fanode = _fluxanode()
+    ts = jnp.array([0.0, 1.0])
+    y0 = jnp.array([1.0, 2.0])
+
+    ys_default = fanode.integrate(ts, y0, 4096, args=jnp.array([]))
+    ys_explicit = fanode.integrate(ts, y0, 4096, args=jnp.array([]), dt0=ts[1] - ts[0])
+
+    assert ys_explicit.shape == (2, 2)
+    assert bool(jnp.all(jnp.isfinite(ys_explicit)))
+    assert not jnp.array_equal(ys_default, ys_explicit)
+
+
 def test_fluxanode_integrate_protocol_decodes_to_n_obs() -> None:
     fanode = _fluxanode()
     ts = [jnp.array([1.0]), jnp.array([2.0])]
