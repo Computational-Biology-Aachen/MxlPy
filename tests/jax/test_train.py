@@ -534,6 +534,60 @@ def test_proto_make_step_clips_large_gradients_to_unit_norm() -> None:
 
 
 # ---------------------------------------------------------------------------
+# train_protocol(): wraps optim like train() does (previously used the
+# caller's optim directly, forcing callers who wanted the same robustness
+# to hand-wrap it themselves before passing it in)
+# ---------------------------------------------------------------------------
+
+
+def test_train_protocol_wraps_optim_with_apply_if_finite_and_adaptive_grad_clip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+    real_apply_if_finite = optax.apply_if_finite
+    real_adaptive_grad_clip = optax.adaptive_grad_clip
+
+    def _capturing_apply_if_finite(
+        inner: object, *, max_consecutive_errors: int
+    ) -> object:
+        seen["max_consecutive_errors"] = max_consecutive_errors
+        return real_apply_if_finite(
+            inner, max_consecutive_errors=max_consecutive_errors
+        )
+
+    def _capturing_adaptive_grad_clip(clipping: float) -> object:
+        seen["clip_norm"] = clipping
+        return real_adaptive_grad_clip(clipping)
+
+    monkeypatch.setattr(jax_train.optax, "apply_if_finite", _capturing_apply_if_finite)
+    monkeypatch.setattr(
+        jax_train.optax, "adaptive_grad_clip", _capturing_adaptive_grad_clip
+    )
+
+    model = _decay_model()
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0]))[:, None]
+
+    jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(1, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        clip_norm=0.5,
+        max_consecutive_nonfinite=7,
+    )
+
+    assert seen["max_consecutive_errors"] == 7
+    assert seen["clip_norm"] == 0.5
+
+
+# ---------------------------------------------------------------------------
 # train_protocol(): basic shape sanity (previously zero coverage)
 # ---------------------------------------------------------------------------
 

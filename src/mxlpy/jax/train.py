@@ -1553,6 +1553,8 @@ def train_protocol[Model: JaxModel](
     optim: optax.GradientTransformationExtraArgs | None = None,
     integration_settings: IntegrationSettings | None = None,
     simulation_fn: ProtoSimulationFn = integrate_protocol_states,
+    clip_norm: float = 1.0,
+    max_consecutive_nonfinite: int = 50,
     max_consecutive_solver_errors: int = 10,
     perturbation_scale: float = 1e-3,
     key: jax.Array | None = None,
@@ -1571,6 +1573,14 @@ def train_protocol[Model: JaxModel](
     Each curriculum stage re-initialises the optimiser and uses a
     different fraction of the data.  Early stopping triggers when
     ``loss < target_loss`` during the **last** stage.
+
+    ``optim`` is wrapped in ``optax.apply_if_finite``/``optax.adaptive_grad_clip``
+    the same way :func:`train` wraps it -- see its docstring. ``proto_make_step``/
+    ``proto_make_step_split`` additionally zero non-finite gradient entries and
+    clip by global norm before this wrapping ever sees them, so in practice
+    ``apply_if_finite`` rarely has a non-finite update left to skip; the two
+    mechanisms are complementary defence in depth, not a replacement for
+    each other.
 
     A solver failure that raises (``eqx.EquinoxRuntimeError``, e.g. from a
     diffrax/lineax integration hitting a stiff or singular domain) is
@@ -1612,7 +1622,9 @@ def train_protocol[Model: JaxModel](
     avg_every : int
         Average and log loss every this many steps.
     optim : optax.GradientTransformationExtraArgs or None
-        Optimiser; defaults to AdaBelief with ``lr=1e-4``.
+        Optimiser; defaults to AdaBelief with ``lr=1e-4``.  Wrapped in
+        ``apply_if_finite``/``adaptive_grad_clip`` before use; pass the raw
+        optimiser here, not a pre-wrapped one -- see :func:`train`.
     integration_settings : IntegrationSettings or None
         ODE solver settings; defaults to ``IntegrationSettings()``.
     simulation_fn : ProtoSimulationFn
@@ -1620,6 +1632,12 @@ def train_protocol[Model: JaxModel](
         ``ys[1:]``; defaults to raw-state integration
         (:func:`integrate_protocol_states`). Pass a different function for
         models that fit a derived observable instead of raw state.
+    clip_norm : float
+        Per-parameter weight-norm clip threshold for
+        ``optax.adaptive_grad_clip``.
+    max_consecutive_nonfinite : int
+        Consecutive non-finite updates ``optax.apply_if_finite`` skips
+        before giving up and applying one anyway (it never raises).
     max_consecutive_solver_errors : int
         Consecutive solver failures (``eqx.EquinoxRuntimeError``) tolerated
         -- via perturb-and-retry -- before giving up on the current
@@ -1677,7 +1695,13 @@ def train_protocol[Model: JaxModel](
     acc_count = 0
     global_step = 0
     total_steps = sum(s for s, _ in training_steps)
-    optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
+
+    raw_optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
+    optim = optax.apply_if_finite(
+        optax.chain(optax.adaptive_grad_clip(clip_norm), raw_optim),
+        max_consecutive_errors=max_consecutive_nonfinite,
+    )
+
     best_training_loss = jnp.inf
     best_model = model
     perturb_key: jax.Array = jax.random.PRNGKey(0) if key is None else key
