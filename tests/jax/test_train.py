@@ -113,7 +113,11 @@ def test_sigmoid_schedule_is_one_half_at_the_midpoint() -> None:
 def test_sigmoid_schedule_decreases_monotonically() -> None:
     steps = jnp.arange(0, 1001, 100)
     alphas = [
-        float(jax_train.sigmoid_schedule(s, jnp.asarray(1000), steepness=5.0, midpoint=0.5))
+        float(
+            jax_train.sigmoid_schedule(
+                s, jnp.asarray(1000), steepness=5.0, midpoint=0.5
+            )
+        )
         for s in steps
     ]
     assert alphas == sorted(alphas, reverse=True)
@@ -1256,6 +1260,8 @@ def test_train_only_nde_uses_custom_grad_fn() -> None:
         y_mean: jnp.ndarray,  # noqa: ARG001
         y_scale: jnp.ndarray,  # noqa: ARG001
         ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,  # noqa: ARG001
         args: jnp.ndarray | None = None,  # noqa: ARG001
     ) -> jnp.ndarray:
         leaves = jax.tree_util.tree_leaves(eqx.filter(trainable, eqx.is_array))
@@ -1651,3 +1657,220 @@ def test_train_only_nde_explicit_int_cutoff_slices_exact_point_count(
     )
 
     assert seen_lengths == [3]
+
+
+# ---------------------------------------------------------------------------
+# freeze: generalizes train_only_nde's hardcoded ``m.ode`` freeze to an
+# arbitrary subtree, for train()/train_protocol()
+# ---------------------------------------------------------------------------
+
+
+def test_train_freeze_keeps_frozen_subtree_exactly_unchanged() -> None:
+    model = _ude_model()
+    ts, ys = _tiny_training_data()
+
+    trained, _, _ = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(5, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        freeze=lambda m: m.ode,
+    )
+
+    assert jnp.array_equal(trained.ode.pars, model.ode.pars)
+    trained_nn_leaf = jax.tree_util.tree_leaves(eqx.filter(trained.nn, eqx.is_array))[0]
+    initial_nn_leaf = jax.tree_util.tree_leaves(eqx.filter(model.nn, eqx.is_array))[0]
+    assert not jnp.allclose(trained_nn_leaf, initial_nn_leaf)
+
+
+def test_train_freeze_retries_after_solver_error_without_perturbing_frozen_subtree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A solver failure's perturb-and-retry recovery (see
+    test_train_retries_after_solver_error) must perturb the trainable
+    partition only -- perturbing the frozen one would silently drift a
+    value that's supposed to stay fixed forever.
+    """
+    model = _ude_model()
+    ts, ys = _tiny_training_data()
+    real_make_step_split = jax_train.make_step_split
+    calls = {"n": 0}
+
+    def _flaky_make_step_split(**kwargs: object) -> object:
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            msg = "synthetic solver failure"
+            raise eqx.EquinoxRuntimeError(msg)
+        return real_make_step_split(**kwargs)
+
+    monkeypatch.setattr(jax_train, "make_step_split", _flaky_make_step_split)
+
+    trained, losses, _ = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(4, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        freeze=lambda m: m.ode,
+    )
+
+    assert calls["n"] == 4
+    assert jnp.array_equal(trained.ode.pars, model.ode.pars)
+    assert len(losses[0]) == 2
+
+
+def test_train_freeze_defaults_to_none_and_matches_a_hand_rolled_make_step_loop() -> (
+    None
+):
+    """freeze's default (None) must reproduce train()'s pre-existing,
+    whole-model-trainable behaviour: this replays the exact sequence of
+    public make_step() calls a hand-rolled loop would make -- what train()
+    did before the freeze/split_grad_fn refactor -- and checks train()
+    matches it step-by-step. This catches a bug shared by both the
+    omitted-freeze and freeze=None paths (which now share the same
+    internal closures), unlike comparing train() against another call of
+    itself.
+    """
+    ts, ys = _tiny_training_data()
+    steps = 3
+
+    optim = optax.apply_if_finite(
+        optax.chain(
+            optax.adaptive_grad_clip(1.0),
+            optax.adabelief(learning_rate=1e-4),
+        ),
+        max_consecutive_errors=50,
+    )
+    ctx = jax_train.IntegrationSettings()
+    y_mean = jnp.mean(ys)
+    y_scale = jnp.std(ys)
+
+    hand_rolled_model = _decay_model()
+    opt_state = optim.init(eqx.filter(hand_rolled_model, eqx.is_inexact_array))
+    expected_losses: dict[int, float] = {}
+    best_pre_step_model = hand_rolled_model
+    best_loss = jnp.inf
+    for step in range(steps):
+        pre_step_model = hand_rolled_model
+        loss, hand_rolled_model, opt_state, _ = jax_train.make_step(
+            model=hand_rolled_model,
+            ts=ts,
+            ys=ys,
+            opt_state=opt_state,
+            optim=optim,
+            y_mean=y_mean,
+            y_scale=y_scale,
+            ctx=ctx,
+            global_step=jnp.asarray(step),
+            total_steps=jnp.asarray(steps),
+        )
+        expected_losses[step] = float(loss)
+        if loss < best_loss:
+            best_loss = loss
+            best_pre_step_model = pre_step_model
+
+    trained, losses, _ = jax_train.train(
+        _decay_model(),
+        ts=ts,
+        ys=ys,
+        training_steps=[(steps, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+    )
+
+    assert losses[0].to_dict() == pytest.approx(expected_losses)
+    assert _allclose_models(trained, best_pre_step_model)
+
+
+def test_train_freeze_raises_with_grad_pars_history() -> None:
+    ts, ys = _tiny_training_data()
+    with pytest.raises(ValueError, match="freeze"):
+        jax_train.train(
+            _ude_model(),
+            ts=ts,
+            ys=ys,
+            training_steps=[(1, 1.0)],
+            freeze=lambda m: m.ode,
+            grad_pars_history=jax_train.GradParsHistory(),
+        )
+
+
+def test_train_protocol_freeze_keeps_frozen_subtree_exactly_unchanged() -> None:
+    model = _ude_model()
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0]))[:, None]
+
+    trained, _, _ = jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(3, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        freeze=lambda m: m.ode,
+    )
+
+    assert jnp.array_equal(trained.ode.pars, model.ode.pars)
+
+
+def test_train_protocol_freeze_retries_after_solver_error_without_perturbing_frozen_subtree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mirrors test_train_freeze_retries_after_solver_error_without_perturbing_frozen_subtree
+    for train_protocol()/proto_make_step_split.
+    """
+    model = _ude_model()
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0]))[:, None]
+    real_proto_make_step_split = jax_train.proto_make_step_split
+    calls = {"n": 0}
+
+    def _flaky_proto_make_step_split(**kwargs: object) -> object:
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            msg = "synthetic solver failure"
+            raise eqx.EquinoxRuntimeError(msg)
+        return real_proto_make_step_split(**kwargs)
+
+    monkeypatch.setattr(
+        jax_train, "proto_make_step_split", _flaky_proto_make_step_split
+    )
+
+    trained, losses, _ = jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(4, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        freeze=lambda m: m.ode,
+    )
+
+    assert calls["n"] == 4
+    assert jnp.array_equal(trained.ode.pars, model.ode.pars)
+    assert len(losses[0]) == 2
+
+
+def test_train_protocol_freeze_raises_with_grad_pars_history() -> None:
+    with pytest.raises(ValueError, match="freeze"):
+        jax_train.train_protocol(
+            _ude_model(),
+            y0=jnp.array([1.0]),
+            ts=[jnp.array([0.5])],
+            ys=jnp.exp(-0.3 * jnp.array([0.0, 0.5]))[:, None],
+            protocol=jnp.zeros((1, 0)),
+            training_steps=[(1, 1.0)],
+            freeze=lambda m: m.ode,
+            grad_pars_history=jax_train.GradParsHistory(),
+        )
