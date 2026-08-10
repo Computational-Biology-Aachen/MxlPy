@@ -4,6 +4,7 @@ import logging
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import diffrax
 import equinox as eqx
@@ -17,6 +18,7 @@ from tqdm.auto import trange
 from mxlpy.jax.models import JaxModel, Method, Ude
 
 __all__ = [
+    "FreezeFn",
     "GradLossFn",
     "GradLossSplitFn",
     "GradNormsPerLesson",
@@ -25,6 +27,7 @@ __all__ = [
     "IntegrationSettings",
     "LossesPerLesson",
     "ProtoGradLossFn",
+    "ProtoGradLossSplitFn",
     "ProtoSimulationFn",
     "TrainingSteps",
     "grad_loss",
@@ -34,7 +37,9 @@ __all__ = [
     "make_step_split",
     "perturb_model",
     "proto_grad_loss",
+    "proto_grad_loss_split",
     "proto_make_step",
+    "proto_make_step_split",
     "sigmoid_schedule",
     "squeeze_derived",
     "train",
@@ -48,6 +53,7 @@ type LossesPerLesson = list[pd.Series]
 type GradNormsPerLesson = list[pd.Series]
 type GradParsPerLesson = list[pd.DataFrame]
 type TrainingSteps = list[tuple[int, float]]
+type FreezeFn = Callable[[Any], Any]
 
 
 def _curriculum_length(total: int, cutoff: float) -> int:
@@ -421,6 +427,48 @@ def proto_grad_loss(
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
 
+type ProtoGradLossSplitFn = Callable[
+    ...,
+    tuple[jax.Array, PyTree],
+]
+
+
+@eqx.filter_value_and_grad
+def proto_grad_loss_split(
+    trainable: JaxModel,
+    frozen: JaxModel,
+    y0: jax.Array,
+    ts: list[jax.Array],
+    ys: jax.Array,
+    protocol: jax.Array,
+    y_mean: jax.Array,
+    y_scale: jax.Array,
+    ctx: IntegrationSettings,
+    simulation_fn: ProtoSimulationFn,
+    global_step: jax.Array,  # noqa: ARG001
+    total_steps: jax.Array,  # noqa: ARG001
+) -> jax.Array:
+    """Compute normalised MSE loss and gradient for a partitioned model.
+
+    Default ``split_grad_fn`` for :func:`train_protocol` when its ``freeze``
+    argument is given, and for :func:`proto_make_step_split`. Pass a
+    different ``@eqx.filter_value_and_grad``-decorated function with this
+    same ``(trainable, frozen, y0, ts, ys, protocol, y_mean, y_scale, ctx,
+    simulation_fn, global_step, total_steps)`` call signature to train
+    against a different loss; see :func:`proto_grad_loss`, which this
+    mirrors for a partitioned model.
+
+    Returns
+    -------
+    tuple[jax.Array, PyTree]
+        Scalar loss value and gradient PyTree w.r.t. ``trainable``.
+    """
+    model = eqx.combine(trainable, frozen)
+    pred = simulation_fn(model, ts, y0, protocol, ctx)
+    y_pred = jnp.concatenate((ys[0][None], pred), axis=0)
+    return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
+
+
 type GradLossSplitFn = Callable[
     ...,
     tuple[jax.Array, PyTree],
@@ -436,14 +484,17 @@ def grad_loss_split(
     y_mean: jax.Array,
     y_scale: jax.Array,
     ctx: IntegrationSettings,
+    global_step: jax.Array,  # noqa: ARG001
+    total_steps: jax.Array,  # noqa: ARG001
     args: jax.Array | None = None,
 ) -> jax.Array:
     """Compute normalised MSE loss and gradient for a partitioned model.
 
-    Default ``grad_fn`` for :func:`train_only_nde`/:func:`make_step_split`.
-    Pass a different ``@eqx.filter_value_and_grad``-decorated function with
-    this same ``(trainable, frozen, ts, ys, y_mean, y_scale, ctx, args)``
-    call signature to train against a different loss.
+    Default ``grad_fn``/``split_grad_fn`` for :func:`train_only_nde`,
+    :func:`train`'s ``freeze``, and :func:`make_step_split`. Pass a
+    different ``@eqx.filter_value_and_grad``-decorated function with this
+    same ``(trainable, frozen, ts, ys, y_mean, y_scale, ctx, global_step,
+    total_steps, args)`` call signature to train against a different loss.
 
     Parameters
     ----------
@@ -461,6 +512,12 @@ def grad_loss_split(
         Standard deviation used for normalisation.
     ctx : IntegrationSettings
         ODE solver settings.
+    global_step : jax.Array
+        Monotonic step count spanning the whole curriculum; unused here,
+        but available to a custom ``grad_fn``/``split_grad_fn`` the same
+        way :func:`grad_loss`'s is (e.g. for :func:`sigmoid_schedule`).
+    total_steps : jax.Array
+        Total step count across every lesson; see ``global_step``.
     args : jax.Array or None
         External arguments forwarded to ``model.integrate``; see
         :func:`grad_loss`.
@@ -707,6 +764,71 @@ def proto_make_step[T: JaxModel](
 
 
 @eqx.filter_jit
+def proto_make_step_split[T: JaxModel](
+    *,
+    trainable: T,
+    frozen: T,
+    y0: jax.Array,
+    ts: list[jax.Array],
+    ys: jax.Array,
+    protocol: jax.Array,
+    y_mean: jax.Array,
+    y_scale: jax.Array,
+    opt_state: optax.OptState,
+    optim: optax.GradientTransformationExtraArgs,
+    ctx: IntegrationSettings,
+    simulation_fn: ProtoSimulationFn,
+    global_step: jax.Array,
+    total_steps: jax.Array,
+    grad_fn: ProtoGradLossSplitFn = proto_grad_loss_split,
+) -> tuple[jax.Array, T, optax.OptState, jax.Array]:
+    """Perform one gradient update step on the trainable model partition.
+
+    Mirrors :func:`proto_make_step` (NaN-safe gradients, global-norm
+    clipping) for a partitioned model; see :func:`make_step_split` for the
+    non-protocol equivalent. Used by :func:`train_protocol` when its
+    ``freeze`` argument is given.
+
+    Returns
+    -------
+    tuple[jax.Array, T, optax.OptState, jax.Array]
+        Scalar loss, updated trainable partition, updated optimiser state,
+        and the gradient norm (computed before clipping, for diagnostics).
+    """
+    loss, grads = grad_fn(
+        trainable,  # needs to be by pos, is differentiated
+        frozen=frozen,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        y_mean=y_mean,
+        y_scale=y_scale,
+        ctx=ctx,
+        simulation_fn=simulation_fn,
+        global_step=global_step,
+        total_steps=total_steps,
+    )
+    # Failed solves can produce NaN in y_pred -> NaN gradients; zero them out
+    # so the optimizer state isn't corrupted.
+    grads = jax.tree.map(lambda g: jnp.where(jnp.isfinite(g), g, 0.0), grads)
+
+    # Clip gradients by global norm to guard against exploding adjoints;
+    # only scales down (never up) so small, well-behaved gradients are left
+    # alone.
+    grad_norm = optax.global_norm(grads)
+    clip_value = 1.0
+    scale = jnp.minimum(1.0, clip_value / (grad_norm + 1e-6))
+    grads = jax.tree_util.tree_map(lambda g: g * scale, grads)
+    updates, opt_state = optim.update(
+        grads,
+        opt_state,
+        eqx.filter(trainable, eqx.is_array),
+    )
+    return loss, eqx.apply_updates(trainable, updates), opt_state, grad_norm
+
+
+@eqx.filter_jit
 def _proto_make_step_with_grad_pars[T: JaxModel](
     *,
     model: T,
@@ -769,6 +891,8 @@ def make_step_split[T: JaxModel](
     opt_state: optax.OptState,
     optim: optax.GradientTransformationExtraArgs,
     ctx: IntegrationSettings,
+    global_step: jax.Array,
+    total_steps: jax.Array,
     args: jax.Array | None = None,
     grad_fn: GradLossSplitFn = grad_loss_split,
 ) -> tuple[jax.Array, T, optax.OptState, jax.Array]:
@@ -799,6 +923,10 @@ def make_step_split[T: JaxModel](
         Optimiser.
     ctx : IntegrationSettings
         ODE solver settings.
+    global_step : jax.Array
+        Forwarded to ``grad_fn``; see :func:`grad_loss`.
+    total_steps : jax.Array
+        Forwarded to ``grad_fn``; see :func:`grad_loss`.
     args : jax.Array or None
         External arguments forwarded to ``model.integrate``; see
         :func:`grad_loss`.
@@ -823,6 +951,8 @@ def make_step_split[T: JaxModel](
         y_mean=y_mean,
         y_scale=y_scale,
         ctx=ctx,
+        global_step=global_step,
+        total_steps=total_steps,
         args=args,
     )
     grad_norm = optax.global_norm(grads)
@@ -857,6 +987,8 @@ def train[Model: JaxModel](
     grad_pars_history: GradParsHistory | None = None,
     normalize_axis: int | None = None,
     disable_tqdm: bool = False,
+    freeze: FreezeFn | None = None,
+    split_grad_fn: GradLossSplitFn = grad_loss_split,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -970,6 +1102,23 @@ def train[Model: JaxModel](
         Suppress the per-step progress bar. Useful when running under a
         scheduler that captures stdout to a log file (a live progress bar's
         carriage-return updates otherwise bloat the file with escape codes).
+    freeze : FreezeFn or None
+        If given, an ``eqx.tree_at``-style selector (e.g. ``lambda m:
+        m.spline``) picking the subtree of ``model`` to hold fixed;
+        everything else is trained. Generalises :func:`train_only_nde`'s
+        hardcoded ``lambda m: m.ode`` freeze to any model/subtree, so a
+        model with some frozen, non-trainable component (e.g. a driver
+        spline) doesn't need its own bespoke training loop to get this
+        curriculum/robustness machinery. Solver-failure perturbation is
+        applied to the trainable partition only, so a frozen subtree is
+        never nudged. Not supported together with ``grad_pars_history``
+        (its per-parameter tracking assumes a flat ``.pars`` on the whole
+        model). ``None`` (the default) trains every leaf, identical to
+        never having had this parameter.
+    split_grad_fn : GradLossSplitFn
+        Computes the (loss, grads) pair to apply at every step when
+        ``freeze`` is given; defaults to :func:`grad_loss_split`. Ignored
+        when ``freeze`` is ``None`` (use ``grad_fn`` instead).
 
     Returns
     -------
@@ -978,6 +1127,10 @@ def train[Model: JaxModel](
         lesson, and per-step gradient norms per curriculum lesson --
         including any ``prior_losses``/``prior_grad_norms`` prepended.
     """
+    if freeze is not None and grad_pars_history is not None:
+        msg = "grad_pars_history is not supported together with freeze"
+        raise ValueError(msg)
+
     loss = 0
     acc_loss = 0
     acc_count = 0
@@ -1000,6 +1153,60 @@ def train[Model: JaxModel](
 
     y_mean = jnp.mean(ys, axis=normalize_axis)
     y_scale = jnp.std(ys, axis=normalize_axis)
+
+    filter_spec = None
+    if freeze is not None:
+        filter_spec = jax.tree.map(eqx.is_inexact_array, model)
+        filter_spec = eqx.tree_at(freeze, filter_spec, replace_fn=lambda _: False)
+
+    def _init_opt_state(model: Model) -> optax.OptState:
+        if filter_spec is None:
+            return optim.init(eqx.filter(model, eqx.is_inexact_array))
+        trainable, _frozen = eqx.partition(model, filter_spec)
+        return optim.init(trainable)
+
+    def _step(
+        model: Model, opt_state: optax.OptState
+    ) -> tuple[jax.Array, Model, optax.OptState, jax.Array]:
+        if filter_spec is None:
+            return make_step(
+                model=model,
+                ts=_ts,
+                ys=_ys,
+                opt_state=opt_state,
+                optim=optim,
+                y_mean=y_mean,
+                y_scale=y_scale,
+                ctx=ctx,
+                global_step=jnp.asarray(global_step),
+                total_steps=jnp.asarray(total_steps),
+                args=args,
+                grad_fn=grad_fn,
+            )
+        trainable, frozen = eqx.partition(model, filter_spec)
+        loss, trainable, opt_state, grad_norm = make_step_split(
+            trainable=trainable,
+            frozen=frozen,
+            ts=_ts,
+            ys=_ys,
+            opt_state=opt_state,
+            optim=optim,
+            y_mean=y_mean,
+            y_scale=y_scale,
+            ctx=ctx,
+            global_step=jnp.asarray(global_step),
+            total_steps=jnp.asarray(total_steps),
+            args=args,
+            grad_fn=split_grad_fn,
+        )
+        return loss, eqx.combine(trainable, frozen), opt_state, grad_norm
+
+    def _perturb(model: Model, key: jax.Array, scale: float) -> Model:
+        if filter_spec is None:
+            return perturb_model(model, key, scale)
+        trainable, frozen = eqx.partition(model, filter_spec)
+        return eqx.combine(perturb_model(trainable, key, scale), frozen)
+
     losses_per_lesson: LossesPerLesson = (
         [] if prior_losses is None else list(prior_losses)
     )
@@ -1016,7 +1223,7 @@ def train[Model: JaxModel](
 
     try:
         for i, (steps, cutoff) in enumerate(training_steps, start=1):
-            opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
+            opt_state = _init_opt_state(model)
             # Fresh per stage, same as opt_state/losses/grad_norms below --
             # a stage's retry budget must not be affected by failures that
             # already happened in a previous stage.
@@ -1043,20 +1250,7 @@ def train[Model: JaxModel](
                         # what pairs with it for best-model tracking below.
                         pre_step_model = model
                         if grad_pars_history is None:
-                            loss, model, opt_state, grad_norm = make_step(
-                                model=model,
-                                ts=_ts,
-                                ys=_ys,
-                                opt_state=opt_state,
-                                optim=optim,
-                                y_mean=y_mean,
-                                y_scale=y_scale,
-                                ctx=ctx,
-                                global_step=jnp.asarray(global_step),
-                                total_steps=jnp.asarray(total_steps),
-                                args=args,
-                                grad_fn=grad_fn,
-                            )
+                            loss, model, opt_state, grad_norm = _step(model, opt_state)
                         else:
                             loss, model, opt_state, grad_norm, grad_pars = (
                                 _make_step_with_grad_pars(
@@ -1088,7 +1282,7 @@ def train[Model: JaxModel](
                             )
                             break
                         perturb_key, subkey = jax.random.split(perturb_key)
-                        model = perturb_model(model, subkey, perturbation_scale)
+                        model = _perturb(model, subkey, perturbation_scale)
                         logger.warning(
                             "Lesson %d, step %d: solver hit a stiff domain (%s); "
                             "nudging model parameters and retrying.",
@@ -1219,6 +1413,8 @@ def train_only_nde[T: Ude](
     loss = 0
     acc_loss = 0
     acc_count = 0
+    global_step = 0
+    total_steps = sum(s for s, _ in training_steps)
     perturb_key: jax.Array = jax.random.PRNGKey(0) if key is None else key
 
     raw_optim = optax.adabelief(learning_rate=1e-4) if optim is None else optim
@@ -1290,6 +1486,8 @@ def train_only_nde[T: Ude](
                             y_mean=y_mean,
                             y_scale=y_scale,
                             ctx=ctx,
+                            global_step=jnp.asarray(global_step),
+                            total_steps=jnp.asarray(total_steps),
                             args=args,
                             grad_fn=grad_fn,
                         )
@@ -1316,6 +1514,7 @@ def train_only_nde[T: Ude](
                         )
                         continue
                     consecutive_solver_errors = 0
+                    global_step += 1
                     grad_norms[step] = float(grad_norm)
                     acc_loss += loss
                     acc_count += 1
@@ -1364,6 +1563,8 @@ def train_protocol[Model: JaxModel](
     grad_pars_history: GradParsHistory | None = None,
     normalize_axis: int | None = None,
     disable_tqdm: bool = False,
+    freeze: FreezeFn | None = None,
+    split_grad_fn: ProtoGradLossSplitFn = proto_grad_loss_split,
 ) -> tuple[Model, LossesPerLesson, GradNormsPerLesson]:
     """Train a JAX model through a sequence of curriculum steps.
 
@@ -1451,6 +1652,14 @@ def train_protocol[Model: JaxModel](
         ``y_scale`` from ``ys``; see :func:`train`.
     disable_tqdm : bool
         Suppress the per-step progress bar; see :func:`train`.
+    freeze : FreezeFn or None
+        If given, an ``eqx.tree_at``-style selector picking the subtree of
+        ``model`` to hold fixed; everything else is trained. See
+        :func:`train`'s ``freeze``, which this mirrors.
+    split_grad_fn : ProtoGradLossSplitFn
+        Computes the (loss, grads) pair to apply at every step when
+        ``freeze`` is given; defaults to :func:`proto_grad_loss_split`.
+        Ignored when ``freeze`` is ``None`` (use ``grad_fn`` instead).
 
     Returns
     -------
@@ -1459,6 +1668,10 @@ def train_protocol[Model: JaxModel](
         lesson, and per-step gradient norms per curriculum lesson --
         including any ``prior_losses``/``prior_grad_norms`` prepended.
     """
+    if freeze is not None and grad_pars_history is not None:
+        msg = "grad_pars_history is not supported together with freeze"
+        raise ValueError(msg)
+
     loss = 0
     acc_loss = 0
     acc_count = 0
@@ -1475,6 +1688,64 @@ def train_protocol[Model: JaxModel](
 
     y_mean = jnp.mean(ys, axis=normalize_axis)
     y_scale = jnp.std(ys, axis=normalize_axis)
+
+    filter_spec = None
+    if freeze is not None:
+        filter_spec = jax.tree.map(eqx.is_inexact_array, model)
+        filter_spec = eqx.tree_at(freeze, filter_spec, replace_fn=lambda _: False)
+
+    def _init_opt_state(model: Model) -> optax.OptState:
+        if filter_spec is None:
+            return optim.init(eqx.filter(model, eqx.is_inexact_array))
+        trainable, _frozen = eqx.partition(model, filter_spec)
+        return optim.init(trainable)
+
+    def _step(
+        model: Model, opt_state: optax.OptState
+    ) -> tuple[jax.Array, Model, optax.OptState, jax.Array]:
+        if filter_spec is None:
+            return proto_make_step(
+                model=model,
+                y0=y0,
+                ts=_ts,
+                ys=_ys,
+                protocol=_protocol,
+                opt_state=opt_state,
+                optim=optim,
+                y_mean=y_mean,
+                y_scale=y_scale,
+                ctx=ctx,
+                simulation_fn=simulation_fn,
+                global_step=jnp.asarray(global_step),
+                total_steps=jnp.asarray(total_steps),
+                grad_fn=grad_fn,
+            )
+        trainable, frozen = eqx.partition(model, filter_spec)
+        loss, trainable, opt_state, grad_norm = proto_make_step_split(
+            trainable=trainable,
+            frozen=frozen,
+            y0=y0,
+            ts=_ts,
+            ys=_ys,
+            protocol=_protocol,
+            opt_state=opt_state,
+            optim=optim,
+            y_mean=y_mean,
+            y_scale=y_scale,
+            ctx=ctx,
+            simulation_fn=simulation_fn,
+            global_step=jnp.asarray(global_step),
+            total_steps=jnp.asarray(total_steps),
+            grad_fn=split_grad_fn,
+        )
+        return loss, eqx.combine(trainable, frozen), opt_state, grad_norm
+
+    def _perturb(model: Model, key: jax.Array, scale: float) -> Model:
+        if filter_spec is None:
+            return perturb_model(model, key, scale)
+        trainable, frozen = eqx.partition(model, filter_spec)
+        return eqx.combine(perturb_model(trainable, key, scale), frozen)
+
     losses_per_lesson: LossesPerLesson = (
         [] if prior_losses is None else list(prior_losses)
     )
@@ -1491,7 +1762,7 @@ def train_protocol[Model: JaxModel](
 
     try:
         for i, (steps, cutoff) in enumerate(training_steps, start=1):
-            opt_state = optim.init(eqx.filter(model, eqx.is_inexact_array))
+            opt_state = _init_opt_state(model)
             # Fresh per stage, same as opt_state/losses/grad_norms below -- a
             # stage's retry budget must not be affected by failures that
             # already happened in a previous stage.
@@ -1518,22 +1789,7 @@ def train_protocol[Model: JaxModel](
                     pre_step_model = model
                     try:
                         if grad_pars_history is None:
-                            loss, model, opt_state, grad_norm = proto_make_step(
-                                model=model,
-                                y0=y0,
-                                ts=_ts,
-                                ys=_ys,
-                                protocol=_protocol,
-                                opt_state=opt_state,
-                                optim=optim,
-                                y_mean=y_mean,
-                                y_scale=y_scale,
-                                ctx=ctx,
-                                simulation_fn=simulation_fn,
-                                global_step=jnp.asarray(global_step),
-                                total_steps=jnp.asarray(total_steps),
-                                grad_fn=grad_fn,
-                            )
+                            loss, model, opt_state, grad_norm = _step(model, opt_state)
                         else:
                             loss, model, opt_state, grad_norm, grad_pars = (
                                 _proto_make_step_with_grad_pars(
@@ -1567,7 +1823,7 @@ def train_protocol[Model: JaxModel](
                             )
                             break
                         perturb_key, subkey = jax.random.split(perturb_key)
-                        model = perturb_model(model, subkey, perturbation_scale)
+                        model = _perturb(model, subkey, perturbation_scale)
                         logger.warning(
                             "Lesson %d, step %d: solver hit a stiff domain (%s); "
                             "nudging model parameters and retrying.",
