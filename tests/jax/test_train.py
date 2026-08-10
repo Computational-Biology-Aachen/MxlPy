@@ -85,6 +85,168 @@ def test_squeeze_derived_leaves_multi_quantity_unchanged() -> None:
 
 
 # ---------------------------------------------------------------------------
+# derived_simulation_fn: train_protocol's simulation_fn for fitting a
+# derived observable instead of raw state
+# ---------------------------------------------------------------------------
+
+
+def test_derived_simulation_fn_maps_states_through_derived() -> None:
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,
+        args: jnp.ndarray,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return y * 2.0
+
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ctx = jax_train.IntegrationSettings()
+
+    states = model.integrate_protocol(
+        ts=ts,
+        y0=y0,
+        protocol=protocol,
+        max_steps=ctx.max_steps,
+        rtol=ctx.rtol,
+        atol=ctx.atol,
+        method=ctx.method,
+    )
+    derived = jax_train.derived_simulation_fn(model, ts, y0, protocol, ctx)
+
+    # keeps the trailing quantity axis, matching ys's own (T, n_obs) shape
+    # convention (see train_protocol's proto_grad_loss concatenation with
+    # ys[0][None], which requires this)
+    assert derived.shape == (2, 1)
+    assert jnp.allclose(derived, states * 2.0)
+
+
+def test_derived_simulation_fn_pairs_each_row_with_its_active_protocol_arg() -> None:
+    """Every saved row must see the protocol value active during its own
+    window (held constant for that window's duration), not e.g. always
+    the first or last step's value.
+    """
+
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,
+        args: jnp.ndarray,
+    ) -> jnp.ndarray:
+        return args[0] * jnp.ones_like(y)
+
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.25, 0.5]), jnp.array([0.75, 1.0])]
+    protocol = jnp.array([[1.0], [2.0]])
+    ctx = jax_train.IntegrationSettings()
+
+    derived = jax_train.derived_simulation_fn(model, ts, y0, protocol, ctx)
+
+    assert jnp.allclose(derived, jnp.array([[1.0], [1.0], [2.0], [2.0]]))
+
+
+def test_derived_simulation_fn_pairs_ragged_steps_with_their_active_protocol_arg() -> (
+    None
+):
+    """Same as the uniform-length case above, but with differing per-step
+    save-point counts -- the exact shape _integrate_protocol_raw's own
+    padding logic exists to handle, and the shape that broke the two
+    jnp.repeat-based implementations tried before this one.
+    """
+
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,
+        args: jnp.ndarray,
+    ) -> jnp.ndarray:
+        return args[0] * jnp.ones_like(y)
+
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.2, 0.4]), jnp.array([0.6]), jnp.array([0.8, 0.9, 1.0])]
+    protocol = jnp.array([[10.0], [20.0], [30.0]])
+    ctx = jax_train.IntegrationSettings()
+
+    derived = jax_train.derived_simulation_fn(model, ts, y0, protocol, ctx)
+
+    assert jnp.allclose(
+        derived,
+        jnp.array([[10.0], [10.0], [20.0], [30.0], [30.0], [30.0]]),
+    )
+
+
+def test_train_protocol_freeze_works_with_derived_simulation_fn() -> None:
+    """freeze routes through proto_grad_loss_split/proto_make_step_split
+    rather than proto_grad_loss/proto_make_step -- confirm
+    derived_simulation_fn's un-squeezed output is shape-compatible with
+    that path too, and that the frozen partition stays untouched.
+    """
+
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,
+        args: jnp.ndarray,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return y * 2.0
+
+    ode = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ude(ode=ode, nn=Node(n_obs=1, width=4, depth=1, key=_KEY), op="+")
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = 2.0 * jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0]))[:, None]
+
+    trained, _, grad_norms = jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(3, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        simulation_fn=jax_train.derived_simulation_fn,
+        freeze=lambda m: m.ode,
+    )
+
+    assert jnp.array_equal(trained.ode.pars, model.ode.pars)
+    assert len(grad_norms[0]) == 3
+    assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
+
+
+def test_train_protocol_with_derived_simulation_fn_trains_end_to_end() -> None:
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,
+        args: jnp.ndarray,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return y * 2.0
+
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = 2.0 * jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0]))[:, None]
+
+    trained, _, grad_norms = jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(3, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        simulation_fn=jax_train.derived_simulation_fn,
+    )
+
+    assert isinstance(trained, Ode)
+    assert len(grad_norms[0]) == 3
+    assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
+
+
+# ---------------------------------------------------------------------------
 # sigmoid_schedule
 # ---------------------------------------------------------------------------
 
