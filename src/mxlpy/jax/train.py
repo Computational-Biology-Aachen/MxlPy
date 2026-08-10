@@ -30,6 +30,7 @@ __all__ = [
     "ProtoGradLossSplitFn",
     "ProtoSimulationFn",
     "TrainingSteps",
+    "derived_simulation_fn",
     "grad_loss",
     "grad_loss_split",
     "integrate_protocol_states",
@@ -338,10 +339,8 @@ def integrate_protocol_states(
 
     Compares predictions directly in state space (``ys`` must hold the raw
     ODE state, not a derived quantity). Models that need to fit a derived
-    observable (e.g. fluorescence) instead of the raw state should pass a
-    different ``simulation_fn`` that maps ``model.integrate_protocol``'s
-    output through ``model.derived(...)`` (see :func:`squeeze_derived` for
-    collapsing single-quantity derived output).
+    observable (e.g. fluorescence) instead of the raw state should pass
+    :func:`derived_simulation_fn` instead.
     """
     return model.integrate_protocol(
         ts=ts,
@@ -352,6 +351,56 @@ def integrate_protocol_states(
         atol=ctx.atol,
         method=ctx.method,
     )
+
+
+def derived_simulation_fn(
+    model: JaxModel,
+    ts: list[jax.Array],
+    y0: jax.Array,
+    protocol: jax.Array,
+    ctx: IntegrationSettings,
+) -> jax.Array:
+    """Alternative ``simulation_fn`` for :func:`train_protocol`: a derived observable.
+
+    Maps :meth:`JaxModel.integrate_protocol`'s raw state through
+    ``model.derived(...)``, for fitting a derived quantity (e.g.
+    fluorescence) instead of the raw state -- exactly the pattern
+    :func:`integrate_protocol_states`'s own docstring tells callers to
+    write themselves. Pass this directly as ``train_protocol``'s
+    ``simulation_fn`` when ``ys`` holds a derived observable rather than
+    raw state.
+
+    Keeps ``model.derived``'s trailing quantity axis intact (shape
+    ``(T, n_derived)``), matching ``ys``'s own shape convention -- the
+    caller composes :func:`squeeze_derived` themselves (via a thin
+    wrapper) for the less common case of a 1-D ``ys`` with that axis
+    already dropped.
+
+    Every saved time point is paired with the external argument active at
+    that point (``protocol[i]``, held constant for the duration of
+    ``ts[i]``) before calling ``model.derived``, since a derived quantity
+    can itself depend on that argument (e.g. a light-dependent
+    fluorescence yield).
+    """
+    states = model.integrate_protocol(
+        ts=ts,
+        y0=y0,
+        protocol=protocol,
+        max_steps=ctx.max_steps,
+        rtol=ctx.rtol,
+        atol=ctx.atol,
+        method=ctx.method,
+    )
+    ts_flat = jnp.concatenate(ts)
+    step_lengths = [t.shape[0] for t in ts]
+    args_flat = jnp.concatenate(
+        [
+            jnp.broadcast_to(protocol[i], (n, *protocol.shape[1:]))
+            for i, n in enumerate(step_lengths)
+        ],
+        axis=0,
+    )
+    return jax.vmap(model.derived)(ts_flat, states, args_flat)
 
 
 type ProtoGradLossFn = Callable[
@@ -1630,8 +1679,10 @@ def train_protocol[Model: JaxModel](
     simulation_fn : ProtoSimulationFn
         Maps ``(model, ts, y0, protocol, ctx)`` to predictions aligned with
         ``ys[1:]``; defaults to raw-state integration
-        (:func:`integrate_protocol_states`). Pass a different function for
-        models that fit a derived observable instead of raw state.
+        (:func:`integrate_protocol_states`). Pass
+        :func:`derived_simulation_fn` (or a custom function with the same
+        signature) for models that fit a derived observable (e.g.
+        fluorescence) instead of raw state.
     clip_norm : float
         Per-parameter weight-norm clip threshold for
         ``optax.adaptive_grad_clip``.
