@@ -25,6 +25,7 @@ __all__ = [
     "GradParsHistory",
     "GradParsPerLesson",
     "IntegrationSettings",
+    "IntegrationSettingsPerStage",
     "LossesPerLesson",
     "ProtoGradLossFn",
     "ProtoGradLossSplitFn",
@@ -246,6 +247,9 @@ class IntegrationSettings:
     rtol: float = 1e-4
     method: Method = diffrax.Tsit5
     max_steps: int = 8192
+
+
+type IntegrationSettingsPerStage = list[IntegrationSettings | None]
 
 
 type GradLossFn = Callable[
@@ -1125,6 +1129,7 @@ def train[Model: JaxModel](
     avg_every: int = 1000,
     optim: optax.GradientTransformationExtraArgs | None = None,
     integration_settings: IntegrationSettings | None = None,
+    integration_settings_per_stage: IntegrationSettingsPerStage | None = None,
     clip_norm: float = 1.0,
     max_consecutive_nonfinite: int = 50,
     max_consecutive_solver_errors: int = 10,
@@ -1189,6 +1194,15 @@ def train[Model: JaxModel](
         optimiser here, not a pre-wrapped one.
     integration_settings : IntegrationSettings or None
         ODE solver settings; defaults to ``IntegrationSettings()``.
+    integration_settings_per_stage : IntegrationSettingsPerStage or None
+        One entry per ``training_steps`` stage (same length, checked),
+        overriding ``integration_settings`` for that stage; a ``None``
+        entry falls back to ``integration_settings``. For curricula that
+        need a stiffer solver (e.g. ``diffrax.Kvaerno5``) only on later
+        stages, once the trajectory prefix is long enough to enter a
+        stiff regime, without paying that solver's extra cost on every
+        stage. ``None`` (the default) uses ``integration_settings`` for
+        every stage, identical to never having had this parameter.
     clip_norm : float
         Per-parameter weight-norm clip threshold for
         ``optax.adaptive_grad_clip``.
@@ -1281,6 +1295,14 @@ def train[Model: JaxModel](
     if freeze is not None and grad_pars_history is not None:
         msg = "grad_pars_history is not supported together with freeze"
         raise ValueError(msg)
+    if integration_settings_per_stage is not None and len(
+        integration_settings_per_stage
+    ) != len(training_steps):
+        msg = (
+            "integration_settings_per_stage must have one entry per "
+            "training_steps stage"
+        )
+        raise ValueError(msg)
 
     loss = 0
     acc_loss = 0
@@ -1298,9 +1320,10 @@ def train[Model: JaxModel](
     best_training_loss = jnp.inf
     best_model = model
 
-    ctx = (
+    default_ctx = (
         IntegrationSettings() if integration_settings is None else integration_settings
     )
+    ctx = default_ctx
 
     y_mean = jnp.mean(ys, axis=normalize_axis)
     y_scale = jnp.std(ys, axis=normalize_axis)
@@ -1374,6 +1397,9 @@ def train[Model: JaxModel](
 
     try:
         for i, (steps, cutoff) in enumerate(training_steps, start=1):
+            if integration_settings_per_stage is not None:
+                stage_ctx = integration_settings_per_stage[i - 1]
+                ctx = default_ctx if stage_ctx is None else stage_ctx
             opt_state = _init_opt_state(model)
             # Fresh per stage, same as opt_state/losses/grad_norms below --
             # a stage's retry budget must not be affected by failures that
@@ -1703,6 +1729,7 @@ def train_protocol[Model: JaxModel](
     avg_every: int = 1000,
     optim: optax.GradientTransformationExtraArgs | None = None,
     integration_settings: IntegrationSettings | None = None,
+    integration_settings_per_stage: IntegrationSettingsPerStage | None = None,
     simulation_fn: ProtoSimulationFn = integrate_protocol_states,
     clip_norm: float = 1.0,
     max_consecutive_nonfinite: int = 50,
@@ -1778,6 +1805,9 @@ def train_protocol[Model: JaxModel](
         optimiser here, not a pre-wrapped one -- see :func:`train`.
     integration_settings : IntegrationSettings or None
         ODE solver settings; defaults to ``IntegrationSettings()``.
+    integration_settings_per_stage : IntegrationSettingsPerStage or None
+        One entry per ``training_steps`` stage, overriding
+        ``integration_settings`` for that stage; see :func:`train`.
     simulation_fn : ProtoSimulationFn
         Maps ``(model, ts, y0, protocol, ctx)`` to predictions aligned with
         ``ys[1:]``; defaults to raw-state integration
@@ -1842,6 +1872,14 @@ def train_protocol[Model: JaxModel](
     if freeze is not None and grad_pars_history is not None:
         msg = "grad_pars_history is not supported together with freeze"
         raise ValueError(msg)
+    if integration_settings_per_stage is not None and len(
+        integration_settings_per_stage
+    ) != len(training_steps):
+        msg = (
+            "integration_settings_per_stage must have one entry per "
+            "training_steps stage"
+        )
+        raise ValueError(msg)
 
     loss = 0
     acc_loss = 0
@@ -1859,9 +1897,10 @@ def train_protocol[Model: JaxModel](
     best_model = model
     perturb_key: jax.Array = jax.random.PRNGKey(0) if key is None else key
 
-    ctx = (
+    default_ctx = (
         IntegrationSettings() if integration_settings is None else integration_settings
     )
+    ctx = default_ctx
 
     y_mean = jnp.mean(ys, axis=normalize_axis)
     y_scale = jnp.std(ys, axis=normalize_axis)
@@ -1939,6 +1978,9 @@ def train_protocol[Model: JaxModel](
 
     try:
         for i, (steps, cutoff) in enumerate(training_steps, start=1):
+            if integration_settings_per_stage is not None:
+                stage_ctx = integration_settings_per_stage[i - 1]
+                ctx = default_ctx if stage_ctx is None else stage_ctx
             opt_state = _init_opt_state(model)
             # Fresh per stage, same as opt_state/losses/grad_norms below -- a
             # stage's retry budget must not be affected by failures that

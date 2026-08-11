@@ -17,6 +17,7 @@ Also covers regressions for four bugs found in a review of this module:
 
 from functools import partial
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -407,6 +408,153 @@ def test_train_protocol_freeze_works_with_derived_simulation_fn_t0() -> None:
     assert jnp.array_equal(trained.ode.pars, model.ode.pars)
     assert len(grad_norms[0]) == 3
     assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
+
+
+# ---------------------------------------------------------------------------
+# integration_settings_per_stage: per-curriculum-stage solver override
+# ---------------------------------------------------------------------------
+
+
+def test_train_integration_settings_per_stage_overrides_method_per_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """None entries fall back to integration_settings; given entries win.
+
+    Spies on the module-level make_step (same pattern as
+    test_train_resets_solver_error_budget_per_curriculum_stage above)
+    rather than grad_fn/disable_jit, so the recording Python code runs on
+    every call
+    regardless of JIT trace caching, and the real (jitted, fast) solver
+    path is still exercised.
+    """
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+    seen_methods: list[object] = []
+    real_make_step = jax_train.make_step
+
+    def _spy_make_step(**kwargs: object) -> object:
+        seen_methods.append(kwargs["ctx"].method)  # type: ignore[union-attr]
+        return real_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "make_step", _spy_make_step)
+
+    jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(1, 1.0), (1, 1.0), (1, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        integration_settings=jax_train.IntegrationSettings(method=diffrax.Tsit5),
+        integration_settings_per_stage=[
+            None,
+            jax_train.IntegrationSettings(method=diffrax.Kvaerno5),
+            None,
+        ],
+    )
+
+    assert seen_methods == [diffrax.Tsit5, diffrax.Kvaerno5, diffrax.Tsit5]
+
+
+def test_train_without_integration_settings_per_stage_is_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default (None) must use integration_settings for every stage,
+    identical to never having had this parameter.
+    """
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+    seen_methods: list[object] = []
+    real_make_step = jax_train.make_step
+
+    def _spy_make_step(**kwargs: object) -> object:
+        seen_methods.append(kwargs["ctx"].method)  # type: ignore[union-attr]
+        return real_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "make_step", _spy_make_step)
+
+    jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(1, 1.0), (1, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        integration_settings=jax_train.IntegrationSettings(method=diffrax.Tsit5),
+    )
+
+    assert seen_methods == [diffrax.Tsit5, diffrax.Tsit5]
+
+
+def test_train_integration_settings_per_stage_length_mismatch_raises() -> None:
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+
+    with pytest.raises(ValueError, match="integration_settings_per_stage"):
+        jax_train.train(
+            model,
+            ts=ts,
+            ys=ys,
+            training_steps=[(1, 1.0), (1, 1.0)],
+            target_loss=-1.0,
+            integration_settings_per_stage=[jax_train.IntegrationSettings()],
+        )
+
+
+def test_train_protocol_integration_settings_per_stage_overrides_method(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0]))[:, None]
+    seen_methods: list[object] = []
+    real_proto_make_step = jax_train.proto_make_step
+
+    def _spy_proto_make_step(**kwargs: object) -> object:
+        seen_methods.append(kwargs["ctx"].method)  # type: ignore[union-attr]
+        return real_proto_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "proto_make_step", _spy_proto_make_step)
+
+    jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(1, 1.0), (1, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        integration_settings=jax_train.IntegrationSettings(method=diffrax.Tsit5),
+        integration_settings_per_stage=[
+            jax_train.IntegrationSettings(method=diffrax.Kvaerno5),
+            None,
+        ],
+    )
+
+    assert seen_methods == [diffrax.Kvaerno5, diffrax.Tsit5]
+
+
+def test_train_protocol_integration_settings_per_stage_length_mismatch_raises() -> None:
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0]))[:, None]
+
+    with pytest.raises(ValueError, match="integration_settings_per_stage"):
+        jax_train.train_protocol(
+            model,
+            y0=y0,
+            ts=ts,
+            ys=ys,
+            protocol=protocol,
+            training_steps=[(1, 1.0), (1, 1.0)],
+            target_loss=-1.0,
+            integration_settings_per_stage=[jax_train.IntegrationSettings()],
+        )
 
 
 # ---------------------------------------------------------------------------
