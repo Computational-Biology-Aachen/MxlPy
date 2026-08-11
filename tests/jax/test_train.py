@@ -15,6 +15,8 @@ Also covers regressions for four bugs found in a review of this module:
   train()/train_protocol().
 """
 
+from functools import partial
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -242,6 +244,167 @@ def test_train_protocol_with_derived_simulation_fn_trains_end_to_end() -> None:
     )
 
     assert isinstance(trained, Ode)
+    assert len(grad_norms[0]) == 3
+    assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
+
+
+def test_derived_simulation_fn_without_t0_args_is_unchanged() -> None:
+    """t0_args=None (the default) must reproduce the exact old shape/values --
+    every existing caller relies on this.
+    """
+
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,
+        args: jnp.ndarray,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return y * 2.0
+
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ctx = jax_train.IntegrationSettings()
+
+    without_kw = jax_train.derived_simulation_fn(model, ts, y0, protocol, ctx)
+    with_none = jax_train.derived_simulation_fn(
+        model, ts, y0, protocol, ctx, t0_args=None
+    )
+
+    assert without_kw.shape == (2, 1)
+    assert jnp.array_equal(without_kw, with_none)
+
+
+def test_derived_simulation_fn_t0_args_prepends_genuine_t0_row() -> None:
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,  # noqa: ARG001
+        args: jnp.ndarray,
+    ) -> jnp.ndarray:
+        # depends only on the external arg (args[0]; Ode.derived appends
+        # trainable pars after it), so the t=0 row is trivially
+        # distinguishable from a state-derived value
+        return args[0] * jnp.ones((1,))
+
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.array([[2.0], [3.0]])
+    ctx = jax_train.IntegrationSettings()
+
+    derived = jax_train.derived_simulation_fn(
+        model, ts, y0, protocol, ctx, t0_args=jnp.array([9.0])
+    )
+
+    assert derived.shape == (3, 1)
+    assert jnp.allclose(derived, jnp.array([[9.0], [2.0], [3.0]]))
+
+
+def test_proto_grad_loss_t0_uses_full_prediction_no_ys0_substitution() -> None:
+    """Unlike proto_grad_loss, which free-passes ys[0] as a perfect t=0
+    prediction, proto_grad_loss_t0 must let a wrong t=0 prediction
+    contribute to the loss.
+    """
+
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,  # noqa: ARG001
+        args: jnp.ndarray,
+    ) -> jnp.ndarray:
+        return args[0] * jnp.ones((1,))
+
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.array([[2.0], [3.0]])
+    ctx = jax_train.IntegrationSettings()
+    t0_args = jnp.array([9.0])
+    # deliberately wrong t=0 target, to confirm it isn't ignored
+    ys = jnp.array([[0.0], [2.0], [3.0]])
+
+    simulation_fn = partial(jax_train.derived_simulation_fn, t0_args=t0_args)
+    loss, _ = jax_train.proto_grad_loss_t0(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        y_mean=jnp.zeros(1),
+        y_scale=jnp.ones(1),
+        ctx=ctx,
+        simulation_fn=simulation_fn,
+        global_step=jnp.asarray(0),
+        total_steps=jnp.asarray(1),
+    )
+
+    # prediction is [9, 2, 3], target is [0, 2, 3] -> only the t=0 row
+    # contributes: mean((9-0)^2, 0, 0) = 81/3 = 27
+    assert float(loss) == pytest.approx(27.0)
+
+
+def test_train_protocol_with_derived_simulation_fn_t0_trains_end_to_end() -> None:
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,
+        args: jnp.ndarray,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return y * 2.0
+
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = 2.0 * jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0]))[:, None]
+
+    trained, _, grad_norms = jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(3, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        simulation_fn=partial(jax_train.derived_simulation_fn, t0_args=jnp.zeros((0,))),
+        grad_fn=jax_train.proto_grad_loss_t0,
+    )
+
+    assert isinstance(trained, Ode)
+    assert len(grad_norms[0]) == 3
+    assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
+
+
+def test_train_protocol_freeze_works_with_derived_simulation_fn_t0() -> None:
+    def derived_fn(
+        t: jnp.ndarray,  # noqa: ARG001
+        y: jnp.ndarray,
+        args: jnp.ndarray,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return y * 2.0
+
+    ode = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ude(ode=ode, nn=Node(n_obs=1, width=4, depth=1, key=_KEY), op="+")
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = 2.0 * jnp.exp(-0.3 * jnp.array([0.0, 0.5, 1.0]))[:, None]
+
+    trained, _, grad_norms = jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(3, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        simulation_fn=partial(jax_train.derived_simulation_fn, t0_args=jnp.zeros((0,))),
+        grad_fn=jax_train.proto_grad_loss_t0,
+        split_grad_fn=jax_train.proto_grad_loss_split_t0,
+        freeze=lambda m: m.ode,
+    )
+
+    assert jnp.array_equal(trained.ode.pars, model.ode.pars)
     assert len(grad_norms[0]) == 3
     assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
 
