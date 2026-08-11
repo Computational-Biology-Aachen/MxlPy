@@ -1142,6 +1142,7 @@ def train[Model: JaxModel](
     prior_grad_norms: GradNormsPerLesson | None = None,
     grad_pars_history: GradParsHistory | None = None,
     normalize_axis: int | None = None,
+    renormalize_per_stage: bool = False,
     disable_tqdm: bool = False,
     freeze: FreezeFn | None = None,
     split_grad_fn: GradLossSplitFn = grad_loss_split,
@@ -1263,6 +1264,23 @@ def train[Model: JaxModel](
         different scales (e.g. jointly fitting ``Fluo`` and ``NPQ``), since
         a shared scalar otherwise lets the higher-magnitude quantity
         dominate the loss.
+    renormalize_per_stage : bool
+        Recompute ``y_mean``/``y_scale`` from each stage's own truncated
+        ``ys`` prefix (the same prefix ``training_steps``'s ``cutoff``
+        already selects for the loss itself), instead of once from the
+        full ``ys`` before the curriculum starts. ``False`` (the default)
+        keeps one normalisation shared across every stage, identical to
+        never having had this parameter; needed when early, short stages
+        see a very different value range than the full trajectory (e.g. a
+        growing prefix that only reaches its steady-state magnitude in
+        later stages), so a normalisation fit to the full trajectory would
+        otherwise over- or under-weight an early stage's loss. Since each
+        stage's loss is then scaled differently, the best-model tracking
+        (``loss < best_training_loss``, which compares across stage
+        boundaries) is no longer comparing like with like once a stage
+        transition changes the normalisation -- accepted here the same way
+        a caller manually re-invoking this function once per stage already
+        would.
     disable_tqdm : bool
         Suppress the per-step progress bar. Useful when running under a
         scheduler that captures stdout to a log file (a live progress bar's
@@ -1408,6 +1426,9 @@ def train[Model: JaxModel](
             length = _curriculum_length(len(ts), cutoff)
             _ts = ts[:length]
             _ys = ys[:length]
+            if renormalize_per_stage:
+                y_mean = jnp.mean(_ys, axis=normalize_axis)
+                y_scale = jnp.std(_ys, axis=normalize_axis)
             losses: dict[int, float] = {}
             grad_norms: dict[int, float] = {}
             losses_per_lesson.append(losses)
@@ -1742,6 +1763,7 @@ def train_protocol[Model: JaxModel](
     prior_grad_norms: GradNormsPerLesson | None = None,
     grad_pars_history: GradParsHistory | None = None,
     normalize_axis: int | None = None,
+    renormalize_per_stage: bool = False,
     disable_tqdm: bool = False,
     freeze: FreezeFn | None = None,
     split_grad_fn: ProtoGradLossSplitFn = proto_grad_loss_split,
@@ -1851,6 +1873,10 @@ def train_protocol[Model: JaxModel](
     normalize_axis : int or None
         Axis passed to ``jnp.mean``/``jnp.std`` when computing ``y_mean``/
         ``y_scale`` from ``ys``; see :func:`train`.
+    renormalize_per_stage : bool
+        Recompute ``y_mean``/``y_scale`` from each stage's own truncated
+        ``ys`` prefix instead of once from the full ``ys``; see
+        :func:`train`.
     disable_tqdm : bool
         Suppress the per-step progress bar; see :func:`train`.
     freeze : FreezeFn or None
@@ -1991,6 +2017,9 @@ def train_protocol[Model: JaxModel](
             _protocol = protocol[:n_windows]
             n_obs = sum(t.shape[0] for t in _ts)
             _ys = ys[: n_obs + 1]
+            if renormalize_per_stage:
+                y_mean = jnp.mean(_ys, axis=normalize_axis)
+                y_scale = jnp.std(_ys, axis=normalize_axis)
             losses: dict[int, float] = {}
             grad_norms: dict[int, float] = {}
             losses_per_lesson.append(losses)
