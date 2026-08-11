@@ -39,6 +39,8 @@ __all__ = [
     "perturb_model",
     "proto_grad_loss",
     "proto_grad_loss_split",
+    "proto_grad_loss_split_t0",
+    "proto_grad_loss_t0",
     "proto_make_step",
     "proto_make_step_split",
     "sigmoid_schedule",
@@ -359,6 +361,8 @@ def derived_simulation_fn(
     y0: jax.Array,
     protocol: jax.Array,
     ctx: IntegrationSettings,
+    *,
+    t0_args: jax.Array | None = None,
 ) -> jax.Array:
     """Alternative ``simulation_fn`` for :func:`train_protocol`: a derived observable.
 
@@ -381,6 +385,26 @@ def derived_simulation_fn(
     ``ts[i]``) before calling ``model.derived``, since a derived quantity
     can itself depend on that argument (e.g. a light-dependent
     fluorescence yield).
+
+    Parameters
+    ----------
+    t0_args : jax.Array or None
+        When given, prepend a genuine ``model.derived(0.0, y0, t0_args)``
+        row for ``t=0`` -- returning shape ``(T + 1, n_derived)`` instead
+        of ``(T, n_derived)``. Needed because ``train_protocol``'s
+        ``ts``/``protocol`` (see :func:`~mxlpy.jax.models.boundaries_to_ts`)
+        describe only the protocol's steps, never ``t=0`` itself, yet a
+        derived quantity's value at ``t=0`` generally isn't ``ys[0]`` for
+        free the way the raw state trivially is (``y0`` *is* the state at
+        ``t=0``, but ``model.derived(0, y0, t0_args)`` still has to be
+        computed to know the derived quantity there). ``None`` (the
+        default) leaves the return shape unchanged, so this stays a
+        drop-in :data:`ProtoSimulationFn` -- pair a bound ``t0_args``
+        (e.g. via ``functools.partial``) with :func:`proto_grad_loss_t0`/
+        :func:`proto_grad_loss_split_t0` rather than the plain
+        ``proto_grad_loss``/``proto_grad_loss_split``, which assume a
+        ``(T, n_derived)``-shaped ``simulation_fn`` and free-pass ``ys[0]``
+        as the ``t=0`` prediction instead.
     """
     states = model.integrate_protocol(
         ts=ts,
@@ -400,7 +424,11 @@ def derived_simulation_fn(
         ],
         axis=0,
     )
-    return jax.vmap(model.derived)(ts_flat, states, args_flat)
+    derived = jax.vmap(model.derived)(ts_flat, states, args_flat)
+    if t0_args is None:
+        return derived
+    t0_derived = model.derived(jnp.zeros(()), y0, t0_args)
+    return jnp.concatenate((t0_derived[None], derived), axis=0)
 
 
 type ProtoGradLossFn = Callable[
@@ -476,6 +504,48 @@ def proto_grad_loss(
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
 
+@eqx.filter_value_and_grad
+def proto_grad_loss_t0(
+    model: JaxModel,
+    y0: jax.Array,
+    ts: list[jax.Array],
+    ys: jax.Array,
+    protocol: jax.Array,
+    y_mean: jax.Array,
+    y_scale: jax.Array,
+    ctx: IntegrationSettings,
+    simulation_fn: ProtoSimulationFn,
+    global_step: jax.Array,  # noqa: ARG001
+    total_steps: jax.Array,  # noqa: ARG001
+) -> jax.Array:
+    """:func:`proto_grad_loss` variant for a ``simulation_fn`` that predicts ``t=0`` itself.
+
+    ``proto_grad_loss`` free-passes ``ys[0]`` as the ``t=0`` "prediction",
+    which is exact for the raw-state default (``y0`` *is* the state at
+    ``t=0``) but wrong for a derived observable, silently zeroing out any
+    loss contribution at ``t=0`` regardless of whether the model actually
+    reproduces it there. Use this instead when ``simulation_fn`` already
+    returns a genuine, full-length prediction spanning ``ys`` (e.g.
+    :func:`derived_simulation_fn` with ``t0_args`` bound via
+    ``functools.partial``) -- compares ``simulation_fn``'s output against
+    ``ys`` directly, with no substitution.
+
+    Parameters
+    ----------
+    simulation_fn : ProtoSimulationFn
+        Maps ``(model, ts, y0, protocol, ctx)`` to predictions aligned
+        with the *full* ``ys`` (including ``t=0``), unlike
+        :func:`proto_grad_loss`'s ``simulation_fn``.
+
+    Returns
+    -------
+    tuple[jax.Array, PyTree]
+        Scalar loss value and gradient PyTree.
+    """
+    y_pred = simulation_fn(model, ts, y0, protocol, ctx)
+    return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
+
+
 type ProtoGradLossSplitFn = Callable[
     ...,
     tuple[jax.Array, PyTree],
@@ -515,6 +585,38 @@ def proto_grad_loss_split(
     model = eqx.combine(trainable, frozen)
     pred = simulation_fn(model, ts, y0, protocol, ctx)
     y_pred = jnp.concatenate((ys[0][None], pred), axis=0)
+    return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
+
+
+@eqx.filter_value_and_grad
+def proto_grad_loss_split_t0(
+    trainable: JaxModel,
+    frozen: JaxModel,
+    y0: jax.Array,
+    ts: list[jax.Array],
+    ys: jax.Array,
+    protocol: jax.Array,
+    y_mean: jax.Array,
+    y_scale: jax.Array,
+    ctx: IntegrationSettings,
+    simulation_fn: ProtoSimulationFn,
+    global_step: jax.Array,  # noqa: ARG001
+    total_steps: jax.Array,  # noqa: ARG001
+) -> jax.Array:
+    """:func:`proto_grad_loss_split` variant for a ``t=0``-predicting ``simulation_fn``.
+
+    Mirrors :func:`proto_grad_loss_t0` for a partitioned model; see that
+    function for why this exists instead of :func:`proto_grad_loss_split`.
+    Pass as ``train_protocol``'s ``split_grad_fn`` (alongside
+    ``grad_fn=proto_grad_loss_t0``) when ``freeze`` is also given.
+
+    Returns
+    -------
+    tuple[jax.Array, PyTree]
+        Scalar loss value and gradient PyTree w.r.t. ``trainable``.
+    """
+    model = eqx.combine(trainable, frozen)
+    y_pred = simulation_fn(model, ts, y0, protocol, ctx)
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
 
