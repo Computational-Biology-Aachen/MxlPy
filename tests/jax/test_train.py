@@ -558,6 +558,118 @@ def test_train_protocol_integration_settings_per_stage_length_mismatch_raises() 
 
 
 # ---------------------------------------------------------------------------
+# renormalize_per_stage: recompute y_mean/y_scale from each stage's prefix
+# ---------------------------------------------------------------------------
+
+
+def test_train_renormalize_per_stage_uses_each_stages_own_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+    seen_norms: list[tuple[jnp.ndarray, jnp.ndarray]] = []
+    real_make_step = jax_train.make_step
+
+    def _spy_make_step(**kwargs: object) -> object:
+        seen_norms.append((kwargs["y_mean"], kwargs["y_scale"]))  # type: ignore[arg-type]
+        return real_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "make_step", _spy_make_step)
+
+    # stage 1 sees a 2-point prefix, stage 2 the full 5 points -- different
+    # value ranges, so their mean/std must differ under renormalize_per_stage.
+    jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(1, 0.4), (1, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+        renormalize_per_stage=True,
+    )
+
+    expected_stage1 = (jnp.mean(ys[:2]), jnp.std(ys[:2]))
+    expected_stage2 = (jnp.mean(ys), jnp.std(ys))
+    assert jnp.allclose(seen_norms[0][0], expected_stage1[0])
+    assert jnp.allclose(seen_norms[0][1], expected_stage1[1])
+    assert jnp.allclose(seen_norms[1][0], expected_stage2[0])
+    assert jnp.allclose(seen_norms[1][1], expected_stage2[1])
+    # sanity: the two stages' prefixes really do have different statistics,
+    # otherwise this test wouldn't distinguish renormalize_per_stage from
+    # the default.
+    assert not jnp.allclose(expected_stage1[0], expected_stage2[0])
+
+
+def test_train_without_renormalize_per_stage_uses_full_ys_every_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _decay_model()
+    ts, ys = _tiny_training_data()
+    seen_norms: list[tuple[jnp.ndarray, jnp.ndarray]] = []
+    real_make_step = jax_train.make_step
+
+    def _spy_make_step(**kwargs: object) -> object:
+        seen_norms.append((kwargs["y_mean"], kwargs["y_scale"]))  # type: ignore[arg-type]
+        return real_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "make_step", _spy_make_step)
+
+    jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(1, 0.4), (1, 1.0)],
+        avg_every=100,
+        target_loss=-1.0,
+    )
+
+    expected = (jnp.mean(ys), jnp.std(ys))
+    for y_mean, y_scale in seen_norms:
+        assert jnp.allclose(y_mean, expected[0])
+        assert jnp.allclose(y_scale, expected[1])
+
+
+def test_train_protocol_renormalize_per_stage_uses_each_stages_own_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))
+    y0 = jnp.array([1.0])
+    ts = [jnp.array([0.25, 0.5]), jnp.array([0.75, 1.0])]
+    protocol = jnp.zeros((2, 0))
+    ys = jnp.exp(-0.3 * jnp.array([0.0, 0.25, 0.5, 0.75, 1.0]))[:, None]
+    seen_norms: list[tuple[jnp.ndarray, jnp.ndarray]] = []
+    real_proto_make_step = jax_train.proto_make_step
+
+    def _spy_proto_make_step(**kwargs: object) -> object:
+        seen_norms.append((kwargs["y_mean"], kwargs["y_scale"]))  # type: ignore[arg-type]
+        return real_proto_make_step(**kwargs)
+
+    monkeypatch.setattr(jax_train, "proto_make_step", _spy_proto_make_step)
+
+    # stage 1 covers only the first protocol step (ts[0], -> ys[:3]); stage
+    # 2 covers both (-> full ys).
+    jax_train.train_protocol(
+        model,
+        y0=y0,
+        ts=ts,
+        ys=ys,
+        protocol=protocol,
+        training_steps=[(1, 1), (1, 2)],
+        avg_every=100,
+        target_loss=-1.0,
+        renormalize_per_stage=True,
+    )
+
+    expected_stage1 = (jnp.mean(ys[:3]), jnp.std(ys[:3]))
+    expected_stage2 = (jnp.mean(ys), jnp.std(ys))
+    assert jnp.allclose(seen_norms[0][0], expected_stage1[0])
+    assert jnp.allclose(seen_norms[0][1], expected_stage1[1])
+    assert jnp.allclose(seen_norms[1][0], expected_stage2[0])
+    assert jnp.allclose(seen_norms[1][1], expected_stage2[1])
+    assert not jnp.allclose(expected_stage1[0], expected_stage2[0])
+
+
+# ---------------------------------------------------------------------------
 # sigmoid_schedule
 # ---------------------------------------------------------------------------
 
