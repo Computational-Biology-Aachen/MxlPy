@@ -32,6 +32,7 @@ idea to internalize before touching `meta/`, `jax/`, `sbml/`, or `symbolic/`.
 
 → [ADR 0008 — `meta/` codegen: one model, mechanically projected to every target](0008-meta-codegen-single-source-of-truth.md)
 → [ADR 0005 — `jax/` as an orthogonal subsystem, not an integrator plugin](0005-jax-as-orthogonal-subsystem.md)
+→ [ADR 0013 — No standalone `JaxModelBuilder`: the codegen bridge already covers it](0013-no-jax-model-builder.md)
 → [ADR 0009 — `sbml/` as mxlpy's consumer of the (now-independent) `pysbml`](0009-sbml-dual-use-bridge.md)
 → [ADR 0010 — `symbolic/` scope, and its relationship to `meta/`](0010-symbolic-module-scope.md)
 
