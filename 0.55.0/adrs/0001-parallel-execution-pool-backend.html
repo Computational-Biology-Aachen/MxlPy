@@ -1,0 +1,1630 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://computational-biology-aachen.github.io/mxlpy/0.55.0/adrs/0001-parallel-execution-pool-backend.html">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>ADR 0001: Process-Pool Backend for parallel.py (pebble → loky) - mxlpy docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#adr-0001-process-pool-backend-for-parallelpy-pebble-loky" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../index.html" title="mxlpy docs" class="md-header__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mxlpy docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ADR 0001: Process-Pool Backend for parallel.py (pebble → loky)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../index.html" title="mxlpy docs" class="md-nav__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mxlpy docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ODE features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../basics.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../composition.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model composition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scans.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scans
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mca.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sensitivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sensitivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fuzzy_fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzy fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monte-carlo.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monte Carlo methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../label-models.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Label models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../comparisons.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparing models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../parameterise.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model parameterisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stability analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../parameter_identifiability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Identifiability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../symbolic.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Symbolic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrators.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrator configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compartmentalisation.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartmentalisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mechanistic learning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Mechanistic learning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mxl-ude.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UDEs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mxl-surrogates.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Surrogates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mxl-npe.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neural Posterior Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../carousel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reaction carousel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metaprogramming.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metaprogramming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../serialization.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Serialization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../report.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reporting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tips
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tips
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tips.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    General
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../parallel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel execution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../citing.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How to cite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#0-background-why-a-third-party-pool-at-all-and-why-pebble-originally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0. Background — why a third-party pool at all, and why pebble originally
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-problem-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Problem Statement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-options-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Options Considered
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Options Considered">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-explicitly-pin-fork-via-multiprocessingget_contextfork" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A — Explicitly pin fork via multiprocessing.get_context('fork')
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-switch-to-loky-chosen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B — Switch to loky ✓ CHOSEN
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-c-multiprocess-community-fork-of-multiprocessing-using-dill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option C — multiprocess (community fork of multiprocessing using dill)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-decision-and-rationale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Decision and Rationale
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-file-by-file-migration-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. File-by-File Migration Plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. File-by-File Migration Plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-srcmxlpyparallelpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 src/mxlpy/parallel.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-srcmxlpyfit_jointpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 src/mxlpy/fit/_joint.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-srcmxlpyfit_joint_mixedpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 src/mxlpy/fit/_joint_mixed.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-srcmxlpyfuzzypy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 src/mxlpy/fuzzy.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Known Limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-dependency-changes-pyprojecttoml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Dependency Changes (pyproject.toml)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="adr-0001-process-pool-backend-for-parallelpy-pebble-loky">ADR 0001: Process-Pool Backend for <code>parallel.py</code> (pebble → loky)<a class="headerlink" href="#adr-0001-process-pool-backend-for-parallelpy-pebble-loky" title="Permanent link">&para;</a></h1>
+<p><strong>Status:</strong> Implemented
+<strong>Scope:</strong> <code>src/mxlpy/parallel.py</code>, <code>src/mxlpy/fit/_joint.py</code>, <code>src/mxlpy/fit/_joint_mixed.py</code>, <code>src/mxlpy/fuzzy.py</code></p>
+<hr />
+<h2 id="0-background-why-a-third-party-pool-at-all-and-why-pebble-originally">0. Background — why a third-party pool at all, and why <code>pebble</code> originally<a class="headerlink" href="#0-background-why-a-third-party-pool-at-all-and-why-pebble-originally" title="Permanent link">&para;</a></h2>
+<p><code>parallelise()</code> and friends fan work out across many independent, CPU-bound scientific
+runs — e.g. parameter scans, Monte Carlo ensembles, or per-sample steady-state search
+during fitting. In this workload it is expected and routine for a single task to
+misbehave: a particular parameterisation can start oscillating and never settle, and the
+integrator will burn CPU time trying to find a steady state that most likely doesn't
+exist for that parameter set. The stdlib <code>multiprocessing.Pool</code> /
+<code>concurrent.futures.ProcessPoolExecutor</code> has no notion of a <strong>per-task timeout</strong> — there
+is no built-in way to say "kill this one worker's task after N seconds and move on,"
+short of hand-rolling process supervision.</p>
+<p><code>pebble</code> was originally chosen specifically because it layers per-task timeouts (with
+process-level termination) on top of the standard pool APIs. That capability — not
+raw throughput — was the deciding factor: in a batch of thousands of scans, a handful of
+stuck/failing tasks should be killed and recorded as failures, not allowed to stall the
+whole batch.</p>
+<p><code>loky</code> (the replacement, see below) was required to preserve this same timeout/termination
+behaviour; a plain <code>ProcessPoolExecutor</code> migration would have silently dropped it.</p>
+<hr />
+<h2 id="1-problem-statement">1. Problem Statement<a class="headerlink" href="#1-problem-statement" title="Permanent link">&para;</a></h2>
+<p>Python 3.14 changes the default multiprocessing start method on POSIX from <code>fork</code> to
+<code>forkserver</code>. The <code>forkserver</code> and <code>spawn</code> methods share the same constraint: worker
+processes must import <code>__main__</code> to reconstruct the execution context, and they rely on
+standard <code>pickle</code> for task serialisation.</p>
+<p>This produces two breakage modes in mxlpy:</p>
+<ol>
+<li><strong>Jupyter notebooks</strong> — there is no importable <code>__main__</code> module in a notebook kernel.
+   Every <code>pebble.ProcessPool</code> call in a notebook raises
+   <code>RuntimeError: ... __main__ not found</code>.</li>
+<li><strong>Interactively-defined callables</strong> — functions defined in a notebook cell are not
+   importable by name, so <code>pickle</code> fails to serialise them when passed as the <code>fn</code>
+   argument to <code>parallelise()</code> or as <code>worker</code> in <code>thompson_sampling()</code>.</li>
+</ol>
+<p>Both failure modes are triggered today on macOS (where <code>spawn</code> is already the default
+since Python 3.8) and become universal on POSIX with Python 3.14.</p>
+<hr />
+<h2 id="2-options-considered">2. Options Considered<a class="headerlink" href="#2-options-considered" title="Permanent link">&para;</a></h2>
+<h3 id="option-a-explicitly-pin-fork-via-multiprocessingget_contextfork">Option A — Explicitly pin <code>fork</code> via <code>multiprocessing.get_context('fork')</code><a class="headerlink" href="#option-a-explicitly-pin-fork-via-multiprocessingget_contextfork" title="Permanent link">&para;</a></h3>
+<p>Pass a <code>fork</code> context explicitly to <code>pebble.ProcessPool(context=...)</code>.</p>
+<p><strong>Pros:</strong> Zero API or dependency change.
+<strong>Cons:</strong> <code>fork</code> is unsafe in multithreaded programs (numpy, scipy, and the ODE
+integrators all use threads). It is deprecated on macOS and being phased out. Pinning
+it is the wrong long-term direction and would reintroduce the same deadlock risks that
+motivated Python's default change.</p>
+<h3 id="option-b-switch-to-loky-chosen">Option B — Switch to <code>loky</code> ✓ CHOSEN<a class="headerlink" href="#option-b-switch-to-loky-chosen" title="Permanent link">&para;</a></h3>
+<p><code>loky</code> is the process-pool implementation used internally by joblib/scikit-learn. It
+uses spawn internally but substitutes <strong>cloudpickle</strong> for serialisation, which handles
+interactively-defined functions. It does not require an importable <code>__main__</code>, so
+Jupyter notebooks work out of the box. Its API is
+<code>concurrent.futures.ProcessPoolExecutor</code>-compatible.</p>
+<p><strong>Pros:</strong> Solves both breakage modes permanently. Widely deployed in scientific Python.
+No public API changes. Windows special-casing can be removed (loky is cross-platform).
+<strong>Cons:</strong> Per-task timeout semantics differ from pebble (see §5).</p>
+<h3 id="option-c-multiprocess-community-fork-of-multiprocessing-using-dill">Option C — <code>multiprocess</code> (community fork of <code>multiprocessing</code> using <code>dill</code>)<a class="headerlink" href="#option-c-multiprocess-community-fork-of-multiprocessing-using-dill" title="Permanent link">&para;</a></h3>
+<p>Drop-in <code>multiprocessing</code> replacement that uses <code>dill</code> for serialisation. <code>dill</code> is
+already a declared dependency.</p>
+<p><strong>Pros:</strong> <code>dill</code> already present.
+<strong>Cons:</strong> <code>multiprocess</code> is poorly maintained; its API is not <code>concurrent.futures</code>-
+compatible. <code>loky</code> is better maintained and better tested in the scipy ecosystem.</p>
+<hr />
+<h2 id="3-decision-and-rationale">3. Decision and Rationale<a class="headerlink" href="#3-decision-and-rationale" title="Permanent link">&para;</a></h2>
+<p>Replace <code>pebble</code> with <code>loky</code> across all four affected files.</p>
+<ul>
+<li>cloudpickle handles notebook-defined callables; loky's bootstrap does not require
+  <code>__main__</code>.</li>
+<li><code>loky</code> backs <code>joblib.Parallel</code> and is deployed at significant scale in scientific
+  Python.</li>
+<li>The <code>concurrent.futures.ProcessPoolExecutor</code> interface is standard-library-shaped,
+  reducing future coupling to third-party pool abstractions.</li>
+<li><code>dill</code> (already declared) is retained for the <code>Cache</code> pickle paths in <code>parallel.py</code>,
+  and separately for source-inspection round-trips in <code>meta/source_tools.py</code> and
+  <code>jax/io.py</code> — unrelated to the pool backend itself.</li>
+<li>The <code>sys.platform in ["win32", "cygwin"]</code> guards in <code>parallel.py</code> and <code>fuzzy.py</code>
+  can be removed — loky handles all platforms natively.</li>
+</ul>
+<hr />
+<h2 id="4-file-by-file-migration-plan">4. File-by-File Migration Plan<a class="headerlink" href="#4-file-by-file-migration-plan" title="Permanent link">&para;</a></h2>
+<h3 id="41-srcmxlpyparallelpy">4.1 <code>src/mxlpy/parallel.py</code><a class="headerlink" href="#41-srcmxlpyparallelpy" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Replace <code>import pebble</code> with <code>from loky import ProcessPoolExecutor</code>.</li>
+<li>In <code>parallelise</code> and <code>parallelise_keyless</code>:</li>
+<li>Remove the <code>sys.platform in ["win32", "cygwin"]</code> guard.</li>
+<li>Replace <code>pebble.ProcessPool(max_workers=n)</code> context manager with
+    <code>ProcessPoolExecutor(max_workers=n)</code>.</li>
+<li>Replace the <code>pool.map(..., timeout=t).result()</code> iterator pattern with
+    <code>pool.submit(fn, inp)</code> per input, then <code>future.result(timeout=t)</code> per future inside
+    the tqdm loop.</li>
+<li>Catch <code>concurrent.futures.TimeoutError</code> instead of pebble's <code>TimeoutError</code>.</li>
+<li>Remove <code>import sys</code> if no longer needed after the platform guard removal.</li>
+</ul>
+<h3 id="42-srcmxlpyfit_jointpy">4.2 <code>src/mxlpy/fit/_joint.py</code><a class="headerlink" href="#42-srcmxlpyfit_jointpy" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Replace <code>import pebble</code> with the loky import.</li>
+<li>Update the <code>pool</code> parameter type annotation on <code>_sum_of_residuals</code> from
+  <code>pebble.ProcessPool</code> to <code>ProcessPoolExecutor</code>.</li>
+<li>Replace <code>pool.map(...).result()</code> iterator with submit/collect/<code>future.result()</code>.</li>
+<li>The pool is created once per outer function call and passed into <code>_sum_of_residuals</code>
+  via <code>partial</code>; this long-lived pool pattern is compatible with loky without structural
+  change.</li>
+<li>Catch <code>concurrent.futures.TimeoutError</code>.</li>
+</ul>
+<h3 id="43-srcmxlpyfit_joint_mixedpy">4.3 <code>src/mxlpy/fit/_joint_mixed.py</code><a class="headerlink" href="#43-srcmxlpyfit_joint_mixedpy" title="Permanent link">&para;</a></h3>
+<p>Identical changes to §4.2: update <code>pool</code> type on <code>_mixed_sum_of_residuals</code>, replace
+pool construction, replace the map/result iterator, catch the correct <code>TimeoutError</code>.</p>
+<h3 id="44-srcmxlpyfuzzypy">4.4 <code>src/mxlpy/fuzzy.py</code><a class="headerlink" href="#44-srcmxlpyfuzzypy" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Replace <code>import pebble</code> with the loky import.</li>
+<li>Remove the <code>sys.platform in ["win32", "cygwin"]</code> guard.</li>
+<li>Replace <code>pebble.ProcessPool</code> context manager with <code>ProcessPoolExecutor</code>.</li>
+<li>Inner loop submits <code>max_workers</code> tasks per chunk; replace <code>pool.map(...,
+  timeout=timeout).result()</code> with list-of-futures + per-future <code>.result(timeout=timeout)</code>.</li>
+<li>Catch <code>concurrent.futures.TimeoutError</code>.</li>
+<li>Remove <code>import sys</code> if no longer needed.</li>
+</ul>
+<hr />
+<h2 id="5-known-limitations">5. Known Limitations<a class="headerlink" href="#5-known-limitations" title="Permanent link">&para;</a></h2>
+<p><strong>Timeout behaviour change.</strong> pebble terminates the OS process for a timed-out task
+immediately via the iterator protocol. With loky, <code>future.result(timeout=t)</code> raises
+<code>TimeoutError</code> on the caller but does not kill the worker on its own.</p>
+<p>This is handled explicitly: after collecting all results (including timeouts), the pool
+is shut down via <code>pool.shutdown(wait=False, kill_workers=True)</code>. This sends SIGTERM to
+all worker processes, including any still running a timed-out task, and returns
+immediately without blocking. The net effect is similar to pebble — timed-out tasks
+are terminated — but the termination happens at pool cleanup rather than per-task.</p>
+<p>Callers should be aware that tasks that complete <em>just before</em> SIGTERM arrives will
+have their results discarded if <code>shutdown</code> is called before <code>future.result()</code> returns.
+In practice this window is negligible for normal scientific workloads.</p>
+<hr />
+<h2 id="6-dependency-changes-pyprojecttoml">6. Dependency Changes (<code>pyproject.toml</code>)<a class="headerlink" href="#6-dependency-changes-pyprojecttoml" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Package</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Remove</td>
+<td><code>pebble&gt;=5.0.7</code></td>
+</tr>
+<tr>
+<td>Add</td>
+<td><code>loky&gt;=3.4</code></td>
+</tr>
+<tr>
+<td>Keep</td>
+<td><code>dill&gt;=0.3.9</code> (used by <code>Cache</code> pickle paths)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Change <code>requires-python = "&gt;=3.12,&lt;3.14"</code> → <code>"&gt;=3.12"</code>.</li>
+<li>Add Python 3.14 classifier.</li>
+<li>Regenerate <code>uv.lock</code> and <code>pixi.lock</code> after the change.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "search.suggest", "search.highlight", "search.share", "navigation.instant", "navigation.instant.prefetch"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
