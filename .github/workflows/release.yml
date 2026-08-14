@@ -107,12 +107,23 @@ jobs:
           RELEASE_URL: ${{ github.event.release.html_url }}
           REPO: ${{ github.repository }}
         run: |
+          # Slack mrkdwn text objects are capped at 3000 characters; truncate
+          # and point to the release page for the rest. Budget leaves room
+          # for the "*Notes:*\n" prefix and the "read more" footer below.
+          # Truncate on a byte budget via python so a multibyte UTF-8
+          # character (e.g. an emoji in the release notes) can't get split
+          # by a plain byte-oriented cut like `head -c`.
+          truncated_body=$(printf '%s' "$RELEASE_BODY" | python3 -c 'import sys; sys.stdout.write(sys.stdin.buffer.read(2700).decode("utf-8", errors="ignore"))')
+          if [ "${#RELEASE_BODY}" -gt 2700 ]; then
+            truncated_body="${truncated_body}"$'...\n\n'"<${RELEASE_URL}|Read full release notes>"
+          fi
+
           payload=$(jq -n \
             --arg text "*New Release Published* :tada:" \
             --arg repo "$REPO" \
             --arg name "$RELEASE_NAME" \
             --arg tag "$RELEASE_TAG" \
-            --arg body "$RELEASE_BODY" \
+            --arg body "$truncated_body" \
             --arg url "$RELEASE_URL" \
             '{
               text: $text,
@@ -161,6 +172,14 @@ jobs:
               ]
             }')
 
-          curl -X POST -H 'Content-type: application/json' \
+          response=$(curl -sS -X POST -H 'Content-type: application/json' \
             --data "$payload" \
-            "$SLACK_WEBHOOK_URL"
+            "$SLACK_WEBHOOK_URL")
+
+          # Slack webhooks return HTTP 200 with a plaintext error body
+          # (e.g. "invalid_blocks") on failure, so curl's exit code alone
+          # can't detect a rejected notification.
+          if [ "$response" != "ok" ]; then
+            echo "::error::Slack webhook rejected the payload: $response"
+            exit 1
+          fi
