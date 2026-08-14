@@ -3,7 +3,15 @@ name: Upload Python Package
 on:
   release:
     types: [published]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      notify_only_tag:
+        description: >-
+          Existing release tag to (re-)send the Slack notification for,
+          e.g. v0.55.0. Skips build/publish entirely. Leave empty for a
+          normal full manual run.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -13,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    if: github.event_name == 'release' || github.event.inputs.notify_only_tag == ''
     steps:
       - uses: actions/checkout@v6
         with:
@@ -44,6 +53,7 @@ jobs:
 
   build-release:
     runs-on: ubuntu-latest
+    if: github.event_name == 'release' || github.event.inputs.notify_only_tag == ''
     steps:
       - uses: actions/checkout@v6
 
@@ -93,20 +103,32 @@ jobs:
     needs:
       - pypi-publish
 
-    # github.event.release.* not populated if run via
-    # workflow_dispatch
-    if: github.event_name == 'release'
+    # Runs for a real release, or a workflow_dispatch aimed at re-sending
+    # the notification for an already-published release (notify_only_tag
+    # set). needs.pypi-publish is skipped in that second case, so this
+    # can't use the default `if: success()` gate.
+    if: >-
+      !cancelled() && (
+        github.event_name == 'release' ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.notify_only_tag != '')
+      )
 
     steps:
       - name: Send release notification to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          RELEASE_NAME: ${{ github.event.release.name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_BODY: ${{ github.event.release.body }}
-          RELEASE_URL: ${{ github.event.release.html_url }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # github.event.release.* isn't populated for workflow_dispatch,
+          # so re-fetch the release by tag either way — one code path.
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.notify_only_tag }}
         run: |
+          release_json=$(gh release view "$TAG" --repo "$REPO" --json name,tagName,body,url)
+          RELEASE_NAME=$(jq -r '.name' <<<"$release_json")
+          RELEASE_TAG=$(jq -r '.tagName' <<<"$release_json")
+          RELEASE_BODY=$(jq -r '.body' <<<"$release_json")
+          RELEASE_URL=$(jq -r '.url' <<<"$release_json")
+
           # Slack mrkdwn text objects are capped at 3000 characters; truncate
           # and point to the release page for the rest. Budget leaves room
           # for the "*Notes:*\n" prefix and the "read more" footer below.
