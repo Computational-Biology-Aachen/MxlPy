@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from mxlpy import Derived, Event, Model, Scipy, Simulator
+from mxlpy._kinetic_builder import ArityMismatchError
 from mxlpy.integrators.abstract import MockIntegrator
 
 if TYPE_CHECKING:
@@ -871,3 +872,152 @@ def test_requested_point_inside_post_event_buffer_window_is_kept() -> None:
     x = result.get_variables()["x"]
     assert inside_buffer_window in x.index
     assert float(x[inside_buffer_window]) == pytest.approx(2.0)
+
+
+def test_update_variable_preserves_fired_names_across_calls() -> None:
+    """update_variable()/update_variables() rebuild the integrator to pick up
+    the new y0, but that rebuild must not be treated as a reset: a
+    persistent=False event that already fired must stay fired afterwards.
+    """
+
+    def trigger_growing(x: float) -> float:
+        return x - 0.3
+
+    def grow(x: float, k: float) -> float:
+        return k * x
+
+    def set_small() -> float:
+        return 0.01
+
+    model = (
+        Model()
+        .add_variable("x", 0.1)
+        .add_variable("y", 0.0)
+        .add_parameter("k", 1.0)
+        .add_reaction("v", grow, args=["x", "k"], stoichiometry={"x": 1})
+        .add_event(
+            "once",
+            trigger_growing,
+            trigger_args=["x"],
+            assignments={"x": Derived(fn=set_small, args=[])},
+            persistent=False,
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    sim.simulate(t_end=2)
+    # Unrelated mid-simulation state tweak - must not resurrect the event.
+    sim.update_variable("y", 5.0)
+    result = sim.simulate(t_end=10).get_result().unwrap_or_err()
+
+    x = result.get_variables()["x"]
+    # If the event refired, x would be reset back down near 0.01 a second
+    # time instead of growing unboundedly past 0.3 again.
+    assert float(x.iloc[-1]) > 0.3
+
+
+def test_rename_event_updates_registry() -> None:
+    """Renaming an event itself must move its entry in the event registry,
+    not just its id, otherwise get_event_names() goes stale and the freed
+    old name can silently collide with a later add_event().
+    """
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_event(
+            "dose",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"x": Derived(fn=set_two, args=[])},
+        )
+    )
+    model.rename("dose", "drug_dose")
+
+    assert model.get_event_names() == ["drug_dose"]
+    raw = model.get_raw_events()
+    assert "drug_dose" in raw
+    assert "dose" not in raw
+
+
+def test_rename_referenced_name_updates_event_args() -> None:
+    """Renaming a variable referenced by an event's trigger/assignment must
+    update the event's trigger_args and assignment target, not leave it
+    pointing at the now-nonexistent old name.
+    """
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 0.1)
+        .add_reaction("v", decay, args=["x", "k"], stoichiometry={"x": -1})
+        .add_event(
+            "dose",
+            trigger_x_zero,
+            trigger_args=["x"],
+            assignments={"x": Derived(fn=set_two, args=[])},
+        )
+    )
+    model.rename("x", "conc")
+
+    event = model.get_raw_events()["dose"]
+    assert event.trigger_args == ["conc"]
+    assert set(event.assignments) == {"conc"}
+
+    # Must actually be simulatable afterwards, not just internally consistent.
+    sim = Simulator(model, integrator=Scipy)
+    result = sim.simulate(t_end=1).get_result().unwrap_or_err()
+    assert "conc" in result.get_variables().columns
+
+
+def test_get_unused_parameters_excludes_event_only_parameter() -> None:
+    """A parameter only referenced from an event's trigger/assignment must
+    not be reported as unused - it is load-bearing for the event.
+    """
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("threshold", 0.5)
+        .add_parameter("truly_unused", 1.0)
+        .add_event(
+            "dose",
+            trigger_a_crosses_half,
+            trigger_args=["x"],
+            assignments={"x": Derived(fn=bump_a, args=["threshold"])},
+        )
+    )
+    assert model.get_unused_parameters() == {"truly_unused"}
+
+
+def test_add_event_trigger_arity_mismatch_raises() -> None:
+    """A trigger_fn/trigger_args arity mismatch must raise ArityMismatchError
+    eagerly (like every other model component), not a bare TypeError deep
+    inside solve_ivp the first time the event is actually evaluated.
+    """
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_event(
+            "bad",
+            trigger_at_t5,
+            trigger_args=[],  # trigger_at_t5 expects one arg
+            assignments={"x": Derived(fn=set_two, args=[])},
+        )
+    )
+    with pytest.raises(ArityMismatchError):
+        Simulator(model, integrator=Scipy)
+
+
+def test_add_event_assignment_arity_mismatch_raises() -> None:
+    """An assignment Derived's fn/args arity mismatch must also raise
+    ArityMismatchError eagerly, not silently at simulation time.
+    """
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_event(
+            "bad",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"x": Derived(fn=bump_a, args=[])},  # bump_a needs "a"
+        )
+    )
+    with pytest.raises(ArityMismatchError):
+        Simulator(model, integrator=Scipy)
