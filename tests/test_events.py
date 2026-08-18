@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 
 from mxlpy import Derived, Event, Model, Scipy, Simulator
-from mxlpy.integrators import DefaultIntegrator
+from mxlpy.integrators.abstract import MockIntegrator
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from mxlpy.types import Array
 
 # ---------------------------------------------------------------------------
 # Helper rate functions (no lambdas per codebase convention)
@@ -57,7 +64,7 @@ def test_get_event_names_empty() -> None:
 
 
 def test_add_event_returns_self() -> None:
-    model = Model()
+    model = Model().add_parameter("k1", 0.1)
     result = model.add_event(
         "ev",
         trigger_at_t5,
@@ -70,6 +77,9 @@ def test_add_event_returns_self() -> None:
 def test_get_event_names() -> None:
     model = (
         Model()
+        .add_variable("x", 0.0)
+        .add_parameter("k1", 0.1)
+        .add_parameter("k2", 0.1)
         .add_event(
             "dose",
             trigger_at_t5,
@@ -87,7 +97,7 @@ def test_get_event_names() -> None:
 
 
 def test_add_event_duplicate_name_raises() -> None:
-    model = Model().add_event(
+    model = Model().add_parameter("k1", 0.1).add_event(
         "ev",
         trigger_at_t5,
         trigger_args=["time"],
@@ -308,10 +318,13 @@ def test_persistent_false_fires_once() -> None:
 
 
 def test_non_scipy_integrator_with_events_raises() -> None:
-    """Events require Scipy; other integrators raise NotImplementedError."""
-    if DefaultIntegrator is Scipy:
-        pytest.skip("DefaultIntegrator is Scipy; need a non-Scipy integrator to test")
+    """Events require Scipy; other integrators raise NotImplementedError.
 
+    Uses MockIntegrator directly (rather than DefaultIntegrator) so this test
+    exercises the guard regardless of whether Assimulo is installed - relying
+    on DefaultIntegrator left this guard with zero coverage in CI, since
+    DefaultIntegrator falls back to Scipy there.
+    """
     model = (
         Model()
         .add_variable("x", 1.0)
@@ -325,7 +338,38 @@ def test_non_scipy_integrator_with_events_raises() -> None:
         )
     )
     with pytest.raises(NotImplementedError, match="Scipy"):
-        Simulator(model, integrator=DefaultIntegrator)
+        Simulator(model, integrator=MockIntegrator)
+
+
+def test_non_scipy_integrator_events_added_after_construction_raises() -> None:
+    """The events-require-Scipy guard must also catch events added post-construction.
+
+    Simulator._initialise_integrator() only runs at construction/reset time,
+    but the model is a live reference the caller can keep mutating - so the
+    guard must be re-checked at every simulate*() entry point too, not just
+    once up front.
+    """
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 0.1)
+        .add_reaction("v", decay, args=["x", "k"], stoichiometry={"x": -1})
+    )
+    sim = Simulator(model, integrator=MockIntegrator)
+
+    model.add_event(
+        "ev",
+        trigger_at_t5,
+        trigger_args=["time"],
+        assignments={"x": Derived(fn=set_two, args=[])},
+    )
+
+    with pytest.raises(NotImplementedError, match="Scipy"):
+        sim.simulate(t_end=10)
+    with pytest.raises(NotImplementedError, match="Scipy"):
+        sim.simulate_time_course([1.0, 2.0])
+    with pytest.raises(NotImplementedError, match="Scipy"):
+        sim.simulate_to_steady_state()
 
 
 # ---------------------------------------------------------------------------
@@ -431,8 +475,117 @@ def test_tied_events_both_apply() -> None:
     assert float(hit_b.iloc[-1]) == pytest.approx(1.0)
 
 
+def trigger_five(v: float) -> float:
+    return v - 5.0
+
+
+def test_tied_event_does_not_fire_candidate_in_wrong_direction() -> None:
+    """A same-instant near-zero trigger must not force-fire a wrong-direction event.
+
+    x(t) = t grows through 5 (a rising crossing). y(t) starts at 10 and
+    decays through 5 at the same instant (a falling crossing). ev_b is
+    declared direction="rising", so even though its trigger is tied with
+    ev_a's at t=5, it must not fire - the actual crossing there is falling.
+    """
+    model = (
+        Model()
+        .add_variable("x", 0.0)
+        .add_variable("y", 10.0)
+        .add_variable("hit_b", 0.0)
+        .add_parameter("k", 1.0)
+        .add_reaction("vx", grow, args=["k"], stoichiometry={"x": 1})
+        .add_reaction("vy", grow, args=["k"], stoichiometry={"y": -1})
+        .add_event(
+            "ev_a_jump",
+            trigger_five,
+            trigger_args=["x"],
+            assignments={"x": Derived(fn=jump_high, args=[])},
+        )
+        .add_event(
+            "ev_b_marks",
+            trigger_five,
+            trigger_args=["y"],
+            assignments={"hit_b": Derived(fn=mark_hit, args=[])},
+            direction="rising",
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    result = sim.simulate(t_end=10).get_result().unwrap_or_err()
+
+    hit_b = result.get_variables()["hit_b"]
+    assert float(hit_b.iloc[-1]) == pytest.approx(0.0)
+
+
+def always_zero() -> float:
+    return 0.0
+
+
+def set_ten() -> float:
+    return 10.0
+
+
+def echo_shared(shared: float) -> float:
+    return shared
+
+
+def test_apply_tied_events_applies_in_declaration_order() -> None:
+    """Tied events must apply in declaration order, not scipy's winning-root order.
+
+    Directly exercises Scipy._apply_tied_events with a fake solve_ivp result
+    where the *second*-declared event ("second") is reported as the winning
+    root (index 1) and the *first*-declared event ("first") is only found to
+    be tied afterwards. "first" sets `shared`; "second" reads `shared` into
+    `result`. If tied events were applied in scipy's report order (second,
+    then first) "second" would read the stale pre-event value of `shared`.
+    """
+    events = {
+        "first": Event(
+            trigger_fn=always_zero,
+            trigger_args=[],
+            assignments={"shared": Derived(fn=set_ten, args=[])},
+        ),
+        "second": Event(
+            trigger_fn=always_zero,
+            trigger_args=[],
+            assignments={"result": Derived(fn=echo_shared, args=["shared"])},
+        ),
+    }
+
+    def dummy_rhs(t: float, y: Iterable[float]) -> tuple[float, ...]:  # noqa: ARG001
+        return (0.0, 0.0)
+
+    def get_dependent(t: float, y: Array) -> dict[str, float]:
+        return {"time": t, "shared": float(y[0]), "result": float(y[1])}
+
+    integrator = Scipy(rhs=dummy_rhs, y0=(0.0, 0.0))
+    integrator._var_names = ["shared", "result"]
+    integrator._get_dependent = get_dependent
+
+    class _FakeRes:
+        def __init__(self) -> None:
+            # "second" (index 1) is reported as the winning root; "first"
+            # (index 0) has no root of its own - it is only found via the
+            # tie-detection scan against the winning event's state.
+            self.t_events = [np.array([]), np.array([5.0])]
+            self.y_events = [np.array([]), [np.array([0.0, 0.0])]]
+
+    fired = integrator._apply_tied_events(
+        active=events,
+        res=_FakeRes(),
+        fired_names=set(),
+        suppressed_once=set(),
+        t_seg_start=0.0,
+        y_seg_start=np.array([0.0, 0.0]),
+    )
+
+    assert fired is not None
+    _, y_post = fired
+    result_idx = integrator._var_names.index("result")
+    assert float(y_post[result_idx]) == pytest.approx(10.0)
+
+
 def test_get_raw_events() -> None:
-    model = Model().add_event(
+    model = Model().add_parameter("k1", 0.1).add_event(
         "dose",
         trigger_at_t5,
         trigger_args=["time"],
@@ -444,7 +597,7 @@ def test_get_raw_events() -> None:
 
 
 def test_remove_event() -> None:
-    model = Model().add_event(
+    model = Model().add_parameter("k1", 0.1).add_event(
         "dose",
         trigger_at_t5,
         trigger_args=["time"],
@@ -467,6 +620,63 @@ def test_remove_event_missing_raises() -> None:
     model = Model()
     with pytest.raises(KeyError):
         model.remove_event("missing")
+
+
+def test_add_event_unknown_assignment_target_raises() -> None:
+    """An assignment target that isn't a raw variable or parameter must be
+    rejected at add_event() time, not surface as a mid-simulation KeyError
+    from update_parameter()/update_variable().
+    """
+    model = Model().add_variable("x", 1.0).add_parameter("k", 0.1)
+    with pytest.raises(KeyError, match="k2"):
+        model.add_event(
+            "dose",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"k2": Derived(fn=set_zero, args=[])},
+        )
+    # The rejected event must not have been partially registered.
+    assert model.get_event_names() == []
+
+
+def test_add_events_batch() -> None:
+    model = Model().add_variable("x", 1.0).add_parameter("k", 0.1)
+    model.add_events(
+        {
+            "dose": Event(
+                trigger_fn=trigger_at_t5,
+                trigger_args=["time"],
+                assignments={"x": Derived(fn=set_two, args=[])},
+            ),
+            "shutoff": Event(
+                trigger_fn=trigger_at_t5,
+                trigger_args=["time"],
+                assignments={"k": Derived(fn=set_zero, args=[])},
+            ),
+        }
+    )
+    assert set(model.get_event_names()) == {"dose", "shutoff"}
+
+
+def test_remove_events_batch() -> None:
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_event(
+            "dose",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"x": Derived(fn=set_two, args=[])},
+        )
+        .add_event(
+            "shutoff",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"x": Derived(fn=set_zero, args=[])},
+        )
+    )
+    model.remove_events(["dose", "shutoff"])
+    assert model.get_event_names() == []
 
 
 # ---------------------------------------------------------------------------
@@ -625,3 +835,39 @@ def test_persistent_false_stays_fired_across_simulate_calls() -> None:
     # chunked into simulate() calls, so both runs must land on the same
     # trajectory.
     assert x_split == pytest.approx(x_single, rel=1e-4)
+
+
+def test_requested_point_inside_post_event_buffer_window_is_kept() -> None:
+    """A requested output point landing inside the tiny post-event suppression
+    buffer window must appear in the results, not be silently dropped.
+
+    After "capture" fires at t=5 (persistent=True, the default), the
+    segment-restart loop takes a short buffer sub-step of size
+    ~1e-6 * t_event before re-arming the event. A time point requested just
+    inside that window used to be neither part of the buffer sub-step's
+    (previously unrecorded) trajectory nor part of the next full segment,
+    since t_current had already advanced past it.
+    """
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 0.0)
+        .add_reaction("v", decay, args=["x", "k"], stoichiometry={"x": -1})
+        .add_event(
+            "capture",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"x": Derived(fn=set_two, args=[])},
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    inside_buffer_window = 5.000001
+    result = (
+        sim.simulate_time_course([1.0, 3.0, inside_buffer_window, 7.0, 10.0])
+        .get_result()
+        .unwrap_or_err()
+    )
+
+    x = result.get_variables()["x"]
+    assert inside_buffer_window in x.index
+    assert float(x[inside_buffer_window]) == pytest.approx(2.0)

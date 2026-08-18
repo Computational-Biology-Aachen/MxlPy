@@ -137,6 +137,18 @@ class Simulator:
 
         self._initialise_integrator()
 
+    def _check_events_supported(self) -> None:
+        """Raise if the model has events but the active integrator isn't Scipy.
+
+        Events can be added to ``self.model`` after this ``Simulator`` was
+        constructed (the model is a live, shared reference), so this must be
+        re-checked at every simulation entry point, not just at construction
+        time in ``_initialise_integrator``.
+        """
+        if self.model._events and not isinstance(self.integrator, Scipy):  # noqa: SLF001
+            msg = "Events require the Scipy integrator; switch with integrator=Scipy"
+            raise NotImplementedError(msg)
+
     def _initialise_integrator(self) -> None:
         events = self.model._events  # noqa: SLF001
         if events and self._integrator_type is not Scipy:
@@ -381,6 +393,7 @@ class Simulator:
         """
         if len(self._errors) > 0:
             return self
+        self._check_events_supported()
 
         if self._time_shift is not None:
             t_end -= self._time_shift
@@ -424,6 +437,7 @@ class Simulator:
         """
         if len(self._errors) > 0:
             return self
+        self._check_events_supported()
 
         time_points = np.array(time_points, dtype=float)
 
@@ -620,6 +634,7 @@ class Simulator:
         """
         if len(self._errors) > 0:
             return self
+        self._check_events_supported()
 
         result = self.integrator.integrate_to_steady_state(
             tolerance=tolerance,

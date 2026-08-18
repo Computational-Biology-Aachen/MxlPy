@@ -114,6 +114,9 @@ class Scipy(AbstractIntegrator):
         res: Any,
         fired_names: set[str],
         suppressed_once: set[str],
+        *,
+        t_seg_start: float,
+        y_seg_start: Array,
     ) -> tuple[float, Array] | None:
         """Apply the winning event plus any other active event tied at the same instant.
 
@@ -126,9 +129,17 @@ class Scipy(AbstractIntegrator):
         ever one populated), but by evaluating every *other* active event's
         trigger directly at the winning event's `(t_event, y_at_event)`
         state: a near-zero value there means it crossed at the same instant.
+        A candidate is only accepted as tied if that crossing is actually
+        consistent with its own declared ``direction`` (checked by comparing
+        sign at the segment start against the near-zero value at the event) -
+        otherwise a same-magnitude-but-wrong-direction event would be forced
+        to fire even though scipy would never have reported it standalone.
         All tied events are then applied together via `Event.apply_assignments`,
         which chains through a shared ``args`` dict (later assignments see
-        earlier ones' new values).
+        earlier ones' new values); tied events are applied in declaration
+        order (not the arbitrary order scipy happened to report the winning
+        root in) so that chaining is deterministic and matches the order the
+        user wrote them in.
 
         Parameters
         ----------
@@ -143,6 +154,11 @@ class Scipy(AbstractIntegrator):
             Names to suppress for a short buffer window after firing
             (floating-point hazard right at the restart point); extended in
             place for any persistent event applied here.
+        t_seg_start
+            Time at the start of this integration segment, used to determine
+            each tied candidate's crossing direction.
+        y_seg_start
+            State at the start of this integration segment.
 
         Returns
         -------
@@ -166,16 +182,29 @@ class Scipy(AbstractIntegrator):
         get_dependent = self._get_dependent
         assert get_dependent is not None  # noqa: S101
         args: dict[str, float] = get_dependent(t_event, y_at_event)
+        args_start: dict[str, float] = get_dependent(t_seg_start, y_seg_start)
 
-        tied_idxs = [fired_idx]
+        tied_idxs = {fired_idx}
         for i, name in enumerate(event_names):
             if i == fired_idx:
                 continue
-            if abs(active[name].evaluate_trigger(args)) < _TIE_TRIGGER_ATOL:
-                tied_idxs.append(i)
+            candidate = active[name]
+            if abs(candidate.evaluate_trigger(args)) >= _TIE_TRIGGER_ATOL:
+                continue
+            # Reject candidates whose declared direction is inconsistent
+            # with the sign of their trigger at the segment start: e.g. a
+            # "rising" event whose trigger was already positive at the
+            # start of the segment is not undergoing a rising crossing here,
+            # even though its value also happens to be near zero now.
+            trigger_start = candidate.evaluate_trigger(args_start)
+            if candidate.direction == "rising" and trigger_start > 0:
+                continue
+            if candidate.direction == "falling" and trigger_start < 0:
+                continue
+            tied_idxs.add(i)
 
         y_post = y_at_event.copy()
-        for idx in tied_idxs:
+        for idx in sorted(tied_idxs):
             fired_event = active[event_names[idx]]
             updates = fired_event.apply_assignments(args)
             for name, value in updates.items():
@@ -228,71 +257,72 @@ class Scipy(AbstractIntegrator):
             }
             scipy_events = [self._build_scipy_event(ev) for ev in active.values()]
 
+            is_buffer_step = bool(suppressed_once)
             seg_end = (
                 min(t_end, t_current + 1e-6 * max(abs(t_current), 1.0))
-                if suppressed_once
+                if is_buffer_step
                 else t_end
             )
 
-            if seg_end < t_end:
-                # Bounded buffer sub-step: only need the endpoint state to
-                # re-arm the suppressed events from, not a sampled trajectory.
-                res = spi.solve_ivp(
-                    fun=self.rhs,
-                    y0=tuple(y_current),
-                    t_span=(t_current, seg_end),
-                    events=scipy_events or None,
-                    jac=self.jacobian,
-                    atol=self.atol,
-                    rtol=self.rtol,
-                    method=self.method,
-                )
-                if not res.success and res.status != 1:
-                    return Result(IntegrationFailure())
+            # Requested output points falling inside this segment, always
+            # bracketed by the segment's own start/end so scipy is asked to
+            # actually integrate (and sample) the full segment - including a
+            # bounded buffer sub-step, whose trajectory must still be
+            # recorded so points requested inside that tiny window aren't
+            # silently dropped from the output.
+            mask = (time_points > t_current) & (time_points <= seg_end)
+            seg_eval = time_points[mask]
+            if not is_buffer_step and len(seg_eval) == 0:
+                break
+            if len(seg_eval) == 0 or seg_eval[0] != t_current:
+                seg_eval = np.concatenate([[t_current], seg_eval])
+            if seg_eval[-1] != seg_end:
+                seg_eval = np.concatenate([seg_eval, [seg_end]])
 
-                if res.status != 1:
-                    # No (non-suppressed) event fired inside the buffer
-                    # window: re-arm and retry from here with the real
-                    # segment end.
-                    t_current = float(res.t[-1])
-                    y_current = np.array(res.y[:, -1], dtype=float)
-                    suppressed_once = set()
-                    continue
-            else:
-                mask = time_points > t_current
-                seg_eval = time_points[mask]
-                if len(seg_eval) == 0:
-                    break
-                if seg_eval[0] != t_current:
-                    seg_eval = np.concatenate([[t_current], seg_eval])
+            seg_t_start, seg_y_start = t_current, y_current
 
-                res = spi.solve_ivp(
-                    fun=self.rhs,
-                    y0=tuple(y_current),
-                    t_span=(t_current, t_end),
-                    t_eval=seg_eval,
-                    events=scipy_events or None,
-                    jac=self.jacobian,
-                    atol=self.atol,
-                    rtol=self.rtol,
-                    method=self.method,
-                )
+            res = spi.solve_ivp(
+                fun=self.rhs,
+                y0=tuple(y_current),
+                t_span=(t_current, seg_end),
+                t_eval=seg_eval,
+                events=scipy_events or None,
+                jac=self.jacobian,
+                atol=self.atol,
+                rtol=self.rtol,
+                method=self.method,
+            )
+            if not res.success and res.status != 1:
+                return Result(IntegrationFailure())
 
-                if not res.success and res.status != 1:
-                    return Result(IntegrationFailure())
+            t_seg = np.array(res.t, dtype=float)
+            y_seg = np.array(res.y, dtype=float).T
 
-                t_seg = np.array(res.t, dtype=float)
-                y_seg = np.array(res.y, dtype=float).T
+            start = 1 if all_t else 0
+            if len(t_seg) > start:
+                all_t.append(t_seg[start:])
+                all_y.append(y_seg[start:])
 
-                start = 1 if all_t else 0
-                if len(t_seg) > start:
-                    all_t.append(t_seg[start:])
-                    all_y.append(y_seg[start:])
+            if is_buffer_step and res.status != 1:
+                # No (non-suppressed) event fired inside the buffer
+                # window: re-arm and retry from here with the real
+                # segment end.
+                t_current = float(res.t[-1])
+                y_current = np.array(res.y[:, -1], dtype=float)
+                suppressed_once = set()
+                continue
 
-                if res.status != 1:
-                    break
+            if res.status != 1:
+                break
 
-            fired = self._apply_tied_events(active, res, fired_names, suppressed_once)
+            fired = self._apply_tied_events(
+                active,
+                res,
+                fired_names,
+                suppressed_once,
+                t_seg_start=seg_t_start,
+                y_seg_start=seg_y_start,
+            )
             if fired is None:
                 break
             t_event, y_post = fired
@@ -522,6 +552,7 @@ class Scipy(AbstractIntegrator):
                     if suppressed_once
                     else t_end
                 )
+                seg_t_start, seg_y_start = t_current, y_current
 
                 res = spi.solve_ivp(
                     fun=self.rhs,
@@ -556,7 +587,12 @@ class Scipy(AbstractIntegrator):
                     break
 
                 fired = self._apply_tied_events(
-                    active, res, fired_names, suppressed_once
+                    active,
+                    res,
+                    fired_names,
+                    suppressed_once,
+                    t_seg_start=seg_t_start,
+                    y_seg_start=seg_y_start,
                 )
                 if fired is None:
                     break
