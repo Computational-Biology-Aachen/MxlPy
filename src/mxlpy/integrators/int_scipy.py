@@ -20,9 +20,11 @@ if TYPE_CHECKING:
 
     from mxlpy.types import Array, Rhs
 
-# Absolute tolerance for treating another active event's trigger value as
-# "also crossing zero" at the winning event's (t_event, y_at_event) state.
-_TIE_TRIGGER_ATOL = 1e-6
+# Tied-event trigger values are compared against `self.atol` scaled by this
+# factor, rather than a fixed constant, so tightening/loosening the solver's
+# own tolerance also tightens/loosens tie detection (default atol=1e-8 gives
+# the same 1e-6 threshold used before this became configurable).
+_TIE_TRIGGER_ATOL_FACTOR = 100
 
 
 __all__ = [
@@ -189,7 +191,10 @@ class Scipy(AbstractIntegrator):
             if i == fired_idx:
                 continue
             candidate = active[name]
-            if abs(candidate.evaluate_trigger(args)) >= _TIE_TRIGGER_ATOL:
+            if (
+                abs(candidate.evaluate_trigger(args))
+                >= self.atol * _TIE_TRIGGER_ATOL_FACTOR
+            ):
                 continue
             # Reject candidates whose declared direction is inconsistent
             # with the sign of their trigger at the segment start: e.g. a
@@ -212,6 +217,12 @@ class Scipy(AbstractIntegrator):
                     y_post[self._var_names.index(name)] = value
                 elif self._param_update_callback is not None:
                     self._param_update_callback(name, value)
+                else:
+                    msg = (
+                        f"Event assignment targets parameter {name!r}, but no "
+                        "parameter-update callback is wired on this integrator."
+                    )
+                    raise RuntimeError(msg)
             args.update(updates)
 
             if fired_event.persistent:
@@ -456,7 +467,13 @@ class Scipy(AbstractIntegrator):
             Integration result containing the steady-state time and values.
 
         """
+        # reset() restores y0/t0 for the steady-state search, but must not
+        # un-fire non-persistent events - that guarantee is Simulator-lifetime
+        # state, only meant to be cleared by an explicit reset() call from the
+        # caller, not as a side effect of this internal one.
+        fired_names = self._fired_names
         self.reset()
+        self._fired_names = fired_names
 
         if self._events:
             return self._integrate_to_steady_state_with_events(

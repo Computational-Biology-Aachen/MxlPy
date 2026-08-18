@@ -151,7 +151,11 @@ class Simulator:
 
     def _initialise_integrator(self) -> None:
         events = self.model._events  # noqa: SLF001
-        if events and self._integrator_type is not Scipy:
+        integrator_type = self._integrator_type
+        supports_events = isinstance(integrator_type, type) and issubclass(
+            integrator_type, Scipy
+        )
+        if events and not supports_events:
             msg = "Events require the Scipy integrator; switch with integrator=Scipy"
             raise NotImplementedError(msg)
 

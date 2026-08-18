@@ -838,6 +838,49 @@ def test_persistent_false_stays_fired_across_simulate_calls() -> None:
     assert x_split == pytest.approx(x_single, rel=1e-4)
 
 
+def test_persistent_false_stays_fired_into_steady_state_call() -> None:
+    """A one-shot event fired during simulate() must stay fired for a later
+    simulate_to_steady_state() call on the same Simulator.
+
+    integrate_to_steady_state() resets the integrator's y0/t0 back to their
+    original values before searching, but that internal reset must not also
+    un-fire non-persistent events - that guarantee is Simulator-lifetime
+    state, only meant to be cleared by an explicit reset() call.
+    """
+
+    def trigger_below_half(x: float) -> float:
+        return x - 0.5
+
+    def set_zero() -> float:
+        return 0.0
+
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 1.0)
+        .add_reaction("v", decay, args=["x", "k"], stoichiometry={"x": -1})
+        .add_event(
+            "once",
+            trigger_below_half,
+            trigger_args=["x"],
+            assignments={"k": Derived(fn=set_zero, args=[])},
+            direction="falling",
+            persistent=False,
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    sim.simulate(t_end=2)
+
+    assert "once" in sim.integrator._fired_names  # type: ignore[attr-defined]
+
+    sim.simulate_to_steady_state(tolerance=1e-3)
+
+    # The event must still be fired after the steady-state call - it must
+    # not have been silently re-armed by integrate_to_steady_state()'s
+    # internal reset().
+    assert "once" in sim.integrator._fired_names  # type: ignore[attr-defined]
+
+
 def test_requested_point_inside_post_event_buffer_window_is_kept() -> None:
     """A requested output point landing inside the tiny post-event suppression
     buffer window must appear in the results, not be silently dropped.
