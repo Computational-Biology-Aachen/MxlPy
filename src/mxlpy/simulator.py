@@ -179,7 +179,7 @@ class Simulator:
 
             self.integrator._events = events  # noqa: SLF001
             self.integrator._var_names = self.model.get_variable_names()  # noqa: SLF001
-            self.integrator._param_values = self.model.get_parameter_values()  # noqa: SLF001
+            self.integrator._get_param_values = model.get_parameter_values  # noqa: SLF001
             self.integrator._param_update_callback = _update_param  # noqa: SLF001
 
     def clear_results(self) -> None:
