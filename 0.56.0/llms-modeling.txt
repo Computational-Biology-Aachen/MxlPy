@@ -1,0 +1,236 @@
+# MxlPy — Modeling
+
+[← back to index](llms.txt)
+
+Building `Model` objects: components, rate functions, derived quantities, introspection, composition, compartmentalisation and label models.
+
+## The fluent builder
+
+A reaction network is translated into ODEs by declaring **variables** (the integrated state), **parameters** (constants), **reactions** (a rate function + stoichiometry), and optional **derived** quantities. Every method returns `Self`, so calls chain. Prefer defining a model inside a function so a fresh copy is one call away.
+
+```python
+from mxlpy import Model, fns
+
+def get_model() -> Model:
+    return (
+        Model()
+        .add_parameters({"k_in": 1.0, "k1": 1.0, "k_out": 1.0})
+        .add_variables({"S": 0.0, "P": 0.0})
+        .add_reaction("v0", fns.constant, args=["k_in"], stoichiometry={"S": 1})
+        .add_reaction("v1", fns.proportional, args=["k1", "S"], stoichiometry={"S": -1, "P": 1})
+        .add_reaction("v2", fns.proportional, args=["k_out", "P"], stoichiometry={"P": -1})
+    )
+```
+
+`add_reaction(name, fn, *, args, stoichiometry, unit=None)`:
+- `fn` — a pure, **pickle-able** named function (no lambdas).
+- `args` — names of variables/parameters/derived/`"time"`, passed to `fn` **by position** (order must match `fn`).
+- `stoichiometry` — `{variable: coefficient}`; coefficients may be floats, a parameter name (string), or a `Derived`.
+
+Singular vs plural: `add_parameter(name, value)` / `add_parameters({...})`; `add_variable(name, value)` / `add_variables({...})`. Protected names (e.g. `"time"`) raise `KeyError`; duplicate names raise `NameError`.
+
+### Units (optional)
+
+Wrap a value in `Parameter` / `Variable` (and pass `unit=` to `add_reaction`) to attach units from `mxlpy.units`:
+
+```python
+from mxlpy import Parameter, Variable, units
+
+(
+    Model()
+    .add_parameters({"k1": Parameter(1.0, unit=units.per_second)})
+    .add_variables({"S": Variable(0.0, unit=units.mmol)})
+    .add_reaction("v0", fns.constant, args=["k1"], stoichiometry={"S": 1}, unit=units.mmol_s)
+)
+```
+
+## Rate functions (`mxlpy.fns`)
+
+Common pure rate laws. Import as `from mxlpy import fns` and pass references like `fns.mass_action_1s`.
+
+| Function | Formula | Signature (arg order) |
+|---|---|---|
+| `constant(x)` | x | value |
+| `proportional(x, y)` | x·y | two factors (e.g. k, s) |
+| `add(x, y)` / `minus(x, y)` | x+y / x−y | x, y |
+| `mul(x, y)` / `div(x, y)` | x·y / x/y | x, y |
+| `neg(x)` / `one_div(x)` / `neg_div(x, y)` | −x / 1/x / −x/y | … |
+| `twice(x)` | 2·x | x |
+| `mass_action_1s(s1, k)` | k·s1 | substrate, k |
+| `mass_action_1s_1p(s1, p1, kf, kr)` | kf·s1 − kr·p1 | s1, p1, kf, kr |
+| `mass_action_2s(s1, s2, k)` | k·s1·s2 | s1, s2, k |
+| `mass_action_2s_1p(s1, s2, p1, kf, kr)` | kf·s1·s2 − kr·p1 | s1, s2, p1, kf, kr |
+| `michaelis_menten_1s(s1, vmax, km1)` | vmax·s1/(km1+s1) | s1, vmax, km1 |
+| `michaelis_menten_2s(s1, s2, vmax, km1, km2)` | 2-substrate ping-pong | s1, s2, vmax, km1, km2 |
+| `michaelis_menten_3s(...)` | 3-substrate ping-pong | s1, s2, s3, vmax, km1, km2, km3 |
+| `hill_1s(s, v, K, n)` | v·sⁿ/(Kⁿ+sⁿ) | s, v, K, n |
+| `diffusion_1s_1p(inside, outside, k)` | k·(outside−inside) | inside, outside, k |
+| `moiety_1s(x, total)` | total − x | x, total |
+| `moiety_2s(x1, x2, total)` | total − x1 − x2 | x1, x2, total |
+
+Custom rate functions follow the same contract (pure, named, `float`→`float`):
+
+```python
+def hill(s: float, vmax: float, km: float, n: float) -> float:
+    """Hill equation."""
+    return vmax * s**n / (km**n + s**n)
+
+model.add_reaction("v_hill", hill, args=["s", "vmax", "km", "n"], stoichiometry={"s": -1})
+```
+
+## Derived quantities
+
+`add_derived(name, fn, *, args)` defines a quantity computed from other parameters/variables. MxlPy decides just-in-time whether each is a derived **parameter** (depends only on parameters) or a derived **variable** (depends on variables); inspect with `get_derived_parameters()` / `get_derived_variables()`.
+
+```python
+def moiety_1(x1: float, total: float) -> float:
+    return total - x1
+
+(
+    Model()
+    .add_variables({"ATP": 1.0})
+    .add_parameters({"ATP_total": 1.0, "k_base": 1.0, "e0_atpase": 1.0})
+    .add_derived("k_atp", fns.proportional, args=["k_base", "e0_atpase"])  # derived parameter
+    .add_derived("ADP", moiety_1, args=["ATP", "ATP_total"])               # derived variable
+    .add_reaction("ATPase", fns.proportional, args=["k_atp", "ATP"], stoichiometry={"ATP": -1})
+)
+```
+
+### Derived stoichiometries
+
+A stoichiometry value can be a number, a parameter name (string), or a `Derived`:
+
+```python
+from mxlpy import Derived
+
+stoichiometry={"x": 1.0}                              # constant
+stoichiometry={"x": "stoich"}                         # value of parameter "stoich"
+stoichiometry={"x": Derived(fn=fns.constant, args=["stoich"])}  # computed
+```
+
+### Initial assignments
+
+`InitialAssignment` computes an initial value **once**, before integration (e.g. for moiety-conserved pools, or amounts from concentrations):
+
+```python
+from mxlpy.types import InitialAssignment
+
+(
+    Model()
+    .add_parameters({"k1": 0.1, "k2": InitialAssignment(fn=fns.twice, args=["k1"])})
+    .add_variables({"v1": 0.1, "v2": InitialAssignment(fn=fns.proportional, args=["k2", "v1"])})
+)
+```
+
+### Readouts and data
+
+```python
+model.add_readout("total", fns.add, args=["x", "y"])  # observable, appears in results, not in the ODE
+
+import pandas as pd
+model.add_data("light", pd.Series({"400nm": 200.0, "500nm": 300.0}))  # attach data, e.g. for derived aggregates
+```
+
+## Introspection & CRUD
+
+The model exposes a full create/read/update/delete API. Property accessors (`.parameters`, `.variables`, `.reactions`, `.derived`) return **copies** — mutate only via methods.
+
+```python
+# Read
+model.get_parameter_names(); model.get_variable_names(); model.get_reaction_names()
+model.get_parameter_values()        # dict[str, float]
+model.get_initial_conditions()      # dict[str, float]
+model.ids                           # all names across the namespace
+model.get_unused_parameters()       # set[str] not referenced by any fn
+model.get_stoichiometries()         # pd.DataFrame: variables × reactions
+model.get_raw_variables(); model.get_raw_parameters(); model.get_raw_reactions()  # underlying dataclasses
+
+# Evaluate (each optionally takes concentrations and/or time=)
+model.get_args()                    # all parameters + variables + derived (at initial conditions)
+model.get_args({"S": 1.0, "P": 0.5})
+model.get_fluxes(); model.get_fluxes({"S": 1.0}, time=2.0)
+model.get_right_hand_side()         # dY/dt per variable
+
+# Update / delete
+model.update_parameter("k1", 2.0); model.update_parameters({"k1": 2.0, "k2": 0.5})
+model.scale_parameter("vmax", 1.5)  # multiply by factor
+model.update_variable("S", 0.5)     # change initial condition
+model.remove_reaction("v_out"); model.remove_parameter("k_unused")
+```
+
+### Static / dynamic conversion
+
+```python
+model.make_variable_static("ATP", value=2.0)  # remove a variable from the ODE, clamp to a parameter
+model.make_parameter_dynamic("k_enz", initial_value=1.0, stoichiometries={"v_synthesis": 1})  # promote to variable
+```
+
+## Composition (`mxlpy.compose`)
+
+Merge two or more independently-built models into one new model. Components are matched **by name** across the whole namespace; the inputs are never mutated.
+
+```python
+from mxlpy import compose
+
+full = compose(metabolic_core, regulatory_layer)   # union of disjoint submodels
+full = compose(a, b, c)                              # variadic, folds left-to-right
+```
+
+By default a name defined in more than one model raises `ValueError`. To deliberately share a component (e.g. a species produced by one submodel and consumed by another), pass `raise_on_conflict=False`: a warning is emitted per overridden name and the **later** model wins.
+
+```python
+model = compose(producer, consumer, raise_on_conflict=False)
+```
+
+## Compartmentalisation
+
+Following Hofmeyr (2020), describe compartmentalised species as **amounts** and scale kinetic constants by compartment volume/area into **rate factors**; recover concentrations with derived quantities (`conc = amount / volume`), and use `InitialAssignment` when initial data is given as a concentration.
+
+```python
+def rate_factor(area: float, k: float, volume: float) -> float:
+    return area * k / volume
+
+(
+    Model()
+    .add_variables({"n_x": 2.0, "n_y": 1.0})          # amounts
+    .add_parameters({"kf": 1.0, "keq": 2.0, "c1": 1.5, "a1": 1.0})
+    .add_derived("ff", rate_factor, args=["a1", "kf", "c1"])  # rate factor f = A·k/V
+    .add_derived("x_c1", fns.div, args=["n_x", "c1"])        # concentration = amount / volume
+    .add_reaction("v1", reversible_ma, args=["n_x", "n_y", "ff", "keq"],
+                  stoichiometry={"n_x": -1, "n_y": 1})
+)
+```
+
+The same pattern covers single/two compartment reactions in the volume, at, on, onto or off a membrane — only which volume(s)/area scale the rate factor changes.
+
+## Label (isotopomer) models
+
+`LabelMapper` auto-generates the `2^n` isotopomer variables and the transitions between them from a model, a `label_variables` map (variable → number of labellable positions) and a `label_maps` (reaction → atom-transition list, 0-based: output position i comes from input position `label_maps[i]`).
+
+```python
+from mxlpy import LabelMapper, Simulator, plot
+
+mapper = LabelMapper(
+    get_tpi_ald_model(),
+    label_variables={"GAP": 3, "DHAP": 3, "FBP": 6},
+    label_maps={"TPIf": [2, 1, 0], "TPIr": [2, 1, 0],
+                "ALDf": [0, 1, 2, 3, 4, 5], "ALDr": [0, 1, 2, 3, 4, 5]},
+)
+labels = (
+    Simulator(mapper.build_model(initial_labels={"GAP": 0}))
+    .simulate(20).get_result().unwrap_or_err()
+).variables
+fig, ax = plot.relative_label_distribution(mapper, labels, n_cols=3)
+```
+
+`LinearLabelMapper` is the **stationary** (steady-state) approximation — labelling reduces to linear ODEs (Sokol & Portais 2015). `build_model` takes the steady-state `concs` and `fluxes` plus optional `external_label` (the static external pool `EXT`, default fully labelled `1.0`) and `initial_labels` (position or list of positions to pre-label):
+
+```python
+from mxlpy import LinearLabelMapper
+
+concs, fluxes = Simulator(model).simulate(100).get_result().unwrap_or_err()
+mapper = LinearLabelMapper(model, label_variables={"x": 2, "y": 2},
+                           label_maps={"v1": [0, 1], "v2": [0, 1], "v3": [0, 1]})
+label_model = mapper.build_model(concs=concs.iloc[-1], fluxes=fluxes.iloc[-1],
+                                 external_label=0.0, initial_labels={"x": [0, 1]})
+```
