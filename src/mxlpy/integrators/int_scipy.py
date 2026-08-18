@@ -63,8 +63,9 @@ class Scipy(AbstractIntegrator):
     _y0_orig: tuple[float, ...] = field(default_factory=tuple)
     _events: dict[str, Event] = field(default_factory=dict)
     _var_names: list[str] = field(default_factory=list)
-    _param_values: dict[str, float] = field(default_factory=dict)
-    _get_param_values: Callable[[], dict[str, float]] | None = field(default=None)
+    _get_dependent: Callable[[float, Array], dict[str, float]] | None = field(
+        default=None
+    )
     _param_update_callback: Callable[[str, float], None] | None = field(default=None)
 
     def __post_init__(self) -> None:
@@ -75,19 +76,6 @@ class Scipy(AbstractIntegrator):
         """Reset the integrator."""
         self.t0 = 0
         self.y0 = self._y0_orig
-
-    def _refresh_param_values(self) -> None:
-        """Re-read parameter values from the model.
-
-        `_param_values` is captured once at ``Simulator._initialise_integrator``
-        time; event trigger/assignment evaluation must see any parameter
-        updates made via `Simulator.update_parameter` (etc.) after that, so
-        this is called at the start of every event-aware integration. A
-        defensive copy is taken since the model may return a live reference
-        to its internal cache.
-        """
-        if self._get_param_values is not None:
-            self._param_values = dict(self._get_param_values())
 
     def _build_scipy_event(self, event: Event) -> Callable[[float, Array], float]:
         """Build a scipy-compatible event callable from an Event.
@@ -104,14 +92,11 @@ class Scipy(AbstractIntegrator):
             ``.direction`` attributes set for scipy's event API.
 
         """
-        var_names = self._var_names
-        param_values = self._param_values
+        get_dependent = self._get_dependent
+        assert get_dependent is not None  # noqa: S101
 
         def scipy_event(t: float, y: Array) -> float:
-            args: dict[str, float] = (
-                dict(zip(var_names, y, strict=False)) | param_values | {"time": t}
-            )
-            return event.evaluate_trigger(args)
+            return event.evaluate_trigger(get_dependent(t, y))
 
         scipy_event.terminal = True  # type: ignore[attr-defined]
         scipy_event.direction = _DIRECTION[event.direction]  # type: ignore[attr-defined]
@@ -172,11 +157,9 @@ class Scipy(AbstractIntegrator):
             return None
 
         y_at_event = np.array(res.y_events[fired_idx][0], dtype=float)
-        args: dict[str, float] = (
-            dict(zip(self._var_names, y_at_event, strict=False))
-            | self._param_values
-            | {"time": t_event}
-        )
+        get_dependent = self._get_dependent
+        assert get_dependent is not None  # noqa: S101
+        args: dict[str, float] = get_dependent(t_event, y_at_event)
 
         tied_idxs = [fired_idx]
         for i, name in enumerate(event_names):
@@ -192,10 +175,8 @@ class Scipy(AbstractIntegrator):
                 value = derived.calculate(args)
                 if name in self._var_names:
                     y_post[self._var_names.index(name)] = value
-                else:
-                    self._param_values[name] = value
-                    if self._param_update_callback is not None:
-                        self._param_update_callback(name, value)
+                elif self._param_update_callback is not None:
+                    self._param_update_callback(name, value)
                 args[name] = value
 
             if fired_event.persistent:
@@ -348,7 +329,6 @@ class Scipy(AbstractIntegrator):
         time_points = np.asarray(time_points, dtype=float)
 
         if self._events:
-            self._refresh_param_values()
             if time_points[0] != self.t0:
                 time_points = np.concatenate([[self.t0], time_points])
             return self._integrate_with_events(time_points)
@@ -413,7 +393,6 @@ class Scipy(AbstractIntegrator):
         self.reset()
 
         if self._events:
-            self._refresh_param_values()
             return self._integrate_to_steady_state_with_events(
                 tolerance=tolerance,
                 rel_norm=rel_norm,
