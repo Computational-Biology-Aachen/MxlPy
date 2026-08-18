@@ -67,6 +67,11 @@ class Scipy(AbstractIntegrator):
         default=None
     )
     _param_update_callback: Callable[[str, float], None] | None = field(default=None)
+    # Names of non-persistent events that have already fired. Persists across
+    # integrate()/integrate_time_course() calls (not just within one) so a
+    # one-shot event stays fired across e.g. repeated Simulator.simulate()
+    # calls in simulate_protocol().
+    _fired_names: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         """Create copy of initial state."""
@@ -76,6 +81,7 @@ class Scipy(AbstractIntegrator):
         """Reset the integrator."""
         self.t0 = 0
         self.y0 = self._y0_orig
+        self._fired_names = set()
 
     def _build_scipy_event(self, event: Event) -> Callable[[float, Array], float]:
         """Build a scipy-compatible event callable from an Event.
@@ -120,9 +126,9 @@ class Scipy(AbstractIntegrator):
         ever one populated), but by evaluating every *other* active event's
         trigger directly at the winning event's `(t_event, y_at_event)`
         state: a near-zero value there means it crossed at the same instant.
-        All tied events are then applied together, chaining through a shared
-        ``args`` dict (later assignments see earlier ones' new values, same
-        as assignments already do within a single event).
+        All tied events are then applied together via `Event.apply_assignments`,
+        which chains through a shared ``args`` dict (later assignments see
+        earlier ones' new values).
 
         Parameters
         ----------
@@ -134,9 +140,9 @@ class Scipy(AbstractIntegrator):
             Names of one-shot events already fired; extended in place for any
             non-persistent event applied here.
         suppressed_once
-            Names to suppress for the next segment (floating-point hazard at
-            the restart boundary); extended in place for any persistent event
-            applied here.
+            Names to suppress for a short buffer window after firing
+            (floating-point hazard right at the restart point); extended in
+            place for any persistent event applied here.
 
         Returns
         -------
@@ -171,18 +177,15 @@ class Scipy(AbstractIntegrator):
         y_post = y_at_event.copy()
         for idx in tied_idxs:
             fired_event = active[event_names[idx]]
-            for name, derived in fired_event.assignments.items():
-                value = derived.calculate(args)
+            updates = fired_event.apply_assignments(args)
+            for name, value in updates.items():
                 if name in self._var_names:
                     y_post[self._var_names.index(name)] = value
                 elif self._param_update_callback is not None:
                     self._param_update_callback(name, value)
-                args[name] = value
+            args.update(updates)
 
             if fired_event.persistent:
-                # Suppress this event for the next segment: after firing, the
-                # trigger value is at or near zero and floating-point noise can
-                # cause an immediate spurious re-detection.
                 suppressed_once.add(event_names[idx])
             else:
                 fired_names.add(event_names[idx])
@@ -209,9 +212,12 @@ class Scipy(AbstractIntegrator):
 
         t_current = self.t0
         y_current = np.array(self.y0, dtype=float)
-        fired_names: set[str] = set()
-        # Events suppressed for one segment after firing to prevent immediate
-        # re-detection when the trigger is at zero at the restart point.
+        fired_names = self._fired_names
+        # Events suppressed for a short buffer window right after firing, to
+        # avoid scipy re-detecting their (near-)zero trigger at the exact
+        # restart point as a fresh crossing. Bounded rather than open-ended
+        # so the event is re-armed shortly after and isn't lost for the rest
+        # of the simulation when it is the only active event.
         suppressed_once: set[str] = set()
 
         while t_current < t_end - 1e-12:
@@ -220,41 +226,71 @@ class Scipy(AbstractIntegrator):
                 for name, ev in self._events.items()
                 if name not in fired_names and name not in suppressed_once
             }
-            suppressed_once.clear()
             scipy_events = [self._build_scipy_event(ev) for ev in active.values()]
 
-            mask = time_points > t_current
-            seg_eval = time_points[mask]
-            if len(seg_eval) == 0:
-                break
-            if seg_eval[0] != t_current:
-                seg_eval = np.concatenate([[t_current], seg_eval])
-
-            res = spi.solve_ivp(
-                fun=self.rhs,
-                y0=tuple(y_current),
-                t_span=(t_current, t_end),
-                t_eval=seg_eval,
-                events=scipy_events or None,
-                jac=self.jacobian,
-                atol=self.atol,
-                rtol=self.rtol,
-                method=self.method,
+            seg_end = (
+                min(t_end, t_current + 1e-6 * max(abs(t_current), 1.0))
+                if suppressed_once
+                else t_end
             )
 
-            if not res.success and res.status != 1:
-                return Result(IntegrationFailure())
+            if seg_end < t_end:
+                # Bounded buffer sub-step: only need the endpoint state to
+                # re-arm the suppressed events from, not a sampled trajectory.
+                res = spi.solve_ivp(
+                    fun=self.rhs,
+                    y0=tuple(y_current),
+                    t_span=(t_current, seg_end),
+                    events=scipy_events or None,
+                    jac=self.jacobian,
+                    atol=self.atol,
+                    rtol=self.rtol,
+                    method=self.method,
+                )
+                if not res.success and res.status != 1:
+                    return Result(IntegrationFailure())
 
-            t_seg = np.array(res.t, dtype=float)
-            y_seg = np.array(res.y, dtype=float).T
+                if res.status != 1:
+                    # No (non-suppressed) event fired inside the buffer
+                    # window: re-arm and retry from here with the real
+                    # segment end.
+                    t_current = float(res.t[-1])
+                    y_current = np.array(res.y[:, -1], dtype=float)
+                    suppressed_once = set()
+                    continue
+            else:
+                mask = time_points > t_current
+                seg_eval = time_points[mask]
+                if len(seg_eval) == 0:
+                    break
+                if seg_eval[0] != t_current:
+                    seg_eval = np.concatenate([[t_current], seg_eval])
 
-            start = 1 if all_t else 0
-            if len(t_seg) > start:
-                all_t.append(t_seg[start:])
-                all_y.append(y_seg[start:])
+                res = spi.solve_ivp(
+                    fun=self.rhs,
+                    y0=tuple(y_current),
+                    t_span=(t_current, t_end),
+                    t_eval=seg_eval,
+                    events=scipy_events or None,
+                    jac=self.jacobian,
+                    atol=self.atol,
+                    rtol=self.rtol,
+                    method=self.method,
+                )
 
-            if res.status != 1:
-                break
+                if not res.success and res.status != 1:
+                    return Result(IntegrationFailure())
+
+                t_seg = np.array(res.t, dtype=float)
+                y_seg = np.array(res.y, dtype=float).T
+
+                start = 1 if all_t else 0
+                if len(t_seg) > start:
+                    all_t.append(t_seg[start:])
+                    all_y.append(y_seg[start:])
+
+                if res.status != 1:
+                    break
 
             fired = self._apply_tied_events(active, res, fired_names, suppressed_once)
             if fired is None:
@@ -457,14 +493,13 @@ class Scipy(AbstractIntegrator):
         Any events that cross zero inside an increment are applied via the
         same segment-restart machinery as `_integrate_with_events` before the
         increment's endpoint is used for the convergence check, so a shutoff/
-        dosing event mid-search is not silently skipped. `fired_names`/
-        `suppressed_once` persist across increments (not just within one) so
-        a persistent event does not spuriously re-fire at every step boundary
-        and a one-shot event stays fired for the rest of the search.
+        dosing event mid-search is not silently skipped. `fired_names`
+        persists across increments (not just within one) so a one-shot event
+        stays fired for the rest of the search.
         """
         y1 = np.array(self.y0, dtype=float)
         t0 = self.t0
-        fired_names: set[str] = set()
+        fired_names = self._fired_names
         suppressed_once: set[str] = set()
 
         for _ in range(max_steps):
@@ -480,13 +515,18 @@ class Scipy(AbstractIntegrator):
                     for name, ev in self._events.items()
                     if name not in fired_names and name not in suppressed_once
                 }
-                suppressed_once.clear()
                 scipy_events = [self._build_scipy_event(ev) for ev in active.values()]
+
+                seg_end = (
+                    min(t_end, t_current + 1e-6 * max(abs(t_current), 1.0))
+                    if suppressed_once
+                    else t_end
+                )
 
                 res = spi.solve_ivp(
                     fun=self.rhs,
                     y0=tuple(y_current),
-                    t_span=(t_current, t_end),
+                    t_span=(t_current, seg_end),
                     events=scipy_events or None,
                     jac=self.jacobian,
                     atol=self.atol,
@@ -495,6 +535,15 @@ class Scipy(AbstractIntegrator):
                 )
                 if not res.success and res.status != 1:
                     return Result(IntegrationFailure())
+
+                if seg_end < t_end and res.status != 1:
+                    # No (non-suppressed) event fired inside the buffer
+                    # window: re-arm and retry from here with the real
+                    # increment end.
+                    t_current = float(res.t[-1])
+                    y_current = np.array(res.y[:, -1], dtype=float)
+                    suppressed_once = set()
+                    continue
 
                 t_seg = np.array(res.t, dtype=float)
                 y_seg = np.array(res.y, dtype=float).T
