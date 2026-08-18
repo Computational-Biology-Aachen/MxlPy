@@ -393,6 +393,14 @@ class KineticModelBuilder:
         ):
             if not _check_function_arity(el.fn, len(el.args)):
                 raise ArityMismatchError(name, el.fn, el.args)
+        for event_name, event in self._events.items():
+            if not _check_function_arity(event.trigger_fn, len(event.trigger_args)):
+                raise ArityMismatchError(
+                    event_name, event.trigger_fn, event.trigger_args
+                )
+            for target, assignment in event.assignments.items():
+                if not _check_function_arity(assignment.fn, len(assignment.args)):
+                    raise ArityMismatchError(target, assignment.fn, assignment.args)
 
         # Sort derived & reactions
         available = (
@@ -982,6 +990,10 @@ class KineticModelBuilder:
             args.update(reaction.args)
         for surrogate in self._surrogates.values():
             args.update(surrogate.args)
+        for event in self._events.values():
+            args.update(event.trigger_args)
+            for assignment in event.assignments.values():
+                args.update(assignment.args)
 
         return set(self._parameters).difference(args)
 
@@ -1978,13 +1990,24 @@ class KineticModelBuilder:
                 for flux, stoich in surrogate.stoichiometries.items()
             }
 
+        # Trigger args and assignment targets/args of events
+        for event in self._events.values():
+            event.trigger_args = rename_args(event.trigger_args)
+            renamed_assignments: dict[str, Derived] = {}
+            for target, assignment in event.assignments.items():
+                assignment.args = rename_args(assignment.args)
+                renamed_assignments[new_name if target == old_name else target] = (
+                    assignment
+                )
+            event.assignments = renamed_assignments
+
     @_invalidate_cache
     def rename(self, old_name: str, new_name: str) -> Self:
         """Rename a model component and update all references to it.
 
         Renames any registered name - variable, parameter, derived, reaction,
-        readout, surrogate, surrogate output or data set - and rewrites every
-        reference to it in ``args`` lists and stoichiometries.
+        readout, surrogate, surrogate output, data set, or event - and
+        rewrites every reference to it in ``args`` lists and stoichiometries.
 
         Examples
         --------
@@ -2029,6 +2052,7 @@ class KineticModelBuilder:
             self._reactions,
             self._surrogates,
             self._data,
+            self._events,
         ]
         for container in containers:
             if old_name in container:

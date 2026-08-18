@@ -176,6 +176,15 @@ class Simulator:
             except Exception as e:  # noqa: BLE001
                 _LOGGER.warning(str(e), stacklevel=2)
 
+        # update_variable(s)/clear_results() rebuild the integrator (new y0)
+        # without being a "reset" - fired_names must survive them, since it's
+        # only meant to be cleared by an explicit integrator.reset().
+        previous_fired_names: set[str] = set()
+        if (
+            old_integrator := getattr(self, "integrator", None)
+        ) is not None and isinstance(old_integrator, Scipy):
+            previous_fired_names = old_integrator._fired_names  # noqa: SLF001
+
         y0 = self.y0
         self.integrator = self._integrator_type(
             self.model,
@@ -193,6 +202,7 @@ class Simulator:
             self.integrator._var_names = self.model.get_variable_names()  # noqa: SLF001
             self.integrator._get_dependent = model.get_dependent  # noqa: SLF001
             self.integrator._param_update_callback = _update_param  # noqa: SLF001
+            self.integrator._fired_names = previous_fired_names  # noqa: SLF001
 
     def clear_results(self) -> None:
         """Clear simulation results."""

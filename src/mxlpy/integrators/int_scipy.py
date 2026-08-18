@@ -530,7 +530,6 @@ class Scipy(AbstractIntegrator):
         y1 = np.array(self.y0, dtype=float)
         t0 = self.t0
         fired_names = self._fired_names
-        suppressed_once: set[str] = set()
 
         for _ in range(max_steps):
             t_end = t0 + step_size
@@ -538,6 +537,8 @@ class Scipy(AbstractIntegrator):
             y_current = y1.copy()
             hist_t: list[Array] = []
             hist_y: list[Array] = []
+            # A buffer window must never survive past an increment boundary.
+            suppressed_once: set[str] = set()
 
             while t_current < t_end - 1e-12:
                 active = {
