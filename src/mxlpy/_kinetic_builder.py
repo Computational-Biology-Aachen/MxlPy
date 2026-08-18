@@ -2219,6 +2219,48 @@ class KineticModelBuilder:
         """
         return list(self._events)
 
+    def get_raw_events(self, *, as_copy: bool = True) -> dict[str, Event]:
+        """Get copy of events in the model.
+
+        Parameters
+        ----------
+        as_copy
+            If True, return a deep copy of the events dictionary.
+            If False, return the internal dictionary directly.
+
+        Returns
+        -------
+        dict[str, Event]
+            Dictionary mapping event names to Event objects.
+
+        """
+        if as_copy:
+            return copy.deepcopy(self._events)
+        return self._events
+
+    @_invalidate_cache
+    def remove_event(self, name: str) -> Self:
+        """Remove an event by its name.
+
+        Examples
+        --------
+            >>> model.remove_event("drug_dose")
+
+        Parameters
+        ----------
+        name
+            The name of the event to remove.
+
+        Returns
+        -------
+        Self
+            The model instance (for fluent chaining).
+
+        """
+        self._remove_id(name=name)
+        del self._events[name]
+        return self
+
     def get_raw_readouts(self, *, as_copy: bool = True) -> dict[str, Readout]:
         """Get copy of readouts in the model.
 

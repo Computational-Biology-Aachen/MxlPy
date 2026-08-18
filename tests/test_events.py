@@ -302,3 +302,144 @@ def test_non_scipy_integrator_with_events_raises() -> None:
     )
     with pytest.raises(NotImplementedError, match="Scipy"):
         Simulator(model, integrator=DefaultIntegrator)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for review findings
+# ---------------------------------------------------------------------------
+
+
+def echo_k(k: float) -> float:
+    return k
+
+
+def test_event_sees_live_parameter_after_update_parameter() -> None:
+    """update_parameter() before simulate() must not leave events on a stale snapshot."""
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 0.1)
+        .add_reaction("v", decay, args=["x", "k"], stoichiometry={"x": -1})
+        .add_event(
+            "capture",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"x": Derived(fn=echo_k, args=["k"])},
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    sim.update_parameter("k", 42.0)
+    result = sim.simulate(t_end=10).get_result().unwrap_or_err()
+
+    x = result.get_variables()["x"]
+    x_at_event = x[x.index >= 5].iloc[0]
+    assert x_at_event == pytest.approx(42.0)
+
+
+def const_rate(k: float) -> float:
+    return k
+
+
+def test_simulate_to_steady_state_applies_events() -> None:
+    """A shutoff event mid-search must be applied, not silently ignored."""
+    model = (
+        Model()
+        .add_variable("x", 0.0)
+        .add_parameter("k", 1.0)
+        .add_reaction("v", const_rate, args=["k"], stoichiometry={"x": 1})
+        .add_event(
+            "shutoff",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"k": Derived(fn=set_zero, args=[])},
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    result = sim.simulate_to_steady_state(tolerance=1e-6).get_result().unwrap_or_err()
+
+    x = result.get_variables()["x"]
+    assert float(x.iloc[-1]) == pytest.approx(5.0, abs=1e-3)
+
+
+def grow(k: float) -> float:
+    return k
+
+
+def trigger_half(v: float) -> float:
+    return v - 0.5
+
+
+def jump_high() -> float:
+    return 99.0
+
+
+def mark_hit() -> float:
+    return 1.0
+
+
+def test_tied_events_both_apply() -> None:
+    """Two events crossing zero at the same instant must both fire, not just the first."""
+    model = (
+        Model()
+        .add_variable("x", 0.0)
+        .add_variable("y", 0.0)
+        .add_variable("hit_b", 0.0)
+        .add_parameter("k", 0.1)
+        .add_reaction("vx", grow, args=["k"], stoichiometry={"x": 1})
+        .add_reaction("vy", grow, args=["k"], stoichiometry={"y": 1})
+        .add_event(
+            "ev_a_jump",
+            trigger_half,
+            trigger_args=["x"],
+            assignments={"x": Derived(fn=jump_high, args=[])},
+        )
+        .add_event(
+            "ev_b_marks",
+            trigger_half,
+            trigger_args=["y"],
+            assignments={"hit_b": Derived(fn=mark_hit, args=[])},
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    result = sim.simulate(t_end=10).get_result().unwrap_or_err()
+
+    hit_b = result.get_variables()["hit_b"]
+    assert float(hit_b.iloc[-1]) == pytest.approx(1.0)
+
+
+def test_get_raw_events() -> None:
+    model = Model().add_event(
+        "dose",
+        trigger_at_t5,
+        trigger_args=["time"],
+        assignments={"k1": Derived(fn=set_zero, args=[])},
+    )
+    raw = model.get_raw_events()
+    assert list(raw) == ["dose"]
+    assert isinstance(raw["dose"], Event)
+
+
+def test_remove_event() -> None:
+    model = Model().add_event(
+        "dose",
+        trigger_at_t5,
+        trigger_args=["time"],
+        assignments={"k1": Derived(fn=set_zero, args=[])},
+    )
+    model.remove_event("dose")
+    assert model.get_event_names() == []
+
+    # Name is freed for reuse after removal.
+    model.add_event(
+        "dose",
+        trigger_at_t5,
+        trigger_args=["time"],
+        assignments={"k1": Derived(fn=set_zero, args=[])},
+    )
+    assert model.get_event_names() == ["dose"]
+
+
+def test_remove_event_missing_raises() -> None:
+    model = Model()
+    with pytest.raises(KeyError):
+        model.remove_event("missing")

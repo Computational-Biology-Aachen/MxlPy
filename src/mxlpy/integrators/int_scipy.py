@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import scipy.integrate as spi
@@ -19,6 +19,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from mxlpy.types import Array, Rhs
+
+# Absolute tolerance for treating another active event's trigger value as
+# "also crossing zero" at the winning event's (t_event, y_at_event) state.
+_TIE_TRIGGER_ATOL = 1e-6
 
 
 __all__ = [
@@ -60,6 +64,7 @@ class Scipy(AbstractIntegrator):
     _events: dict[str, Event] = field(default_factory=dict)
     _var_names: list[str] = field(default_factory=list)
     _param_values: dict[str, float] = field(default_factory=dict)
+    _get_param_values: Callable[[], dict[str, float]] | None = field(default=None)
     _param_update_callback: Callable[[str, float], None] | None = field(default=None)
 
     def __post_init__(self) -> None:
@@ -70,6 +75,19 @@ class Scipy(AbstractIntegrator):
         """Reset the integrator."""
         self.t0 = 0
         self.y0 = self._y0_orig
+
+    def _refresh_param_values(self) -> None:
+        """Re-read parameter values from the model.
+
+        `_param_values` is captured once at ``Simulator._initialise_integrator``
+        time; event trigger/assignment evaluation must see any parameter
+        updates made via `Simulator.update_parameter` (etc.) after that, so
+        this is called at the start of every event-aware integration. A
+        defensive copy is taken since the model may return a live reference
+        to its internal cache.
+        """
+        if self._get_param_values is not None:
+            self._param_values = dict(self._get_param_values())
 
     def _build_scipy_event(self, event: Event) -> Callable[[float, Array], float]:
         """Build a scipy-compatible event callable from an Event.
@@ -98,6 +116,97 @@ class Scipy(AbstractIntegrator):
         scipy_event.terminal = True  # type: ignore[attr-defined]
         scipy_event.direction = _DIRECTION[event.direction]  # type: ignore[attr-defined]
         return scipy_event
+
+    def _apply_tied_events(
+        self,
+        active: dict[str, Event],
+        res: Any,
+        fired_names: set[str],
+        suppressed_once: set[str],
+    ) -> tuple[float, Array] | None:
+        """Apply the winning event plus any other active event tied at the same instant.
+
+        scipy's `solve_ivp` stops as soon as any terminal event's root is
+        found and does not keep searching for other events' roots within
+        that same step - so a second event that (mathematically) crosses
+        zero at the exact same instant is never populated in
+        `res.t_events`, even though it did cross. Ties are therefore not
+        detected by comparing scipy's per-event root arrays (there is only
+        ever one populated), but by evaluating every *other* active event's
+        trigger directly at the winning event's `(t_event, y_at_event)`
+        state: a near-zero value there means it crossed at the same instant.
+        All tied events are then applied together, chaining through a shared
+        ``args`` dict (later assignments see earlier ones' new values, same
+        as assignments already do within a single event).
+
+        Parameters
+        ----------
+        active
+            Events considered for this segment, keyed by name.
+        res
+            The `scipy.integrate.solve_ivp` result for the segment.
+        fired_names
+            Names of one-shot events already fired; extended in place for any
+            non-persistent event applied here.
+        suppressed_once
+            Names to suppress for the next segment (floating-point hazard at
+            the restart boundary); extended in place for any persistent event
+            applied here.
+
+        Returns
+        -------
+        tuple[float, Array] | None
+            ``(t_event, y_post)`` to resume integration from, or None if no
+            event fired in this segment.
+
+        """
+        event_names = list(active.keys())
+        t_event = float("inf")
+        fired_idx = -1
+        for i, t_arr in enumerate(res.t_events):
+            if len(t_arr) > 0 and float(t_arr[0]) < t_event:
+                t_event = float(t_arr[0])
+                fired_idx = i
+
+        if fired_idx == -1:
+            return None
+
+        y_at_event = np.array(res.y_events[fired_idx][0], dtype=float)
+        args: dict[str, float] = (
+            dict(zip(self._var_names, y_at_event, strict=False))
+            | self._param_values
+            | {"time": t_event}
+        )
+
+        tied_idxs = [fired_idx]
+        for i, name in enumerate(event_names):
+            if i == fired_idx:
+                continue
+            if abs(active[name].evaluate_trigger(args)) < _TIE_TRIGGER_ATOL:
+                tied_idxs.append(i)
+
+        y_post = y_at_event.copy()
+        for idx in tied_idxs:
+            fired_event = active[event_names[idx]]
+            for name, derived in fired_event.assignments.items():
+                value = derived.calculate(args)
+                if name in self._var_names:
+                    y_post[self._var_names.index(name)] = value
+                else:
+                    self._param_values[name] = value
+                    if self._param_update_callback is not None:
+                        self._param_update_callback(name, value)
+                args[name] = value
+
+            if fired_event.persistent:
+                # Suppress this event for the next segment: after firing, the
+                # trigger value is at or near zero and floating-point noise can
+                # cause an immediate spurious re-detection.
+                suppressed_once.add(event_names[idx])
+            else:
+                fired_names.add(event_names[idx])
+
+        return t_event, y_post
 
     def _integrate_with_events(self, time_points: Array) -> Result[TimeCourse]:
         """Segment-restart integration loop with event handling.
@@ -166,48 +275,14 @@ class Scipy(AbstractIntegrator):
             if res.status != 1:
                 break
 
-            # Find first event that fired
-            t_event = float("inf")
-            fired_idx = -1
-            event_names = list(active.keys())
-            for i, t_arr in enumerate(res.t_events):
-                if len(t_arr) > 0 and float(t_arr[0]) < t_event:
-                    t_event = float(t_arr[0])
-                    fired_idx = i
-
-            if fired_idx == -1:
+            fired = self._apply_tied_events(active, res, fired_names, suppressed_once)
+            if fired is None:
                 break
-
-            y_at_event = np.array(res.y_events[fired_idx][0], dtype=float)
-            args: dict[str, float] = (
-                dict(zip(self._var_names, y_at_event, strict=False))
-                | self._param_values
-                | {"time": t_event}
-            )
-
-            fired_event = active[event_names[fired_idx]]
-            y_post = y_at_event.copy()
-            for name, derived in fired_event.assignments.items():
-                value = derived.calculate(args)
-                if name in self._var_names:
-                    y_post[self._var_names.index(name)] = value
-                else:
-                    self._param_values[name] = value
-                    if self._param_update_callback is not None:
-                        self._param_update_callback(name, value)
-                args[name] = value
+            t_event, y_post = fired
 
             # Record discontinuity: post-assignment state at event time
             all_t.append(np.array([t_event], dtype=float))
             all_y.append(y_post[np.newaxis, :])
-
-            if not fired_event.persistent:
-                fired_names.add(event_names[fired_idx])
-            else:
-                # Suppress this event for the next segment: after firing, the
-                # trigger value is at or near zero and floating-point noise can
-                # cause an immediate spurious re-detection.
-                suppressed_once.add(event_names[fired_idx])
 
             # Advance slightly past t_event so time-based triggers (t - t0 = 0
             # at restart) are not immediately re-detected as crossings.
@@ -273,6 +348,7 @@ class Scipy(AbstractIntegrator):
         time_points = np.asarray(time_points, dtype=float)
 
         if self._events:
+            self._refresh_param_values()
             if time_points[0] != self.t0:
                 time_points = np.concatenate([[self.t0], time_points])
             return self._integrate_with_events(time_points)
@@ -336,6 +412,16 @@ class Scipy(AbstractIntegrator):
         """
         self.reset()
 
+        if self._events:
+            self._refresh_param_values()
+            return self._integrate_to_steady_state_with_events(
+                tolerance=tolerance,
+                rel_norm=rel_norm,
+                oscillation_detector=oscillation_detector,
+                step_size=step_size,
+                max_steps=max_steps,
+            )
+
         y1 = np.array(self.y0, dtype=float)
         t0 = self.t0
 
@@ -369,6 +455,109 @@ class Scipy(AbstractIntegrator):
                 var_names = [str(i) for i in range(hist.shape[1])]
                 if (
                     osc := oscillation_detector(hist, var_names, times=res.t)
+                ) is not None:
+                    return Result(osc)
+
+            y1 = y2
+            t0 = t_end
+
+        return Result(NoSteadyState())
+
+    def _integrate_to_steady_state_with_events(
+        self,
+        *,
+        tolerance: float,
+        rel_norm: bool,
+        oscillation_detector: OscillationDetector | None,
+        step_size: int,
+        max_steps: int,
+    ) -> Result[TimeCourse]:
+        """Steady-state search with event handling.
+
+        Integrates in `step_size` increments, same as the event-free path.
+        Any events that cross zero inside an increment are applied via the
+        same segment-restart machinery as `_integrate_with_events` before the
+        increment's endpoint is used for the convergence check, so a shutoff/
+        dosing event mid-search is not silently skipped. `fired_names`/
+        `suppressed_once` persist across increments (not just within one) so
+        a persistent event does not spuriously re-fire at every step boundary
+        and a one-shot event stays fired for the rest of the search.
+        """
+        y1 = np.array(self.y0, dtype=float)
+        t0 = self.t0
+        fired_names: set[str] = set()
+        suppressed_once: set[str] = set()
+
+        for _ in range(max_steps):
+            t_end = t0 + step_size
+            t_current = t0
+            y_current = y1.copy()
+            hist_t: list[Array] = []
+            hist_y: list[Array] = []
+
+            while t_current < t_end - 1e-12:
+                active = {
+                    name: ev
+                    for name, ev in self._events.items()
+                    if name not in fired_names and name not in suppressed_once
+                }
+                suppressed_once.clear()
+                scipy_events = [self._build_scipy_event(ev) for ev in active.values()]
+
+                res = spi.solve_ivp(
+                    fun=self.rhs,
+                    y0=tuple(y_current),
+                    t_span=(t_current, t_end),
+                    events=scipy_events or None,
+                    jac=self.jacobian,
+                    atol=self.atol,
+                    rtol=self.rtol,
+                    method=self.method,
+                )
+                if not res.success and res.status != 1:
+                    return Result(IntegrationFailure())
+
+                t_seg = np.array(res.t, dtype=float)
+                y_seg = np.array(res.y, dtype=float).T
+                hist_t.append(t_seg)
+                hist_y.append(y_seg)
+                t_current = float(t_seg[-1])
+                y_current = y_seg[-1]
+
+                if res.status != 1:
+                    break
+
+                fired = self._apply_tied_events(
+                    active, res, fired_names, suppressed_once
+                )
+                if fired is None:
+                    break
+                t_event, y_post = fired
+
+                hist_t.append(np.array([t_event], dtype=float))
+                hist_y.append(y_post[np.newaxis, :])
+
+                eps = 1e-10 * max(t_end - t_event, 1.0)
+                t_current = t_event + eps
+                y_current = y_post
+
+            y2 = y_current
+            diff = (y2 - y1) / y1 if rel_norm else y2 - y1
+
+            if np.linalg.norm(diff, ord=2) < tolerance:
+                return Result(
+                    TimeCourse(
+                        time=np.array([t_end], dtype=float),
+                        values=np.array([y2], dtype=float),
+                    )
+                )
+
+            if oscillation_detector is not None:
+                hist = np.concatenate(hist_y)
+                times = np.concatenate(hist_t)
+                var_names = [str(i) for i in range(hist.shape[1])]
+                if (
+                    osc := oscillation_detector(hist, var_names, times=times)
                 ) is not None:
                     return Result(osc)
 
