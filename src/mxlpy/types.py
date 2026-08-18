@@ -575,6 +575,11 @@ class Event:
     def apply_assignments(self, args: dict[str, Any]) -> dict[str, float]:
         """Compute new values for all assignment targets.
 
+        Assignments are applied in order, chaining through a copy of ``args``
+        so a later assignment sees an earlier one's newly computed value.
+        This matches the order the integrator applies them in during
+        simulation.
+
         Parameters
         ----------
         args
@@ -586,6 +591,10 @@ class Event:
             Map from target name to its new value.
 
         """
-        return {
-            name: derived.calculate(args) for name, derived in self.assignments.items()
-        }
+        args = dict(args)
+        updates: dict[str, float] = {}
+        for name, derived in self.assignments.items():
+            value = derived.calculate(args)
+            updates[name] = value
+            args[name] = value
+        return updates

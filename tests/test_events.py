@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from mxlpy import Derived, Event, Model, Scipy, Simulator
@@ -133,6 +135,28 @@ def test_event_apply_assignments_dynamic() -> None:
     )
     result = event.apply_assignments({"A": 0.5})
     assert result == {"A": pytest.approx(1.5)}
+
+
+def test_event_apply_assignments_chains_through_earlier_targets() -> None:
+    """A later assignment must see an earlier one's newly computed value.
+
+    This matches the order the integrator applies tied/simultaneous
+    assignments in during a real simulation (see Scipy._apply_tied_events).
+    """
+
+    def echo(v: float) -> float:
+        return v
+
+    event = Event(
+        trigger_fn=trigger_a_crosses_half,
+        trigger_args=["A"],
+        assignments={
+            "a": Derived(fn=set_two, args=[]),
+            "b": Derived(fn=echo, args=["a"]),
+        },
+    )
+    result = event.apply_assignments({"A": 0.5, "a": 0.0})
+    assert result == {"a": pytest.approx(2.0), "b": pytest.approx(2.0)}
 
 
 # ---------------------------------------------------------------------------
@@ -516,3 +540,88 @@ def test_event_trigger_can_reference_dynamic_derived_variable() -> None:
     # r = x/k crosses 5 (i.e. x crosses 0.5) on the way down from x=1;
     # the event then resets x to 0.5.
     assert float(x.iloc[-1]) < 0.5
+
+
+# ---------------------------------------------------------------------------
+# Regression tests: persistent refiring and cross-call one-shot suppression
+# ---------------------------------------------------------------------------
+
+
+def cos_2t(t: float) -> float:
+    return math.cos(2 * t)
+
+
+def trigger_x_zero(x: float) -> float:
+    return x
+
+
+def increment(count: float) -> float:
+    return count + 1.0
+
+
+def test_persistent_event_refires_as_sole_active_event() -> None:
+    """A persistent event must keep refiring even when it is the only event.
+
+    x(t) = sin(2t)/2 has rising zero-crossings at t = 0, pi, 2*pi, 3*pi, ...
+    Over [0, 10] that is 3 rising crossings after t=0 (~3.14, ~6.28, ~9.42).
+    """
+    model = (
+        Model()
+        .add_variable("x", 0.0)
+        .add_variable("fire_count", 0.0)
+        .add_reaction("vx", cos_2t, args=["time"], stoichiometry={"x": 1})
+        .add_event(
+            "cross",
+            trigger_x_zero,
+            trigger_args=["x"],
+            assignments={"fire_count": Derived(fn=increment, args=["fire_count"])},
+            direction="rising",
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    result = sim.simulate(t_end=10).get_result().unwrap_or_err()
+
+    fire_count = result.get_variables()["fire_count"]
+    assert float(fire_count.iloc[-1]) >= 3
+
+
+def test_persistent_false_stays_fired_across_simulate_calls() -> None:
+    """A one-shot event fired in one simulate() call must stay fired in the next."""
+
+    def trigger_growing(x: float) -> float:
+        return x - 0.3
+
+    def grow(x: float, k: float) -> float:
+        return k * x
+
+    def set_small() -> float:
+        return 0.01
+
+    def make_model() -> Model:
+        return (
+            Model()
+            .add_variable("x", 0.1)
+            .add_parameter("k", 1.0)
+            .add_reaction("v", grow, args=["x", "k"], stoichiometry={"x": 1})
+            .add_event(
+                "once",
+                trigger_growing,
+                trigger_args=["x"],
+                assignments={"x": Derived(fn=set_small, args=[])},
+                persistent=False,
+            )
+        )
+
+    single_call = Simulator(make_model(), integrator=Scipy)
+    single_result = single_call.simulate(t_end=10).get_result().unwrap_or_err()
+    x_single = float(single_result.get_variables()["x"].iloc[-1])
+
+    split_calls = Simulator(make_model(), integrator=Scipy)
+    split_calls.simulate(t_end=2).simulate(t_end=10)
+    split_result = split_calls.get_result().unwrap_or_err()
+    x_split = float(split_result.get_variables()["x"].iloc[-1])
+
+    # The event must fire exactly once regardless of how the simulation is
+    # chunked into simulate() calls, so both runs must land on the same
+    # trajectory.
+    assert x_split == pytest.approx(x_single, rel=1e-4)
