@@ -2193,6 +2193,15 @@ class KineticModelBuilder:
             The model instance (for fluent chaining).
 
         """
+        for target in assignments:
+            if target not in self._variables and target not in self._parameters:
+                msg = (
+                    f"Event assignment target '{target}' is not a known "
+                    "variable or parameter. Add it with add_variable() or "
+                    "add_parameter() first."
+                )
+                raise KeyError(msg)
+
         self._insert_id(name=name, ctx="event")
         self._events[name] = Event(
             trigger_fn=trigger_fn,
@@ -2201,6 +2210,35 @@ class KineticModelBuilder:
             direction=direction,
             persistent=persistent,
         )
+        return self
+
+    def add_events(self, events: Mapping[str, Event]) -> Self:
+        """Add multiple events to the model.
+
+        Examples
+        --------
+            >>> model.add_events({"dose": Event(...), "shutoff": Event(...)})
+
+        Parameters
+        ----------
+        events
+            Mapping from event name to :class:`Event`.
+
+        Returns
+        -------
+        Self
+            The model instance (for fluent chaining).
+
+        """
+        for name, event in events.items():
+            self.add_event(
+                name,
+                event.trigger_fn,
+                trigger_args=event.trigger_args,
+                assignments=event.assignments,
+                direction=event.direction,
+                persistent=event.persistent,
+            )
         return self
 
     def get_event_names(self) -> list[str]:
@@ -2259,6 +2297,28 @@ class KineticModelBuilder:
         """
         self._remove_id(name=name)
         del self._events[name]
+        return self
+
+    def remove_events(self, names: list[str]) -> Self:
+        """Remove multiple events from the model.
+
+        Examples
+        --------
+            >>> model.remove_events(["dose", "shutoff"])
+
+        Parameters
+        ----------
+        names
+            A list of event names to be removed.
+
+        Returns
+        -------
+        Self
+            The model instance (for fluent chaining).
+
+        """
+        for name in names:
+            self.remove_event(name)
         return self
 
     def get_raw_readouts(self, *, as_copy: bool = True) -> dict[str, Readout]:
