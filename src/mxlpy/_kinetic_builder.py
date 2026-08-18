@@ -2951,6 +2951,46 @@ class KineticModelBuilder:
     # Get rhs
     ##########################################################################
 
+    def get_dependent(
+        self, time: float, variables: Iterable[float]
+    ) -> dict[str, float]:
+        """Resolve every named model quantity for a given state.
+
+        Includes raw variables, parameters, derived variables/parameters,
+        reaction rates, and surrogate outputs - the same namespace
+        :class:`Derived` and :class:`Reaction` args are resolved against.
+        Event triggers/assignments use this so they can reference any model
+        name via the same fn+args pattern, not just raw variables and
+        parameters.
+
+        Parameters
+        ----------
+        time
+            The current time point.
+        variables
+            Array of concentrations, ordered like :meth:`get_variable_names`.
+
+        Returns
+        -------
+        dict[str, float]
+            All named model quantities at this state.
+
+        """
+        if (cache := self._cache) is None:
+            cache = self._create_cache()
+        vars_d: dict[str, float] = dict(
+            zip(
+                cache.var_names,
+                variables,
+                strict=True,
+            )
+        )
+        return self._get_args(
+            variables=vars_d,
+            time=time,
+            cache=cache,
+        )
+
     def __call__(self, /, time: float, variables: Iterable[float]) -> tuple[float, ...]:
         """Simulation version of get_right_hand_side.
 
@@ -2975,20 +3015,8 @@ class KineticModelBuilder:
             The rate of change of each variable in the model.
 
         """
-        if (cache := self._cache) is None:
-            cache = self._create_cache()
-        vars_d: dict[str, float] = dict(
-            zip(
-                cache.var_names,
-                variables,
-                strict=True,
-            )
-        )
-        dependent: dict[str, float] = self._get_args(
-            variables=vars_d,
-            time=time,
-            cache=cache,
-        )
+        dependent: dict[str, float] = self.get_dependent(time, variables)
+        cache = cast(ModelCache, self._cache)
 
         dxdt = dict.fromkeys(cache.var_names, 0.0)
         for k, stoc in cache.stoich_by_cpds.items():

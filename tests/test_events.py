@@ -443,3 +443,76 @@ def test_remove_event_missing_raises() -> None:
     model = Model()
     with pytest.raises(KeyError):
         model.remove_event("missing")
+
+
+# ---------------------------------------------------------------------------
+# Regression tests: events referencing derived (non-raw) quantities
+# ---------------------------------------------------------------------------
+
+
+def double_k(k: float) -> float:
+    return 2 * k
+
+
+def echo_k2(k2: float) -> float:
+    return k2
+
+
+def test_event_assignment_can_reference_derived_parameter() -> None:
+    """Assignments must resolve the full arg namespace, not just base params/vars."""
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 0.1)
+        .add_derived("k2", double_k, args=["k"])
+        .add_reaction("v", decay, args=["x", "k"], stoichiometry={"x": -1})
+        .add_event(
+            "dose",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"x": Derived(fn=echo_k2, args=["k2"])},
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    result = sim.simulate(t_end=10).get_result().unwrap_or_err()
+
+    x = result.get_variables()["x"]
+    x_at_event = x[x.index >= 5].iloc[0]
+    assert x_at_event == pytest.approx(0.2)
+
+
+def ratio(x: float, k: float) -> float:
+    return x / k
+
+
+def trigger_ratio_above_5(r: float) -> float:
+    return r - 5.0
+
+
+def set_half() -> float:
+    return 0.5
+
+
+def test_event_trigger_can_reference_dynamic_derived_variable() -> None:
+    """Triggers must see derived variables that depend on state, not just raw vars."""
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 0.1)
+        .add_derived("r", ratio, args=["x", "k"])
+        .add_reaction("v", decay, args=["x", "k"], stoichiometry={"x": -1})
+        .add_event(
+            "trip",
+            trigger_ratio_above_5,
+            trigger_args=["r"],
+            assignments={"x": Derived(fn=set_half, args=[])},
+            persistent=False,
+        )
+    )
+    sim = Simulator(model, integrator=Scipy)
+    result = sim.simulate(t_end=10).get_result().unwrap_or_err()
+
+    x = result.get_variables()["x"]
+    # r = x/k crosses 5 (i.e. x crosses 0.5) on the way down from x=1;
+    # the event then resets x to 0.5.
+    assert float(x.iloc[-1]) < 0.5
