@@ -28,6 +28,7 @@ __all__ = [
     "LSTM",
     "LossFn",
     "MLP",
+    "SoftplusMLP",
     "cosine_similarity",
     "mean_abs_error",
     "mean_absolute_percentage",
@@ -383,6 +384,74 @@ class MLP(eqx.Module):
         """
         for layer in self.layers[:-1]:
             x = jax.nn.relu(layer(x))
+        return self.layers[-1](x)
+
+
+class SoftplusMLP(eqx.Module):
+    """Multilayer Perceptron whose hidden layers use softplus instead of `MLP`'s hardcoded ReLU.
+
+    Softplus is the only activation `nn_blocks` (mxl-schemas, ADR 0005
+    §2.1.1) supports today. Unlike torch (`nn.Softplus` as a discrete
+    `nn.Sequential` module) or keras (`Dense.activation` as an inspectable
+    layer attribute), an arbitrary `eqx.Module`'s activation function is
+    just Python code inside `__call__` — there is no object graph
+    `mxlpy.surrogates._equinox.Surrogate.to_nn_block_export` could
+    introspect to recover it. `MLP`'s `__call__` hardcodes `jax.nn.relu`,
+    which has no `nn_blocks` counterpart, so no model built from it is
+    ever exportable. This class exists so there is at least one equinox
+    architecture `to_nn_block_export` can recognize by `isinstance` and
+    know, by construction, uses softplus.
+
+    Attributes
+    ----------
+    layers
+        The layer stack, input-to-output order.
+
+    """
+
+    layers: list[eqx.nn.Linear]
+
+    def __init__(
+        self,
+        n_inputs: int,
+        neurons_per_layer: list[int],
+        key: Array,
+    ) -> None:
+        """Initializes the MLP with the given number of inputs and list of (hidden) layers.
+
+        Parameters
+        ----------
+        n_inputs
+            The number of input features.
+        neurons_per_layer
+            Number of neurons per layer (last entry is the output layer).
+        key
+            jax.random.PRNGKey(SEED) for initial parameters
+
+        """
+        keys = iter(jax.random.split(key, len(neurons_per_layer)))
+        previous_neurons = n_inputs
+        layers = []
+        for neurons in neurons_per_layer:
+            layers.append(eqx.nn.Linear(previous_neurons, neurons, key=next(keys)))
+            previous_neurons = neurons
+        self.layers = layers
+
+    def __call__(self, x: Array) -> Array:
+        """Forward pass through the neural network.
+
+        Parameters
+        ----------
+        x
+            Input tensor.
+
+        Returns
+        -------
+            Output tensor.
+
+        """
+        for layer in self.layers[:-1]:
+            x = jax.nn.softplus(layer(x))
         return self.layers[-1](x)
 
 
