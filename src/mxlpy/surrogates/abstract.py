@@ -17,6 +17,8 @@ __all__ = [
     "SurrogateProtocol",
     "nn_block_activation_softplus",
     "nn_block_mechanism_additive",
+    "nn_block_mechanism_multiply",
+    "nn_block_mechanism_relative_multiply",
 ]
 
 if TYPE_CHECKING:
@@ -43,6 +45,35 @@ def nn_block_mechanism_additive() -> dict[str, object]:
     surrogate.
     """
     return mml.Add(children=[mml.Name(name="ode"), mml.Name(name="nde")]).to_dict()
+
+
+def nn_block_mechanism_relative_multiply() -> dict[str, object]:
+    """`Mul(ode, Add(1, nde))` — mxl-schemas `nnBlock.mechanism`.
+
+    ``dx/dt = ode * (1 + nde)``: a near-zero/untrained network leaves
+    ``ode`` unchanged. Only meaningful for a surrogate that composes
+    directly onto an existing dx/dt (`mxlpy.surrogates.abstract_derivative`
+    — `OdeModelBuilder`); the reaction/stoichiometry-composed kinetic
+    surrogate (`AbstractSurrogate`) can never correctly export this shape,
+    since it has no multiplicative-composition concept at all (see
+    `nn_block_mechanism_additive`'s doc comment).
+    """
+    return mml.Mul(
+        children=[
+            mml.Name(name="ode"),
+            mml.Add(children=[mml.Num(value=1), mml.Name(name="nde")]),
+        ]
+    ).to_dict()
+
+
+def nn_block_mechanism_multiply() -> dict[str, object]:
+    """`Mul(ode, nde)` — mxl-schemas `nnBlock.mechanism`.
+
+    ``dx/dt = ode * nde``: a bare product, with none of
+    `nn_block_mechanism_relative_multiply`'s safeguard. Same
+    direct-composition-only caveat as that function.
+    """
+    return mml.Mul(children=[mml.Name(name="ode"), mml.Name(name="nde")]).to_dict()
 
 
 def nn_block_activation_softplus() -> dict[str, object]:

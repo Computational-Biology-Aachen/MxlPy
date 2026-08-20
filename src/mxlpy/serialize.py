@@ -31,6 +31,7 @@ import numpy as np
 import scipy.special  # bound as `scipy`, used by generated rate fns
 
 from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy.meta import _mathml as mml
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
@@ -51,15 +52,20 @@ if TYPE_CHECKING:
     import sympy
 
     from mxlpy.surrogates.abstract import SurrogateProtocol
+    from mxlpy.surrogates.abstract_derivative import DerivativeSurrogateProtocol
     from mxlpy.types import RateFn
 
 __all__ = [
+    "ODE_SCHEMA_URL",
     "SCHEMA_URL",
     "SPEC_VERSION",
     "load",
     "model_from_dict",
     "model_to_dict",
     "nn_block_weights_files",
+    "ode_model_from_dict",
+    "ode_model_to_dict",
+    "ode_nn_block_weights_files",
     "save",
 ]
 
@@ -72,6 +78,10 @@ _SCHEMA_MAJOR = SPEC_VERSION.split(".", 1)[0]
 SCHEMA_URL = (
     "https://raw.githubusercontent.com/Computational-Biology-Aachen/"
     f"mxl-schemas/main/v{_SCHEMA_MAJOR}/kinetic-model.schema.json"
+)
+ODE_SCHEMA_URL = (
+    "https://raw.githubusercontent.com/Computational-Biology-Aachen/"
+    f"mxl-schemas/main/v{_SCHEMA_MAJOR}/ode-model.schema.json"
 )
 
 _FN_NAME = "_mxl_fn"
@@ -242,6 +252,141 @@ def model_to_dict(
     return {
         "$schema": SCHEMA_URL,
         "spec_version": SPEC_VERSION,
+        "kind": "kinetic",
+        "model_id": model_id,
+        "description": description,
+        "model": model_section,
+    }
+
+
+###############################################################################
+# Save — OdeModelBuilder
+###############################################################################
+
+
+def _unexportable_derivative_surrogates(model: OdeModelBuilder) -> list[str]:
+    """Names of every attached direct-derivative surrogate whose `to_nn_block_export()` returns `None`."""
+    return sorted(
+        name
+        for name, surrogate in model._surrogates.items()  # noqa: SLF001
+        if surrogate.to_nn_block_export() is None
+    )
+
+
+def _ode_nn_blocks_and_weights(
+    model: OdeModelBuilder,
+) -> tuple[dict[str, Any], dict[str, dict[str, list[Any]]]]:
+    """The `nn_blocks` section and weights sidecars for an `OdeModelBuilder`'s direct-derivative surrogates.
+
+    Mirrors :func:`_nn_blocks_and_weights` exactly, but reads
+    `OdeModelBuilder._surrogates` (`DerivativeSurrogateProtocol`) instead of
+    `KineticModelBuilder._surrogates` (`SurrogateProtocol`) — the two are
+    unrelated types (see `mxlpy.surrogates.abstract_derivative`'s module
+    docstring), but both `to_nn_block_export()` methods return the same
+    schema-shaped ``spec``/``weights`` split, so the assembly logic here is
+    identical.
+    """
+    nn_blocks: dict[str, Any] = {}
+    weights_files: dict[str, dict[str, list[Any]]] = {}
+    for name, surrogate in model._surrogates.items():  # noqa: SLF001
+        export = surrogate.to_nn_block_export()
+        if export is None:
+            continue
+        spec = dict(export.spec)
+        if spec["trained"]:
+            weights_ref = f"{name}.weights.json"
+            spec["weights_ref"] = weights_ref
+            weights_files[weights_ref] = export.weights
+        nn_blocks[name] = spec
+    return nn_blocks, weights_files
+
+
+def ode_nn_block_weights_files(
+    model: OdeModelBuilder,
+) -> dict[str, dict[str, list[Any]]]:
+    """Every trained, exportable direct-derivative surrogate's weights sidecar content, keyed by its `weights_ref`.
+
+    Ode-model counterpart of :func:`nn_block_weights_files`.
+    """
+    _, weights_files = _ode_nn_blocks_and_weights(model)
+    return weights_files
+
+
+def ode_model_to_dict(
+    model: OdeModelBuilder,
+    *,
+    model_id: str,
+    description: str = "",
+) -> dict[str, Any]:
+    """Convert an `OdeModelBuilder` model into its ``.mxl.json`` dict representation.
+
+    Ode-model counterpart of :func:`model_to_dict` — same overall shape,
+    but each variable carries its own dx/dt directly (`fn`) rather than
+    being derived from reactions and stoichiometry, so there is no
+    ``reactions`` section at all (`ode-model.schema.json`, discriminated
+    from `kinetic-model.schema.json` by `kind`).
+
+    Parameters
+    ----------
+    model
+        Model to serialise
+    model_id
+        Identifier stored in the file
+    description
+        Human-readable description stored in the file
+
+    Returns
+    -------
+    dict
+        JSON-compatible mapping following the ``mxl-ode-model`` schema
+
+    Raises
+    ------
+    SerializationError
+        If the model contains a surrogate that isn't representable as a
+        mxl-schemas ``nn_blocks`` entry, or a rate function that cannot be
+        converted into an expression.
+
+    """
+    if unexportable := _unexportable_derivative_surrogates(model):
+        names = ", ".join(unexportable)
+        msg = f"surrogates are not representable as nn_blocks: {names}"
+        raise SerializationError(msg)
+    nn_blocks, _ = _ode_nn_blocks_and_weights(model)
+
+    variables = {
+        name: {
+            "value": _value_to_node_dict(diff_eq.initial_value, origin=name),
+            "fn": _fn_to_node_dict(diff_eq.fn, origin=name, args=diff_eq.args),
+        }
+        for name, diff_eq in model.get_raw_diff_eqs().items()
+    }
+    parameters = {
+        name: {"value": _value_to_node_dict(par.value, origin=name)}
+        for name, par in model.get_raw_parameters().items()
+    }
+    derived = {
+        name: {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)}
+        for name, der in model.get_raw_derived().items()
+    }
+    readouts = {
+        name: {"fn": _fn_to_node_dict(rdt.fn, origin=name, args=rdt.args)}
+        for name, rdt in model.get_raw_readouts().items()
+    }
+
+    model_section: dict[str, Any] = {
+        "variables": variables,
+        "parameters": parameters,
+        "derived": derived,
+        "readouts": readouts,
+    }
+    if nn_blocks:
+        model_section["nn_blocks"] = nn_blocks
+
+    return {
+        "$schema": ODE_SCHEMA_URL,
+        "spec_version": SPEC_VERSION,
+        "kind": "ode",
         "model_id": model_id,
         "description": description,
         "model": model_section,
@@ -249,13 +394,18 @@ def model_to_dict(
 
 
 def save(
-    model: KineticModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder,
     path: str | Path,
     *,
     model_id: str | None = None,
     description: str = "",
 ) -> None:
     """Save a model to the native ``.mxl.json`` format.
+
+    Dispatches on `model`'s type: a `KineticModelBuilder` is written via
+    :func:`model_to_dict` (`kinetic-model.schema.json`), an
+    `OdeModelBuilder` via :func:`ode_model_to_dict`
+    (`ode-model.schema.json`).
 
     Every trained, exportable NN block's weights are written alongside the
     main file as `<block>.weights.json`, in the same directory `path`
@@ -284,9 +434,14 @@ def save(
     path = Path(path)
     if model_id is None:
         model_id = path.name.removesuffix(".json").removesuffix(".mxl")
-    data = model_to_dict(model, model_id=model_id, description=description)
+    if isinstance(model, OdeModelBuilder):
+        data = ode_model_to_dict(model, model_id=model_id, description=description)
+        weights_files = ode_nn_block_weights_files(model)
+    else:
+        data = model_to_dict(model, model_id=model_id, description=description)
+        weights_files = nn_block_weights_files(model)
     path.write_text(json.dumps(data, indent=2) + "\n")
-    for weights_ref, weights in nn_block_weights_files(model).items():
+    for weights_ref, weights in weights_files.items():
         (path.parent / weights_ref).write_text(json.dumps(weights, indent=2) + "\n")
 
 
@@ -398,6 +553,123 @@ def _surrogate_from_nn_block(
     return surrogate_from_nn_block(name, block, weights)
 
 
+###############################################################################
+# Load — OdeModelBuilder
+###############################################################################
+
+
+def _derivative_surrogate_from_nn_block(
+    name: str,
+    block: Mapping[str, Any],
+    weights_by_ref: Mapping[str, Mapping[str, list[Any]]],
+) -> DerivativeSurrogateProtocol:
+    """Reconstruct a live direct-derivative surrogate from one `nn_blocks[name]` entry.
+
+    Ode-model counterpart of :func:`_surrogate_from_nn_block`. Unlike that
+    kinetic path, every `mechanism` preset is reconstructible here (not
+    just `additive`) — a direct-derivative surrogate composes onto its
+    `targets` the same way `nn_blocks` describes, with no
+    stoichiometry-only ("always additive") constraint in between; see
+    `mxlpy.surrogates.abstract_derivative`'s module docstring.
+    """
+    activation = block["activation"]
+    if activation.get("name") != "softplus" or activation.get(
+        "expression"
+    ) != nn_block_activation_softplus():
+        msg = f"nn_block {name!r}: only the softplus activation is supported"
+        raise SerializationError(msg)
+    if any(layer.get("type") != "dense" for layer in block["layers"]):
+        msg = f"nn_block {name!r}: only dense layers are supported"
+        raise SerializationError(msg)
+    if not block["trained"]:
+        msg = (
+            f"nn_block {name!r}: untrained blocks (no weights_ref) aren't "
+            "supported yet — MxlPy has no from-seed Glorot initialization "
+            "path for a loaded block"
+        )
+        raise SerializationError(msg)
+    weights_ref = block["weights_ref"]
+    weights = weights_by_ref.get(weights_ref)
+    if weights is None:
+        msg = f"nn_block {name!r}: no weights file supplied for weights_ref {weights_ref!r}"
+        raise SerializationError(msg)
+
+    try:
+        # Deliberately lazy: torch is an optional extra, see
+        # `_surrogate_from_nn_block`'s identical import.
+        from mxlpy.surrogates._torch import (  # noqa: PLC0415
+            derivative_surrogate_from_nn_block,
+        )
+    except ImportError as exc:
+        msg = (
+            f"nn_block {name!r}: reconstructing it requires torch "
+            "(install mxlpy with the torch extra)"
+        )
+        raise SerializationError(msg) from exc
+    try:
+        return derivative_surrogate_from_nn_block(block, weights)
+    except ValueError as exc:
+        msg = f"nn_block {name!r}: {exc}"
+        raise SerializationError(msg) from exc
+
+
+def ode_model_from_dict(
+    data: Mapping[str, Any],
+    *,
+    weights_by_ref: Mapping[str, Mapping[str, list[Any]]] | None = None,
+) -> OdeModelBuilder:
+    """Reconstruct an `OdeModelBuilder` model from its ``.mxl.json`` dict representation.
+
+    Ode-model counterpart of :func:`model_from_dict`.
+
+    Parameters
+    ----------
+    data
+        Mapping following the ``mxl-ode-model`` schema
+    weights_by_ref
+        Every referenced NN block weights sidecar's already-parsed content,
+        keyed by the relative filename its owning block's `weights_ref`
+        names — see :func:`model_from_dict`'s identical parameter.
+
+    Returns
+    -------
+    OdeModelBuilder
+        The reconstructed model
+
+    Raises
+    ------
+    SerializationError
+        If the document has a `nn_blocks` entry that isn't representable
+        as a live MxlPy surrogate (see `_derivative_surrogate_from_nn_block`),
+        or is missing a weights file its `weights_ref` names.
+
+    """
+    spec = data["model"]
+    model = OdeModelBuilder()
+
+    for name, par in spec["parameters"].items():
+        model.add_parameter(name, _node_dict_to_value(par["value"]))
+    for name, var in spec["variables"].items():
+        fn, args = _node_dict_to_fn(var["fn"])
+        model.add_diff_eq(
+            name,
+            initial_value=_node_dict_to_value(var["value"]),
+            fn=fn,
+            args=args,
+        )
+    for name, der in spec["derived"].items():
+        fn, args = _node_dict_to_fn(der["fn"])
+        model.add_derived(name, fn, args=args)
+    for name, rdt in spec["readouts"].items():
+        fn, args = _node_dict_to_fn(rdt["fn"])
+        model.add_readout(name, fn, args=args)
+    for name, block in spec.get("nn_blocks", {}).items():
+        surrogate = _derivative_surrogate_from_nn_block(name, block, weights_by_ref or {})
+        model.add_surrogate(name, surrogate)
+
+    return model
+
+
 def model_from_dict(
     data: Mapping[str, Any],
     *,
@@ -457,8 +729,12 @@ def model_from_dict(
     return model
 
 
-def load(path: str | Path) -> KineticModelBuilder:
+def load(path: str | Path) -> KineticModelBuilder | OdeModelBuilder:
     """Load a model from the native ``.mxl.json`` format.
+
+    Dispatches on the document's `kind` field (`"kinetic"`, the default
+    for documents written before this field existed, or `"ode"`) to
+    :func:`model_from_dict` or :func:`ode_model_from_dict` respectively.
 
     Every `nn_blocks[id].weights_ref` referenced in the document is
     resolved relative to `path`'s own directory and read from disk
@@ -497,4 +773,6 @@ def load(path: str | Path) -> KineticModelBuilder:
                 f"(from weights_ref {weights_ref!r}) does not exist"
             )
             raise SerializationError(msg) from exc
+    if data.get("kind") == "ode":
+        return ode_model_from_dict(data, weights_by_ref=weights_by_ref)
     return model_from_dict(data, weights_by_ref=weights_by_ref)

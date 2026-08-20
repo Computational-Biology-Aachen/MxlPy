@@ -16,6 +16,13 @@ from mxlpy.surrogates.abstract import (
     NNBlockExport,
     nn_block_activation_softplus,
     nn_block_mechanism_additive,
+    nn_block_mechanism_multiply,
+    nn_block_mechanism_relative_multiply,
+)
+from mxlpy.surrogates.abstract_derivative import (
+    AbstractDerivativeSurrogate,
+    DerivativeSurrogateExport,
+    Mechanism,
 )
 
 if TYPE_CHECKING:
@@ -27,11 +34,19 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "DerivativeSurrogate",
     "Surrogate",
     "Trainer",
+    "derivative_surrogate_from_nn_block",
     "surrogate_from_nn_block",
     "train",
 ]
+
+_MECHANISM_BUILDER: dict[Mechanism, Callable[[], dict[str, object]]] = {
+    "additive": nn_block_mechanism_additive,
+    "relative_multiply": nn_block_mechanism_relative_multiply,
+    "multiply": nn_block_mechanism_multiply,
+}
 
 
 # mxl-schemas activation.name -> the torch.nn.Module type it corresponds to.
@@ -106,6 +121,55 @@ def surrogate_from_nn_block(
         },
     )
 
+
+def derivative_surrogate_from_nn_block(
+    spec: Mapping[str, object],
+    weights: Mapping[str, list[object]],
+) -> DerivativeSurrogate:
+    """Reconstruct a torch :class:`DerivativeSurrogate` from a mxl-schemas ``nn_blocks`` entry and its weights sidecar.
+
+    Inverse of :meth:`DerivativeSurrogate.to_nn_block_export`. Unlike
+    :func:`surrogate_from_nn_block`, no `name`-derived output renaming is
+    needed here: a direct-derivative surrogate has no `outputs`/
+    `stoichiometries` indirection at all, it corrects `targets` directly.
+
+    `spec["mechanism"]` is matched against the three known
+    `nn_block_mechanism_*` presets (structural dict equality — the only
+    shapes any exportable surrogate ever produces); a `mechanism` authored
+    by hand or by mxlweb in some other equivalent-but-differently-built
+    tree isn't recognized and raises `ValueError`.
+    """
+    layers = cast("list[dict[str, object]]", spec["layers"])
+    inputs = cast("list[str]", spec["inputs"])
+    targets = cast("list[str]", spec["targets"])
+    mechanism_dict = spec["mechanism"]
+    mechanism: Mechanism | None = next(
+        (m for m, builder in _MECHANISM_BUILDER.items() if builder() == mechanism_dict),
+        None,
+    )
+    if mechanism is None:
+        msg = f"Unrecognized nn_blocks mechanism: {mechanism_dict!r}"
+        raise ValueError(msg)
+
+    modules: list[nn.Module] = []
+    in_features = len(inputs)
+    for i, layer in enumerate(layers):
+        out_features = cast("int", layer["width"])
+        linear = nn.Linear(in_features, out_features)
+        with torch.no_grad():
+            linear.weight.copy_(torch.tensor(weights[f"w{i + 1}"], dtype=torch.float32))
+            linear.bias.copy_(torch.tensor(weights[f"b{i + 1}"], dtype=torch.float32))
+        modules.append(linear)
+        if i < len(layers) - 1:
+            modules.append(nn.Softplus())
+        in_features = out_features
+
+    return DerivativeSurrogate(
+        model=nn.Sequential(*modules),
+        args=inputs,
+        targets=targets,
+        mechanism=mechanism,
+    )
 
 
 @dataclass(kw_only=True)
@@ -254,6 +318,124 @@ class Surrogate(AbstractSurrogate):
         return dict(
             zip(
                 self.outputs,
+                self.predict_raw(np.array([args[arg] for arg in self.args])),
+                strict=True,
+            )
+        )
+
+
+@dataclass(kw_only=True)
+class DerivativeSurrogate(AbstractDerivativeSurrogate):
+    """Direct-derivative surrogate using PyTorch, for `OdeModelBuilder`.
+
+    See :mod:`mxlpy.surrogates.abstract_derivative`'s module docstring for
+    why this is a separate, orthogonal type from :class:`Surrogate` rather
+    than a shared base — same reasoning, applied one level down at the
+    torch-backend layer.
+
+    Attributes
+    ----------
+    model
+        PyTorch neural network model.
+
+    """
+
+    model: torch.nn.Module
+
+    def to_nn_block_export(self) -> DerivativeSurrogateExport | None:
+        """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, if it's representable.
+
+        Same structural requirements as :meth:`Surrogate.to_nn_block_export`
+        (dense `Linear`/softplus alternation) but, unlike that method, no
+        stoichiometry-unit-coefficient constraint: `self.targets` already
+        names exactly what this surrogate corrects, so every `self.mechanism`
+        value (not just `additive`) exports faithfully via
+        `_MECHANISM_BUILDER`.
+        """
+        net = _dense_sequential(self.model)
+        if net is None:
+            return None
+
+        modules = list(net)
+        linears = [m for m in modules if isinstance(m, nn.Linear)]
+        if len(linears) == 0:
+            return None
+        if len(modules) != 2 * len(linears) - 1:
+            return None
+
+        activation_name: str | None = None
+        for i, m in enumerate(modules):
+            if i % 2 == 0:
+                continue  # Linear, already collected above.
+            mapped = _ACTIVATION_BY_MODULE.get(type(m))
+            if mapped is None or (
+                activation_name is not None and activation_name != mapped
+            ):
+                return None
+            activation_name = mapped
+        if len(linears) > 1 and activation_name is None:
+            return None
+
+        layers = [{"type": "dense", "width": lin.out_features} for lin in linears]
+        weights: dict[str, list[object]] = {}
+        for i, lin in enumerate(linears, start=1):
+            weights[f"w{i}"] = lin.weight.detach().cpu().numpy().tolist()
+            weights[f"b{i}"] = lin.bias.detach().cpu().numpy().tolist()
+
+        spec: dict[str, object] = {
+            "inputs": list(self.args),
+            "layers": layers,
+            "seed": 0,
+            "targets": list(self.targets),
+            "trained": True,
+            "scale": 1.0,
+            "mechanism": _MECHANISM_BUILDER[self.mechanism](),
+            "activation": {
+                "name": "softplus",
+                "expression": nn_block_activation_softplus(),
+            },
+        }
+        return DerivativeSurrogateExport(spec=spec, weights=weights)
+
+    def predict_raw(self, y: np.ndarray) -> np.ndarray:
+        """Predict a correction per target based on input data using the PyTorch model.
+
+        Parameters
+        ----------
+        y
+            Input data as a numpy array.
+
+        Returns
+        -------
+        np.ndarray
+            Array of predicted correction values, ordered like `self.targets`.
+
+        """
+        with torch.no_grad():
+            return self.model(
+                torch.tensor(y, dtype=torch.float32),
+            ).numpy()
+
+    def predict(
+        self,
+        args: dict[str, float | pd.Series | pd.DataFrame],
+    ) -> dict[str, float]:
+        """Predict a correction per target, from `args`.
+
+        Parameters
+        ----------
+        args
+            Mapping of input names to their values.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapping of target names to raw predicted correction values.
+
+        """
+        return dict(
+            zip(
+                self.targets,
                 self.predict_raw(np.array([args[arg] for arg in self.args])),
                 strict=True,
             )

@@ -17,9 +17,30 @@ pre-evaluation snapshot instead.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
 import numpy as np
+import pytest
 
 from mxlpy import OdeModelBuilder, Simulator
+from mxlpy.surrogates.abstract_derivative import AbstractDerivativeSurrogate
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+
+@dataclass(kw_only=True)
+class _MockDerivativeSurrogate(AbstractDerivativeSurrogate):
+    """A minimal, deterministic `AbstractDerivativeSurrogate` for testing `OdeModelBuilder.add_surrogate`."""
+
+    correction: float
+
+    def predict(
+        self,
+        args: dict[str, float | pd.Series | pd.DataFrame],  # noqa: ARG002, for API compatibility
+    ) -> dict[str, float]:
+        return dict.fromkeys(self.targets, self.correction)
 
 
 def test_single_variable_dxdt_is_actually_computed() -> None:
@@ -85,3 +106,62 @@ def test_get_variable_names_matches_get_diff_eq_names() -> None:
         "x", fn=lambda x: -x, args=["x"], initial_value=1.0
     )
     assert model.get_variable_names() == model.get_diff_eq_names() == ["x"]
+
+
+def test_add_surrogate_composes_onto_dxdt() -> None:
+    model = (
+        OdeModelBuilder()
+        .add_parameter("k", 0.5)
+        .add_diff_eq("x", fn=lambda x, k: -k * x, args=["x", "k"], initial_value=2.0)
+        .add_surrogate(
+            "corr", _MockDerivativeSurrogate(args=[], targets=["x"], correction=0.1)
+        )
+    )
+    (dxdt,) = model(0.0, [2.0])
+    # mechanistic term (-0.5 * 2.0 = -1.0) + surrogate correction (0.1),
+    # default mechanism is "additive".
+    assert dxdt == pytest.approx(-1.0 + 0.1)
+
+
+def test_add_surrogate_with_unknown_target_raises_and_does_not_leak_the_name() -> None:
+    """A failed `add_surrogate` (bad `targets`) must not permanently reserve `name` in the id namespace.
+
+    Regression test: `add_surrogate` used to call `_insert_id` before
+    validating `surrogate.targets`, so a validation failure left `name`
+    registered in `self._ids` with no matching entry in
+    `self._surrogates` — an unrecoverable half-added state (the name
+    became permanently unusable, and `remove_surrogate` couldn't clean it
+    up either, since it pops from `self._surrogates`, which never
+    contained it).
+    """
+    model = OdeModelBuilder().add_diff_eq(
+        "x", fn=lambda x: -x, args=["x"], initial_value=1.0
+    )
+    bad_surrogate = _MockDerivativeSurrogate(args=[], targets=["y"], correction=0.0)
+    with pytest.raises(KeyError, match="y"):
+        model.add_surrogate("corr", bad_surrogate)
+
+    assert "corr" not in model.ids
+    assert model.get_raw_surrogates() == {}
+
+    # The name must be fully reusable afterwards.
+    good_surrogate = _MockDerivativeSurrogate(args=[], targets=["x"], correction=0.1)
+    model.add_surrogate("corr", good_surrogate)
+    assert "corr" in model.get_raw_surrogates()
+
+
+def test_remove_surrogate_removes_correction() -> None:
+    model = (
+        OdeModelBuilder()
+        .add_diff_eq("x", fn=lambda x: -x, args=["x"], initial_value=1.0)
+        .add_surrogate(
+            "corr", _MockDerivativeSurrogate(args=[], targets=["x"], correction=0.1)
+        )
+    )
+    with_correction = model(0.0, [1.0])
+    model.remove_surrogate("corr")
+    without_correction = model(0.0, [1.0])
+
+    assert with_correction != without_correction
+    assert without_correction == (-1.0,)
+    assert model.get_raw_surrogates() == {}
