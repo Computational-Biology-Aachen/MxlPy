@@ -13,12 +13,12 @@ from mxlpy.meta import _mathml as mml
 __all__ = [
     "AbstractSurrogate",
     "MockSurrogate",
-    "NNBlockExport",
+    "SurrogateJson",
     "SurrogateProtocol",
-    "nn_block_activation_softplus",
-    "nn_block_mechanism_additive",
-    "nn_block_mechanism_multiply",
-    "nn_block_mechanism_relative_multiply",
+    "mxl_json_activation_softplus",
+    "mxl_json_mechanism_additive",
+    "mxl_json_mechanism_multiply",
+    "mxl_json_mechanism_relative_multiply",
 ]
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from mxlpy.types import Derived
 
 
-def nn_block_mechanism_additive() -> dict[str, object]:
+def mxl_json_mechanism_additive() -> dict[str, object]:
     """`Add(ode, nde)` — mxl-schemas `nnBlock.mechanism`, the only shape a stoichiometry-composed surrogate can correctly export as.
 
     MxlPy has no multiplicative-reaction concept at all: every reaction
@@ -47,7 +47,7 @@ def nn_block_mechanism_additive() -> dict[str, object]:
     return mml.Add(children=[mml.Name(name="ode"), mml.Name(name="nde")]).to_dict()
 
 
-def nn_block_mechanism_relative_multiply() -> dict[str, object]:
+def mxl_json_mechanism_relative_multiply() -> dict[str, object]:
     """`Mul(ode, Add(1, nde))` — mxl-schemas `nnBlock.mechanism`.
 
     ``dx/dt = ode * (1 + nde)``: a near-zero/untrained network leaves
@@ -56,7 +56,7 @@ def nn_block_mechanism_relative_multiply() -> dict[str, object]:
     — `OdeModelBuilder`); the reaction/stoichiometry-composed kinetic
     surrogate (`AbstractSurrogate`) can never correctly export this shape,
     since it has no multiplicative-composition concept at all (see
-    `nn_block_mechanism_additive`'s doc comment).
+    `mxl_json_mechanism_additive`'s doc comment).
     """
     return mml.Mul(
         children=[
@@ -66,17 +66,17 @@ def nn_block_mechanism_relative_multiply() -> dict[str, object]:
     ).to_dict()
 
 
-def nn_block_mechanism_multiply() -> dict[str, object]:
+def mxl_json_mechanism_multiply() -> dict[str, object]:
     """`Mul(ode, nde)` — mxl-schemas `nnBlock.mechanism`.
 
     ``dx/dt = ode * nde``: a bare product, with none of
-    `nn_block_mechanism_relative_multiply`'s safeguard. Same
+    `mxl_json_mechanism_relative_multiply`'s safeguard. Same
     direct-composition-only caveat as that function.
     """
     return mml.Mul(children=[mml.Name(name="ode"), mml.Name(name="nde")]).to_dict()
 
 
-def nn_block_activation_softplus() -> dict[str, object]:
+def mxl_json_activation_softplus() -> dict[str, object]:
     """The canonical softplus `{name, expression}` pair (mxl-schemas `nnActivation`), ADR 0005 §2.1.1's numerically-stable form.
 
     The only activation any exportable surrogate's hidden layers may use
@@ -102,8 +102,8 @@ def nn_block_activation_softplus() -> dict[str, object]:
 
 
 @dataclass
-class NNBlockExport:
-    """A surrogate exported as a mxl-schemas ``nn_blocks`` entry.
+class SurrogateJson:
+    """A surrogate exported as a mxl-schemas ``nn_blocks`` entry — the mxl.json representation of one surrogate.
 
     ``spec`` is the schema-shaped architecture/composition dict for one
     ``nn_blocks[id]`` entry (``inputs``/``layers``/``seed``/``targets``/
@@ -167,10 +167,10 @@ class SurrogateProtocol(Protocol):
         """
         ...
 
-    def to_nn_block_export(self) -> NNBlockExport | None:
+    def to_mxl_json(self) -> SurrogateJson | None:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, or ``None`` if it isn't representable.
 
-        See :meth:`AbstractSurrogate.to_nn_block_export`.
+        See :meth:`AbstractSurrogate.to_mxl_json`.
         """
         ...
 
@@ -200,7 +200,7 @@ class AbstractSurrogate:
         """Return default representation."""
         return pformat(self)
 
-    def to_nn_block_export(self) -> NNBlockExport | None:
+    def to_mxl_json(self) -> SurrogateJson | None:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
 
         Returns ``None`` (not ``NotImplementedError``) when this surrogate

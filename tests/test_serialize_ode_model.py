@@ -25,7 +25,7 @@ from mxlpy.serialize import (
     model_to_dict,
     ode_model_from_dict,
     ode_model_to_dict,
-    ode_nn_block_weights_files,
+    ode_mxl_json_weights_files,
 )
 from mxlpy.surrogates._torch import DerivativeSurrogate
 from mxlpy.types import SerializationError
@@ -99,9 +99,9 @@ def test_exportable_surrogate_produces_nn_blocks_section_with_chosen_mechanism()
     assert block["mechanism"]["type"] == "Mul"
 
 
-def test_ode_nn_block_weights_files_shapes_match_layers() -> None:
+def test_ode_mxl_json_weights_files_shapes_match_layers() -> None:
     model = _make_model_with_surrogate()
-    files = ode_nn_block_weights_files(model)
+    files = ode_mxl_json_weights_files(model)
     assert set(files.keys()) == {"corr_block.weights.json"}
     weights = files["corr_block.weights.json"]
     assert len(weights["w1"]) == 3

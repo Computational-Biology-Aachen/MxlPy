@@ -23,7 +23,7 @@ from torch import nn
 
 import mxlpy
 from mxlpy import KineticModelBuilder
-from mxlpy.serialize import model_from_dict, model_to_dict, nn_block_weights_files
+from mxlpy.serialize import model_from_dict, model_to_dict, mxl_json_weights_files
 from mxlpy.surrogates._torch import Surrogate
 from mxlpy.types import SerializationError
 
@@ -75,9 +75,9 @@ def test_exportable_surrogate_produces_nn_blocks_section() -> None:
     assert block["mechanism"]["type"] == "Add"
 
 
-def test_nn_block_weights_files_shapes_match_layers() -> None:
+def test_mxl_json_weights_files_shapes_match_layers() -> None:
     model = _make_model_with_surrogate()
-    files = nn_block_weights_files(model)
+    files = mxl_json_weights_files(model)
     assert set(files.keys()) == {"corr_block.weights.json"}
     weights = files["corr_block.weights.json"]
     # layer 1: 2 in -> 3 out
@@ -190,6 +190,6 @@ def test_model_from_dict_rejects_non_additive_mechanism() -> None:
             {"type": "Name", "value": "nde"},
         ],
     }
-    weights = nn_block_weights_files(model)
+    weights = mxl_json_weights_files(model)
     with pytest.raises(SerializationError, match="additive"):
         model_from_dict(data, weights_by_ref=weights)

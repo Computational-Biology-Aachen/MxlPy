@@ -11,9 +11,9 @@ from mxlpy.nn._keras import MLP
 from mxlpy.nn._keras import train as _train
 from mxlpy.surrogates.abstract import (
     AbstractSurrogate,
-    NNBlockExport,
-    nn_block_activation_softplus,
-    nn_block_mechanism_additive,
+    SurrogateJson,
+    mxl_json_activation_softplus,
+    mxl_json_mechanism_additive,
 )
 
 if TYPE_CHECKING:
@@ -28,7 +28,7 @@ __all__ = [
     "Optimizer",
     "Surrogate",
     "Trainer",
-    "surrogate_from_nn_block",
+    "surrogate_from_mxl_json",
     "train",
 ]
 
@@ -54,21 +54,21 @@ def _dense_layers(model: keras.Model) -> list[keras.layers.Dense] | None:
     return cast("list[keras.layers.Dense]", layers)
 
 
-def surrogate_from_nn_block(
+def surrogate_from_mxl_json(
     name: str,
     spec: Mapping[str, object],
     weights: Mapping[str, list[object]],
 ) -> Surrogate:
     """Reconstruct a keras :class:`Surrogate` from a mxl-schemas ``nn_blocks`` entry and its weights sidecar.
 
-    Inverse of :meth:`Surrogate.to_nn_block_export`, mirroring
-    `mxlpy.surrogates._torch.surrogate_from_nn_block`'s reconstruction
+    Inverse of :meth:`Surrogate.to_mxl_json`, mirroring
+    `mxlpy.surrogates._torch.surrogate_from_mxl_json`'s reconstruction
     (same "fresh output name" `f"{name}_{target}"` derivation and unit
     stoichiometry). Keras's `Dense.kernel` is shaped
     `[in_features, out_features]` — the transpose of the schema's
     `[out_features, in_features]` (PyTorch/equinox-native) convention — so
     every weight matrix is transposed on the way in, mirroring the
-    transpose `to_nn_block_export` applies on the way out.
+    transpose `to_mxl_json` applies on the way out.
     """
     layers_spec = cast("list[dict[str, object]]", spec["layers"])
     inputs = cast("list[str]", spec["inputs"])
@@ -100,7 +100,7 @@ def surrogate_from_nn_block(
 class Surrogate(AbstractSurrogate):
     model: keras.Model
 
-    def to_nn_block_export(self) -> NNBlockExport | None:
+    def to_mxl_json(self) -> SurrogateJson | None:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, if it's representable.
 
         Requires, structurally:
@@ -118,7 +118,7 @@ class Surrogate(AbstractSurrogate):
           equinox's `MLP` (ReLU) both similarly declining by default.
         - every output has stoichiometry ``{compound: 1.0}`` against a
           reaction named after that same output — see
-          :meth:`mxlpy.surrogates._torch.Surrogate.to_nn_block_export`'s
+          :meth:`mxlpy.surrogates._torch.Surrogate.to_mxl_json`'s
           identical requirement and rationale.
 
         Returns ``None`` when any of the above doesn't hold.
@@ -158,13 +158,13 @@ class Surrogate(AbstractSurrogate):
             "targets": targets,
             "trained": True,
             "scale": 1.0,
-            "mechanism": nn_block_mechanism_additive(),
+            "mechanism": mxl_json_mechanism_additive(),
             "activation": {
                 "name": "softplus",
-                "expression": nn_block_activation_softplus(),
+                "expression": mxl_json_activation_softplus(),
             },
         }
-        return NNBlockExport(spec=spec, weights=weights)
+        return SurrogateJson(spec=spec, weights=weights)
 
     def predict_raw(self, y: Array) -> Array:
         """Predict raw output from the Keras model.

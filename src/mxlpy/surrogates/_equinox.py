@@ -14,9 +14,9 @@ from mxlpy.nn._equinox import MLP, LossFn, SoftplusMLP, mean_abs_error
 from mxlpy.nn._equinox import train as _train
 from mxlpy.surrogates.abstract import (
     AbstractSurrogate,
-    NNBlockExport,
-    nn_block_activation_softplus,
-    nn_block_mechanism_additive,
+    SurrogateJson,
+    mxl_json_activation_softplus,
+    mxl_json_mechanism_additive,
 )
 
 if TYPE_CHECKING:
@@ -24,18 +24,18 @@ if TYPE_CHECKING:
 
     from mxlpy.types import Derived
 
-__all__ = ["Surrogate", "Trainer", "surrogate_from_nn_block", "train"]
+__all__ = ["Surrogate", "Trainer", "surrogate_from_mxl_json", "train"]
 
 
-def surrogate_from_nn_block(
+def surrogate_from_mxl_json(
     name: str,
     spec: Mapping[str, object],
     weights: Mapping[str, list[object]],
 ) -> Surrogate:
     """Reconstruct an equinox :class:`Surrogate` from a mxl-schemas ``nn_blocks`` entry and its weights sidecar.
 
-    Inverse of :meth:`Surrogate.to_nn_block_export`, mirroring
-    `mxlpy.surrogates._torch.surrogate_from_nn_block`'s reconstruction
+    Inverse of :meth:`Surrogate.to_mxl_json`, mirroring
+    `mxlpy.surrogates._torch.surrogate_from_mxl_json`'s reconstruction
     (same "fresh output name" `f"{name}_{target}"` derivation and unit
     stoichiometry, since this is the same kinetic `AbstractSurrogate`
     shape, just with a `SoftplusMLP` model instead of a torch one).
@@ -86,7 +86,7 @@ class Surrogate(AbstractSurrogate):
 
     model: eqx.Module
 
-    def to_nn_block_export(self) -> NNBlockExport | None:
+    def to_mxl_json(self) -> SurrogateJson | None:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, if it's representable.
 
         Requires, structurally:
@@ -99,7 +99,7 @@ class Surrogate(AbstractSurrogate):
         - every `eqx.nn.Linear` layer has a bias (`use_bias=True`).
         - every output has stoichiometry ``{compound: 1.0}`` against a
           reaction named after that same output — see
-          :meth:`mxlpy.surrogates._torch.Surrogate.to_nn_block_export`'s
+          :meth:`mxlpy.surrogates._torch.Surrogate.to_mxl_json`'s
           identical requirement and rationale.
 
         Returns ``None`` when any of the above doesn't hold.
@@ -135,13 +135,13 @@ class Surrogate(AbstractSurrogate):
             "targets": targets,
             "trained": True,
             "scale": 1.0,
-            "mechanism": nn_block_mechanism_additive(),
+            "mechanism": mxl_json_mechanism_additive(),
             "activation": {
                 "name": "softplus",
-                "expression": nn_block_activation_softplus(),
+                "expression": mxl_json_activation_softplus(),
             },
         }
-        return NNBlockExport(spec=spec, weights=weights)
+        return SurrogateJson(spec=spec, weights=weights)
 
     def predict_raw(self, y: np.ndarray) -> np.ndarray:
         """Predict outputs based on input data using the PyTorch model.

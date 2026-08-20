@@ -395,11 +395,11 @@ class SoftplusMLP(eqx.Module):
     `nn.Sequential` module) or keras (`Dense.activation` as an inspectable
     layer attribute), an arbitrary `eqx.Module`'s activation function is
     just Python code inside `__call__` — there is no object graph
-    `mxlpy.surrogates._equinox.Surrogate.to_nn_block_export` could
+    `mxlpy.surrogates._equinox.Surrogate.to_mxl_json` could
     introspect to recover it. `MLP`'s `__call__` hardcodes `jax.nn.relu`,
     which has no `nn_blocks` counterpart, so no model built from it is
     ever exportable. This class exists so there is at least one equinox
-    architecture `to_nn_block_export` can recognize by `isinstance` and
+    architecture `to_mxl_json` can recognize by `isinstance` and
     know, by construction, uses softplus.
 
     Attributes
