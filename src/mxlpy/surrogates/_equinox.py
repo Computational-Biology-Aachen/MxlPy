@@ -1,24 +1,72 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Self, cast
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import pandas as pd
 
-from mxlpy.nn._equinox import MLP, LossFn, mean_abs_error
+from mxlpy.nn._equinox import MLP, LossFn, SoftplusMLP, mean_abs_error
 from mxlpy.nn._equinox import train as _train
-from mxlpy.surrogates.abstract import AbstractSurrogate
+from mxlpy.surrogates.abstract import (
+    AbstractSurrogate,
+    NNBlockExport,
+    nn_block_activation_softplus,
+    nn_block_mechanism_additive,
+)
 
 if TYPE_CHECKING:
-    import equinox as eqx
+    from collections.abc import Mapping
 
     from mxlpy.types import Derived
 
-__all__ = ["Surrogate", "Trainer", "train"]
+__all__ = ["Surrogate", "Trainer", "surrogate_from_nn_block", "train"]
+
+
+def surrogate_from_nn_block(
+    name: str,
+    spec: Mapping[str, object],
+    weights: Mapping[str, list[object]],
+) -> Surrogate:
+    """Reconstruct an equinox :class:`Surrogate` from a mxl-schemas ``nn_blocks`` entry and its weights sidecar.
+
+    Inverse of :meth:`Surrogate.to_nn_block_export`, mirroring
+    `mxlpy.surrogates._torch.surrogate_from_nn_block`'s reconstruction
+    (same "fresh output name" `f"{name}_{target}"` derivation and unit
+    stoichiometry, since this is the same kinetic `AbstractSurrogate`
+    shape, just with a `SoftplusMLP` model instead of a torch one).
+    """
+    layers_spec = cast("list[dict[str, object]]", spec["layers"])
+    inputs = cast("list[str]", spec["inputs"])
+    targets = cast("list[str]", spec["targets"])
+    outputs = [f"{name}_{target}" for target in targets]
+
+    dummy = SoftplusMLP(
+        n_inputs=len(inputs),
+        neurons_per_layer=[cast("int", layer["width"]) for layer in layers_spec],
+        key=jax.random.PRNGKey(0),
+    )
+    linears: list[eqx.nn.Linear] = []
+    for i, linear in enumerate(dummy.layers, start=1):
+        w = jnp.asarray(weights[f"w{i}"], dtype=jnp.float32)
+        b = jnp.asarray(weights[f"b{i}"], dtype=jnp.float32)
+        linears.append(
+            eqx.tree_at(lambda lin: (lin.weight, lin.bias), linear, (w, b))
+        )
+    model = eqx.tree_at(lambda m: m.layers, dummy, linears)
+
+    return Surrogate(
+        model=model,
+        args=inputs,
+        outputs=outputs,
+        stoichiometries={
+            output: {target: 1.0} for output, target in zip(outputs, targets, strict=True)
+        },
+    )
 
 
 @dataclass(kw_only=True)
@@ -38,6 +86,63 @@ class Surrogate(AbstractSurrogate):
 
     model: eqx.Module
 
+    def to_nn_block_export(self) -> NNBlockExport | None:
+        """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, if it's representable.
+
+        Requires, structurally:
+
+        - ``self.model`` is a :class:`mxlpy.nn._equinox.SoftplusMLP` — the
+          one equinox architecture whose activation is known by
+          construction rather than introspected (see that class's
+          docstring); any other `eqx.Module` (including the default
+          `MLP`, which hardcodes ReLU) declines.
+        - every `eqx.nn.Linear` layer has a bias (`use_bias=True`).
+        - every output has stoichiometry ``{compound: 1.0}`` against a
+          reaction named after that same output — see
+          :meth:`mxlpy.surrogates._torch.Surrogate.to_nn_block_export`'s
+          identical requirement and rationale.
+
+        Returns ``None`` when any of the above doesn't hold.
+        """
+        if not isinstance(self.model, SoftplusMLP):
+            return None
+        linears = self.model.layers
+        if len(linears) == 0:
+            return None
+        if any(not linear.use_bias for linear in linears):
+            return None
+
+        targets: list[str] = []
+        for output in self.outputs:
+            stoich = self.stoichiometries.get(output)
+            if stoich is None or len(stoich) != 1:
+                return None
+            ((compound, factor),) = stoich.items()
+            if factor != 1:
+                return None
+            targets.append(compound)
+
+        layers = [{"type": "dense", "width": lin.out_features} for lin in linears]
+        weights: dict[str, list[object]] = {}
+        for i, lin in enumerate(linears, start=1):
+            weights[f"w{i}"] = np.asarray(lin.weight).tolist()
+            weights[f"b{i}"] = np.asarray(lin.bias).tolist()
+
+        spec: dict[str, object] = {
+            "inputs": list(self.args),
+            "layers": layers,
+            "seed": 0,
+            "targets": targets,
+            "trained": True,
+            "scale": 1.0,
+            "mechanism": nn_block_mechanism_additive(),
+            "activation": {
+                "name": "softplus",
+                "expression": nn_block_activation_softplus(),
+            },
+        }
+        return NNBlockExport(spec=spec, weights=weights)
+
     def predict_raw(self, y: np.ndarray) -> np.ndarray:
         """Predict outputs based on input data using the PyTorch model.
 
@@ -54,7 +159,10 @@ class Surrogate(AbstractSurrogate):
         """
         # One has to implement __call__ on eqx.Module, so this should
         # always exist. Should really be abstract on eqx.Module
-        return self.model(y).numpy()  # type: ignore
+        #
+        # A jax array has no .numpy() method (unlike torch's) — np.asarray
+        # is the actual jax-array -> numpy-array conversion.
+        return np.asarray(self.model(y))  # type: ignore[operator]
 
     def predict(
         self,
