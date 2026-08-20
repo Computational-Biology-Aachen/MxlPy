@@ -139,6 +139,12 @@ def test_save_load_round_trips_predictions(tmp_path: Path) -> None:
     assert set(weights_on_disk.keys()) == {"w1", "b1", "w2", "b2"}
 
     reloaded = mxlpy.load(path)
+    # `load` now returns KineticModelBuilder | OdeModelBuilder (it dispatches
+    # on the document's `kind`) — this file was written from a
+    # KineticModelBuilder, so narrow back to it to keep `.outputs`/
+    # `.stoichiometries` (KineticModelBuilder-only, via SurrogateProtocol)
+    # visible to the type checker below.
+    assert isinstance(reloaded, KineticModelBuilder)
     reloaded_surrogate = reloaded._surrogates["corr_block"]
     reloaded_prediction = reloaded_surrogate.predict_raw(probe)  # type: ignore[attr-defined]
 

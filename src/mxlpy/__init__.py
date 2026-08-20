@@ -78,6 +78,10 @@ from .serialize import load, save
 from .simulation import Simulation
 from .simulator import Simulator
 from .surrogates.abstract import AbstractSurrogate, SurrogateProtocol
+from .surrogates.abstract_derivative import (
+    AbstractDerivativeSurrogate,
+    DerivativeSurrogateProtocol,
+)
 from .symbolic import SymbolicModel, to_symbolic_model
 from .types import (
     Annotation,
@@ -110,6 +114,7 @@ else:
 Model = KineticModelBuilder
 
 __all__ = [
+    "AbstractDerivativeSurrogate",
     "AbstractEstimator",
     "AbstractIntegrator",
     "AbstractMinimizer",
@@ -120,6 +125,7 @@ __all__ = [
     "Conflict",
     "DefaultIntegrator",
     "Derived",
+    "DerivativeSurrogateProtocol",
     "Diffrax",
     "EstimatorProtocol",
     "Event",

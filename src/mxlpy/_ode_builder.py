@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 
     import sympy
 
+    from mxlpy.surrogates.abstract_derivative import DerivativeSurrogateProtocol
     from mxlpy.types import Callable, Param, RateFn, RetType
 
 LOGGER = logging.getLogger(__name__)
@@ -290,6 +291,15 @@ class OdeModelBuilder:
     # `model._events` read doesn't crash on an OdeModelBuilder. Always
     # empty until events are actually implemented here.
     _events: dict[str, Event] = field(default_factory=dict)
+    # DerivativeSurrogateProtocol, not AbstractSurrogate/SurrogateProtocol
+    # (mxlpy.surrogates.abstract) — deliberately a different, unrelated
+    # interface, since a surrogate here directly corrects an existing
+    # diff_eq's dx/dt rather than producing a new reaction-rate-shaped
+    # quantity (see mxlpy.surrogates.abstract_derivative's module
+    # docstring).
+    _surrogates: dict[str, DerivativeSurrogateProtocol] = field(
+        default_factory=dict
+    )
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -1460,6 +1470,102 @@ class OdeModelBuilder:
         return self
 
     ##########################################################################
+    # Surrogates (direct-derivative — see mxlpy.surrogates.abstract_derivative)
+    ##########################################################################
+
+    @_invalidate_cache
+    def add_surrogate(
+        self, name: str, surrogate: DerivativeSurrogateProtocol
+    ) -> Self:
+        """Add a direct-derivative surrogate to the model.
+
+        Unlike `KineticModelBuilder.add_surrogate`, `surrogate.targets`
+        must already be existing diff_eq names — a direct-derivative
+        surrogate corrects an existing variable's dx/dt, it doesn't
+        introduce a new named quantity the way a reaction-shaped
+        surrogate's outputs do.
+
+        Examples
+        --------
+            >>> model.add_surrogate("corr", surrogate)
+
+        Parameters
+        ----------
+        name
+            The name of the surrogate.
+        surrogate
+            The surrogate instance (see
+            `mxlpy.surrogates.abstract_derivative.AbstractDerivativeSurrogate`).
+
+        Returns
+        -------
+        Self
+            The current instance with the added surrogate.
+
+        """
+        # Validated before `_insert_id`, not after: `_insert_id` mutates
+        # `self._ids` immediately, so a validation failure here must not
+        # leave `name` registered but absent from `self._surrogates` — an
+        # unrecoverable half-added state (`remove_surrogate` would then
+        # raise too, since it pops from `self._surrogates`).
+        for target in surrogate.targets:
+            if target not in self._diff_eqs:
+                msg = (
+                    f"Surrogate {name!r} targets unknown diff_eq {target!r} "
+                    "— a direct-derivative surrogate corrects an *existing* "
+                    "variable's dx/dt, so its target(s) must already be "
+                    "added via add_diff_eq."
+                )
+                raise KeyError(msg)
+        self._insert_id(name=name, ctx="surrogate")
+        self._surrogates[name] = surrogate
+        return self
+
+    def get_raw_surrogates(
+        self, *, as_copy: bool = True
+    ) -> dict[str, DerivativeSurrogateProtocol]:
+        """Return the model's raw surrogates.
+
+        Parameters
+        ----------
+        as_copy
+            Whether to return a deep copy (default) or the live internal
+            dict.
+
+        Returns
+        -------
+        dict[str, DerivativeSurrogateProtocol]
+            Mapping of surrogate name to surrogate instance.
+
+        """
+        if as_copy:
+            return copy.deepcopy(self._surrogates)
+        return self._surrogates
+
+    @_invalidate_cache
+    def remove_surrogate(self, name: str) -> Self:
+        """Remove a surrogate from the model by its name.
+
+        Examples
+        --------
+            >>> model.remove_surrogate("corr")
+
+        Parameters
+        ----------
+        name
+            The name of the surrogate to be removed.
+
+        Returns
+        -------
+        Self
+            The instance of the model with the surrogate removed.
+
+        """
+        self._remove_id(name=name)
+        self._surrogates.pop(name)
+        return self
+
+    ##########################################################################
     # Rename
     ##########################################################################
 
@@ -1837,6 +1943,21 @@ class OdeModelBuilder:
         snapshot = dict(args)
         for name in cache.var_names:
             args[name] = self._diff_eqs[name].calculate(snapshot)
+
+        # Every surrogate corrects its target(s)' now-computed dx/dt value
+        # in `args`, but predicts *from* `snapshot` — the same
+        # concentrations/parameters/dynamic-derived values diff_eqs
+        # themselves read, taken before any diff_eq (or an earlier
+        # surrogate) overwrote a target's slot in `args`. Multiple
+        # surrogates targeting the same variable compose sequentially, in
+        # `self._surrogates` insertion order — each one's `correct_inpl`
+        # reads the *running* value already in `args` and updates it via
+        # its own `mechanism`, mirroring mxlweb-core's nn_blocks
+        # composition order exactly (mxl-schemas' `mechanism` doc comment).
+        for surrogate in self._surrogates.values():
+            surrogate.correct_inpl(
+                cast(dict[str, float], snapshot), cast(dict[str, float], args)
+            )
 
         for k in self._data:
             args.pop(k)
