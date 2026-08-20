@@ -27,6 +27,7 @@ from mxlpy.types import (
     Annotation,
     Derived,
     DiffEq,
+    Event,
     InitialAssignment,
     Parameter,
     Readout,
@@ -284,6 +285,11 @@ class OdeModelBuilder:
     _readouts: dict[str, Readout] = field(default_factory=dict)
     _data: dict[str, pd.Series | pd.DataFrame] = field(default_factory=dict)
     _annotations: list[Annotation] = field(default_factory=list)
+    # No add_event/authoring API yet (unlike KineticModelBuilder) — this
+    # field exists only so Simulator._initialise_integrator's generic
+    # `model._events` read doesn't crash on an OdeModelBuilder. Always
+    # empty until events are actually implemented here.
+    _events: dict[str, Event] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -405,13 +411,22 @@ class OdeModelBuilder:
         for name in order:
             to_sort[name].calculate_inpl(name, dependent)
 
-        # Split derived into static and dynamic variables
+        # Split derived into static and dynamic variables. `dyn_order`
+        # here is *dynamic derived quantities only* — every diff_eq's own
+        # rate law is evaluated separately in `_get_args` (from a frozen
+        # snapshot, not in-place: see its own comment for why in-place
+        # mutation is wrong for diff_eqs specifically, unlike derived
+        # quantities).
         static_order = []
         dyn_order = []
         for name in order:
             if name in self._diff_eqs:
-                dyn_order.append(name)
-            elif name in self._parameters:
+                # `order` only contains this name at all when the variable
+                # has a *dynamic* initial value (via `initial_assignments`
+                # above) — that pass computes the initial value only, never
+                # this diff_eq's own rate law `fn`.
+                continue
+            if name in self._parameters:
                 static_order.append(name)
             else:
                 derived = self._derived[name]
@@ -1346,6 +1361,27 @@ class OdeModelBuilder:
         """
         return list(self._diff_eqs)
 
+    def get_variable_names(self) -> list[str]:
+        """Retrieve the names of all state variables (diff_eqs).
+
+        Alias for `get_diff_eq_names`, needed under this name specifically
+        because `Simulator` calls it generically across builder types (it
+        was written against `KineticModelBuilder`'s naming, where a
+        "variable" is a distinct concept from a "reaction").
+
+        Examples
+        --------
+            >>> model.get_variable_names()
+                ["v1", "v2"]
+
+        Returns
+        -------
+        list[str]
+            A list containing the names of the diff_eqs.
+
+        """
+        return self.get_diff_eq_names()
+
     @_invalidate_cache
     def update_diff_eq(
         self,
@@ -1785,9 +1821,22 @@ class OdeModelBuilder:
         args = cache.all_parameter_values | variables | self._data
         args["time"] = time
 
-        containers = self._derived | self._diff_eqs
         for name in cache.dyn_order:
-            containers[name].calculate_inpl(name, args)
+            self._derived[name].calculate_inpl(name, args)
+
+        # Every diff_eq's rate law is evaluated from this frozen snapshot,
+        # not the mutating `args` dict, and written elsewhere first —
+        # never via calculate_inpl's in-place overwrite. A coupled system
+        # (dy/dt depending on x's *concentration*) would otherwise read a
+        # wrong value the moment x's own diff_eq ran first and overwrote
+        # args["x"] with x's *derivative* instead: whichever diff_eq
+        # happened to run later would silently receive the wrong input.
+        # DiffEq.calculate() (unlike calculate_inpl) is the existing
+        # non-mutating variant that makes this snapshot-then-merge
+        # possible.
+        snapshot = dict(args)
+        for name in cache.var_names:
+            args[name] = self._diff_eqs[name].calculate(snapshot)
 
         for k in self._data:
             args.pop(k)
