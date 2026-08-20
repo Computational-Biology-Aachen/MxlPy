@@ -5,7 +5,7 @@ Mirrors `tests/surrogates/test_torch.py`'s coverage, plus the nn_blocks
 the torch backend. Unlike torch/keras, an arbitrary `eqx.Module`'s activation
 function isn't introspectable (it's just Python code inside `__call__`), so
 export only recognizes `mxlpy.nn._equinox.SoftplusMLP` specifically — see
-that class's docstring and `Surrogate.to_nn_block_export`'s.
+that class's docstring and `Surrogate.to_mxl_json`'s.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from mxlpy.nn._equinox import MLP, SoftplusMLP
-from mxlpy.surrogates._equinox import Surrogate, surrogate_from_nn_block
+from mxlpy.surrogates._equinox import Surrogate, surrogate_from_mxl_json
 
 
 def _softplus_model() -> SoftplusMLP:
@@ -72,7 +72,7 @@ def test_exportable_surrogate_produces_dense_softplus_additive_spec() -> None:
         outputs=["corr"],
         stoichiometries={"corr": {"x": 1.0}},
     )
-    export = surrogate.to_nn_block_export()
+    export = surrogate.to_mxl_json()
     assert export is not None
     spec = cast(dict[str, Any], export.spec)
     weights = cast(dict[str, Any], export.weights)
@@ -96,7 +96,7 @@ def test_non_unit_stoichiometry_is_not_exportable() -> None:
         outputs=["corr"],
         stoichiometries={"corr": {"x": 2.0}},
     )
-    assert surrogate.to_nn_block_export() is None
+    assert surrogate.to_mxl_json() is None
 
 
 def test_default_mlp_activation_is_not_exportable() -> None:
@@ -107,20 +107,20 @@ def test_default_mlp_activation_is_not_exportable() -> None:
     surrogate = Surrogate(
         model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
     )
-    assert surrogate.to_nn_block_export() is None
+    assert surrogate.to_mxl_json() is None
 
 
-def test_surrogate_from_nn_block_round_trips_predictions() -> None:
+def test_surrogate_from_mxl_json_round_trips_predictions() -> None:
     surrogate = Surrogate(
         model=_softplus_model(),
         args=["x", "y"],
         outputs=["corr"],
         stoichiometries={"corr": {"x": 1.0}},
     )
-    export = surrogate.to_nn_block_export()
+    export = surrogate.to_mxl_json()
     assert export is not None
 
-    reconstructed = surrogate_from_nn_block("corr_block", export.spec, export.weights)
+    reconstructed = surrogate_from_mxl_json("corr_block", export.spec, export.weights)
 
     probe: dict[str, float | pd.Series | pd.DataFrame] = {"x": 0.3, "y": -0.7}
     original = surrogate.predict(probe)["corr"]

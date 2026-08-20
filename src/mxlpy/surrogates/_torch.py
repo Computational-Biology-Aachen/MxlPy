@@ -13,15 +13,15 @@ from mxlpy.nn._torch import MLP, DefaultDevice, LossFn, mean_abs_error
 from mxlpy.nn._torch import train as _train
 from mxlpy.surrogates.abstract import (
     AbstractSurrogate,
-    NNBlockExport,
-    nn_block_activation_softplus,
-    nn_block_mechanism_additive,
-    nn_block_mechanism_multiply,
-    nn_block_mechanism_relative_multiply,
+    SurrogateJson,
+    mxl_json_activation_softplus,
+    mxl_json_mechanism_additive,
+    mxl_json_mechanism_multiply,
+    mxl_json_mechanism_relative_multiply,
 )
 from mxlpy.surrogates.abstract_derivative import (
     AbstractDerivativeSurrogate,
-    DerivativeSurrogateExport,
+    DerivativeSurrogateJson,
     Mechanism,
 )
 
@@ -37,15 +37,15 @@ __all__ = [
     "DerivativeSurrogate",
     "Surrogate",
     "Trainer",
-    "derivative_surrogate_from_nn_block",
-    "surrogate_from_nn_block",
+    "derivative_surrogate_from_mxl_json",
+    "surrogate_from_mxl_json",
     "train",
 ]
 
 _MECHANISM_BUILDER: dict[Mechanism, Callable[[], dict[str, object]]] = {
-    "additive": nn_block_mechanism_additive,
-    "relative_multiply": nn_block_mechanism_relative_multiply,
-    "multiply": nn_block_mechanism_multiply,
+    "additive": mxl_json_mechanism_additive,
+    "relative_multiply": mxl_json_mechanism_relative_multiply,
+    "multiply": mxl_json_mechanism_multiply,
 }
 
 
@@ -53,7 +53,7 @@ _MECHANISM_BUILDER: dict[Mechanism, Callable[[], dict[str, object]]] = {
 # Only softplus exists today (ADR 0005 §2.1.1's numerically-stable form,
 # chosen for adjoint-fitting smoothness) — an MLP built with any other
 # activation (the mxlpy.nn._torch.MLP default is ReLU) simply isn't
-# representable in the schema yet, so to_nn_block_export declines it.
+# representable in the schema yet, so to_mxl_json declines it.
 _ACTIVATION_BY_MODULE: dict[type[nn.Module], str] = {nn.Softplus: "softplus"}
 
 
@@ -68,14 +68,14 @@ def _dense_sequential(model: nn.Module) -> nn.Sequential | None:
     return net if isinstance(net, nn.Sequential) else None
 
 
-def surrogate_from_nn_block(
+def surrogate_from_mxl_json(
     name: str,
     spec: Mapping[str, object],
     weights: Mapping[str, list[object]],
 ) -> Surrogate:
     """Reconstruct a torch :class:`Surrogate` from a mxl-schemas ``nn_blocks`` entry and its weights sidecar.
 
-    Inverse of :meth:`Surrogate.to_nn_block_export` — only handles the
+    Inverse of :meth:`Surrogate.to_mxl_json` — only handles the
     exact shape that method produces (dense layers, softplus hidden
     activation, additive mechanism); :func:`mxlpy.serialize.model_from_dict`
     checks that shape before calling this, so it isn't re-validated here.
@@ -122,19 +122,19 @@ def surrogate_from_nn_block(
     )
 
 
-def derivative_surrogate_from_nn_block(
+def derivative_surrogate_from_mxl_json(
     spec: Mapping[str, object],
     weights: Mapping[str, list[object]],
 ) -> DerivativeSurrogate:
     """Reconstruct a torch :class:`DerivativeSurrogate` from a mxl-schemas ``nn_blocks`` entry and its weights sidecar.
 
-    Inverse of :meth:`DerivativeSurrogate.to_nn_block_export`. Unlike
-    :func:`surrogate_from_nn_block`, no `name`-derived output renaming is
+    Inverse of :meth:`DerivativeSurrogate.to_mxl_json`. Unlike
+    :func:`surrogate_from_mxl_json`, no `name`-derived output renaming is
     needed here: a direct-derivative surrogate has no `outputs`/
     `stoichiometries` indirection at all, it corrects `targets` directly.
 
     `spec["mechanism"]` is matched against the three known
-    `nn_block_mechanism_*` presets (structural dict equality — the only
+    `mxl_json_mechanism_*` presets (structural dict equality — the only
     shapes any exportable surrogate ever produces); a `mechanism` authored
     by hand or by mxlweb in some other equivalent-but-differently-built
     tree isn't recognized and raises `ValueError`.
@@ -189,7 +189,7 @@ class Surrogate(AbstractSurrogate):
 
     model: torch.nn.Module
 
-    def to_nn_block_export(self) -> NNBlockExport | None:
+    def to_mxl_json(self) -> SurrogateJson | None:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, if it's representable.
 
         Requires, structurally:
@@ -271,13 +271,13 @@ class Surrogate(AbstractSurrogate):
             # network's own weights already encode the right magnitude, so
             # this is the neutral (no-op) multiplier, not an initial guess.
             "scale": 1.0,
-            "mechanism": nn_block_mechanism_additive(),
+            "mechanism": mxl_json_mechanism_additive(),
             "activation": {
                 "name": "softplus",
-                "expression": nn_block_activation_softplus(),
+                "expression": mxl_json_activation_softplus(),
             },
         }
-        return NNBlockExport(spec=spec, weights=weights)
+        return SurrogateJson(spec=spec, weights=weights)
 
     def predict_raw(self, y: np.ndarray) -> np.ndarray:
         """Predict outputs based on input data using the PyTorch model.
@@ -342,10 +342,10 @@ class DerivativeSurrogate(AbstractDerivativeSurrogate):
 
     model: torch.nn.Module
 
-    def to_nn_block_export(self) -> DerivativeSurrogateExport | None:
+    def to_mxl_json(self) -> DerivativeSurrogateJson | None:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, if it's representable.
 
-        Same structural requirements as :meth:`Surrogate.to_nn_block_export`
+        Same structural requirements as :meth:`Surrogate.to_mxl_json`
         (dense `Linear`/softplus alternation) but, unlike that method, no
         stoichiometry-unit-coefficient constraint: `self.targets` already
         names exactly what this surrogate corrects, so every `self.mechanism`
@@ -392,10 +392,10 @@ class DerivativeSurrogate(AbstractDerivativeSurrogate):
             "mechanism": _MECHANISM_BUILDER[self.mechanism](),
             "activation": {
                 "name": "softplus",
-                "expression": nn_block_activation_softplus(),
+                "expression": mxl_json_activation_softplus(),
             },
         }
-        return DerivativeSurrogateExport(spec=spec, weights=weights)
+        return DerivativeSurrogateJson(spec=spec, weights=weights)
 
     def predict_raw(self, y: np.ndarray) -> np.ndarray:
         """Predict a correction per target based on input data using the PyTorch model.

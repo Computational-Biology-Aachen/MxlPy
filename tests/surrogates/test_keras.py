@@ -2,7 +2,7 @@
 
 Mirrors `tests/surrogates/test_torch.py`'s coverage, plus the nn_blocks
 (mxl-schemas) round-trip coverage `tests/test_serialize_nn_blocks.py` has for
-the torch backend — `Surrogate.to_nn_block_export`/`surrogate_from_nn_block`
+the torch backend — `Surrogate.to_mxl_json`/`surrogate_from_mxl_json`
 here mirror that module's implementation exactly, just against
 `keras.Sequential`/`Dense` instead of `torch.nn.Sequential`/`Linear`.
 """
@@ -18,7 +18,7 @@ pytest.importorskip("keras", exc_type=ImportError)
 
 import keras
 
-from mxlpy.surrogates._keras import Surrogate, surrogate_from_nn_block
+from mxlpy.surrogates._keras import Surrogate, surrogate_from_mxl_json
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -70,7 +70,7 @@ def test_exportable_surrogate_produces_dense_softplus_additive_spec() -> None:
         outputs=["corr"],
         stoichiometries={"corr": {"x": 1.0}},
     )
-    export = surrogate.to_nn_block_export()
+    export = surrogate.to_mxl_json()
     assert export is not None
     spec = cast(dict[str, Any], export.spec)
     weights = cast(dict[str, Any], export.weights)
@@ -94,7 +94,7 @@ def test_non_unit_stoichiometry_is_not_exportable() -> None:
         outputs=["corr"],
         stoichiometries={"corr": {"x": 2.0}},
     )
-    assert surrogate.to_nn_block_export() is None
+    assert surrogate.to_mxl_json() is None
 
 
 def test_default_mlp_activation_is_not_exportable() -> None:
@@ -111,7 +111,7 @@ def test_default_mlp_activation_is_not_exportable() -> None:
     surrogate = Surrogate(
         model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
     )
-    assert surrogate.to_nn_block_export() is None
+    assert surrogate.to_mxl_json() is None
 
 
 def test_functional_api_model_is_not_exportable() -> None:
@@ -121,19 +121,19 @@ def test_functional_api_model_is_not_exportable() -> None:
     surrogate = Surrogate(
         model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
     )
-    assert surrogate.to_nn_block_export() is None
+    assert surrogate.to_mxl_json() is None
 
 
 def test_bias_free_layer_is_not_exportable() -> None:
     """A `use_bias=False` layer must decline (return `None`), not raise.
 
-    Regression test: `to_nn_block_export` used to unpack
+    Regression test: `to_mxl_json` used to unpack
     `layer.get_weights()` into `(kernel, bias)` unconditionally — a
     bias-free layer's `get_weights()` returns a 1-element list, so this
     raised `ValueError` instead of returning `None`, breaking the
     documented "`None` is a normal, expected outcome, not a bug" contract
     every caller relies on (`mxlpy.surrogates.abstract.AbstractSurrogate.
-    to_nn_block_export`'s docstring).
+    to_mxl_json`'s docstring).
     """
     model = keras.Sequential(
         [
@@ -145,20 +145,20 @@ def test_bias_free_layer_is_not_exportable() -> None:
     surrogate = Surrogate(
         model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
     )
-    assert surrogate.to_nn_block_export() is None
+    assert surrogate.to_mxl_json() is None
 
 
-def test_surrogate_from_nn_block_round_trips_predictions() -> None:
+def test_surrogate_from_mxl_json_round_trips_predictions() -> None:
     surrogate = Surrogate(
         model=_dense_softplus_model(),
         args=["x", "y"],
         outputs=["corr"],
         stoichiometries={"corr": {"x": 1.0}},
     )
-    export = surrogate.to_nn_block_export()
+    export = surrogate.to_mxl_json()
     assert export is not None
 
-    reconstructed = surrogate_from_nn_block("corr_block", export.spec, export.weights)
+    reconstructed = surrogate_from_mxl_json("corr_block", export.spec, export.weights)
 
     probe: dict[str, float | pd.Series | pd.DataFrame] = {"x": 0.3, "y": -0.7}
     original = surrogate.predict(probe)["corr"]

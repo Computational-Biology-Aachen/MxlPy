@@ -41,8 +41,8 @@ from mxlpy.meta.sympy_tools import (
     sympy_to_python_fn,
 )
 from mxlpy.surrogates.abstract import (
-    nn_block_activation_softplus,
-    nn_block_mechanism_additive,
+    mxl_json_activation_softplus,
+    mxl_json_mechanism_additive,
 )
 from mxlpy.types import Derived, InitialAssignment, SerializationError
 
@@ -62,10 +62,10 @@ __all__ = [
     "load",
     "model_from_dict",
     "model_to_dict",
-    "nn_block_weights_files",
+    "mxl_json_weights_files",
     "ode_model_from_dict",
     "ode_model_to_dict",
-    "ode_nn_block_weights_files",
+    "ode_mxl_json_weights_files",
     "save",
 ]
 
@@ -126,15 +126,15 @@ def _stoich_to_node_dict(
 
 
 def _unexportable_surrogates(model: KineticModelBuilder) -> list[str]:
-    """Names of every attached surrogate whose `to_nn_block_export()` returns `None`."""
+    """Names of every attached surrogate whose `to_mxl_json()` returns `None`."""
     return sorted(
         name
         for name, surrogate in model._surrogates.items()  # noqa: SLF001
-        if surrogate.to_nn_block_export() is None
+        if surrogate.to_mxl_json() is None
     )
 
 
-def _nn_blocks_and_weights(
+def _mxl_json_blocks_and_weights(
     model: KineticModelBuilder,
 ) -> tuple[dict[str, Any], dict[str, dict[str, list[Any]]]]:
     """The `nn_blocks` section and, separately, every trained block's weights sidecar content.
@@ -148,7 +148,7 @@ def _nn_blocks_and_weights(
     nn_blocks: dict[str, Any] = {}
     weights_files: dict[str, dict[str, list[Any]]] = {}
     for name, surrogate in model._surrogates.items():  # noqa: SLF001
-        export = surrogate.to_nn_block_export()
+        export = surrogate.to_mxl_json()
         if export is None:
             continue
         spec = dict(export.spec)
@@ -160,7 +160,7 @@ def _nn_blocks_and_weights(
     return nn_blocks, weights_files
 
 
-def nn_block_weights_files(
+def mxl_json_weights_files(
     model: KineticModelBuilder,
 ) -> dict[str, dict[str, list[Any]]]:
     """Every trained, exportable surrogate's weights sidecar content, keyed by the relative filename its `nn_blocks[id].weights_ref` names.
@@ -171,7 +171,7 @@ def nn_block_weights_files(
     alongside the main one. A model with no NN blocks (the common case)
     returns an empty dict.
     """
-    _, weights_files = _nn_blocks_and_weights(model)
+    _, weights_files = _mxl_json_blocks_and_weights(model)
     return weights_files
 
 
@@ -202,7 +202,7 @@ def model_to_dict(
     SerializationError
         If the model contains a surrogate that isn't representable as a
         mxl-schemas ``nn_blocks`` entry (see
-        :meth:`mxlpy.surrogates.abstract.AbstractSurrogate.to_nn_block_export`),
+        :meth:`mxlpy.surrogates.abstract.AbstractSurrogate.to_mxl_json`),
         or a rate function that cannot be converted into an expression.
 
     """
@@ -210,7 +210,7 @@ def model_to_dict(
         names = ", ".join(unexportable)
         msg = f"surrogates are not representable as nn_blocks: {names}"
         raise SerializationError(msg)
-    nn_blocks, _ = _nn_blocks_and_weights(model)
+    nn_blocks, _ = _mxl_json_blocks_and_weights(model)
 
     variables = {
         name: {"value": _value_to_node_dict(var.initial_value, origin=name)}
@@ -265,31 +265,31 @@ def model_to_dict(
 
 
 def _unexportable_derivative_surrogates(model: OdeModelBuilder) -> list[str]:
-    """Names of every attached direct-derivative surrogate whose `to_nn_block_export()` returns `None`."""
+    """Names of every attached direct-derivative surrogate whose `to_mxl_json()` returns `None`."""
     return sorted(
         name
         for name, surrogate in model._surrogates.items()  # noqa: SLF001
-        if surrogate.to_nn_block_export() is None
+        if surrogate.to_mxl_json() is None
     )
 
 
-def _ode_nn_blocks_and_weights(
+def _ode_mxl_json_blocks_and_weights(
     model: OdeModelBuilder,
 ) -> tuple[dict[str, Any], dict[str, dict[str, list[Any]]]]:
     """The `nn_blocks` section and weights sidecars for an `OdeModelBuilder`'s direct-derivative surrogates.
 
-    Mirrors :func:`_nn_blocks_and_weights` exactly, but reads
+    Mirrors :func:`_mxl_json_blocks_and_weights` exactly, but reads
     `OdeModelBuilder._surrogates` (`DerivativeSurrogateProtocol`) instead of
     `KineticModelBuilder._surrogates` (`SurrogateProtocol`) — the two are
     unrelated types (see `mxlpy.surrogates.abstract_derivative`'s module
-    docstring), but both `to_nn_block_export()` methods return the same
+    docstring), but both `to_mxl_json()` methods return the same
     schema-shaped ``spec``/``weights`` split, so the assembly logic here is
     identical.
     """
     nn_blocks: dict[str, Any] = {}
     weights_files: dict[str, dict[str, list[Any]]] = {}
     for name, surrogate in model._surrogates.items():  # noqa: SLF001
-        export = surrogate.to_nn_block_export()
+        export = surrogate.to_mxl_json()
         if export is None:
             continue
         spec = dict(export.spec)
@@ -301,14 +301,14 @@ def _ode_nn_blocks_and_weights(
     return nn_blocks, weights_files
 
 
-def ode_nn_block_weights_files(
+def ode_mxl_json_weights_files(
     model: OdeModelBuilder,
 ) -> dict[str, dict[str, list[Any]]]:
     """Every trained, exportable direct-derivative surrogate's weights sidecar content, keyed by its `weights_ref`.
 
-    Ode-model counterpart of :func:`nn_block_weights_files`.
+    Ode-model counterpart of :func:`mxl_json_weights_files`.
     """
-    _, weights_files = _ode_nn_blocks_and_weights(model)
+    _, weights_files = _ode_mxl_json_blocks_and_weights(model)
     return weights_files
 
 
@@ -352,7 +352,7 @@ def ode_model_to_dict(
         names = ", ".join(unexportable)
         msg = f"surrogates are not representable as nn_blocks: {names}"
         raise SerializationError(msg)
-    nn_blocks, _ = _ode_nn_blocks_and_weights(model)
+    nn_blocks, _ = _ode_mxl_json_blocks_and_weights(model)
 
     variables = {
         name: {
@@ -436,10 +436,10 @@ def save(
         model_id = path.name.removesuffix(".json").removesuffix(".mxl")
     if isinstance(model, OdeModelBuilder):
         data = ode_model_to_dict(model, model_id=model_id, description=description)
-        weights_files = ode_nn_block_weights_files(model)
+        weights_files = ode_mxl_json_weights_files(model)
     else:
         data = model_to_dict(model, model_id=model_id, description=description)
-        weights_files = nn_block_weights_files(model)
+        weights_files = mxl_json_weights_files(model)
     path.write_text(json.dumps(data, indent=2) + "\n")
     for weights_ref, weights in weights_files.items():
         (path.parent / weights_ref).write_text(json.dumps(weights, indent=2) + "\n")
@@ -495,14 +495,14 @@ def _node_dict_to_stoich(node_dict: dict[str, Any]) -> float | Derived:
     return Derived(fn=fn, args=args)
 
 
-def _surrogate_from_nn_block(
+def _surrogate_from_mxl_json(
     name: str,
     block: Mapping[str, Any],
     weights_by_ref: Mapping[str, Mapping[str, list[Any]]],
 ) -> SurrogateProtocol:
     """Reconstruct a live surrogate from one `nn_blocks[name]` entry.
 
-    Only the exact shape :meth:`AbstractSurrogate.to_nn_block_export`
+    Only the exact shape :meth:`AbstractSurrogate.to_mxl_json`
     itself produces round-trips back into a real surrogate — additive
     mechanism, softplus-activated dense layers, every layer `type: dense`.
     A block authored elsewhere (mxlweb, a different mechanism, a future
@@ -511,7 +511,7 @@ def _surrogate_from_nn_block(
     faithfully represent this" boundary in this codebase — a model missing
     a block's dynamical contribution is worse than a load that refuses.
     """
-    if block["mechanism"] != nn_block_mechanism_additive():
+    if block["mechanism"] != mxl_json_mechanism_additive():
         msg = (
             f"nn_block {name!r}: only the additive mechanism can be "
             "reconstructed into a live MxlPy surrogate"
@@ -520,7 +520,7 @@ def _surrogate_from_nn_block(
     activation = block["activation"]
     if activation.get("name") != "softplus" or activation.get(
         "expression"
-    ) != nn_block_activation_softplus():
+    ) != mxl_json_activation_softplus():
         msg = f"nn_block {name!r}: only the softplus activation is supported"
         raise SerializationError(msg)
     if any(layer.get("type") != "dense" for layer in block["layers"]):
@@ -543,14 +543,14 @@ def _surrogate_from_nn_block(
         # Deliberately lazy: torch is an optional extra, and this module
         # must stay importable (and usable for every model with no
         # nn_blocks, the common case) without it installed.
-        from mxlpy.surrogates._torch import surrogate_from_nn_block  # noqa: PLC0415
+        from mxlpy.surrogates._torch import surrogate_from_mxl_json  # noqa: PLC0415
     except ImportError as exc:
         msg = (
             f"nn_block {name!r}: reconstructing it requires torch "
             "(install mxlpy with the torch extra)"
         )
         raise SerializationError(msg) from exc
-    return surrogate_from_nn_block(name, block, weights)
+    return surrogate_from_mxl_json(name, block, weights)
 
 
 ###############################################################################
@@ -558,14 +558,14 @@ def _surrogate_from_nn_block(
 ###############################################################################
 
 
-def _derivative_surrogate_from_nn_block(
+def _derivative_surrogate_from_mxl_json(
     name: str,
     block: Mapping[str, Any],
     weights_by_ref: Mapping[str, Mapping[str, list[Any]]],
 ) -> DerivativeSurrogateProtocol:
     """Reconstruct a live direct-derivative surrogate from one `nn_blocks[name]` entry.
 
-    Ode-model counterpart of :func:`_surrogate_from_nn_block`. Unlike that
+    Ode-model counterpart of :func:`_surrogate_from_mxl_json`. Unlike that
     kinetic path, every `mechanism` preset is reconstructible here (not
     just `additive`) — a direct-derivative surrogate composes onto its
     `targets` the same way `nn_blocks` describes, with no
@@ -575,7 +575,7 @@ def _derivative_surrogate_from_nn_block(
     activation = block["activation"]
     if activation.get("name") != "softplus" or activation.get(
         "expression"
-    ) != nn_block_activation_softplus():
+    ) != mxl_json_activation_softplus():
         msg = f"nn_block {name!r}: only the softplus activation is supported"
         raise SerializationError(msg)
     if any(layer.get("type") != "dense" for layer in block["layers"]):
@@ -596,9 +596,9 @@ def _derivative_surrogate_from_nn_block(
 
     try:
         # Deliberately lazy: torch is an optional extra, see
-        # `_surrogate_from_nn_block`'s identical import.
+        # `_surrogate_from_mxl_json`'s identical import.
         from mxlpy.surrogates._torch import (  # noqa: PLC0415
-            derivative_surrogate_from_nn_block,
+            derivative_surrogate_from_mxl_json,
         )
     except ImportError as exc:
         msg = (
@@ -607,7 +607,7 @@ def _derivative_surrogate_from_nn_block(
         )
         raise SerializationError(msg) from exc
     try:
-        return derivative_surrogate_from_nn_block(block, weights)
+        return derivative_surrogate_from_mxl_json(block, weights)
     except ValueError as exc:
         msg = f"nn_block {name!r}: {exc}"
         raise SerializationError(msg) from exc
@@ -640,7 +640,7 @@ def ode_model_from_dict(
     ------
     SerializationError
         If the document has a `nn_blocks` entry that isn't representable
-        as a live MxlPy surrogate (see `_derivative_surrogate_from_nn_block`),
+        as a live MxlPy surrogate (see `_derivative_surrogate_from_mxl_json`),
         or is missing a weights file its `weights_ref` names.
 
     """
@@ -664,7 +664,7 @@ def ode_model_from_dict(
         fn, args = _node_dict_to_fn(rdt["fn"])
         model.add_readout(name, fn, args=args)
     for name, block in spec.get("nn_blocks", {}).items():
-        surrogate = _derivative_surrogate_from_nn_block(name, block, weights_by_ref or {})
+        surrogate = _derivative_surrogate_from_mxl_json(name, block, weights_by_ref or {})
         model.add_surrogate(name, surrogate)
 
     return model
@@ -698,7 +698,7 @@ def model_from_dict(
     ------
     SerializationError
         If the document has a `nn_blocks` entry that isn't representable
-        as a live MxlPy surrogate (see `_surrogate_from_nn_block`), or is
+        as a live MxlPy surrogate (see `_surrogate_from_mxl_json`), or is
         missing a weights file its `weights_ref` names.
 
     """
@@ -723,7 +723,7 @@ def model_from_dict(
         fn, args = _node_dict_to_fn(rdt["fn"])
         model.add_readout(name, fn, args=args)
     for name, block in spec.get("nn_blocks", {}).items():
-        surrogate = _surrogate_from_nn_block(name, block, weights_by_ref or {})
+        surrogate = _surrogate_from_mxl_json(name, block, weights_by_ref or {})
         model.add_surrogate(name, surrogate)
 
     return model

@@ -28,7 +28,7 @@ from wadler_lindig import pformat
 
 __all__ = [
     "AbstractDerivativeSurrogate",
-    "DerivativeSurrogateExport",
+    "DerivativeSurrogateJson",
     "DerivativeSurrogateProtocol",
     "Mechanism",
 ]
@@ -40,10 +40,10 @@ Mechanism = Literal["additive", "relative_multiply", "multiply"]
 
 
 @dataclass
-class DerivativeSurrogateExport:
+class DerivativeSurrogateJson:
     """A direct-derivative surrogate exported as a mxl-schemas ``nn_blocks`` entry.
 
-    Same shape as :class:`mxlpy.surrogates.abstract.NNBlockExport` (a
+    Same shape as :class:`mxlpy.surrogates.abstract.SurrogateJson` (a
     schema-shaped ``spec`` dict, plus the matching weights sidecar content)
     — kept as its own type rather than reusing that one, for the same
     "orthogonal typing" reason the two surrogate abstractions themselves
@@ -129,7 +129,7 @@ class DerivativeSurrogateProtocol(Protocol):
         """
         ...
 
-    def to_nn_block_export(self) -> DerivativeSurrogateExport | None:
+    def to_mxl_json(self) -> DerivativeSurrogateJson | None:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, or ``None`` if it isn't representable."""
         ...
 
@@ -160,7 +160,7 @@ class AbstractDerivativeSurrogate:
         """Return default representation."""
         return pformat(self)
 
-    def to_nn_block_export(self) -> DerivativeSurrogateExport | None:
+    def to_mxl_json(self) -> DerivativeSurrogateJson | None:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
 
         Returns ``None`` (not ``NotImplementedError``) when this
