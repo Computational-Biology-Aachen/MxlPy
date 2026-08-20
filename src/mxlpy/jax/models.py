@@ -3,7 +3,7 @@
 import operator
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Literal, Protocol, Self, cast
+from typing import Any, Literal, Protocol, Self, cast
 
 import diffrax
 import equinox as eqx
@@ -2776,6 +2776,18 @@ class FluxAnode(Base):
 ###############################################################################
 
 
+def _rel_mul(ode: jax.Array, node: jax.Array) -> jax.Array:
+    return ode + (1 * node)
+
+
+def _exp(ode: jax.Array, node: jax.Array) -> jax.Array:
+    return ode * jnp.exp(node)
+
+
+def _pow(ode: jax.Array, node: jax.Array) -> jax.Array:
+    return ode**node
+
+
 class Ude(Base):
     """Universal Differential Equation: ODE combined with a neural network.
 
@@ -2788,8 +2800,13 @@ class Ude(Base):
         Mechanistic ODE component.
     nn : Node
         Neural network component.
-    op : {"+" , "*"}
+    op : {"+" , "*", "-", "/", "adjust"}
         Operator for combining ODE and neural outputs.
+        "+" / "add" : ode + node
+        "*" / "mul" : ode * node
+        "rel"       : ode * (1 + node)
+        "exp"       : ode * exp(node)
+        "pow"       : ode ** node
     """
 
     ode: Ode
@@ -2807,6 +2824,7 @@ class Ude(Base):
             "-": operator.sub,
             "*": operator.mul,
             "/": operator.truediv,
+            "rel": _rel_mul,
         }
 
         self.ode = ode
