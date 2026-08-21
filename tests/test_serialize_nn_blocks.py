@@ -2,9 +2,9 @@
 
 Closes the gap `test_serialize.py::test_surrogate_raises_serialization_error`
 documents: a surrogate whose architecture *is* representable in the shared
-schema (dense layers, softplus activation, unit-coefficient stoichiometry)
-should round-trip through `save`/`load`, not be rejected the way an opaque
-one (`_poly.Surrogate`) still correctly is.
+schema (dense layers, a recognized per-layer activation, unit-coefficient
+stoichiometry) should round-trip through `save`/`load`, not be rejected the
+way an opaque one (`_poly.Surrogate`) still correctly is.
 
 The surrogate's own name ("corr_block") is deliberately distinct from its
 output name ("corr"): `add_surrogate` inserts both as ids, and an
@@ -64,13 +64,12 @@ def test_exportable_surrogate_produces_nn_blocks_section() -> None:
     block = nn_blocks["corr_block"]
     assert block["inputs"] == ["x", "y"]
     assert block["targets"] == ["x"]
-    assert block["layers"] == [
-        {"type": "dense", "width": 3},
-        {"type": "dense", "width": 1},
-    ]
+    assert [layer["width"] for layer in block["layers"]] == [3, 1]
+    assert block["layers"][0]["activation"]["name"] == "softplus"
+    assert "activation" not in block["layers"][1]
+    assert "activation" not in block
     assert block["trained"] is True
     assert block["weights_ref"] == "corr_block.weights.json"
-    assert block["activation"]["name"] == "softplus"
     # additive mechanism: Add(Name(ode), Name(nde))
     assert block["mechanism"]["type"] == "Add"
 
@@ -107,8 +106,8 @@ def test_non_unit_stoichiometry_is_not_exportable() -> None:
         model_to_dict(model, model_id="m")
 
 
-def test_relu_activation_is_not_exportable() -> None:
-    model_net = nn.Sequential(nn.Linear(2, 3), nn.ReLU(), nn.Linear(3, 1))
+def test_unrecognized_activation_is_not_exportable() -> None:
+    model_net = nn.Sequential(nn.Linear(2, 3), nn.ELU(), nn.Linear(3, 1))
     surrogate = Surrogate(
         model=model_net,
         args=["x", "y"],
@@ -193,3 +192,22 @@ def test_model_from_dict_rejects_non_additive_mechanism() -> None:
     weights = mxl_json_weights_files(model)
     with pytest.raises(SerializationError, match="additive"):
         model_from_dict(data, weights_by_ref=weights)
+
+
+def test_model_from_dict_rejects_non_dense_layer_type() -> None:
+    model = _make_model_with_surrogate()
+    data = model_to_dict(model, model_id="m")
+    data["model"]["nn_blocks"]["corr_block"]["layers"][0]["type"] = "conv"
+    weights = mxl_json_weights_files(model)
+    with pytest.raises(SerializationError, match="dense"):
+        model_from_dict(data, weights_by_ref=weights)
+
+
+def test_model_from_dict_rejects_untrained_block() -> None:
+    model = _make_model_with_surrogate()
+    data = model_to_dict(model, model_id="m")
+    block = data["model"]["nn_blocks"]["corr_block"]
+    del block["weights_ref"]
+    block["trained"] = False
+    with pytest.raises(SerializationError, match="untrained"):
+        model_from_dict(data, weights_by_ref={})

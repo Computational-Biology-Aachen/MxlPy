@@ -12,20 +12,18 @@ Functions:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self, cast
+from typing import Self, cast
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import pandas as pd
 
-from mxlpy.nn._equinox import LSTM, MLP, LossFn, mean_abs_error
+from mxlpy.nn._equinox import LSTM, LossFn, mean_abs_error
 from mxlpy.nn._equinox import train as _train
 from mxlpy.npe.abstract import AbstractEstimator
-
-if TYPE_CHECKING:
-    import equinox as eqx
 
 __all__ = [
     "SteadyState",
@@ -150,9 +148,11 @@ class SteadyStateTrainer:
         if model is None:
             n_hidden = max(2 * len(features.columns) * len(targets.columns), 10)
             n_outputs = len(targets.columns)
-            model = MLP(
-                n_inputs=len(features.columns),
-                neurons_per_layer=[n_hidden, n_hidden, n_outputs],
+            model = eqx.nn.MLP(
+                in_size=len(features.columns),
+                out_size=n_outputs,
+                width_size=n_hidden,
+                depth=2,
                 key=jax.random.PRNGKey(seed),
             )
         self.model = model
