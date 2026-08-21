@@ -22,7 +22,7 @@ from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
 )
-from mxlpy.surrogates.abstract import AbstractSurrogate
+from mxlpy.surrogates.abstract_ode import AbstractOdeSurrogate
 from mxlpy.types import (
     Annotation,
     Derived,
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
     import sympy
 
-    from mxlpy.surrogates.abstract_derivative import DerivativeSurrogateProtocol
+    from mxlpy.surrogates.abstract_ode import OdeSurrogateProtocol
     from mxlpy.types import Callable, Param, RateFn, RetType
 
 LOGGER = logging.getLogger(__name__)
@@ -291,15 +291,12 @@ class OdeModelBuilder:
     # `model._events` read doesn't crash on an OdeModelBuilder. Always
     # empty until events are actually implemented here.
     _events: dict[str, Event] = field(default_factory=dict)
-    # DerivativeSurrogateProtocol, not AbstractSurrogate/SurrogateProtocol
-    # (mxlpy.surrogates.abstract) — deliberately a different, unrelated
-    # interface, since a surrogate here directly corrects an existing
-    # diff_eq's dx/dt rather than producing a new reaction-rate-shaped
-    # quantity (see mxlpy.surrogates.abstract_derivative's module
-    # docstring).
-    _surrogates: dict[str, DerivativeSurrogateProtocol] = field(
-        default_factory=dict
-    )
+    # OdeSurrogateProtocol, not SurrogateProtocol (mxlpy.surrogates.abstract)
+    # — deliberately a different, unrelated interface: an output here
+    # additively feeds an existing diff_eq's dx/dt directly (`targets`, no
+    # coefficient) rather than via a reaction-shaped stoichiometric
+    # coefficient (see mxlpy.surrogates.abstract_ode's module docstring).
+    _surrogates: dict[str, OdeSurrogateProtocol] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -393,19 +390,26 @@ class OdeModelBuilder:
             if not _check_function_arity(el.fn, len(el.args)):
                 raise ArityMismatchError(name, el.fn, el.args)
 
-        # Sort derived & diff_eqs
+        # Sort derived, surrogates & diff_eqs. Surrogates are folded into
+        # the same topological sort as derived (mirroring
+        # KineticModelBuilder's `to_sort = ... | self._reactions |
+        # self._surrogates` exactly) so a surrogate's derived-only outputs
+        # (not in any `targets` mapping) are full peers of a real `Derived`
+        # — referenceable by name from another diff_eq's `fn`/`args`, not
+        # just from downstream readouts — and so a surrogate can itself
+        # depend on an earlier derived value or another surrogate's output.
         available = (
             set(base_parameter_values)
             | set(base_variable_values)
             | set(self._data)
             | {"time"}
         )
-        to_sort = initial_assignments | self._derived
+        to_sort = initial_assignments | self._derived | self._surrogates
         order = _topo.sort_dependencies(
             available=available,
             elements=[
                 _topo.Dependency(name=k, required=set(v.args), provided={k})
-                if not isinstance(v, AbstractSurrogate)
+                if not isinstance(v, AbstractOdeSurrogate)
                 else _topo.Dependency(
                     name=k, required=set(v.args), provided=set(v.outputs)
                 )
@@ -421,12 +425,12 @@ class OdeModelBuilder:
         for name in order:
             to_sort[name].calculate_inpl(name, dependent)
 
-        # Split derived into static and dynamic variables. `dyn_order`
-        # here is *dynamic derived quantities only* — every diff_eq's own
-        # rate law is evaluated separately in `_get_args` (from a frozen
-        # snapshot, not in-place: see its own comment for why in-place
-        # mutation is wrong for diff_eqs specifically, unlike derived
-        # quantities).
+        # Split derived/surrogates into static and dynamic variables.
+        # `dyn_order` here is *dynamic derived quantities and every
+        # surrogate output, unconditionally* — every diff_eq's own rate law
+        # is evaluated separately in `_get_args` (from a frozen snapshot,
+        # not in-place: see its own comment for why in-place mutation is
+        # wrong for diff_eqs specifically, unlike derived quantities).
         static_order = []
         dyn_order = []
         for name in order:
@@ -436,7 +440,14 @@ class OdeModelBuilder:
                 # above) — that pass computes the initial value only, never
                 # this diff_eq's own rate law `fn`.
                 continue
-            if name in self._parameters:
+            if name in self._surrogates:
+                # Always dynamic — same reasoning as KineticModelBuilder's
+                # identical `name in self._reactions or name in
+                # self._surrogates` check: a surrogate's output is a live
+                # NN prediction, never a value that could be folded into
+                # `all_parameter_values` once and reused.
+                dyn_order.append(name)
+            elif name in self._parameters:
                 static_order.append(name)
             else:
                 derived = self._derived[name]
@@ -1447,7 +1458,7 @@ class OdeModelBuilder:
         return self
 
     @_invalidate_cache
-    def remove_diff_eq(self, name: str) -> Self:
+    def remove_diff_eq(self, name: str, *, remove_targets: bool = True) -> Self:
         """Remove a diff_eq from the model by its name.
 
         Examples
@@ -1458,6 +1469,13 @@ class OdeModelBuilder:
         ----------
         name
             The name of the diff_eq to be removed.
+        remove_targets
+            Whether to also strip `name` out of every surrogate's
+            `targets` (mirrors `KineticModelBuilder.remove_variable`'s
+            `remove_stoichiometries`). Leaving a removed diff_eq's name
+            behind in a surrogate's `targets` would raise a `KeyError` the
+            next time the model is evaluated — `_get_args`'s summation
+            pass assumes every `targets` value is a live diff_eq.
 
         Returns
         -------
@@ -1465,25 +1483,32 @@ class OdeModelBuilder:
             The instance of the model with the diff_eq removed.
 
         """
+        if remove_targets:
+            for surrogate in self._surrogates.values():
+                for targets in surrogate.targets.values():
+                    if name in targets:
+                        cast(list, targets).remove(name)
+
         self._remove_id(name=name)
         self._diff_eqs.pop(name)
         return self
 
     ##########################################################################
-    # Surrogates (direct-derivative — see mxlpy.surrogates.abstract_derivative)
+    # Surrogates (see mxlpy.surrogates.abstract_ode)
     ##########################################################################
 
     @_invalidate_cache
-    def add_surrogate(
-        self, name: str, surrogate: DerivativeSurrogateProtocol
-    ) -> Self:
-        """Add a direct-derivative surrogate to the model.
+    def add_surrogate(self, name: str, surrogate: OdeSurrogateProtocol) -> Self:
+        """Add an ode surrogate to the model.
 
-        Unlike `KineticModelBuilder.add_surrogate`, `surrogate.targets`
-        must already be existing diff_eq names — a direct-derivative
-        surrogate corrects an existing variable's dx/dt, it doesn't
-        introduce a new named quantity the way a reaction-shaped
-        surrogate's outputs do.
+        Unlike `KineticModelBuilder.add_surrogate`, every diff_eq name
+        appearing in `surrogate.targets`' values must already exist — an
+        ode surrogate's targeted output(s) additively feed an *existing*
+        diff_eq's dx/dt directly, they don't introduce a new named
+        reaction the way a kinetic surrogate's stoichiometry-composed
+        outputs do. An output absent from `targets` needs no such check —
+        it's a plain derived value, usable anywhere by name (mirrors a
+        kinetic surrogate output with no stoichiometry entry).
 
         Examples
         --------
@@ -1495,7 +1520,7 @@ class OdeModelBuilder:
             The name of the surrogate.
         surrogate
             The surrogate instance (see
-            `mxlpy.surrogates.abstract_derivative.AbstractDerivativeSurrogate`).
+            `mxlpy.surrogates.abstract_ode.AbstractOdeSurrogate`).
 
         Returns
         -------
@@ -1503,27 +1528,30 @@ class OdeModelBuilder:
             The current instance with the added surrogate.
 
         """
-        # Validated before `_insert_id`, not after: `_insert_id` mutates
-        # `self._ids` immediately, so a validation failure here must not
-        # leave `name` registered but absent from `self._surrogates` — an
-        # unrecoverable half-added state (`remove_surrogate` would then
-        # raise too, since it pops from `self._surrogates`).
-        for target in surrogate.targets:
-            if target not in self._diff_eqs:
-                msg = (
-                    f"Surrogate {name!r} targets unknown diff_eq {target!r} "
-                    "— a direct-derivative surrogate corrects an *existing* "
-                    "variable's dx/dt, so its target(s) must already be "
-                    "added via add_diff_eq."
-                )
-                raise KeyError(msg)
+        # Validated before any `_insert_id` call, not after: a validation
+        # failure here must not leave `name` registered but absent from
+        # `self._surrogates` — an unrecoverable half-added state
+        # (`remove_surrogate` would then raise too, since it pops from
+        # `self._surrogates`).
+        for output, targets in surrogate.targets.items():
+            for target in targets:
+                if target not in self._diff_eqs:
+                    msg = (
+                        f"Surrogate {name!r} output {output!r} targets "
+                        f"unknown diff_eq {target!r} — an ode surrogate's "
+                        "targeted output(s) must already be added via "
+                        "add_diff_eq."
+                    )
+                    raise KeyError(msg)
         self._insert_id(name=name, ctx="surrogate")
+        for output in surrogate.outputs:
+            self._insert_id(name=output, ctx="surrogate")
         self._surrogates[name] = surrogate
         return self
 
     def get_raw_surrogates(
         self, *, as_copy: bool = True
-    ) -> dict[str, DerivativeSurrogateProtocol]:
+    ) -> dict[str, OdeSurrogateProtocol]:
         """Return the model's raw surrogates.
 
         Parameters
@@ -1534,7 +1562,7 @@ class OdeModelBuilder:
 
         Returns
         -------
-        dict[str, DerivativeSurrogateProtocol]
+        dict[str, OdeSurrogateProtocol]
             Mapping of surrogate name to surrogate instance.
 
         """
@@ -1562,8 +1590,46 @@ class OdeModelBuilder:
 
         """
         self._remove_id(name=name)
-        self._surrogates.pop(name)
+        surrogate = self._surrogates.pop(name)
+        for output in surrogate.outputs:
+            self._remove_id(name=output)
         return self
+
+    def get_surrogate_output_names(self, *, include_targeted: bool = True) -> list[str]:
+        """Return every surrogate output name.
+
+        Mirrors `KineticModelBuilder.get_surrogate_output_names` exactly,
+        substituting "has a `targets` entry" for that method's "has a
+        `stoichiometries` entry".
+
+        Parameters
+        ----------
+        include_targeted
+            Whether to also include outputs that additively feed a
+            diff_eq's dx/dt (present in `surrogate.targets`), not just the
+            plain-derived ones.
+
+        """
+        names = []
+        if include_targeted:
+            for surrogate in self._surrogates.values():
+                names.extend(surrogate.outputs)
+        else:
+            for surrogate in self._surrogates.values():
+                names.extend(
+                    o for o in surrogate.outputs if o not in surrogate.targets
+                )
+        return names
+
+    def get_surrogate_target_output_names(self) -> list[str]:
+        """Return every surrogate output name that additively feeds a diff_eq's dx/dt.
+
+        Mirrors `KineticModelBuilder.get_surrogate_reaction_names`.
+        """
+        names = []
+        for surrogate in self._surrogates.values():
+            names.extend(surrogate.targets)
+        return names
 
     ##########################################################################
     # Rename
@@ -1611,6 +1677,17 @@ class OdeModelBuilder:
             derived.args = rename_args(derived.args)
         for readout in self._readouts.values():
             readout.args = rename_args(readout.args)
+
+        # Args and targets of surrogates — targets' *values* are diff_eq
+        # names, renamed the same way an ordinary args list is; a targets
+        # *key* is a surrogate output name, renamed separately by
+        # `rename()` itself (alongside `surrogate.outputs`), not here.
+        for surrogate in self._surrogates.values():
+            surrogate.args = rename_args(surrogate.args)
+            surrogate.targets = {
+                output: rename_args(targets)
+                for output, targets in surrogate.targets.items()
+            }
 
     @_invalidate_cache
     def rename(self, old_name: str, new_name: str) -> Self:
@@ -1660,12 +1737,25 @@ class OdeModelBuilder:
             self._derived,
             self._readouts,
             self._diff_eqs,
+            self._surrogates,
             self._data,
         ]
         for container in containers:
             if old_name in container:
                 container[new_name] = container.pop(old_name)
                 break
+        else:
+            # Surrogate output: lives in a surrogate's `outputs` list (and,
+            # if targeted, as a key in that surrogate's `targets` dict).
+            for surrogate in self._surrogates.values():
+                if old_name in surrogate.outputs:
+                    surrogate.outputs = [
+                        new_name if out == old_name else out
+                        for out in surrogate.outputs
+                    ]
+                    if old_name in surrogate.targets:
+                        surrogate.targets[new_name] = surrogate.targets.pop(old_name)
+                    break
 
         self._rename_references(old_name, new_name)
         return self
@@ -1849,6 +1939,8 @@ class OdeModelBuilder:
         include_parameters: bool,
         include_derived_parameters: bool,
         include_derived_variables: bool,
+        include_surrogate_variables: bool,
+        include_surrogate_targets: bool,
         include_readouts: bool,
     ) -> list[str]:
         """Get names of all kinds of model components.
@@ -1867,6 +1959,12 @@ class OdeModelBuilder:
             Include derived variable names.
         include_diff_eqs
             Include diff_eq names.
+        include_surrogate_variables
+            Include surrogate output names that are plain derived values
+            (no `targets` entry).
+        include_surrogate_targets
+            Include surrogate output names that additively feed a diff_eq's
+            dx/dt (present in `targets`).
         include_readouts
             Include readout names.
 
@@ -1887,6 +1985,10 @@ class OdeModelBuilder:
             names.extend(self.get_derived_variable_names())
         if include_derived_parameters:
             names.extend(self.get_derived_parameter_names())
+        if include_surrogate_variables:
+            names.extend(self.get_surrogate_output_names(include_targeted=False))
+        if include_surrogate_targets:
+            names.extend(self.get_surrogate_target_output_names())
         if include_readouts:
             names.extend(self.get_readout_names())
         return names
@@ -1927,8 +2029,16 @@ class OdeModelBuilder:
         args = cache.all_parameter_values | variables | self._data
         args["time"] = time
 
+        # Derived quantities and every surrogate's outputs are computed
+        # together, in the same topological order `_create_cache` sorted
+        # them in — a surrogate's own predict() may depend on an earlier
+        # derived value or another surrogate's output, exactly like
+        # KineticModelBuilder's merged `self._derived | self._reactions |
+        # self._surrogates` dispatch (mxlpy.surrogates.abstract_ode's
+        # module docstring).
+        containers = self._derived | self._surrogates
         for name in cache.dyn_order:
-            self._derived[name].calculate_inpl(name, args)
+            containers[name].calculate_inpl(name, args)
 
         # Every diff_eq's rate law is evaluated from this frozen snapshot,
         # not the mutating `args` dict, and written elsewhere first —
@@ -1944,20 +2054,22 @@ class OdeModelBuilder:
         for name in cache.var_names:
             args[name] = self._diff_eqs[name].calculate(snapshot)
 
-        # Every surrogate corrects its target(s)' now-computed dx/dt value
-        # in `args`, but predicts *from* `snapshot` — the same
-        # concentrations/parameters/dynamic-derived values diff_eqs
-        # themselves read, taken before any diff_eq (or an earlier
-        # surrogate) overwrote a target's slot in `args`. Multiple
-        # surrogates targeting the same variable compose sequentially, in
-        # `self._surrogates` insertion order — each one's `correct_inpl`
-        # reads the *running* value already in `args` and updates it via
-        # its own `mechanism`, mirroring mxlweb-core's nn_blocks
-        # composition order exactly (mxl-schemas' `mechanism` doc comment).
+        # Every surrogate output already computed above (via the
+        # `dyn_order` loop) that has a `targets` entry is summed into that
+        # target diff_eq's now-computed dx/dt — coefficient always 1,
+        # mirroring KineticModelBuilder's stoichiometric summation exactly,
+        # just without a coefficient (there's no mass-balance concept for a
+        # direct dx/dt term — see mxlpy.surrogates.abstract_ode's module
+        # docstring). Summation is commutative, so unlike the old
+        # mechanism-based composition this replaced, insertion order
+        # across multiple outputs/surrogates targeting the same variable
+        # no longer matters. An output with no `targets` entry contributes
+        # nothing here — it already did its only job by being available in
+        # `args` for anything that referenced it by name.
         for surrogate in self._surrogates.values():
-            surrogate.correct_inpl(
-                cast(dict[str, float], snapshot), cast(dict[str, float], args)
-            )
+            for output, targets in surrogate.targets.items():
+                for target in targets:
+                    args[target] += args[output]
 
         for k in self._data:
             args.pop(k)
@@ -1974,6 +2086,8 @@ class OdeModelBuilder:
         include_parameters: bool = True,
         include_derived_parameters: bool = True,
         include_derived_variables: bool = True,
+        include_surrogate_variables: bool = True,
+        include_surrogate_targets: bool = True,
         include_readouts: bool = False,
     ) -> pd.Series:
         """Generate a pandas Series of arguments for the model.
@@ -2008,6 +2122,12 @@ class OdeModelBuilder:
             Whether to include derived parameters
         include_derived_variables
             Whether to include derived variables
+        include_surrogate_variables
+            Whether to include surrogate output names that are plain
+            derived values (no `targets` entry)
+        include_surrogate_targets
+            Whether to include surrogate output names that additively feed
+            a diff_eq's dx/dt (present in `targets`)
         include_readouts
             Whether to include readouts
 
@@ -2034,6 +2154,8 @@ class OdeModelBuilder:
                 include_derived_parameters=include_derived_parameters,
                 include_derived_variables=include_derived_variables,
                 include_diff_eqs=include_diff_eqs,
+                include_surrogate_variables=include_surrogate_variables,
+                include_surrogate_targets=include_surrogate_targets,
                 include_readouts=include_readouts,
             )
         ]
@@ -2068,6 +2190,8 @@ class OdeModelBuilder:
         include_derived_parameters: bool = True,
         include_derived_variables: bool = True,
         include_diff_eqs: bool = True,
+        include_surrogate_variables: bool = True,
+        include_surrogate_targets: bool = True,
         include_readouts: bool = False,
     ) -> pd.DataFrame:
         """Generate a DataFrame containing time course arguments for model evaluation.
@@ -2097,6 +2221,12 @@ class OdeModelBuilder:
             Whether to include derived variables
         include_diff_eqs
             Whether to include diff_eqs
+        include_surrogate_variables
+            Whether to include surrogate output names that are plain
+            derived values (no `targets` entry)
+        include_surrogate_targets
+            Whether to include surrogate output names that additively feed
+            a diff_eq's dx/dt (present in `targets`)
         include_readouts
             Whether to include readouts
 
@@ -2122,6 +2252,8 @@ class OdeModelBuilder:
                 include_derived_parameters=include_derived_parameters,
                 include_derived_variables=include_derived_variables,
                 include_diff_eqs=include_diff_eqs,
+                include_surrogate_variables=include_surrogate_variables,
+                include_surrogate_targets=include_surrogate_targets,
                 include_readouts=include_readouts,
             ),
         ]

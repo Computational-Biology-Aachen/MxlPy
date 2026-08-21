@@ -11,14 +11,16 @@ from wadler_lindig import pformat
 from mxlpy.meta import _mathml as mml
 
 __all__ = [
+    "ACTIVATION_BUILDERS",
     "AbstractSurrogate",
     "MockSurrogate",
     "SurrogateJson",
     "SurrogateProtocol",
+    "mxl_json_activation_relu",
+    "mxl_json_activation_sigmoid",
     "mxl_json_activation_softplus",
+    "mxl_json_activation_tanh",
     "mxl_json_mechanism_additive",
-    "mxl_json_mechanism_multiply",
-    "mxl_json_mechanism_relative_multiply",
 ]
 
 if TYPE_CHECKING:
@@ -30,59 +32,32 @@ if TYPE_CHECKING:
 
 
 def mxl_json_mechanism_additive() -> dict[str, object]:
-    """`Add(ode, nde)` — mxl-schemas `nnBlock.mechanism`, the only shape a stoichiometry-composed surrogate can correctly export as.
+    """`Add(ode, nde)` — mxl-schemas `nnBlock.mechanism`, the only shape any MxlPy surrogate ever composes onto its target(s) with.
 
-    MxlPy has no multiplicative-reaction concept at all: every reaction
-    (surrogate-owned "reactions" included) contributes to a compound's
-    dx/dt by being summed, weighted by its stoichiometric coefficient
-    (`_kinetic_builder.py`'s `stoich_by_compounds`). Exporting any other
-    mechanism (e.g. `relative_multiply`) would describe dynamics a
-    schema-faithful consumer simulates differently from what MxlPy itself
-    actually computes for the same model. Also the only mechanism shape
-    :mod:`mxlpy.serialize` reconstructs a real surrogate from on load — a
-    loaded `.mxl.json` whose `nn_blocks` entry uses a different mechanism
-    (e.g. authored in mxlweb) isn't representable back into a live MxlPy
-    surrogate.
+    `mechanism` (a MathML expression over `ode`/`nde`, generalized past a
+    closed enum) is a real mxl-schemas concept, but a UDE one:
+    `mxlpy.jax.models.Ude`/`FluxUde` combine a *whole* mechanistic ODE with
+    a *whole* neural-ODE via a selectable operator (`op`, e.g. `"rel"` for
+    `ode * (1 + nde)`). A `Surrogate`/`OdeSurrogate` is not that — per
+    `docs/llms-mxl.txt`, "a surrogate replaces part (or all) of a model"
+    by being summed in, exactly like a reaction (kinetic: `AbstractSurrogate`
+    outputs sum into dx/dt via stoichiometry) or a direct dx/dt term
+    (ode: `AbstractOdeSurrogate` outputs sum into a targeted diff_eq) — in
+    both cases plain addition, never a selectable composition algebra.
+    `additive` is therefore the only mechanism any MxlPy surrogate ever
+    exports as, or can reconstruct from on load (:mod:`mxlpy.serialize`
+    rejects a loaded `.mxl.json` `nn_blocks` entry using any other
+    mechanism — not representable back into a live MxlPy surrogate).
     """
     return mml.Add(children=[mml.Name(name="ode"), mml.Name(name="nde")]).to_dict()
-
-
-def mxl_json_mechanism_relative_multiply() -> dict[str, object]:
-    """`Mul(ode, Add(1, nde))` — mxl-schemas `nnBlock.mechanism`.
-
-    ``dx/dt = ode * (1 + nde)``: a near-zero/untrained network leaves
-    ``ode`` unchanged. Only meaningful for a surrogate that composes
-    directly onto an existing dx/dt (`mxlpy.surrogates.abstract_derivative`
-    — `OdeModelBuilder`); the reaction/stoichiometry-composed kinetic
-    surrogate (`AbstractSurrogate`) can never correctly export this shape,
-    since it has no multiplicative-composition concept at all (see
-    `mxl_json_mechanism_additive`'s doc comment).
-    """
-    return mml.Mul(
-        children=[
-            mml.Name(name="ode"),
-            mml.Add(children=[mml.Num(value=1), mml.Name(name="nde")]),
-        ]
-    ).to_dict()
-
-
-def mxl_json_mechanism_multiply() -> dict[str, object]:
-    """`Mul(ode, nde)` — mxl-schemas `nnBlock.mechanism`.
-
-    ``dx/dt = ode * nde``: a bare product, with none of
-    `mxl_json_mechanism_relative_multiply`'s safeguard. Same
-    direct-composition-only caveat as that function.
-    """
-    return mml.Mul(children=[mml.Name(name="ode"), mml.Name(name="nde")]).to_dict()
 
 
 def mxl_json_activation_softplus() -> dict[str, object]:
     """The canonical softplus `{name, expression}` pair (mxl-schemas `nnActivation`), ADR 0005 §2.1.1's numerically-stable form.
 
-    The only activation any exportable surrogate's hidden layers may use
-    today — chosen for adjoint-fitting smoothness on the mxlweb side; a
-    network built with any other activation (`mxlpy.nn._torch.MLP`'s own
-    default is ReLU) isn't representable in the schema yet.
+    Chosen as MxlPy's first supported activation for adjoint-fitting
+    smoothness on the mxlweb side; see `ACTIVATION_BUILDERS` for the full
+    set a `Surrogate`/`OdeSurrogate` may use.
     """
     x = mml.Name(name="x")
     expression = mml.Add(
@@ -101,15 +76,56 @@ def mxl_json_activation_softplus() -> dict[str, object]:
     return expression.to_dict()
 
 
+def mxl_json_activation_relu() -> dict[str, object]:
+    """`Max(x, 0)` — mxl-schemas `nnActivation`, ReLU."""
+    return mml.Max(children=[mml.Name(name="x"), mml.Num(value=0)]).to_dict()
+
+
+def mxl_json_activation_tanh() -> dict[str, object]:
+    """`Tanh(x)` — mxl-schemas `nnActivation`."""
+    return mml.Tanh(child=mml.Name(name="x")).to_dict()
+
+
+def mxl_json_activation_sigmoid() -> dict[str, object]:
+    """`1 / (1 + Exp(-x))` — mxl-schemas `nnActivation`, the logistic sigmoid."""
+    x = mml.Name(name="x")
+    expression = mml.Divide(
+        children=[
+            mml.Num(value=1),
+            mml.Add(
+                children=[mml.Num(value=1), mml.Exp(child=mml.Minus(children=[x]))]
+            ),
+        ]
+    )
+    return expression.to_dict()
+
+
+#: Every activation a `Surrogate`/`OdeSurrogate` may recognize on export and
+#: reconstruct on import, keyed by the exact `nnActivation.name` mxl-schemas
+#: uses. A layer whose activation isn't structurally one of these presets
+#: (checked by comparing `expression` dicts, not just trusting a `name`
+#: string — the same defense-in-depth `mxl_json_mechanism_additive`'s old
+#: sibling comparison already relied on) is unrepresentable; see each
+#: backend's `to_mxl_json`/`*_from_mxl_json` for how this is used both ways.
+ACTIVATION_BUILDERS: dict[str, Callable[[], dict[str, object]]] = {
+    "softplus": mxl_json_activation_softplus,
+    "relu": mxl_json_activation_relu,
+    "tanh": mxl_json_activation_tanh,
+    "sigmoid": mxl_json_activation_sigmoid,
+}
+
+
 @dataclass
 class SurrogateJson:
     """A surrogate exported as a mxl-schemas ``nn_blocks`` entry — the mxl.json representation of one surrogate.
 
     ``spec`` is the schema-shaped architecture/composition dict for one
     ``nn_blocks[id]`` entry (``inputs``/``layers``/``seed``/``targets``/
-    ``trained``/``scale``/``mechanism``/``activation`` — everything except
-    ``weights_ref``, which the caller assigns once it knows the sidecar
-    file's path). ``weights`` is the matching sidecar content
+    ``trained``/``scale``/``mechanism`` — everything except ``weights_ref``,
+    which the caller assigns once it knows the sidecar file's path; each
+    ``layers[i]`` may carry its own optional ``activation`` — there is no
+    top-level ``spec["activation"]`` field, mxl-schemas moved it per-layer).
+    ``weights`` is the matching sidecar content
     (``nn-weights.schema.json``): ``w1``/``b1``/``w2``/``b2``/... keyed,
     1-indexed by layer, each weight matrix shaped
     ``[out_features, in_features]``.
@@ -203,20 +219,29 @@ class AbstractSurrogate:
     def to_mxl_json(self) -> SurrogateJson | None:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
 
-        Returns ``None`` (not ``NotImplementedError``) when this surrogate
-        can't be represented in the shared schema — an opaque/closed-form
-        surrogate (``_qss.py``, ``_poly.py``), or a neural one whose
-        architecture doesn't fit the schema's model (an unsupported
-        activation, non-dense layers, or non-unit stoichiometry: a
-        ``nn_blocks`` entry always applies its whole (scaled) output to
-        each target with an implicit coefficient of 1, so a surrogate
-        wired with any other per-target coefficient can't be losslessly
-        expressed this way). ``None`` is a normal, expected outcome, not a
-        bug: :func:`mxlpy.serialize.model_to_dict` treats "every attached
+        This base implementation always returns ``None`` (not
+        ``NotImplementedError``) — the correct behaviour for a surrogate
+        that's not a neural net at all (``_qss.py``, ``_poly.py``) and so
+        never attempts export in the first place; ``None`` here is a
+        normal, expected outcome, not a bug.
+        :func:`mxlpy.serialize.model_to_dict` treats "every attached
         surrogate exports" as the condition for allowing ``.mxl.json``
         export at all, narrowing the previous "reject if any surrogate is
         attached" rule down to "reject only the ones that actually can't
         round-trip."
+
+        Every NN-backend override (``_torch.py``/``_keras.py``/
+        ``_equinox.py``) behaves differently once it *has* committed to
+        trying: it **raises** `mxlpy.types.SerializationError` — not
+        `None` — when the actual model's architecture doesn't fit the
+        schema (a non-dense layer type, an activation outside
+        `ACTIVATION_BUILDERS`, or non-unit stoichiometry: a ``nn_blocks``
+        entry always applies its whole (scaled) output to each target with
+        an implicit coefficient of 1, so a surrogate wired with any other
+        per-target coefficient can't be losslessly expressed this way) —
+        since a real neural-net object failing to convert is always a
+        specific, fixable problem worth surfacing, never a normal outcome
+        the way "this isn't a neural net at all" is here.
         """
         return None
 
