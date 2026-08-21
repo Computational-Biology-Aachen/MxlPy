@@ -7,7 +7,7 @@ import pytest
 
 from mxlpy import OdeModelBuilder
 from mxlpy.meta._via_sym_repr import model_to_symbolic_repr
-from mxlpy.surrogates.abstract_derivative import AbstractDerivativeSurrogate
+from mxlpy.surrogates.abstract_ode import AbstractOdeSurrogate
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -24,12 +24,12 @@ def test_model_to_symbolic_repr() -> None:
 
 
 @dataclass(kw_only=True)
-class _MockDerivativeSurrogate(AbstractDerivativeSurrogate):
+class _MockOdeSurrogate(AbstractOdeSurrogate):
     def predict(
         self,
         args: dict[str, float | pd.Series | pd.DataFrame],  # noqa: ARG002, for API compatibility
     ) -> dict[str, float]:
-        return dict.fromkeys(self.targets, 0.0)
+        return dict.fromkeys(self.outputs, 0.0)
 
 
 def _neg(x: float) -> float:
@@ -45,12 +45,15 @@ def _make_ode_model_with_surrogate() -> OdeModelBuilder:
     return (
         OdeModelBuilder()
         .add_diff_eq("x", fn=_neg, args=["x"], initial_value=1.0)
-        .add_surrogate("corr", _MockDerivativeSurrogate(args=[], targets=["x"]))
+        .add_surrogate(
+            "corr",
+            _MockOdeSurrogate(args=[], outputs=["corr_out"], targets={"corr_out": ["x"]}),
+        )
     )
 
 
 def test_ode_builder_with_surrogate_raises_by_default() -> None:
-    """`model_to_symbolic_repr` has no supported conversion for a direct-derivative surrogate yet.
+    """`model_to_symbolic_repr` has no supported conversion for an ode surrogate yet.
 
     A surrogate silently dropped here would make the returned
     `SymbolicRepr` describe different dynamics than the actual model
