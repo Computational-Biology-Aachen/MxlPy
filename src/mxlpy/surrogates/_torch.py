@@ -12,18 +12,13 @@ from torch.optim.adam import Adam
 from mxlpy.nn._torch import MLP, DefaultDevice, LossFn, mean_abs_error
 from mxlpy.nn._torch import train as _train
 from mxlpy.surrogates.abstract import (
+    ACTIVATION_BUILDERS,
     AbstractSurrogate,
     SurrogateJson,
-    mxl_json_activation_softplus,
     mxl_json_mechanism_additive,
-    mxl_json_mechanism_multiply,
-    mxl_json_mechanism_relative_multiply,
 )
-from mxlpy.surrogates.abstract_derivative import (
-    AbstractDerivativeSurrogate,
-    DerivativeSurrogateJson,
-    Mechanism,
-)
+from mxlpy.surrogates.abstract_ode import AbstractOdeSurrogate, OdeSurrogateJson
+from mxlpy.types import SerializationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -34,31 +29,32 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "DerivativeSurrogate",
+    "OdeSurrogate",
     "Surrogate",
     "Trainer",
-    "derivative_surrogate_from_mxl_json",
+    "ode_surrogate_from_mxl_json",
     "surrogate_from_mxl_json",
     "train",
 ]
 
-_MECHANISM_BUILDER: dict[Mechanism, Callable[[], dict[str, object]]] = {
-    "additive": mxl_json_mechanism_additive,
-    "relative_multiply": mxl_json_mechanism_relative_multiply,
-    "multiply": mxl_json_mechanism_multiply,
+# mxl-schemas activation.name <-> the torch.nn.Module type it corresponds to.
+# Any activation in `mxlpy.surrogates.abstract.ACTIVATION_BUILDERS` is
+# recognized here — a layer using anything else (or a model shape that
+# isn't a plain Linear/activation-alternating nn.Sequential at all) makes
+# `to_mxl_json` raise, not silently decline.
+_ACTIVATION_MODULE_BY_NAME: dict[str, type[nn.Module]] = {
+    "softplus": nn.Softplus,
+    "relu": nn.ReLU,
+    "tanh": nn.Tanh,
+    "sigmoid": nn.Sigmoid,
+}
+_ACTIVATION_NAME_BY_MODULE: dict[type[nn.Module], str] = {
+    v: k for k, v in _ACTIVATION_MODULE_BY_NAME.items()
 }
 
 
-# mxl-schemas activation.name -> the torch.nn.Module type it corresponds to.
-# Only softplus exists today (ADR 0005 §2.1.1's numerically-stable form,
-# chosen for adjoint-fitting smoothness) — an MLP built with any other
-# activation (the mxlpy.nn._torch.MLP default is ReLU) simply isn't
-# representable in the schema yet, so to_mxl_json declines it.
-_ACTIVATION_BY_MODULE: dict[type[nn.Module], str] = {nn.Softplus: "softplus"}
-
-
 def _dense_sequential(model: nn.Module) -> nn.Sequential | None:
-    """The plain `nn.Sequential` of alternating Linear+activation this model wraps, if any.
+    """The plain `nn.Sequential` this model wraps, if any.
 
     Handles `mxlpy.nn._torch.MLP` (whose real layer stack lives on `.net`)
     and a bare hand-built `nn.Sequential` alike; any other module shape
@@ -68,6 +64,135 @@ def _dense_sequential(model: nn.Module) -> nn.Sequential | None:
     return net if isinstance(net, nn.Sequential) else None
 
 
+def _parse_dense_layers(
+    net: nn.Sequential,
+) -> list[tuple[nn.Linear, nn.Module | None]] | None:
+    """Split `net` into `(Linear, activation-or-None)` pairs, one per layer.
+
+    Each `Linear` is paired with whatever non-`Linear` module immediately
+    follows it (that layer's activation) — absent if the next module is
+    another `Linear` or there is no next module (identity/linear output),
+    matching mxl-schemas' per-layer, independently-optional `activation`
+    exactly. `None` (not an empty list) means `net` isn't representable at
+    all — doesn't start with a `Linear`, or has two non-`Linear` modules in
+    a row.
+    """
+    modules = list(net)
+    layers: list[tuple[nn.Linear, nn.Module | None]] = []
+    i = 0
+    while i < len(modules):
+        linear = modules[i]
+        if not isinstance(linear, nn.Linear):
+            return None
+        i += 1
+        activation: nn.Module | None = None
+        if i < len(modules) and not isinstance(modules[i], nn.Linear):
+            activation = modules[i]
+            i += 1
+        layers.append((linear, activation))
+    return layers or None
+
+
+def _export_dense_layers(
+    model: nn.Module,
+) -> tuple[list[dict[str, object]], dict[str, list[object]]]:
+    """Export `model`'s architecture/weights as mxl-schemas `layers`/weights-sidecar content, or raise.
+
+    Shared by :meth:`Surrogate.to_mxl_json`/:meth:`OdeSurrogate.to_mxl_json`
+    — everything about exporting layers is identical between the two;
+    they differ only in how `outputs` maps onto the schema's `targets`
+    (kinetic: via unit stoichiometry; ode: via `self.targets` directly).
+    """
+    net = _dense_sequential(model)
+    if net is None:
+        msg = (
+            f"{type(model).__name__} isn't representable as a mxl-schemas "
+            "nn_blocks entry: not a plain nn.Sequential (or "
+            "mxlpy.nn._torch.MLP) of Linear/activation layers — an "
+            "LSTM-backed or custom-forward model can't be expressed this "
+            "way."
+        )
+        raise SerializationError(msg)
+
+    parsed = _parse_dense_layers(net)
+    if parsed is None:
+        msg = (
+            f"{type(model).__name__} isn't representable as a mxl-schemas "
+            "nn_blocks entry: its nn.Sequential doesn't consist of "
+            "Linear layers, each optionally followed by a single "
+            "activation module."
+        )
+        raise SerializationError(msg)
+
+    layers_spec: list[dict[str, object]] = []
+    weights: dict[str, list[object]] = {}
+    for i, (linear, activation_module) in enumerate(parsed, start=1):
+        if linear.bias is None:
+            msg = f"Layer {i} has no bias (bias=False) — not representable."
+            raise SerializationError(msg)
+        layer_spec: dict[str, object] = {
+            "type": "dense",
+            "width": linear.out_features,
+        }
+        if activation_module is not None:
+            name = _ACTIVATION_NAME_BY_MODULE.get(type(activation_module))
+            if name is None:
+                msg = (
+                    f"Layer {i} uses unsupported activation "
+                    f"{type(activation_module).__name__!r} — recognized: "
+                    f"{sorted(ACTIVATION_BUILDERS)}."
+                )
+                raise SerializationError(msg)
+            layer_spec["activation"] = {
+                "name": name,
+                "expression": ACTIVATION_BUILDERS[name](),
+            }
+        layers_spec.append(layer_spec)
+        weights[f"w{i}"] = linear.weight.detach().cpu().numpy().tolist()
+        weights[f"b{i}"] = linear.bias.detach().cpu().numpy().tolist()
+
+    return layers_spec, weights
+
+
+def _revive_dense_sequential(
+    layers: list[dict[str, object]],
+    in_features: int,
+    weights: Mapping[str, list[object]],
+) -> nn.Sequential:
+    """Build a torch `nn.Sequential` from a mxl-schemas `layers` array and its weights sidecar.
+
+    Inverse of :func:`_export_dense_layers`. Each layer's optional
+    `activation` is verified structurally against
+    `mxlpy.surrogates.abstract.ACTIVATION_BUILDERS` (matching the exact
+    `expression` a known preset produces, not just trusting `name`) before
+    being revived as the matching `nn.Module`; an unrecognized or
+    non-matching activation raises.
+    """
+    modules: list[nn.Module] = []
+    for i, layer in enumerate(layers, start=1):
+        out_features = cast("int", layer["width"])
+        linear = nn.Linear(in_features, out_features)
+        with torch.no_grad():
+            linear.weight.copy_(torch.tensor(weights[f"w{i}"], dtype=torch.float32))
+            linear.bias.copy_(torch.tensor(weights[f"b{i}"], dtype=torch.float32))
+        modules.append(linear)
+
+        activation = cast("dict[str, object] | None", layer.get("activation"))
+        if activation is not None:
+            name = cast("str", activation["name"])
+            module_type = _ACTIVATION_MODULE_BY_NAME.get(name)
+            builder = ACTIVATION_BUILDERS.get(name)
+            if module_type is None or builder is None or builder() != activation.get(
+                "expression"
+            ):
+                msg = f"Layer {i}: unrecognized or non-matching activation {activation!r}."
+                raise SerializationError(msg)
+            modules.append(module_type())
+
+        in_features = out_features
+    return nn.Sequential(*modules)
+
+
 def surrogate_from_mxl_json(
     name: str,
     spec: Mapping[str, object],
@@ -75,13 +200,11 @@ def surrogate_from_mxl_json(
 ) -> Surrogate:
     """Reconstruct a torch :class:`Surrogate` from a mxl-schemas ``nn_blocks`` entry and its weights sidecar.
 
-    Inverse of :meth:`Surrogate.to_mxl_json` — only handles the
-    exact shape that method produces (dense layers, softplus hidden
-    activation, additive mechanism); :func:`mxlpy.serialize.model_from_dict`
-    checks that shape before calling this, so it isn't re-validated here.
-    Reconstructing a block authored elsewhere (e.g. in mxlweb, with a
-    different mechanism or a `layers` entry of a future non-dense type)
-    is out of scope.
+    Inverse of :meth:`Surrogate.to_mxl_json` — only handles shapes that
+    method can actually produce (dense layers, a recognized activation
+    per layer, additive mechanism); :func:`mxlpy.serialize.model_from_dict`
+    checks the mechanism before calling this, so it isn't re-validated
+    here.
 
     `outputs` (the surrogate's own "reaction" names, one per target) are
     *not* set equal to `targets`: the schema has no field for an MxlPy
@@ -99,21 +222,10 @@ def surrogate_from_mxl_json(
     targets = cast("list[str]", spec["targets"])
     outputs = [f"{name}_{target}" for target in targets]
 
-    modules: list[nn.Module] = []
-    in_features = len(inputs)
-    for i, layer in enumerate(layers):
-        out_features = cast("int", layer["width"])
-        linear = nn.Linear(in_features, out_features)
-        with torch.no_grad():
-            linear.weight.copy_(torch.tensor(weights[f"w{i + 1}"], dtype=torch.float32))
-            linear.bias.copy_(torch.tensor(weights[f"b{i + 1}"], dtype=torch.float32))
-        modules.append(linear)
-        if i < len(layers) - 1:
-            modules.append(nn.Softplus())
-        in_features = out_features
+    model = _revive_dense_sequential(layers, len(inputs), weights)
 
     return Surrogate(
-        model=nn.Sequential(*modules),
+        model=model,
         args=inputs,
         outputs=outputs,
         stoichiometries={
@@ -122,53 +234,33 @@ def surrogate_from_mxl_json(
     )
 
 
-def derivative_surrogate_from_mxl_json(
+def ode_surrogate_from_mxl_json(
+    name: str,
     spec: Mapping[str, object],
     weights: Mapping[str, list[object]],
-) -> DerivativeSurrogate:
-    """Reconstruct a torch :class:`DerivativeSurrogate` from a mxl-schemas ``nn_blocks`` entry and its weights sidecar.
+) -> OdeSurrogate:
+    """Reconstruct a torch :class:`OdeSurrogate` from a mxl-schemas ``nn_blocks`` entry and its weights sidecar.
 
-    Inverse of :meth:`DerivativeSurrogate.to_mxl_json`. Unlike
-    :func:`surrogate_from_mxl_json`, no `name`-derived output renaming is
-    needed here: a direct-derivative surrogate has no `outputs`/
-    `stoichiometries` indirection at all, it corrects `targets` directly.
-
-    `spec["mechanism"]` is matched against the three known
-    `mxl_json_mechanism_*` presets (structural dict equality — the only
-    shapes any exportable surrogate ever produces); a `mechanism` authored
-    by hand or by mxlweb in some other equivalent-but-differently-built
-    tree isn't recognized and raises `ValueError`.
+    Inverse of :meth:`OdeSurrogate.to_mxl_json`. Mirrors
+    :func:`surrogate_from_mxl_json`'s `name`-derived output renaming
+    exactly — an ode surrogate's outputs are fresh, model-wide-unique ids
+    too (`mxlpy.surrogates.abstract_ode`'s module docstring), and a
+    target's own name is already taken by the existing diff_eq.
     """
     layers = cast("list[dict[str, object]]", spec["layers"])
     inputs = cast("list[str]", spec["inputs"])
     targets = cast("list[str]", spec["targets"])
-    mechanism_dict = spec["mechanism"]
-    mechanism: Mechanism | None = next(
-        (m for m, builder in _MECHANISM_BUILDER.items() if builder() == mechanism_dict),
-        None,
-    )
-    if mechanism is None:
-        msg = f"Unrecognized nn_blocks mechanism: {mechanism_dict!r}"
-        raise ValueError(msg)
+    outputs = [f"{name}_{target}" for target in targets]
 
-    modules: list[nn.Module] = []
-    in_features = len(inputs)
-    for i, layer in enumerate(layers):
-        out_features = cast("int", layer["width"])
-        linear = nn.Linear(in_features, out_features)
-        with torch.no_grad():
-            linear.weight.copy_(torch.tensor(weights[f"w{i + 1}"], dtype=torch.float32))
-            linear.bias.copy_(torch.tensor(weights[f"b{i + 1}"], dtype=torch.float32))
-        modules.append(linear)
-        if i < len(layers) - 1:
-            modules.append(nn.Softplus())
-        in_features = out_features
+    model = _revive_dense_sequential(layers, len(inputs), weights)
 
-    return DerivativeSurrogate(
-        model=nn.Sequential(*modules),
+    return OdeSurrogate(
+        model=model,
         args=inputs,
-        targets=targets,
-        mechanism=mechanism,
+        outputs=outputs,
+        targets={
+            output: [target] for output, target in zip(outputs, targets, strict=True)
+        },
     )
 
 
@@ -189,78 +281,59 @@ class Surrogate(AbstractSurrogate):
 
     model: torch.nn.Module
 
-    def to_mxl_json(self) -> SurrogateJson | None:
-        """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, if it's representable.
+    def to_mxl_json(self) -> SurrogateJson:
+        """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
 
         Requires, structurally:
 
-        - ``self.model`` wraps a plain `nn.Sequential` of strictly
-          alternating `Linear`/activation modules (handles
-          :class:`mxlpy.nn._torch.MLP` via its `.net`, or a hand-built
-          `nn.Sequential` directly) ending in `Linear` — an LSTM-backed or
+        - ``self.model`` wraps a plain `nn.Sequential` of `Linear` layers,
+          each optionally followed by a single recognized activation
+          module (handles :class:`mxlpy.nn._torch.MLP` via its `.net`, or
+          a hand-built `nn.Sequential` directly) — an LSTM-backed or
           custom-`forward` model isn't representable at all.
-        - every hidden activation is the same, schema-known one (today,
-          only `nn.Softplus` — `MLP`'s own default is `ReLU`, which has no
-          `nn_blocks` counterpart yet).
+        - every activation used is one of
+          `mxlpy.surrogates.abstract.ACTIVATION_BUILDERS`.
         - every output has stoichiometry ``{compound: 1.0}`` against a
           reaction named after that same output — the only shape
-          equivalent to an `nn_blocks` `additive` correction (a bare
-          coefficient of 1, one target per output); anything else
-          (a non-unit or `Derived` coefficient, an output feeding more
-          than one compound) declines rather than guess at a lossy
-          mapping.
+          equivalent to an `nn_blocks` correction (a bare coefficient of
+          1, one target per output); anything else (a non-unit or
+          `Derived` coefficient, an output feeding more than one compound)
+          raises rather than guess at a lossy mapping.
 
-        Returns ``None`` when any of the above doesn't hold.
+        Raises
+        ------
+        SerializationError
+            If any of the above doesn't hold — see
+            :meth:`mxlpy.surrogates.abstract.AbstractSurrogate.to_mxl_json`
+            for why this raises rather than returning ``None``.
+
         """
-        net = _dense_sequential(self.model)
-        if net is None:
-            return None
-
-        modules = list(net)
-        linears = [m for m in modules if isinstance(m, nn.Linear)]
-        if len(linears) == 0:
-            return None
-        if len(modules) != 2 * len(linears) - 1:
-            # Anything other than strict Linear/activation alternation
-            # ending in Linear — including a nonzero `output_activation`,
-            # which `nn_blocks` has no field for at all.
-            return None
-
-        activation_name: str | None = None
-        for i, m in enumerate(modules):
-            if i % 2 == 0:
-                continue  # Linear, already collected above.
-            mapped = _ACTIVATION_BY_MODULE.get(type(m))
-            if mapped is None or (
-                activation_name is not None and activation_name != mapped
-            ):
-                return None
-            activation_name = mapped
-        if len(linears) > 1 and activation_name is None:
-            # Unreachable given the alternation check above (a >1-layer
-            # network always has an odd-index activation slot), kept as an
-            # explicit invariant rather than relying on that implicitly.
-            return None
+        layers_spec, weights = _export_dense_layers(self.model)
 
         targets: list[str] = []
         for output in self.outputs:
             stoich = self.stoichiometries.get(output)
             if stoich is None or len(stoich) != 1:
-                return None
+                msg = (
+                    f"Output {output!r} isn't representable as a "
+                    "nn_blocks entry: needs exactly one stoichiometric "
+                    f"target with coefficient 1 (got {stoich!r})."
+                )
+                raise SerializationError(msg)
             ((compound, factor),) = stoich.items()
             if factor != 1:
-                return None
+                msg = (
+                    f"Output {output!r} has non-unit stoichiometry "
+                    f"({factor!r}) against {compound!r} — a nn_blocks "
+                    "entry always applies its whole output with an "
+                    "implicit coefficient of 1."
+                )
+                raise SerializationError(msg)
             targets.append(compound)
-
-        layers = [{"type": "dense", "width": lin.out_features} for lin in linears]
-        weights: dict[str, list[object]] = {}
-        for i, lin in enumerate(linears, start=1):
-            weights[f"w{i}"] = lin.weight.detach().cpu().numpy().tolist()
-            weights[f"b{i}"] = lin.bias.detach().cpu().numpy().tolist()
 
         spec: dict[str, object] = {
             "inputs": list(self.args),
-            "layers": layers,
+            "layers": layers_spec,
             # Only meaningful for a freshly Glorot-initialized (untrained)
             # block; an already-trained export always carries real weights
             # via `weights_ref` instead, so this is an inert placeholder.
@@ -272,10 +345,6 @@ class Surrogate(AbstractSurrogate):
             # this is the neutral (no-op) multiplier, not an initial guess.
             "scale": 1.0,
             "mechanism": mxl_json_mechanism_additive(),
-            "activation": {
-                "name": "softplus",
-                "expression": mxl_json_activation_softplus(),
-            },
         }
         return SurrogateJson(spec=spec, weights=weights)
 
@@ -325,11 +394,11 @@ class Surrogate(AbstractSurrogate):
 
 
 @dataclass(kw_only=True)
-class DerivativeSurrogate(AbstractDerivativeSurrogate):
-    """Direct-derivative surrogate using PyTorch, for `OdeModelBuilder`.
+class OdeSurrogate(AbstractOdeSurrogate):
+    """Ode surrogate using PyTorch, for `OdeModelBuilder`.
 
-    See :mod:`mxlpy.surrogates.abstract_derivative`'s module docstring for
-    why this is a separate, orthogonal type from :class:`Surrogate` rather
+    See :mod:`mxlpy.surrogates.abstract_ode`'s module docstring for why
+    this is a separate, orthogonal type from :class:`Surrogate` rather
     than a shared base — same reasoning, applied one level down at the
     torch-backend layer.
 
@@ -342,63 +411,52 @@ class DerivativeSurrogate(AbstractDerivativeSurrogate):
 
     model: torch.nn.Module
 
-    def to_mxl_json(self) -> DerivativeSurrogateJson | None:
-        """Export this surrogate as a mxl-schemas ``nn_blocks`` entry, if it's representable.
+    def to_mxl_json(self) -> OdeSurrogateJson:
+        """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
 
         Same structural requirements as :meth:`Surrogate.to_mxl_json`
-        (dense `Linear`/softplus alternation) but, unlike that method, no
-        stoichiometry-unit-coefficient constraint: `self.targets` already
-        names exactly what this surrogate corrects, so every `self.mechanism`
-        value (not just `additive`) exports faithfully via
-        `_MECHANISM_BUILDER`.
+        (dense `Linear`/recognized-activation layers), and — despite
+        having no stoichiometry-coefficient constraint at the model level
+        — the *schema*'s `targets` is still one entry per output, so
+        every output must map to exactly one target diff_eq to be
+        representable: a plain-derived output (absent from `self.targets`)
+        or one feeding more than one diff_eq has no `nn_blocks` shape to
+        export as.
+
+        Raises
+        ------
+        SerializationError
+            If any of the above doesn't hold.
+
         """
-        net = _dense_sequential(self.model)
-        if net is None:
-            return None
+        layers_spec, weights = _export_dense_layers(self.model)
 
-        modules = list(net)
-        linears = [m for m in modules if isinstance(m, nn.Linear)]
-        if len(linears) == 0:
-            return None
-        if len(modules) != 2 * len(linears) - 1:
-            return None
-
-        activation_name: str | None = None
-        for i, m in enumerate(modules):
-            if i % 2 == 0:
-                continue  # Linear, already collected above.
-            mapped = _ACTIVATION_BY_MODULE.get(type(m))
-            if mapped is None or (
-                activation_name is not None and activation_name != mapped
-            ):
-                return None
-            activation_name = mapped
-        if len(linears) > 1 and activation_name is None:
-            return None
-
-        layers = [{"type": "dense", "width": lin.out_features} for lin in linears]
-        weights: dict[str, list[object]] = {}
-        for i, lin in enumerate(linears, start=1):
-            weights[f"w{i}"] = lin.weight.detach().cpu().numpy().tolist()
-            weights[f"b{i}"] = lin.bias.detach().cpu().numpy().tolist()
+        targets: list[str] = []
+        for output in self.outputs:
+            output_targets = self.targets.get(output)
+            if output_targets is None or len(output_targets) != 1:
+                msg = (
+                    f"Output {output!r} isn't representable as a "
+                    "nn_blocks entry: needs exactly one target diff_eq "
+                    f"(got {output_targets!r}) — a nn_blocks entry's "
+                    "`targets` has one entry per output."
+                )
+                raise SerializationError(msg)
+            targets.append(output_targets[0])
 
         spec: dict[str, object] = {
             "inputs": list(self.args),
-            "layers": layers,
+            "layers": layers_spec,
             "seed": 0,
-            "targets": list(self.targets),
+            "targets": targets,
             "trained": True,
             "scale": 1.0,
-            "mechanism": _MECHANISM_BUILDER[self.mechanism](),
-            "activation": {
-                "name": "softplus",
-                "expression": mxl_json_activation_softplus(),
-            },
+            "mechanism": mxl_json_mechanism_additive(),
         }
-        return DerivativeSurrogateJson(spec=spec, weights=weights)
+        return OdeSurrogateJson(spec=spec, weights=weights)
 
     def predict_raw(self, y: np.ndarray) -> np.ndarray:
-        """Predict a correction per target based on input data using the PyTorch model.
+        """Predict outputs based on input data using the PyTorch model.
 
         Parameters
         ----------
@@ -408,7 +466,7 @@ class DerivativeSurrogate(AbstractDerivativeSurrogate):
         Returns
         -------
         np.ndarray
-            Array of predicted correction values, ordered like `self.targets`.
+            Array of predicted values, ordered like `self.outputs`.
 
         """
         with torch.no_grad():
@@ -420,7 +478,7 @@ class DerivativeSurrogate(AbstractDerivativeSurrogate):
         self,
         args: dict[str, float | pd.Series | pd.DataFrame],
     ) -> dict[str, float]:
-        """Predict a correction per target, from `args`.
+        """Predict outputs based on input data.
 
         Parameters
         ----------
@@ -430,12 +488,12 @@ class DerivativeSurrogate(AbstractDerivativeSurrogate):
         Returns
         -------
         dict[str, float]
-            Mapping of target names to raw predicted correction values.
+            Mapping of output names to predicted values.
 
         """
         return dict(
             zip(
-                self.targets,
+                self.outputs,
                 self.predict_raw(np.array([args[arg] for arg in self.args])),
                 strict=True,
             )

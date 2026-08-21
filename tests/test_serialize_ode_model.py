@@ -1,12 +1,13 @@
 """Tests for OdeModelBuilder's .mxl.json serialisation (ode-model.schema.json, kind="ode").
 
 Mirrors `test_serialize.py`/`test_serialize_nn_blocks.py`'s coverage of
-`KineticModelBuilder`, but for the direct-derivative variant: variables carry
-their dx/dt directly (no reactions/stoichiometry section), and attached
-surrogates are `DerivativeSurrogateProtocol` (any of the three `mechanism`
-presets round-trips, not just `additive` — see
-`mxlpy.surrogates.abstract_derivative`'s module docstring for why that's
-possible here but not for `KineticModelBuilder`).
+`KineticModelBuilder`, but for the ode variant: variables carry their dx/dt
+directly (no reactions/stoichiometry section), and attached surrogates are
+`OdeSurrogateProtocol` — a separate, orthogonal type from `SurrogateProtocol`
+(see `mxlpy.surrogates.abstract_ode`'s module docstring), always summed into
+their `targets`' dx/dt exactly like a kinetic surrogate is always summed via
+stoichiometry — there is no selectable `mechanism` here, same as the kinetic
+path.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from mxlpy.serialize import (
     ode_model_to_dict,
     ode_mxl_json_weights_files,
 )
-from mxlpy.surrogates._torch import DerivativeSurrogate
+from mxlpy.surrogates._torch import OdeSurrogate
 from mxlpy.types import SerializationError
 
 if TYPE_CHECKING:
@@ -60,13 +61,13 @@ def _make_model() -> OdeModelBuilder:
     )
 
 
-def _make_model_with_surrogate(mechanism: str = "relative_multiply") -> OdeModelBuilder:
+def _make_model_with_surrogate() -> OdeModelBuilder:
     model = _make_model()
-    surrogate = DerivativeSurrogate(
+    surrogate = OdeSurrogate(
         model=_dense_softplus_model(),
         args=["x", "k"],
-        targets=["x"],
-        mechanism=mechanism,  # type: ignore[arg-type]
+        outputs=["corr"],
+        targets={"corr": ["x"]},
     )
     return model.add_surrogate("corr_block", surrogate)
 
@@ -86,17 +87,20 @@ def test_ode_model_from_dict_round_trips_dxdt() -> None:
     assert restored(0.0, [2.0]) == pytest.approx(model(0.0, [2.0]))
 
 
-def test_exportable_surrogate_produces_nn_blocks_section_with_chosen_mechanism() -> None:
-    model = _make_model_with_surrogate(mechanism="relative_multiply")
+def test_exportable_surrogate_produces_nn_blocks_section() -> None:
+    model = _make_model_with_surrogate()
     data = ode_model_to_dict(model, model_id="m")
     block = data["model"]["nn_blocks"]["corr_block"]
     assert block["inputs"] == ["x", "k"]
     assert block["targets"] == ["x"]
+    assert [layer["width"] for layer in block["layers"]] == [3, 1]
+    assert block["layers"][0]["activation"]["name"] == "softplus"
+    assert "activation" not in block["layers"][1]
     assert block["trained"] is True
     assert block["weights_ref"] == "corr_block.weights.json"
-    # relative_multiply: Mul(ode, Add(1, nde)) -- distinguishes it from the
-    # kinetic path, which can only ever export "additive".
-    assert block["mechanism"]["type"] == "Mul"
+    # additive mechanism: Add(Name(ode), Name(nde)) — the only one an ode
+    # surrogate can ever produce, same as the kinetic path.
+    assert block["mechanism"]["type"] == "Add"
 
 
 def test_ode_mxl_json_weights_files_shapes_match_layers() -> None:
@@ -110,11 +114,8 @@ def test_ode_mxl_json_weights_files_shapes_match_layers() -> None:
     assert len(weights["w2"][0]) == 3
 
 
-@pytest.mark.parametrize("mechanism", ["additive", "relative_multiply", "multiply"])
-def test_save_load_round_trips_predictions_for_every_mechanism(
-    tmp_path: Path, mechanism: str
-) -> None:
-    model = _make_model_with_surrogate(mechanism=mechanism)
+def test_save_load_round_trips_predictions(tmp_path: Path) -> None:
+    model = _make_model_with_surrogate()
     path = tmp_path / "model.mxl.json"
     mxlpy.save(model, path, model_id="m")
 
@@ -123,9 +124,12 @@ def test_save_load_round_trips_predictions_for_every_mechanism(
     reloaded = mxlpy.load(path)
     assert isinstance(reloaded, OdeModelBuilder)
     reloaded_surrogate = reloaded._surrogates["corr_block"]
-    assert reloaded_surrogate.mechanism == mechanism
     assert reloaded_surrogate.args == ["x", "k"]
-    assert reloaded_surrogate.targets == ["x"]
+    # Reconstruction can't reuse the original output name "corr" (add_surrogate
+    # requires it to be a fresh, model-wide-unique id) — it derives a
+    # block-scoped one instead, matching the kinetic path's convention.
+    assert reloaded_surrogate.outputs == ["corr_block_x"]
+    assert reloaded_surrogate.targets == {"corr_block_x": ["x"]}
 
     original_dxdt = model(0.0, [2.0])
     reloaded_dxdt = reloaded(0.0, [2.0])
@@ -153,6 +157,40 @@ def test_load_rejects_nn_block_with_missing_weights_file(tmp_path: Path) -> None
 
     with pytest.raises(SerializationError, match="weights"):
         mxlpy.load(path)
+
+
+def test_ode_model_from_dict_rejects_non_additive_mechanism() -> None:
+    model = _make_model_with_surrogate()
+    data = ode_model_to_dict(model, model_id="m")
+    data["model"]["nn_blocks"]["corr_block"]["mechanism"] = {
+        "type": "Mul",
+        "children": [
+            {"type": "Name", "value": "ode"},
+            {"type": "Name", "value": "nde"},
+        ],
+    }
+    weights = ode_mxl_json_weights_files(model)
+    with pytest.raises(SerializationError, match="additive"):
+        ode_model_from_dict(data, weights_by_ref=weights)
+
+
+def test_ode_model_from_dict_rejects_non_dense_layer_type() -> None:
+    model = _make_model_with_surrogate()
+    data = ode_model_to_dict(model, model_id="m")
+    data["model"]["nn_blocks"]["corr_block"]["layers"][0]["type"] = "conv"
+    weights = ode_mxl_json_weights_files(model)
+    with pytest.raises(SerializationError, match="dense"):
+        ode_model_from_dict(data, weights_by_ref=weights)
+
+
+def test_ode_model_from_dict_rejects_untrained_block() -> None:
+    model = _make_model_with_surrogate()
+    data = ode_model_to_dict(model, model_id="m")
+    block = data["model"]["nn_blocks"]["corr_block"]
+    del block["weights_ref"]
+    block["trained"] = False
+    with pytest.raises(SerializationError, match="untrained"):
+        ode_model_from_dict(data, weights_by_ref={})
 
 
 def test_load_dispatches_kinetic_documents_without_kind_field(tmp_path: Path) -> None:
