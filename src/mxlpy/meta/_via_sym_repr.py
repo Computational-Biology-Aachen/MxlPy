@@ -741,6 +741,20 @@ def _ode_builder_to_symbolic_repr(
             custom_fns=custom_fns,
         )
 
+    if raw_surrogates := model.get_raw_surrogates():
+        # Ode surrogates (mxlpy.surrogates.abstract_ode) have no
+        # symbolic-repr conversion yet — unlike the kinetic path's
+        # closed-form qss.Surrogate special case below, there is no
+        # supported case here at all, so any attached surrogate always
+        # triggers this. Silently dropping its contribution instead would
+        # make the returned SymbolicRepr describe different dynamics than
+        # the actual model computes.
+        msg = f"Symbolic representation of ode surrogates is not supported yet: {sorted(raw_surrogates)}."
+        if only_warn:
+            _LOGGER.warning(msg)
+        else:
+            raise ValueError(msg)
+
     return sym
 
 

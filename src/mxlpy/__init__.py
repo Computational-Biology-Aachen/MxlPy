@@ -78,6 +78,7 @@ from .serialize import load, save
 from .simulation import Simulation
 from .simulator import Simulator
 from .surrogates.abstract import AbstractSurrogate, SurrogateProtocol
+from .surrogates.abstract_ode import AbstractOdeSurrogate, OdeSurrogateProtocol
 from .symbolic import SymbolicModel, to_symbolic_model
 from .types import (
     Annotation,
@@ -113,6 +114,7 @@ __all__ = [
     "AbstractEstimator",
     "AbstractIntegrator",
     "AbstractMinimizer",
+    "AbstractOdeSurrogate",
     "AbstractSurrogate",
     "Annotation",
     "Assimulo",
@@ -131,6 +133,7 @@ __all__ = [
     "MinimizerProtocol",
     "Model",
     "OdeModelBuilder",
+    "OdeSurrogateProtocol",
     "OscillationDetected",
     "Parameter",
     "Scipy",

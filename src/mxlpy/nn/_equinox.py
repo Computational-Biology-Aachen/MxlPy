@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 __all__ = [
     "LSTM",
     "LossFn",
-    "MLP",
     "cosine_similarity",
     "mean_abs_error",
     "mean_absolute_percentage",
@@ -312,78 +311,6 @@ def train(
 ###############################################################################
 # Actual models
 ###############################################################################
-
-
-class MLP(eqx.Module):
-    """Multilayer Perceptron (MLP) for surrogate modeling and neural posterior estimation.
-
-    Attributes
-    ----------
-    net
-        Sequential neural network model.
-
-    Methods
-    -------
-        forward: Forward pass through the neural network.
-
-    """
-
-    layers: list
-
-    def __init__(
-        self,
-        n_inputs: int,
-        neurons_per_layer: list[int],
-        key: Array,
-    ) -> None:
-        """Initializes the MLP with the given number of inputs and list of (hidden) layers.
-
-        Parameters
-        ----------
-        n_inputs
-            The number of input features.
-        neurons_per_layer
-            Number of neurons per layer
-        n_outputs
-            A list containing the number of neurons in hidden and output layer.
-        key
-            jax.random.PRNGKey(SEED) for initial parameters
-
-        For instance, MLP(10, layers = [50, 50, 10]) initializes a neural network with the following architecture:
-        - Linear layer with `n_inputs` inputs and 50 outputs
-        - ReLU activation
-        - Linear layer with 50 inputs and 50 outputs
-        - ReLU activation
-        - Linear layer with 50 inputs and 10 outputs
-
-        The weights of the linear layers are initialized with a normal distribution
-        (mean=0, std=0.1) and the biases are initialized to 0.
-
-        """
-        keys = iter(jax.random.split(key, len(neurons_per_layer)))
-        previous_neurons = n_inputs
-        layers = []
-        for neurons in neurons_per_layer:
-            layers.append(eqx.nn.Linear(previous_neurons, neurons, key=next(keys)))
-            previous_neurons = neurons
-        self.layers = layers
-
-    def __call__(self, x: Array) -> Array:
-        """Forward pass through the neural network.
-
-        Parameters
-        ----------
-        x
-            Input tensor.
-
-        Returns
-        -------
-            Output tensor.
-
-        """
-        for layer in self.layers[:-1]:
-            x = jax.nn.relu(layer(x))
-        return self.layers[-1](x)
 
 
 class LSTM(eqx.Module):
