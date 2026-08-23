@@ -34,4 +34,13 @@ jobs:
         run: uv sync --all-extras --all-groups
 
       - name: Run tests
+        env:
+          # torch.optim.Optimizer.__init__ lazily imports torch._dynamo on
+          # first construction (unrelated to torch.compile usage). Under
+          # pytest-xdist, several workers hit that native-extension import
+          # for the first time at nearly the same instant, which reliably
+          # segfaults on the GitHub Actions runner. None of these tests use
+          # torch.compile, so disabling dynamo avoids the crash-prone import
+          # path without changing test behavior.
+          TORCHDYNAMO_DISABLE: "1"
         run: uv run pytest -n auto --disable-warnings tests/
