@@ -197,5 +197,23 @@ trailing_comma_inline_array = true
 package = true
 exclude-newer = "3 days"
 
+[[tool.uv.index]]
+explicit = true
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+
 [tool.uv.sources]
 mxlpy = { workspace = true }
+# Plain PyPI torch on Linux resolves to the CUDA build, which unconditionally
+# depends on triton — triton's native module segfaults on GitHub Actions'
+# GPU-less runners the instant torch.optim.Optimizer.__init__ lazily imports
+# it (see the ci workflow fix commit for the full trace). macOS/Windows PyPI
+# wheels don't have this problem, so only Linux is redirected.
+#
+# This only pins resolution for this repo's own dev environment (and thus
+# CI, which runs `uv sync` against this same lockfile) — it is a uv-local
+# override, not published project metadata, so `pip install mxlpy[torch]`
+# (or `uv add mxlpy[torch]` from another project) is unaffected and still
+# resolves plain `torch>=2.5.1` however the installer normally would
+# (the CUDA build on Linux, unless the end user configures otherwise).
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
