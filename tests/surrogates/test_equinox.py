@@ -25,6 +25,7 @@ pytest.importorskip("equinox", exc_type=ImportError)
 import equinox as eqx
 import jax
 
+from mxlpy.nn._equinox import MLP
 from mxlpy.surrogates._equinox import (
     OdeSurrogate,
     Surrogate,
@@ -139,6 +140,18 @@ def test_eqx_mlp_is_exportable() -> None:
     layers = cast(list[dict[str, Any]], export.spec["layers"])
     # eqx.nn.MLP defaults: relu on every hidden layer, identity (absent) on
     # the final layer.
+    assert layers[0]["activation"]["name"] == "relu"
+    assert "activation" not in layers[1]
+
+
+def test_hand_rolled_mlp_is_exportable() -> None:
+    """`mxlpy.nn._equinox.MLP` hardcodes relu-then-identity; recognized directly."""
+    mlp = MLP(n_inputs=2, neurons_per_layer=[3, 1], key=jax.random.PRNGKey(0))
+    surrogate = Surrogate(
+        model=mlp, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+    )
+    export = surrogate.to_mxl_json()
+    layers = cast(list[dict[str, Any]], export.spec["layers"])
     assert layers[0]["activation"]["name"] == "relu"
     assert "activation" not in layers[1]
 
