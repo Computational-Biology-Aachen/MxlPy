@@ -10,7 +10,7 @@ import numpy as np
 import optax
 import pandas as pd
 
-from mxlpy.nn._equinox import LossFn, mean_abs_error
+from mxlpy.nn._equinox import MLP, LossFn, mean_abs_error
 from mxlpy.nn._equinox import train as _train
 from mxlpy.surrogates.abstract import (
     ACTIVATION_BUILDERS,
@@ -120,12 +120,32 @@ def _layers_from_mlp(
     return layers
 
 
+def _layers_from_hand_rolled_mlp(
+    mlp: MLP,
+) -> list[tuple[eqx.nn.Linear, Callable | None]]:
+    """Split a `mxlpy.nn._equinox.MLP` into `(Linear, activation-fn-or-None)` pairs.
+
+    Unlike `eqx.nn.MLP`, this hand-rolled model hardcodes its activation in
+    `__call__` rather than storing it as an attribute: `jax.nn.relu` on
+    every hidden layer, no activation (bare `Linear` output) on the final
+    layer.
+    """
+    linears = list(mlp.layers)
+    layers: list[tuple[eqx.nn.Linear, Callable | None]] = [
+        (linear, jax.nn.relu) for linear in linears[:-1]
+    ]
+    layers.append((linears[-1], None))
+    return layers
+
+
 def _dense_layers(
     model: eqx.Module,
 ) -> list[tuple[eqx.nn.Linear, Callable | None]] | None:
     """The `(Linear, activation-fn-or-None)` layer stack `model` wraps, if any."""
     if isinstance(model, eqx.nn.MLP):
         return _layers_from_mlp(model)
+    if isinstance(model, MLP):
+        return _layers_from_hand_rolled_mlp(model)
     if isinstance(model, eqx.nn.Sequential):
         return _layers_from_sequential(model)
     return None
@@ -146,8 +166,9 @@ def _export_dense_layers(
         msg = (
             f"{type(model).__name__} isn't representable as a mxl-schemas "
             "nn_blocks entry: not a plain eqx.nn.Sequential of "
-            "Linear/Lambda layers or an eqx.nn.MLP — an LSTM-backed or "
-            "custom-__call__ model can't be expressed this way."
+            "Linear/Lambda layers, an eqx.nn.MLP, or a "
+            "mxlpy.nn._equinox.MLP — an LSTM-backed or custom-__call__ "
+            "model can't be expressed this way."
         )
         raise SerializationError(msg)
 
@@ -308,11 +329,13 @@ class Surrogate(AbstractSurrogate):
 
         - ``self.model`` is a plain `eqx.nn.Sequential` of `Linear` layers,
           each optionally followed by a single `eqx.nn.Lambda`-wrapped
-          recognized activation function, or an `eqx.nn.MLP` whose
+          recognized activation function; an `eqx.nn.MLP` whose
           `.activation`/`.final_activation` are each either the MLP
-          default identity or a recognized activation — anything else
-          (LSTM-backed, custom `__call__`, unrecognized activation
-          function) isn't representable.
+          default identity or a recognized activation; or a
+          `mxlpy.nn._equinox.MLP` (hardcodes relu on every hidden layer,
+          identity on the final one) — anything else (LSTM-backed, custom
+          `__call__`, unrecognized activation function) isn't
+          representable.
         - every output has stoichiometry ``{compound: 1.0}`` against a
           reaction named after that same output — the only shape
           equivalent to an `nn_blocks` correction (a bare coefficient of
