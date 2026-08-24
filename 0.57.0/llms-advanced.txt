@@ -1,0 +1,100 @@
+# MxlPy — Advanced analysis
+
+[← back to index](llms.txt)
+
+Symbolic analysis, identifiability, stability visualisation, units, and parallel execution / caching.
+
+## Symbolic analysis (`mxlpy.symbolic`)
+
+Convert a `Model` to a SymPy representation for analytical inspection.
+
+```python
+import sympy
+from mxlpy import to_symbolic_model, symbolic
+
+sym = to_symbolic_model(model)
+sym.jacobian()        # symbolic Jacobian
+```
+
+### Structural identifiability
+
+`symbolic.check_identifiability(symbolic_model, outputs=[...])` tests whether parameters are *structurally* identifiable from the chosen observed outputs (requires StrikeGOLDD). `outputs` are SymPy symbols of the observed variables.
+
+```python
+res = symbolic.check_identifiability(sym, outputs=[sympy.Symbol("i"), sympy.Symbol("r")])
+print(res.summary())
+```
+
+## Numerical (practical) identifiability (`mxlpy.identify`)
+
+`profile_likelihood` asks whether a parameter is *practically* identifiable from data: for each fixed value of the parameter of interest it refits the remaining parameters (from `n_random` random starts) and records the best error. A clear minimum around the true value ⟹ identifiable; a flat profile ⟹ not.
+
+```python
+import numpy as np
+from mxlpy import plot
+from mxlpy.identify import profile_likelihood
+
+errors = profile_likelihood(            # -> pd.Series indexed by parameter value
+    model,
+    data=data,                          # pd.DataFrame
+    parameter_name="beta",
+    parameter_values=np.linspace(0.1, 0.3, 10),
+    n_random=10,                         # random starts for the nuisance parameters
+    # loss_fn=fit.rmse                   # optional
+)
+fig, ax = plot.lines(errors, legend=False)
+ax.set(xlabel="parameter value", ylabel="abs(error)")
+```
+
+## Stability visualisation
+
+Phase-plane vector fields and steady-state classification. `plot.trajectories_2d(model, x1=(name, values), x2=(name, values))` draws a quiver field over two variables and returns `(fig, ax)`, so you can overlay example trajectories:
+
+```python
+import numpy as np
+from mxlpy import Simulator, plot
+
+fig, ax = plot.trajectories_2d(model, x1=("s1", np.linspace(0, 2, 20)), x2=("s2", np.linspace(0, 2, 20)))
+for s1 in np.linspace(0, 1, 4):
+    for s2 in np.linspace(0, 2, 4):
+        c = Simulator(model, y0={"s1": s1, "s2": s2}).simulate(1.5).get_result().unwrap_or_err().variables
+        ax.plot(c["s1"], c["s2"])
+```
+
+For eigenvalue-based classification of a fixed point (`stable node`, `saddle point`, …) see `mca.steady_state_stability` in [scans & MCA](llms-scans-mca.txt).
+
+## Units (`mxlpy.units`)
+
+Attach units to parameters/variables/reactions (via `Parameter`, `Variable`, `unit=`) using SymPy-units constants. Available names include `second`/`minute`/`hour`, `per_second`/`per_minute`/`per_hour`, `mol`/`mmol`/`mumol`/`nmol`/`pmol` and their per-time/per-gram variants (`mol_s`, `mmol_s`, `mmol_h`, `mmol_g`, …), and `meter`/`sqm`/`cbm`.
+
+```python
+from mxlpy import Parameter, Variable, units
+
+Model().add_parameters({"k": Parameter(1.0, unit=units.per_second)}).add_variables({"S": Variable(0.0, unit=units.mmol)})
+```
+
+`model.infer_units()` returns a `UnitInference` that propagates declared units through the model and reports any `Conflict` (inconsistent units in a rate expression).
+
+## Parallel execution & caching (`mxlpy.parallel`)
+
+Scans, Monte Carlo and group/ensemble fits run in parallel by default (via `pebble` process pools + `dill`). The underlying `parallelise` is generic and reusable for any work, taking a function and an iterable of `(key, value)` pairs (the key maps results back to inputs and drives caching).
+
+```python
+from mxlpy.parallel import parallelise, Cache
+
+def square(x: float) -> float:
+    return x ** 2
+
+parallelise(square, [("a", 2), ("b", 3), ("c", 4)])
+```
+
+`Cache` persists results to disk so a repeated run loads instead of recomputing. It is a dataclass with `tmp_dir` (default `.cache`) and overridable `name_fn` / `load_fn` / `save_fn` (default pickle). Give each analysis its own folder to avoid collisions; pass `cache=` to `parallelise` and to scan functions.
+
+```python
+from pathlib import Path
+from mxlpy import scan, cartesian_product
+
+cache = Cache(tmp_dir=Path(".cache") / "k1_k2_scan")
+result = scan.steady_state(model, to_scan=cartesian_product({"k1": [0.5, 1.0, 2.0], "k2": [0.1, 1.0]}), cache=cache)
+# Second call with the same keys loads from disk instead of recomputing.
+```

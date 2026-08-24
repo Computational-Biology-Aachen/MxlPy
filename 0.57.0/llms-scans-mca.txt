@@ -1,0 +1,111 @@
+# MxlPy — Parameter scans & Metabolic Control Analysis
+
+[← back to index](llms.txt)
+
+## Parameter scans (`mxlpy.scan`)
+
+Sweep one or more parameters and collect steady-state, time-course or protocol results. The parameter set is a `pandas.DataFrame` (one row per combination, columns = parameter names) passed as `to_scan=`. Build multi-dimensional grids with `cartesian_product`. Scans run **in parallel by default** and return a result object with `.variables`, `.fluxes`, `.combined`, unpackable as `(variables, fluxes)`.
+
+```python
+import numpy as np, pandas as pd
+from mxlpy import scan, cartesian_product, plot
+
+# Single parameter
+res = scan.steady_state(model, to_scan=pd.DataFrame({"k1": np.linspace(1, 3, 11)}))
+concs, fluxes = res                 # unpack
+res.variables; res.fluxes; res.combined
+
+# Multiple parameters → MultiIndex result
+res = scan.steady_state(model, to_scan=cartesian_product({"k1": [1, 2], "k2": [3, 4]}))
+```
+
+### Time course and protocol scans
+
+These produce a *distribution* of trajectories; the result carries an `n × time` MultiIndex. `.to_scan` maps the integer index `n` back to its parameter combination; `get_agg_per_time("mean"|"std"|...)` aggregates across runs at each time point.
+
+```python
+tss = scan.time_course(
+    model,
+    to_scan=pd.DataFrame({"k1": np.linspace(1, 2, 11)}),
+    time_points=np.linspace(0, 1, 11),
+)
+tss.variables; tss.fluxes
+tss.to_scan                         # parameter combinations per index n
+tss.get_agg_per_time("std")
+
+res = scan.protocol_time_course(
+    model,
+    to_scan=pd.DataFrame({"k2": np.linspace(1, 2, 11)}),
+    time_points=np.linspace(0, 6, 21),
+    protocol=make_protocol([(1, {"k1": 1}), (2, {"k1": 2}), (3, {"k1": 1})]),
+)
+res.protocol                        # the protocol used
+```
+
+### Visualising scans
+
+```python
+# Distribution of time courses: mean ± std band
+plot.lines_mean_std_from_2d_idx(tss.variables, ax=ax)
+
+# Steady-state sweep over two parameters: heatmap for one variable, or all at once
+plot.heatmap_from_2d_idx(res.variables, variable="x")
+plot.heatmaps_from_2d_idx(res.variables)
+```
+
+`scan.steady_state` accepts `cache=` for on-disk caching of long runs (see [advanced](llms-advanced.txt)).
+
+---
+
+## Metabolic Control Analysis (`mxlpy.mca`)
+
+MCA quantifies how sensitive steady-state concentrations and fluxes are to small changes in parameters or variable concentrations. Results are **normalised** by default (`normalized=False` for raw); the perturbation size is `displacement` (default `1e-4`, a central finite difference).
+
+### Elasticities (any state, not just steady state)
+
+`to_scan` selects which variables/parameters to perturb (default: all); `variables=` sets the concentrations to evaluate at (default: initial conditions). Both return a `pd.DataFrame` of reactions × perturbed quantity.
+
+```python
+from mxlpy import mca, plot
+
+elas = mca.variable_elasticities(model, to_scan=["GLC", "F6P"], variables={"GLC": 0.3, "F6P": 0.5})
+elas = mca.parameter_elasticities(model, to_scan=["k1", "k2"], variables={"GLC": 0.3})
+plot.heatmap(elas)
+```
+
+### Response coefficients (at steady state)
+
+Sensitivity of steady-state variables and fluxes to a parameter. Runs in parallel by default. Returns a `ResponseCoefficients` object: `.variables` (concentration RCs), `.fluxes` (flux RCs), `.combined`, unpackable as `(crcs, frcs)`.
+
+```python
+crcs, frcs = mca.response_coefficients(model, to_scan=["k1", "k2", "k3"])
+# or: rc = mca.response_coefficients(...); rc.variables; rc.fluxes
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+plot.heatmap(crcs, ax=ax1)
+plot.heatmap(frcs, ax=ax2)
+```
+
+### Steady-state stability
+
+Classify a steady state from the eigenvalues of the Jacobian. `steady_state_stability(model, y0)` returns a `SteadyStateStability` with `eigenvalues`, `spectral_abscissa` (largest real part; negative ⟺ stable), `is_stable`, `has_oscillatory` (any nonzero imaginary part), and `classification` (`"stable node"`, `"stable spiral"`, `"unstable node"`, `"unstable spiral"`, `"saddle point"`, `"centre"`, `"non-hyperbolic"`).
+
+```python
+from mxlpy import Simulator
+from mxlpy.mca import steady_state_stability
+
+ss = Simulator(model).simulate_to_steady_state().get_result().unwrap_or_err().get_new_y0()
+stab = steady_state_stability(model, ss)
+stab.classification; stab.is_stable; stab.spectral_abscissa
+```
+
+### Supply–demand rate characteristics
+
+`rate_characteristics(model, "F6P")` clamps a variable across a log-spaced range around its steady state, recomputes the steady state of the rest at each point, and collects the fluxes that **produce** (supply) and **consume** (demand) it. The intersection of total supply and demand is the operating point. Exposes `supply_fluxes`/`demand_fluxes`, `total_supply`/`total_demand`, `steady_state_conc`, and helpers `plot_supply_demand()` and `plot()` (three-panel summary).
+
+```python
+rc = mca.rate_characteristics(model, "F6P")
+rc.plot()
+```
+
+For Monte-Carlo–distributed MCA (robustness of coefficients over a parameter distribution), see [fitting](llms-fitting.txt) (`mc.variable_elasticities`, `mc.response_coefficients`, …).
