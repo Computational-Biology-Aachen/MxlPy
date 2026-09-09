@@ -1,3 +1,4 @@
+default_stages: [pre-commit]
 repos:
   - repo: https://github.com/hakancelikdev/unexport
     rev: 0.4.0
@@ -14,6 +15,12 @@ repos:
         stages: [pre-commit]
         language: system
         entry: uvx --from nbconvert jupyter-nbconvert --ClearOutputPreprocessor.enabled=True --inplace
+      - id: no-session-trailer
+        name: Block leaked Claude-Session URLs in commit messages
+        entry: bash scripts/check-commit-msg.sh
+        language: system
+        pass_filenames: true
+        stages: [commit-msg]
 
   - repo: https://github.com/aio-libs/sort-all
     rev: v1.3.0
