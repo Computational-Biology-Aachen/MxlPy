@@ -1408,7 +1408,7 @@ def _generate_model_code(
 
 
 def generate_model_code_mxlweb(
-    model: KineticModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
     *,
     tex_names: dict[str, str] | None = None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
@@ -1416,6 +1416,13 @@ def generate_model_code_mxlweb(
     docstring: str | None = None,
 ) -> str:
     """Generate TypeScript source for the mxlweb browser simulator.
+
+    Dispatches on `model`'s type to emit the matching native mxlweb-core
+    class: a `KineticModelBuilder` emits reactions via `.addReaction`, an
+    `OdeModelBuilder` emits each variable's dx/dt directly via
+    `.setDifferential` (no fake self-stoichiometry reaction), and a
+    `SteadyStateModelBuilder` emits only parameters and assignments (it has
+    no variables, reactions, readouts or surrogates to emit at all).
 
     Parameters
     ----------
@@ -1432,9 +1439,21 @@ def generate_model_code_mxlweb(
     Returns
     -------
     str
-        TypeScript source that constructs a ``KineticModelBuilder`` for mxlweb.
+        TypeScript source that constructs the matching mxlweb-core builder.
 
     """
+    # Local imports to avoid a Model -> meta -> Model import loop, mirroring
+    # `model_to_symbolic_repr`'s identical pattern.
+    from mxlpy._ode_builder import OdeModelBuilder  # noqa: PLC0415
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder  # noqa: PLC0415
+
+    if isinstance(model, OdeModelBuilder):
+        builder_class = "OdeModelBuilder"
+    elif isinstance(model, SteadyStateModelBuilder):
+        builder_class = "SteadyStateModelBuilder"
+    else:
+        builder_class = "KineticModelBuilder"
+
     sliders = {} if sliders is None else sliders
     custom_fns = {} if custom_fns is None else custom_fns
     tex_names = {} if tex_names is None else tex_names
@@ -1535,7 +1554,6 @@ def generate_model_code_mxlweb(
         used: set[str],
         subs: dict[sympy.Symbol, sympy.Symbol],
     ) -> str:
-        # FIXME: add readout to mxlweb
         texName = (
             valid_tex_identifier(k)
             if (texName := tex_names.get(k)) is None
@@ -1543,11 +1561,20 @@ def generate_model_code_mxlweb(
         )
         value = sympy_to_inline_mxlweb(el.expr, used, subs)
         return (
-            f'      .addAssignment("{name_map[k]}", {{\n'
+            f'      .addReadout("{name_map[k]}", {{\n'
             f"        fn: {value},\n"
             f"        texName: {texName!r},\n"
             f"      }})"
         )
+
+    def _gen_diff_eq(
+        k: str,
+        el: SymbolicReaction,
+        used: set[str],
+        subs: dict[sympy.Symbol, sympy.Symbol],
+    ) -> str:
+        value = sympy_to_inline_mxlweb(el.fn.expr, used, subs)
+        return f'      .setDifferential("{name_map[k]}", {value})'
 
     def _gen_stoich(
         k: str,
@@ -1622,7 +1649,10 @@ def generate_model_code_mxlweb(
     lines.extend(_gen_par(k, v, used, subs) for k, v in sr.parameters.items())
     lines.extend(_gen_var(k, v, used, subs) for k, v in sr.variables.items())
     lines.extend(_gen_der(k, v, used, subs) for k, v in sr.derived.items())
-    lines.extend(_gen_rxn(k, v, used, subs) for k, v in sr.reactions.items())
+    if isinstance(model, OdeModelBuilder):
+        lines.extend(_gen_diff_eq(k, v, used, subs) for k, v in sr.reactions.items())
+    else:
+        lines.extend(_gen_rxn(k, v, used, subs) for k, v in sr.reactions.items())
     lines.extend(_gen_srg(v, used, subs) for v in sr.surrogates.values())
     lines.extend(_gen_rdo(k, v, used, subs) for k, v in sr.readouts.items())
 
@@ -1630,15 +1660,15 @@ def generate_model_code_mxlweb(
     mathml_import_str = ", ".join(sorted(used))
     model_builder_str = "\n".join(
         (
-            "export function initModel(): KineticModelBuilder {",
-            "    return new KineticModelBuilder()",
+            f"export function initModel(): {builder_class} {{",
+            f"    return new {builder_class}()",
             "\n".join(lines),
             "  }",
         )
     )
     return "\n".join(
         [
-            'import { KineticModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
+            f'import {{ {builder_class} }} from "@computational-biology-aachen/mxlweb-core";',
             f'import {{ {mathml_import_str} }} from "@computational-biology-aachen/mxlweb-core/mathml";',
             f"\n{docstring}" if docstring else "",
             model_builder_str,

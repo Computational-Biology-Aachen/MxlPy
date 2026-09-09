@@ -32,6 +32,7 @@ import scipy.special  # bound as `scipy`, used by generated rate fns
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.meta import _mathml as mml
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
@@ -56,6 +57,7 @@ __all__ = [
     "ODE_SCHEMA_URL",
     "SCHEMA_URL",
     "SPEC_VERSION",
+    "STEADY_STATE_SCHEMA_URL",
     "load",
     "model_from_dict",
     "model_to_dict",
@@ -64,6 +66,8 @@ __all__ = [
     "ode_model_to_dict",
     "ode_mxl_json_weights_files",
     "save",
+    "steady_state_model_from_dict",
+    "steady_state_model_to_dict",
 ]
 
 SPEC_VERSION = "1.0"
@@ -79,6 +83,10 @@ SCHEMA_URL = (
 ODE_SCHEMA_URL = (
     "https://raw.githubusercontent.com/Computational-Biology-Aachen/"
     f"mxl-schemas/main/v{_SCHEMA_MAJOR}/ode-model.schema.json"
+)
+STEADY_STATE_SCHEMA_URL = (
+    "https://raw.githubusercontent.com/Computational-Biology-Aachen/"
+    f"mxl-schemas/main/v{_SCHEMA_MAJOR}/steady-state-model.schema.json"
 )
 
 _FN_NAME = "_mxl_fn"
@@ -416,8 +424,72 @@ def ode_model_to_dict(
     }
 
 
+###############################################################################
+# Save — SteadyStateModelBuilder
+###############################################################################
+
+
+def steady_state_model_to_dict(
+    model: SteadyStateModelBuilder,
+    *,
+    model_id: str,
+    description: str = "",
+) -> dict[str, Any]:
+    """Convert a `SteadyStateModelBuilder` model into its ``.mxl.json`` dict representation.
+
+    Steady-state counterpart of :func:`model_to_dict` / :func:`ode_model_to_dict`
+    — there are no state variables and no time integration, so the ``model``
+    section carries only ``parameters`` and ``derived`` (the algebraic
+    outputs); no ``variables``, ``reactions``, ``readouts`` or ``nn_blocks``
+    section exists at all, matching `steady-state-model.schema.json`
+    (`additionalProperties: false`) and `SteadyStateModelBuilder` itself,
+    which has no such concepts (no surrogates, no readouts) to export.
+
+    Parameters
+    ----------
+    model
+        Model to serialise
+    model_id
+        Identifier stored in the file
+    description
+        Human-readable description stored in the file
+
+    Returns
+    -------
+    dict
+        JSON-compatible mapping following the ``mxl-steady-state-model`` schema
+
+    Raises
+    ------
+    SerializationError
+        If a parameter or derived rate function cannot be converted into an
+        expression.
+
+    """
+    parameters = {
+        name: {"value": _value_to_node_dict(par.value, origin=name)}
+        for name, par in model.get_raw_parameters().items()
+    }
+    derived = {
+        name: {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)}
+        for name, der in model.get_raw_derived().items()
+    }
+
+    return {
+        "$schema": STEADY_STATE_SCHEMA_URL,
+        "spec_version": SPEC_VERSION,
+        "kind": "steady-state",
+        "model_id": model_id,
+        "description": description,
+        "model": {
+            "parameters": parameters,
+            "derived": derived,
+        },
+    }
+
+
 def save(
-    model: KineticModelBuilder | OdeModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
     path: str | Path,
     *,
     model_id: str | None = None,
@@ -428,7 +500,8 @@ def save(
     Dispatches on `model`'s type: a `KineticModelBuilder` is written via
     :func:`model_to_dict` (`kinetic-model.schema.json`), an
     `OdeModelBuilder` via :func:`ode_model_to_dict`
-    (`ode-model.schema.json`).
+    (`ode-model.schema.json`), a `SteadyStateModelBuilder` via
+    :func:`steady_state_model_to_dict` (`steady-state-model.schema.json`).
 
     Every trained, exportable NN block's weights are written alongside the
     main file as `<block>.weights.json`, in the same directory `path`
@@ -460,6 +533,11 @@ def save(
     if isinstance(model, OdeModelBuilder):
         data = ode_model_to_dict(model, model_id=model_id, description=description)
         weights_files = ode_mxl_json_weights_files(model)
+    elif isinstance(model, SteadyStateModelBuilder):
+        data = steady_state_model_to_dict(
+            model, model_id=model_id, description=description
+        )
+        weights_files = {}
     else:
         data = model_to_dict(model, model_id=model_id, description=description)
         weights_files = mxl_json_weights_files(model)
@@ -696,6 +774,43 @@ def ode_model_from_dict(
     return model
 
 
+###############################################################################
+# Load — SteadyStateModelBuilder
+###############################################################################
+
+
+def steady_state_model_from_dict(data: Mapping[str, Any]) -> SteadyStateModelBuilder:
+    """Reconstruct a `SteadyStateModelBuilder` model from its ``.mxl.json`` dict representation.
+
+    Steady-state counterpart of :func:`model_from_dict` / :func:`ode_model_from_dict`.
+    Unlike those, there is no `weights_by_ref` parameter — the schema
+    forbids an `nn_blocks` section for this model kind entirely (matching
+    `SteadyStateModelBuilder`'s lack of a surrogates concept), so no
+    weights sidecar can ever be referenced.
+
+    Parameters
+    ----------
+    data
+        Mapping following the ``mxl-steady-state-model`` schema
+
+    Returns
+    -------
+    SteadyStateModelBuilder
+        The reconstructed model
+
+    """
+    spec = data["model"]
+    model = SteadyStateModelBuilder()
+
+    for name, par in spec["parameters"].items():
+        model.add_parameter(name, _node_dict_to_value(par["value"]))
+    for name, der in spec["derived"].items():
+        fn, args = _node_dict_to_fn(der["fn"])
+        model.add_derived(name, fn, args=args)
+
+    return model
+
+
 def model_from_dict(
     data: Mapping[str, Any],
     *,
@@ -755,12 +870,15 @@ def model_from_dict(
     return model
 
 
-def load(path: str | Path) -> KineticModelBuilder | OdeModelBuilder:
+def load(
+    path: str | Path,
+) -> KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder:
     """Load a model from the native ``.mxl.json`` format.
 
     Dispatches on the document's `kind` field (`"kinetic"`, the default
-    for documents written before this field existed, or `"ode"`) to
-    :func:`model_from_dict` or :func:`ode_model_from_dict` respectively.
+    for documents written before this field existed, `"ode"`, or
+    `"steady-state"`) to :func:`model_from_dict`, :func:`ode_model_from_dict`
+    or :func:`steady_state_model_from_dict` respectively.
 
     Every `nn_blocks[id].weights_ref` referenced in the document is
     resolved relative to `path`'s own directory and read from disk
@@ -801,4 +919,6 @@ def load(path: str | Path) -> KineticModelBuilder | OdeModelBuilder:
             raise SerializationError(msg) from exc
     if data.get("kind") == "ode":
         return ode_model_from_dict(data, weights_by_ref=weights_by_ref)
+    if data.get("kind") == "steady-state":
+        return steady_state_model_from_dict(data)
     return model_from_dict(data, weights_by_ref=weights_by_ref)
