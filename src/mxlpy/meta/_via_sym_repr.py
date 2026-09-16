@@ -677,6 +677,28 @@ def _ss_builder_to_symbolic_repr(
     return sym
 
 
+def _ode_diff_eq_rate_name(variable: str) -> str:
+    """Internal-only key for an `OdeModelBuilder` diff_eq's rate, distinct from its own variable name.
+
+    `OdeModelBuilder.get_raw_diff_eqs()` keys a diff_eq by the variable it
+    corrects -- unlike `KineticModelBuilder`, where a reaction's name is
+    always distinct from any compound name it touches. Reusing the
+    variable's own name for its "reaction" entry in the shared
+    reaction/dependency machinery below (`_ode_builder_to_symbolic_repr`,
+    `_get_order`, `_get_dependencies_and_leaves`, `_generate_model_code`'s
+    `name_map`) would make that machinery treat the (already directly
+    available) state variable and its (not-yet-computed) rate as the same
+    name -- `_get_dependencies_and_leaves` then sees the name already
+    satisfied as a leaf and never schedules the rate expression's own
+    computation, so the generated diff_eq silently ends up referencing the
+    raw state instead of the real computed rate (e.g. `dv/dt = 1.0*v`
+    instead of `dv/dt = 1.0*(k*v)`). This prefix keeps the two identities
+    apart, exactly like `KineticModelBuilder.buildMxlpy()`'s own
+    `_rate_`/`_init_`/`_derived_` internal Python-identifier convention.
+    """
+    return f"_dxdt_{variable}"
+
+
 def _ode_builder_to_symbolic_repr(
     model: OdeModelBuilder,
     *,
@@ -698,7 +720,7 @@ def _ode_builder_to_symbolic_repr(
             else sympy.Float(val),
             unit=cast(Quantity, diff_eq.unit),
         )
-        sym.reactions[k] = SymbolicReaction(
+        sym.reactions[_ode_diff_eq_rate_name(k)] = SymbolicReaction(
             fn=_fn_to_symbolic_repr(
                 k,
                 diff_eq.fn,
@@ -961,13 +983,31 @@ def valid_identifier(name: str) -> str:
 
 
 def _get_dependencies_and_leaves(
-    model: KineticModelBuilder, requested: set[str]
+    model: KineticModelBuilder | OdeModelBuilder, requested: set[str]
 ) -> set[str]:
-    """Return all names reachable from *requested* via the model's dependency graph."""
+    """Return all names reachable from *requested* via the model's dependency graph.
+
+    `OdeModelBuilder` has no `get_raw_variables`/`get_raw_reactions` split —
+    `get_raw_diff_eqs()` (keyed by variable name, `DiffEq.initial_value`/
+    `.args` shaped like `Variable`/`Reaction` each) covers both roles.
+    `dynamics`' keys are renamed via `_ode_diff_eq_rate_name` to avoid
+    colliding with `variables`' own keys — see that function's doc comment.
+    """
+    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+
+    variables: dict[str, object]
+    dynamics: dict[str, object]
+    if isinstance(model, KineticModelBuilder):
+        variables = model.get_raw_variables(as_copy=False)
+        dynamics = model.get_raw_reactions(as_copy=False)
+    else:
+        variables = model.get_raw_diff_eqs(as_copy=False)
+        dynamics = {_ode_diff_eq_rate_name(k): v for k, v in variables.items()}
+
     leaves = (
         {
             k
-            for k, v in model.get_raw_variables(as_copy=False).items()
+            for k, v in variables.items()
             if not isinstance(v.initial_value, InitialAssignment)
         }
         | {
@@ -980,7 +1020,7 @@ def _get_dependencies_and_leaves(
     dependees = (
         {
             k: set(ia.args)
-            for k, v in model.get_raw_variables(as_copy=False).items()
+            for k, v in variables.items()
             if isinstance(ia := v.initial_value, InitialAssignment)
         }
         | {
@@ -989,7 +1029,7 @@ def _get_dependencies_and_leaves(
             if isinstance(ia := v.value, InitialAssignment)
         }
         | {k: set(v.args) for k, v in model.get_raw_derived(as_copy=False).items()}
-        | {k: set(v.args) for k, v in model.get_raw_reactions(as_copy=False).items()}
+        | {k: set(v.args) for k, v in dynamics.items()}
         | {k: set(v.args) for k, v in model.get_raw_readouts(as_copy=False).items()}
     )
     for v in model.get_raw_surrogates(as_copy=False).values():
@@ -999,8 +1039,29 @@ def _get_dependencies_and_leaves(
     return _topo.get_all_dependencies_of(requested, leaves, dependees)
 
 
-def _get_order(self: KineticModelBuilder) -> list[str]:
-    """Return topological sort order of all model components."""
+def _get_order(self: KineticModelBuilder | OdeModelBuilder) -> list[str]:
+    """Return topological sort order of all model components.
+
+    `OdeModelBuilder` has no `_variables`/`_reactions` split — a variable and
+    its dynamics are one `_diff_eqs` entry (`DiffEq`, with the same
+    `initial_value`/`args` shape `Variable`/reaction each split across two
+    dicts for `KineticModelBuilder`) — so both the initial-value extraction
+    and the dynamics half of `to_sort` branch on which dict holds them.
+    `dynamics`' keys are renamed via `_ode_diff_eq_rate_name` (not the raw
+    `_diff_eqs` keys) to avoid colliding with `variable_source`'s own keys —
+    see that function's doc comment for why the collision is a real bug, not
+    just a cosmetic one.
+    """
+    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+
+    is_kinetic = isinstance(self, KineticModelBuilder)
+    variable_source = self._variables if is_kinetic else self._diff_eqs
+    dynamics = (
+        self._reactions
+        if is_kinetic
+        else {_ode_diff_eq_rate_name(k): v for k, v in self._diff_eqs.items()}
+    )
+
     base_parameter_values: dict[str, float] = {
         k: val
         for k, v in self._parameters.items()
@@ -1008,12 +1069,12 @@ def _get_order(self: KineticModelBuilder) -> list[str]:
     }
     base_variable_values: dict[str, float] = {
         k: init
-        for k, v in self._variables.items()
+        for k, v in variable_source.items()
         if not isinstance(init := v.initial_value, InitialAssignment)
     }
     initial_assignments: dict[str, InitialAssignment] = {
         k: init
-        for k, v in self._variables.items()
+        for k, v in variable_source.items()
         if isinstance(init := v.initial_value, InitialAssignment)
     } | {
         k: init
@@ -1021,7 +1082,7 @@ def _get_order(self: KineticModelBuilder) -> list[str]:
         if isinstance(init := v.value, InitialAssignment)
     }
 
-    # Sort derived & reactions
+    # Sort derived & reactions/diff_eqs
     available = (
         set(base_parameter_values)
         | set(base_variable_values)
@@ -1032,7 +1093,7 @@ def _get_order(self: KineticModelBuilder) -> list[str]:
     to_sort = (
         initial_assignments  # wrap this line
         | self._derived
-        | self._reactions
+        | dynamics
         | self._surrogates
         | self._readouts
     )
@@ -1049,7 +1110,7 @@ def _get_order(self: KineticModelBuilder) -> list[str]:
 
 
 def _normalized_symbolic_model(
-    model: KineticModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder,
     free_parameters: list[str],
     derived_to_calculate: list[str] | None,
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
@@ -1165,14 +1226,19 @@ def _normalized_symbolic_model(
 
 
 def _get_extended_returns(
-    model: KineticModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder,
     derived_to_calculate: list[str] | None,
 ) -> list[str]:
+    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+
+    reaction_names = (
+        model.get_reaction_names() if isinstance(model, KineticModelBuilder) else []
+    )
     return (
         list(
             model.get_derived_parameter_names()
             + model.get_derived_variable_names()
-            + model.get_reaction_names()
+            + reaction_names
             + model.get_surrogate_output_names()
             + model.get_readout_names()
         )
@@ -1182,7 +1248,7 @@ def _get_extended_returns(
 
 
 def _generate_model_code(
-    model: KineticModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder,
     *,
     free_parameters: list[str],
     derived_to_calculate: list[str] | None,
@@ -1203,6 +1269,18 @@ def _generate_model_code(
     ret_type_inits: str,
     ret_type_rest: str,
 ) -> Codegen:
+    from mxlpy._ode_builder import OdeModelBuilder  # noqa: PLC0415
+
+    # `_ode_diff_eq_rate_name`'s synthetic keys aren't real model ids, so
+    # they're absent from every caller's own `name_map` (built from
+    # `model.ids`) — extend it here, once, for every backend at once, rather
+    # than requiring each `generate_model_code_*` to remember to.
+    if isinstance(model, OdeModelBuilder):
+        name_map = name_map | {
+            _ode_diff_eq_rate_name(k): _ode_diff_eq_rate_name(name_map.get(k, k))
+            for k in model.get_raw_diff_eqs(as_copy=False)
+        }
+
     extended_returns = _get_extended_returns(model, derived_to_calculate)
 
     nsm = _normalized_symbolic_model(
@@ -1215,16 +1293,27 @@ def _generate_model_code(
     sympy_name_map = {sympy.Symbol(k): sympy.Symbol(v) for k, v in name_map.items()}
 
     variable_order = list(model.get_initial_conditions())
-    flux_order = model.get_arg_names(
-        include_time=False,
-        include_variables=False,
-        include_parameters=False,
-        include_derived_parameters=False,
-        include_derived_variables=False,
-        include_reactions=True,
-        include_surrogate_variables=False,
-        include_surrogate_fluxes=True,
-        include_readouts=False,
+    # OdeModelBuilder has no reactions/fluxes at all -- its own get_arg_names
+    # doesn't even accept include_reactions/include_surrogate_fluxes, so
+    # fluxes_src/nv_src below are simply never meaningful for it (callers
+    # building an Ode, not a FluxOde, from an OdeModelBuilder never look at
+    # them -- see Ode.from_mxlpy/FluxOde.from_mxlpy).
+    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+
+    flux_order = (
+        model.get_arg_names(
+            include_time=False,
+            include_variables=False,
+            include_parameters=False,
+            include_derived_parameters=False,
+            include_derived_variables=False,
+            include_reactions=True,
+            include_surrogate_variables=False,
+            include_surrogate_fluxes=True,
+            include_readouts=False,
+        )
+        if isinstance(model, KineticModelBuilder)
+        else []
     )
 
     # ``fluxes`` and ``model`` don't need everything in ``nsm.body`` -- e.g.
@@ -1568,13 +1657,18 @@ def generate_model_code_mxlweb(
         )
 
     def _gen_diff_eq(
-        k: str,
         el: SymbolicReaction,
         used: set[str],
         subs: dict[sympy.Symbol, sympy.Symbol],
     ) -> str:
+        # `el`'s own dict key (`sr.reactions`' key) is the internal
+        # `_ode_diff_eq_rate_name` rate name, not the variable it targets —
+        # unlike a real reaction, a diff_eq's stoichiometry always has
+        # exactly one entry, keyed by the variable itself, so that's the
+        # name `.setDifferential` needs.
+        (target,) = el.stoichiometry
         value = sympy_to_inline_mxlweb(el.fn.expr, used, subs)
-        return f'      .setDifferential("{name_map[k]}", {value})'
+        return f'      .setDifferential("{name_map[target]}", {value})'
 
     def _gen_stoich(
         k: str,
@@ -1650,7 +1744,7 @@ def generate_model_code_mxlweb(
     lines.extend(_gen_var(k, v, used, subs) for k, v in sr.variables.items())
     lines.extend(_gen_der(k, v, used, subs) for k, v in sr.derived.items())
     if isinstance(model, OdeModelBuilder):
-        lines.extend(_gen_diff_eq(k, v, used, subs) for k, v in sr.reactions.items())
+        lines.extend(_gen_diff_eq(v, used, subs) for v in sr.reactions.values())
     else:
         lines.extend(_gen_rxn(k, v, used, subs) for k, v in sr.reactions.items())
     lines.extend(_gen_srg(v, used, subs) for v in sr.surrogates.values())
@@ -1758,7 +1852,7 @@ def generate_model_code_py(
 
 
 def generate_model_code_jax(
-    model: KineticModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder,
     *,
     parameters_to_fit: list[str] | None = None,
     free_parameters: list[str] | None = None,

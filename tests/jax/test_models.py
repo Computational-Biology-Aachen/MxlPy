@@ -20,7 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from mxlpy import KineticModelBuilder, meta
+from mxlpy import KineticModelBuilder, OdeModelBuilder, meta
 from mxlpy.jax.models import FluxOde, Ode, boundaries_to_ts
 
 # ---------------------------------------------------------------------------
@@ -289,6 +289,28 @@ def test_ode_from_mxlpy_uses_runtime_free_arg_and_fit_pars() -> None:
     # dv/dt = a + 10*b. Pass free a=5 at call time; fit b=3 lives in pars.
     dvdt = float(ode(0.0, jnp.array([0.0]), jnp.array([5.0]))[0])
     assert dvdt == 35.0  # a misordering would give 3 + 10*5 = 53
+
+
+def _direct_dxdt(v: float, k: float) -> float:
+    return k * v
+
+
+def test_ode_from_mxlpy_accepts_ode_model_builder() -> None:
+    """`Ode.from_mxlpy` also accepts a direct-dxdt `OdeModelBuilder` model, not just `KineticModelBuilder`.
+
+    `generate_model_code_jax` delegates to the same builder-agnostic
+    `_generate_model_code` backend `generate_model_code_py`/`_ts`/etc.
+    already use for both builder types, so widening its type hint (and
+    `Ode.from_mxlpy`'s) needs no other change.
+    """
+    model = (
+        OdeModelBuilder()
+        .add_parameter("k", value=0.5)
+        .add_diff_eq("v", initial_value=2.0, fn=_direct_dxdt, args=["v", "k"])
+    )
+    ode = Ode.from_mxlpy(model, parameters_to_fit=["k"])
+    dvdt = float(ode(0.0, jnp.array([2.0]), jnp.array([]))[0])
+    assert dvdt == 1.0  # k * v = 0.5 * 2.0
 
 
 def test_ode_and_fluxode_from_mxlpy_agree() -> None:

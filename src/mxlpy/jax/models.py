@@ -13,6 +13,7 @@ from jax import lax
 from jaxtyping import PRNGKeyArray, PyTree
 
 from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy.jax.simulation import FluxOdeSimulation
 from mxlpy.meta._via_sym_repr import generate_model_code_jax
 
@@ -1156,12 +1157,12 @@ class Ode(Base):
     @classmethod
     def from_mxlpy(
         cls,
-        mxlpy_model: KineticModelBuilder,
+        mxlpy_model: KineticModelBuilder | OdeModelBuilder,
         parameters_to_fit: list[str] | None = None,
         free_parameters: list[str] | None = None,
         derived_to_calculate: list[str] | None = None,
     ) -> Self:
-        """Construct an :class:`Ode` from an mxlpy :class:`~mxlpy.Model`.
+        """Construct an :class:`Ode` from an mxlpy :class:`~mxlpy.Model` or :class:`~mxlpy.OdeModelBuilder`.
 
         Generates JAX-compatible RHS code from the model via symbolic code
         generation, executes it, and initialises the trainable parameter
@@ -1169,7 +1170,7 @@ class Ode(Base):
 
         Parameters
         ----------
-        mxlpy_model : Model
+        mxlpy_model : Model or OdeModelBuilder
             The mechanistic model to convert.
         parameters_to_fit : list[str] or None
             Names of parameters that become trainable (stored in ``pars``).
