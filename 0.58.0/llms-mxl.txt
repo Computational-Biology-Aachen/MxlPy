@@ -1,0 +1,147 @@
+# MxlPy — Mechanistic learning
+
+[← back to index](llms.txt)
+
+The intersection of mechanistic modelling and ML: surrogates, neural posterior estimation, universal differential equations, and reaction carousels. Heavy backends (torch / keras / equinox+jax / diffrax) are optional and lazy-imported.
+
+## Surrogates (`mxlpy.surrogates`, `mxlpy.nn`)
+
+A surrogate replaces part (or all) of a model with a trained ML model while keeping the ODE interface. A surrogate can emit **derived quantities** and/or **reactions** — give an output `stoichiometries` and it becomes a reaction; omit it and it is a derived value. Outputs are always iterables (multiple in/out supported, and a single surrogate may mix derived values and rates).
+
+```python
+from numpy.polynomial.polynomial import Polynomial
+from mxlpy import Model, fns, surrogates
+
+m = Model().add_variable("x", 1.0)
+m.add_surrogate(
+    "surrogate",
+    surrogates.poly.Surrogate(
+        model=Polynomial(coef=[2]),
+        args=["x"],
+        outputs=["v1"],
+        stoichiometries={"v1": {"x": -1}},   # present ⇒ reaction; absent ⇒ derived quantity
+    ),
+)
+```
+
+`add_surrogate(name, surrogate, *, args=None, outputs=None, stoichiometries=None)` — `args`/`outputs`/`stoichiometries` may be set on the `Surrogate` object or on the call. Update/remove with `model.update_surrogate(...)` / `model.remove_surrogate(name)`.
+
+### Training
+
+Generate steady-state training data with `scan.steady_state` (cache it; see [advanced](llms-advanced.txt)). When learning a downstream flux, fix the upstream variable with `make_variable_static`.
+
+```python
+import numpy as np, pandas as pd
+from mxlpy import scan
+
+features = pd.DataFrame({"x": np.geomspace(1e-12, 2.0, 21)})
+targets = scan.steady_state(model.make_variable_static("x"), to_scan=features).fluxes.loc[:, ["v3"]]
+
+# Polynomial (single feature → single target). Returns (surrogate, info); info["score"] per degree.
+surrogate, info = surrogates.poly.train(features["x"], targets["v3"])  # degrees=(1..7) by default
+
+# PyTorch. Returns (surrogate, loss); check loss approaches 0.
+surrogate, loss = surrogates.torch.train(features=features, targets=targets, batch_size=100, epochs=250)
+
+# Same interface for Keras and Equinox (JAX)
+surrogate, loss = surrogates.keras.train(features=features, targets=targets, epochs=250)
+surrogate, loss = surrogates.equinox.train(features=features, targets=targets, epochs=250,
+                                            optimizer=optax.adamw(learning_rate=1e-3))
+```
+
+### Re-entrant training & inspection
+
+Use a `Trainer` when you don't know how many epochs you need:
+
+```python
+trainer = surrogates.torch.Trainer(features=features, targets=targets, loss_fn=my_loss)  # loss_fn optional
+trainer.train(epochs=100)
+trainer.get_loss().plot()
+trainer.train(epochs=150)                 # continue
+surrogate = trainer.get_surrogate(surrogate_outputs=["x"])
+
+surrogate.predict_raw(np.array([0.0]))    # sanity-check raw predictions
+```
+
+A custom loss is any `(pred: Tensor, data: Tensor) -> Tensor`, e.g. `lambda`-free `def mean_abs(x, y): return torch.mean(torch.abs(x - y))`.
+
+## Neural posterior estimation (`mxlpy.npe`)
+
+NPE answers "**what parameters could have produced this data?**" Train on synthetic data: sample parameters from a prior (these are the **targets**), simulate to generate observations (the **features**), then learn the inverse map. Works for steady-state and time-course data.
+
+```python
+from mxlpy import npe, scan
+from mxlpy.distributions import LogNormal, sample
+
+targets = sample({"k1": LogNormal(mean=1.0, sigma=0.3)}, n=1000)         # the parameters to recover
+features = scan.steady_state(model, to_scan=targets).get_args().loc[:, ["y", "v2", "v3"]]
+
+estimator, losses = npe.torch.train_steady_state(features=features, targets=targets, epochs=100, batch_size=100)
+posterior = estimator.predict(features)   # predicted parameters for (real or held-out) data
+```
+
+Re-entrant trainers mirror the surrogate API: `npe.torch.SteadyStateTrainer` / `npe.torch.TimeCourseTrainer` with `.train(epochs=, batch_size=)`, `.get_loss()`, `.get_estimator()` (and `loss_fn=`). Sanity-check by comparing prior vs posterior densities. Combined with `LinearLabelMapper`, NPE can recover parameters from isotopic label-distribution data.
+
+## Universal differential equations (`mxlpy.jax`)
+
+A UDE adds a neural network (the NDE component) to a mechanistic ODE to learn residual dynamics the ODE can't explain. Training freezes the ODE parameters and optimises only the network.
+
+```python
+import diffrax, jax, jax.numpy as jnp, optax
+from mxlpy.jax.models import Node, Ode, Ude
+from mxlpy.jax.train import IntegrationSettings, train
+
+lv = Ode.from_mxlpy(get_lotka_volterra())     # mechanistic prior
+ts = jnp.linspace(0, 50, 100)
+ys = lv.integrate(ts, jnp.array([10.0, 10.0]))
+
+ude, losses = train(
+    Ude(ode=lv, nn=Node(n_obs=2, width=8, depth=3, key=jax.random.PRNGKey(42), out_scale=jnp.array([0.1])),
+        op="+"),                               # NDE output is added to the ODE rhs
+    ts=ts, ys=ys_observed,
+    training_steps=[(500, 0.2), (500, 0.5), (10_000, 1.0)],  # curriculum: (steps, trajectory fraction)
+    avg_every=50,
+    integration_settings=IntegrationSettings(max_steps=8192, method=diffrax.Tsit5),
+    optim=optax.adabelief(learning_rate=2e-4),
+)
+ys_pred = ude.integrate(ts, y0)
+
+# Decompose the trained dynamics into ODE and learned-NDE contributions
+rhs_ode = jax.vmap(ude.ode, in_axes=(0, 0, None))(ts, ys_pred, jnp.array([]))
+rhs_nde = jax.vmap(ude.nn, in_axes=(0, 0, None))(ts, ys_pred, jnp.array([]))
+```
+
+## Reaction carousel (`mxlpy.carousel`)
+
+A carousel is an ensemble that keeps the model structure (stoichiometry) fixed but varies the **kinetics** of chosen reactions — useful for comparing candidate rate laws and fitting the best combination.
+
+```python
+from mxlpy import fit
+from mxlpy.carousel import Carousel, ReactionTemplate
+
+carousel = Carousel(
+    get_sir(),
+    {
+        "infection": [
+            ReactionTemplate(fn=fns.mass_action_2s, args=["s", "i", "beta"]),
+            ReactionTemplate(fn=fns.michaelis_menten_2s, args=["s", "i", "beta", "km_bs", "km_bi"],
+                             additional_parameters={"km_bs": 0.1, "km_bi": 1.0}),
+        ],
+        "recovery": [
+            ReactionTemplate(fn=fns.mass_action_1s, args=["i", "gamma"]),
+            ReactionTemplate(fn=fns.michaelis_menten_1s, args=["i", "gamma", "km_gi"],
+                             additional_parameters={"km_gi": 0.1}),
+        ],
+    },
+)
+
+# Simulate the whole ensemble
+tc = carousel.time_course(np.linspace(0, 100, 101))
+tc.get_variables_by_model()
+
+# Fit across the ensemble and take the best structure+parameters
+res = fit.carousel_time_course(carousel, p0={"beta": 0.29, "gamma": 0.4}, data=data,
+                               minimizer=fit.LocalScipyMinimizer())
+best = res.get_best_fit()
+best.best_pars; [rxn.fn.__name__ for rxn in best.model.get_raw_reactions().values()]
+```
