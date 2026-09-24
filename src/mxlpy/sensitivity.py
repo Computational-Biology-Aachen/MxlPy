@@ -281,4 +281,10 @@ def sobol(
     )
     total_df, first_df = result.to_df()
     merged = pd.concat([first_df, total_df], axis=1)
-    return cast("pd.DataFrame", merged[["S1", "ST", "S1_conf", "ST_conf"]])
+    indices = cast("pd.DataFrame", merged[["S1", "ST", "S1_conf", "ST_conf"]])
+    # Every Saltelli estimator uses all rows of y, so a single failed run
+    # invalidates every index.  SALib >= 1.6 masks the resulting NaN variance
+    # to 0.0 ("no sensitivity"), so restore NaN explicitly.
+    if not np.isfinite(y).all():
+        indices.loc[:, :] = np.nan
+    return indices

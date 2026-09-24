@@ -174,3 +174,19 @@ def test_sobol_propagates_failed_runs_as_nan() -> None:
         seed=0,
     )
     assert bool(result["ST"].isna().all())
+
+
+def test_sobol_single_failed_run_yields_nan_not_zero() -> None:
+    def output(_model: KineticModelBuilder, samples: pd.DataFrame) -> np.ndarray:
+        y = samples["p1"].to_numpy() * 2.0 + samples["p2"].to_numpy()
+        y[3] = np.nan
+        return y
+
+    result = sensitivity.sobol(
+        m_2v_2p_1d_1r(),
+        output=output,
+        param_bounds={"p1": (0.1, 10.0), "p2": (0.01, 1.0)},
+        n_samples=16,
+        seed=0,
+    )
+    assert bool(result.isna().all().all())
