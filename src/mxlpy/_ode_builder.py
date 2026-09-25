@@ -209,6 +209,11 @@ class ModelCache:
 
     Attributes
     ----------
+    order
+        Topological order of derived values, reactions / surrogates and initial assignments.
+    readout_order
+        Readout names in dependency order. Readouts may read each other, so
+        they have to be calculated in this order, not in insertion order.
     var_names
         A list of variable names.
     parameter_values
@@ -233,6 +238,7 @@ class ModelCache:
         return pformat(self)
 
     order: list[str]  # mostly for debug purposes
+    readout_order: list[str]
     var_names: list[str]
     dyn_order: list[str]
     base_parameter_values: dict[str, float]
@@ -425,6 +431,18 @@ class OdeModelBuilder:
         for name in order:
             to_sort[name].calculate_inpl(name, dependent)
 
+        # Sort readouts. They may read everything computed above (parameters,
+        # variables, derived values, fluxes, surrogate outputs) as well as
+        # each other, so they go through the same topological sort as derived
+        # values instead of being evaluated in insertion order.
+        readout_order = _topo.sort_dependencies(
+            available=set(dependent),
+            elements=[
+                _topo.Dependency(name=k, required=set(v.args), provided={k})
+                for k, v in self._readouts.items()
+            ],
+        )
+
         # Split derived/surrogates into static and dynamic variables.
         # `dyn_order` here is *dynamic derived quantities and every
         # surrogate output, unconditionally* — every diff_eq's own rate law
@@ -471,6 +489,7 @@ class OdeModelBuilder:
 
         self._cache = ModelCache(
             order=order,
+            readout_order=readout_order,
             var_names=var_names,
             dyn_order=dyn_order,
             base_parameter_values=base_parameter_values,
@@ -1767,6 +1786,7 @@ class OdeModelBuilder:
     # Think of something like NADPH / (NADP + NADPH) as a proxy for energy state
     ##########################################################################
 
+    @_invalidate_cache
     def add_readout(
         self,
         name: str,
@@ -1840,6 +1860,7 @@ class OdeModelBuilder:
             return copy.deepcopy(self._readouts)
         return self._readouts
 
+    @_invalidate_cache
     def remove_readout(self, name: str) -> Self:
         """Remove a readout by its name.
 
@@ -2144,8 +2165,8 @@ class OdeModelBuilder:
             cache=cache,
         )
         if include_readouts:
-            for name, ro in self._readouts.items():  # FIXME: order?
-                ro.calculate_inpl(name, raw)
+            for name in cache.readout_order:
+                self._readouts[name].calculate_inpl(name, raw)
         args = pd.Series(raw, dtype=float)
         return args.loc[
             self.get_arg_names(
@@ -2177,8 +2198,8 @@ class OdeModelBuilder:
                 cache=cache,
             )
             if include_readouts:
-                for name, ro in self._readouts.items():  # FIXME: order?
-                    ro.calculate_inpl(name, args)
+                for name in cache.readout_order:
+                    self._readouts[name].calculate_inpl(name, args)
             args_by_time[time] = args
         return args_by_time
 
