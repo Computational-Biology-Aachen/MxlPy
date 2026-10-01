@@ -150,6 +150,7 @@ class ProtocolTimeCourseWorker(Protocol):
 
 def _steady_state_worker(
     model: KineticModelBuilder,
+    tolerance: float = 1e-6,
     *,
     rel_norm: bool,
     integrator: IntegratorType | None,
@@ -162,6 +163,8 @@ def _steady_state_worker(
     ----------
     model
         Model instance to simulate.
+    tolerance
+        Tolerance for the steady-state calculation.
     y0
         Initial conditions as a dictionary {species: value}.
     rel_norm
@@ -181,6 +184,7 @@ def _steady_state_worker(
         res = (
             Simulator(model, integrator=integrator, y0=y0)
             .simulate_to_steady_state(
+                tolerance=tolerance,
                 rel_norm=rel_norm,
                 oscillation_detector=oscillation_detector,
             )
@@ -422,6 +426,7 @@ def steady_state(
     model: KineticModelBuilder,
     *,
     to_scan: pd.DataFrame,
+    tolerance : float = 1e-6,
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     rel_norm: bool = False,
@@ -438,6 +443,8 @@ def steady_state(
         Model instance to simulate.
     to_scan
         DataFrame containing parameter or initial values to scan.
+    tolerance
+        Tolerance for the steady-state calculation.
     y0
         Initial conditions as a dictionary {variable: value}.
     parallel
@@ -491,6 +498,7 @@ def steady_state(
             _update_parameters_and_initial_conditions,
             fn=partial(
                 worker,
+                tolerance=tolerance,
                 rel_norm=rel_norm,
                 integrator=integrator,
                 y0=None,
