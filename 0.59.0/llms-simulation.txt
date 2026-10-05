@@ -1,0 +1,131 @@
+# MxlPy — Simulation
+
+[← back to index](llms.txt)
+
+Running models with `Simulator`, working with the result object, error handling and integrator configuration.
+
+## Simulator (fluent, stateful)
+
+`Simulator(model, *, y0=None, integrator=None)` wraps a model. Like `Model`, every method returns `Self` so calls chain. It is **stateful**: parameter updates and successive `simulate*` calls accumulate, so you can continue a run or change conditions between segments.
+
+| Method | Returns time points … |
+|---|---|
+| `simulate(t_end)` | from 0 to `t_end` (solver-chosen steps) |
+| `simulate(t_end, steps=n)` | `n` evenly spaced steps to `t_end` |
+| `simulate_time_course(np.array)` | exactly the given time points |
+| `simulate_protocol(protocol, time_points_per_step=...)` | over a piecewise-constant parameter protocol |
+| `simulate_protocol_time_course(protocol, time_points=...)` | protocol, at exactly the given time points |
+| `simulate_to_steady_state()` | the steady state (fixed point) |
+
+Retrieve results with `.get_result()`, which returns a `Result`.
+
+```python
+from mxlpy import Simulator, plot
+import numpy as np
+
+# Time course
+variables, fluxes = Simulator(model).simulate(t_end=10).get_result().unwrap_or_err()
+variables, fluxes = Simulator(model).simulate(10, steps=100).get_result().unwrap_or_err()
+variables, fluxes = Simulator(model).simulate_time_course(np.linspace(0, 10, 101)).get_result().unwrap_or_err()
+
+# Custom initial conditions
+variables, fluxes = Simulator(model, y0={"S": 2.0, "P": 0.0}).simulate(10).get_result().unwrap_or_err()
+
+# Steady state
+variables, fluxes = Simulator(model).simulate_to_steady_state().get_result().unwrap_or_err()
+```
+
+### Continuing / updating between runs
+
+```python
+sim = Simulator(model)
+vars1, _ = sim.simulate(t_end=50).get_result().unwrap_or_err()
+vars2, _ = sim.update_parameter("k1", 2.0).simulate(t_end=100).get_result().unwrap_or_err()  # continues from t=50
+```
+
+## Protocols
+
+A protocol is a `pandas.DataFrame` of piecewise-constant parameter values indexed by `pd.Timedelta` end-points (one second of `Timedelta` ↔ one time unit of integration). Build one with `make_protocol`, a list of `(duration, {param: value})` steps:
+
+```python
+from mxlpy import make_protocol
+
+protocol = make_protocol([
+    (1, {"k1": 1.0}),   # value 1 for 1 time unit
+    (2, {"k1": 2.0}),   # value 2 for the next 2
+    (3, {"k1": 1.0}),   # value 1 for the next 3
+])
+
+variables, fluxes = Simulator(model).simulate_protocol(protocol).get_result().unwrap_or_err()
+
+fig, ax = plot.one_axes()
+plot.lines(variables, ax=ax)
+plot.shade_protocol(protocol["k1"], ax=ax, alpha=0.1)   # shade the active intervals
+plot.show()
+```
+
+## The result object
+
+`.get_result().unwrap_or_err()` (or `.value`) yields a `Simulation`. It unpacks into `(variables, fluxes)` and also exposes:
+
+```python
+res = Simulator(model).simulate(10).get_result().unwrap_or_err()
+
+variables, fluxes = res          # unpack
+res.variables; res.fluxes        # DataFrames (index = time)
+res.get_combined()               # variables + fluxes in one DataFrame
+res.get_right_hand_side()        # dY/dt per time step
+res.get_producers("S")           # reactions that produce S (positive stoichiometry)
+res.get_consumers("S")           # reactions that consume S; pass scaled=True to scale by stoichiometry
+res.get_new_y0()                 # final state as a y0 dict (e.g. to seed another run)
+```
+
+## Error handling
+
+Simulations return a `Result[Simulation]`. Three ways to handle it:
+
+```python
+result = Simulator(model).simulate_to_steady_state().get_result()
+
+# 1. Raise on failure (type-safe when you're sure it succeeds)
+variables, fluxes = result.unwrap_or_err()
+
+# 2. Inspect the value directly
+res = result.value                 # Simulation | Exception
+if isinstance(res, Exception):
+    raise res
+variables, fluxes = res
+
+# 3. Provide a default
+outcome = result.default(lambda: None)
+if outcome is None:
+    print("Simulation failed")
+```
+
+Steady-state search raises `OscillationDetected(species, period)` if it detects oscillations, or `NoSteadyState` if it fails to converge.
+
+```python
+from mxlpy import OscillationDetected
+```
+
+## Integrator configuration
+
+Pass an integrator class (or a `partial` with settings) via `integrator=`. Default is **Assimulo** if installed (conda-forge / pixi), otherwise **Scipy** (PyPI / uv). Because settings differ per integrator, check the type before tuning. `Diffrax` requires jax + diffrax.
+
+```python
+from functools import partial
+from mxlpy import Simulator, Scipy, Diffrax   # Assimulo also importable when present
+
+# Choose and configure at construction
+sim = Simulator(model, integrator=Scipy)
+sim = Simulator(model, integrator=partial(Scipy, atol=1e-6, rtol=1e-6))
+
+# Tune mid-run (guard on the concrete type, settings are integrator-specific)
+if isinstance(sim.integrator, Scipy):
+    sim.integrator.atol = 1e-8
+    sim.integrator.rtol = 1e-8
+
+# Diffrax with an explicit solver
+from diffrax import Tsit5
+sim = Simulator(model, integrator=partial(Diffrax, solver=Tsit5()))
+```
