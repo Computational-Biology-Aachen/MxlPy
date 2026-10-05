@@ -904,9 +904,9 @@ def model_to_symbolic_repr(
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
 ) -> SymbolicRepr:
     # We need the local imports here to avoid a Model -> meta -> Model import loop
-    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
-    from mxlpy._ode_builder import OdeModelBuilder  # noqa: PLC0415
-    from mxlpy._steady_state_builder import SteadyStateModelBuilder  # noqa: PLC0415
+    from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy._ode_builder import OdeModelBuilder
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder
 
     if isinstance(model, KineticModelBuilder):
         return _kinetic_builder_to_symbolic_repr(
@@ -993,7 +993,7 @@ def _get_dependencies_and_leaves(
     `dynamics`' keys are renamed via `_ode_diff_eq_rate_name` to avoid
     colliding with `variables`' own keys — see that function's doc comment.
     """
-    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
     variables: dict[str, object]
     dynamics: dict[str, object]
@@ -1052,7 +1052,7 @@ def _get_order(self: KineticModelBuilder | OdeModelBuilder) -> list[str]:
     see that function's doc comment for why the collision is a real bug, not
     just a cosmetic one.
     """
-    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
     is_kinetic = isinstance(self, KineticModelBuilder)
     variable_source = self._variables if is_kinetic else self._diff_eqs
@@ -1229,7 +1229,7 @@ def _get_extended_returns(
     model: KineticModelBuilder | OdeModelBuilder,
     derived_to_calculate: list[str] | None,
 ) -> list[str]:
-    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
     reaction_names = (
         model.get_reaction_names() if isinstance(model, KineticModelBuilder) else []
@@ -1269,7 +1269,7 @@ def _generate_model_code(
     ret_type_inits: str,
     ret_type_rest: str,
 ) -> Codegen:
-    from mxlpy._ode_builder import OdeModelBuilder  # noqa: PLC0415
+    from mxlpy._ode_builder import OdeModelBuilder
 
     # `_ode_diff_eq_rate_name`'s synthetic keys aren't real model ids, so
     # they're absent from every caller's own `name_map` (built from
@@ -1298,7 +1298,7 @@ def _generate_model_code(
     # fluxes_src/nv_src below are simply never meaningful for it (callers
     # building an Ode, not a FluxOde, from an OdeModelBuilder never look at
     # them -- see Ode.from_mxlpy/FluxOde.from_mxlpy).
-    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+    from mxlpy._kinetic_builder import KineticModelBuilder
 
     flux_order = (
         model.get_arg_names(
@@ -1533,8 +1533,8 @@ def generate_model_code_mxlweb(
     """
     # Local imports to avoid a Model -> meta -> Model import loop, mirroring
     # `model_to_symbolic_repr`'s identical pattern.
-    from mxlpy._ode_builder import OdeModelBuilder  # noqa: PLC0415
-    from mxlpy._steady_state_builder import SteadyStateModelBuilder  # noqa: PLC0415
+    from mxlpy._ode_builder import OdeModelBuilder
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder
 
     if isinstance(model, OdeModelBuilder):
         builder_class = "OdeModelBuilder"

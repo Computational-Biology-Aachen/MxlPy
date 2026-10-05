@@ -98,11 +98,15 @@ def test_get_event_names() -> None:
 
 
 def test_add_event_duplicate_name_raises() -> None:
-    model = Model().add_parameter("k1", 0.1).add_event(
-        "ev",
-        trigger_at_t5,
-        trigger_args=["time"],
-        assignments={"k1": Derived(fn=set_zero, args=[])},
+    model = (
+        Model()
+        .add_parameter("k1", 0.1)
+        .add_event(
+            "ev",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"k1": Derived(fn=set_zero, args=[])},
+        )
     )
     with pytest.raises((KeyError, NameError)):
         model.add_event(
@@ -586,11 +590,15 @@ def test_apply_tied_events_applies_in_declaration_order() -> None:
 
 
 def test_get_raw_events() -> None:
-    model = Model().add_parameter("k1", 0.1).add_event(
-        "dose",
-        trigger_at_t5,
-        trigger_args=["time"],
-        assignments={"k1": Derived(fn=set_zero, args=[])},
+    model = (
+        Model()
+        .add_parameter("k1", 0.1)
+        .add_event(
+            "dose",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"k1": Derived(fn=set_zero, args=[])},
+        )
     )
     raw = model.get_raw_events()
     assert list(raw) == ["dose"]
@@ -598,11 +606,15 @@ def test_get_raw_events() -> None:
 
 
 def test_remove_event() -> None:
-    model = Model().add_parameter("k1", 0.1).add_event(
-        "dose",
-        trigger_at_t5,
-        trigger_args=["time"],
-        assignments={"k1": Derived(fn=set_zero, args=[])},
+    model = (
+        Model()
+        .add_parameter("k1", 0.1)
+        .add_event(
+            "dose",
+            trigger_at_t5,
+            trigger_args=["time"],
+            assignments={"k1": Derived(fn=set_zero, args=[])},
+        )
     )
     model.remove_event("dose")
     assert model.get_event_names() == []

@@ -426,7 +426,7 @@ def steady_state(
     model: KineticModelBuilder,
     *,
     to_scan: pd.DataFrame,
-    tolerance : float = 1e-6,
+    tolerance: float = 1e-6,
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     rel_norm: bool = False,

@@ -143,9 +143,7 @@ def _run_one[R](
 # leaves are traced -- not baked into the compiled program as constants --
 # which is what makes the cache hit meaningful across calls with different
 # data of the same shape.
-_run_batched = eqx.filter_vmap(
-    _run_one, in_axes=(eqx.if_array(0), None, None, None)
-)
+_run_batched = eqx.filter_vmap(_run_one, in_axes=(eqx.if_array(0), None, None, None))
 
 
 def batch_simulate[T: eqx.Module, R](

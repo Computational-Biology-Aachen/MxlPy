@@ -109,7 +109,9 @@ def test_batch_simulate_composes_with_fluxode_simulate_time_course() -> None:
         models, FluxOde.simulate_time_course, ts, y0, 8192
     )
     assert batched.ys.shape == (3, 4, 1)
-    assert not jnp.allclose(batched.ys[0], batched.ys[1])  # distinct pars, distinct traj
+    assert not jnp.allclose(
+        batched.ys[0], batched.ys[1]
+    )  # distinct pars, distinct traj
 
     # No leaked tracers: unstacking recovers a real, usable per-member result.
     members = jax_ensemble.unstack_models(batched, n=3)

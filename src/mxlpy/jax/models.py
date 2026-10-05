@@ -3,7 +3,7 @@
 import operator
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any, Literal, Protocol, Self, cast
+from typing import Literal, Protocol, Self, cast
 
 import diffrax
 import equinox as eqx

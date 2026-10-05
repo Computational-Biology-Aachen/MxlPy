@@ -20,7 +20,7 @@ from mxlpy.meta import source_tools
 
 
 def branch_then_combine(cond: float, a: float, b: float) -> float:
-    if cond == 0:
+    if cond == 0:  # noqa: SIM108  # if/else block is the subject under test
         x = a
     else:
         x = b
@@ -40,7 +40,7 @@ def branch_multiple_assigns_then_combine(
 
 
 def branch_then_outer_clip(cond: float, a: float, b: float, cap: float) -> float:
-    if cond <= 0:
+    if cond <= 0:  # noqa: SIM108  # if/else block is the subject under test
         val = a
     else:
         val = b

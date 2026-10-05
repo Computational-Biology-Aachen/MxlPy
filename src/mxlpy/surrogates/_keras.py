@@ -169,7 +169,8 @@ def surrogate_from_mxl_json(
         args=inputs,
         outputs=outputs,
         stoichiometries={
-            output: {target: 1.0} for output, target in zip(outputs, targets, strict=True)
+            output: {target: 1.0}
+            for output, target in zip(outputs, targets, strict=True)
         },
     )
 
@@ -283,7 +284,9 @@ class Surrogate(AbstractSurrogate):
         # method's callers (Surrogate.predict passes one flat 1D sample at
         # a time); np.squeeze then drops the resulting single-row batch
         # dimension back off.
-        return np.atleast_1d(np.squeeze(self.model.predict(np.atleast_2d(y), verbose=0)))
+        return np.atleast_1d(
+            np.squeeze(self.model.predict(np.atleast_2d(y), verbose=0))
+        )
 
     def predict(
         self, args: dict[str, float | pd.Series | pd.DataFrame]
@@ -371,7 +374,9 @@ class OdeSurrogate(AbstractOdeSurrogate):
             Raw model prediction as a numpy array, ordered like `self.outputs`.
 
         """
-        return np.atleast_1d(np.squeeze(self.model.predict(np.atleast_2d(y), verbose=0)))
+        return np.atleast_1d(
+            np.squeeze(self.model.predict(np.atleast_2d(y), verbose=0))
+        )
 
     def predict(
         self, args: dict[str, float | pd.Series | pd.DataFrame]

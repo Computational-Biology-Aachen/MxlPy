@@ -1,9 +1,9 @@
-def test_LSTM() -> None:
+def test_lstm() -> None:
     # FIXME: implement this
     assert True
 
 
-def test_MLP() -> None:
+def test_mlp() -> None:
     # FIXME: implement this
     assert True
 

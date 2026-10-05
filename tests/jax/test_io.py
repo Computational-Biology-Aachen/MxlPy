@@ -80,9 +80,7 @@ def test_recast_to_template_backfills_a_missing_field_by_name() -> None:
     old = _ModelV1(a=jnp.array([1.0]))
     template = _ModelV2(a=jnp.array([0.0]), b=jnp.array([9.0]))
 
-    recast = jax_io.recast_to_template(
-        old, template, backfill={".b": jnp.array([9.0])}
-    )
+    recast = jax_io.recast_to_template(old, template, backfill={".b": jnp.array([9.0])})
 
     assert type(recast) is _ModelV2
     assert jnp.allclose(recast.a, old.a)  # old model's own value, kept
@@ -127,12 +125,8 @@ def test_recast_to_template_backfill_wrong_target_leaf_still_raises() -> None:
     has to be by name, not just by matching leaf counts.
     """
     old = _ModelV1c(a=jnp.array([1.0]), c=jnp.array([3.0]))
-    template = _ModelV2c(
-        a=jnp.array([0.0]), b=jnp.array([9.0]), c=jnp.array([0.0])
-    )
+    template = _ModelV2c(a=jnp.array([0.0]), b=jnp.array([9.0]), c=jnp.array([0.0]))
 
     # ".b" is the genuinely missing leaf; ".c" already exists on old.
     with pytest.raises(ValueError, match="Leaf count mismatch"):
-        jax_io.recast_to_template(
-            old, template, backfill={".c": jnp.array([999.0])}
-        )
+        jax_io.recast_to_template(old, template, backfill={".c": jnp.array([999.0])})

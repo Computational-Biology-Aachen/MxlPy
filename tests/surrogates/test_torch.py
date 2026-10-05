@@ -225,7 +225,10 @@ def test_non_unit_stoichiometry_raises() -> None:
 def test_unrecognized_activation_raises() -> None:
     model = nn.Sequential(nn.Linear(2, 3), nn.ELU(), nn.Linear(3, 1))
     surrogate = ts.Surrogate(
-        model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=model,
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     with pytest.raises(SerializationError):
         surrogate.to_mxl_json()
@@ -258,7 +261,10 @@ def test_bias_free_layer_raises() -> None:
         nn.Linear(3, 1, bias=False),
     )
     surrogate = ts.Surrogate(
-        model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=model,
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     with pytest.raises(SerializationError):
         surrogate.to_mxl_json()
@@ -273,7 +279,9 @@ def test_surrogate_from_mxl_json_round_trips_predictions() -> None:
     )
     export = surrogate.to_mxl_json()
 
-    reconstructed = ts.surrogate_from_mxl_json("corr_block", export.spec, export.weights)
+    reconstructed = ts.surrogate_from_mxl_json(
+        "corr_block", export.spec, export.weights
+    )
 
     probe: dict[str, float | pd.Series | pd.DataFrame] = {"x": 0.3, "y": -0.7}
     original = surrogate.predict(probe)["corr"]
@@ -326,7 +334,9 @@ def test_ode_surrogate_to_mxl_json_round_trips_predictions() -> None:
     assert layers[0]["activation"]["name"] == "relu"
     assert layers[1]["activation"]["name"] == "sigmoid"
 
-    reconstructed = ts.ode_surrogate_from_mxl_json("corr_block", export.spec, export.weights)
+    reconstructed = ts.ode_surrogate_from_mxl_json(
+        "corr_block", export.spec, export.weights
+    )
 
     probe: dict[str, float | pd.Series | pd.DataFrame] = {"x": 0.3, "y": -0.7}
     original = surrogate.predict(probe)["corr"]

@@ -47,7 +47,9 @@ def _make_ode_model_with_surrogate() -> OdeModelBuilder:
         .add_diff_eq("x", fn=_neg, args=["x"], initial_value=1.0)
         .add_surrogate(
             "corr",
-            _MockOdeSurrogate(args=[], outputs=["corr_out"], targets={"corr_out": ["x"]}),
+            _MockOdeSurrogate(
+                args=[], outputs=["corr_out"], targets={"corr_out": ["x"]}
+            ),
         )
     )
 

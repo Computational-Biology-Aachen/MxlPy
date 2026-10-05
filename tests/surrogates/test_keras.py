@@ -141,7 +141,10 @@ def test_unrecognized_activation_raises() -> None:
         ]
     )
     surrogate = Surrogate(
-        model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=model,
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     with pytest.raises(SerializationError):
         surrogate.to_mxl_json()
@@ -149,10 +152,15 @@ def test_unrecognized_activation_raises() -> None:
 
 def test_functional_api_model_raises() -> None:
     inputs = keras.Input(shape=(2,))
-    outputs = keras.layers.Dense(1)(keras.layers.Dense(3, activation="softplus")(inputs))
+    outputs = keras.layers.Dense(1)(
+        keras.layers.Dense(3, activation="softplus")(inputs)
+    )
     model = keras.Model(inputs=inputs, outputs=outputs)
     surrogate = Surrogate(
-        model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=model,
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     with pytest.raises(SerializationError):
         surrogate.to_mxl_json()
@@ -167,7 +175,10 @@ def test_bias_free_layer_raises() -> None:
         ]
     )
     surrogate = Surrogate(
-        model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=model,
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     with pytest.raises(SerializationError):
         surrogate.to_mxl_json()
@@ -235,7 +246,9 @@ def test_ode_surrogate_to_mxl_json_round_trips_predictions() -> None:
     assert layers[0]["activation"]["name"] == "relu"
     assert layers[1]["activation"]["name"] == "sigmoid"
 
-    reconstructed = ode_surrogate_from_mxl_json("corr_block", export.spec, export.weights)
+    reconstructed = ode_surrogate_from_mxl_json(
+        "corr_block", export.spec, export.weights
+    )
 
     probe: dict[str, float | pd.Series | pd.DataFrame] = {"x": 0.3, "y": -0.7}
     original = surrogate.predict(probe)["corr"]

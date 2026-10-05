@@ -134,7 +134,10 @@ def test_eqx_mlp_is_exportable() -> None:
         in_size=2, out_size=1, width_size=3, depth=1, key=jax.random.PRNGKey(0)
     )
     surrogate = Surrogate(
-        model=mlp, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=mlp,
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     export = surrogate.to_mxl_json()
     layers = cast(list[dict[str, Any]], export.spec["layers"])
@@ -148,7 +151,10 @@ def test_hand_rolled_mlp_is_exportable() -> None:
     """`mxlpy.nn._equinox.MLP` hardcodes relu-then-identity; recognized directly."""
     mlp = MLP(n_inputs=2, neurons_per_layer=[3, 1], key=jax.random.PRNGKey(0))
     surrogate = Surrogate(
-        model=mlp, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=mlp,
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     export = surrogate.to_mxl_json()
     layers = cast(list[dict[str, Any]], export.spec["layers"])
@@ -177,7 +183,10 @@ def test_unrecognized_activation_raises() -> None:
         ]
     )
     surrogate = Surrogate(
-        model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=model,
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     with pytest.raises(SerializationError):
         surrogate.to_mxl_json()
@@ -189,7 +198,10 @@ def test_custom_call_model_raises() -> None:
             return x
 
     surrogate = Surrogate(
-        model=Weird(), args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=Weird(),
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     with pytest.raises(SerializationError):
         surrogate.to_mxl_json()
@@ -205,7 +217,10 @@ def test_bias_free_layer_raises() -> None:
         ]
     )
     surrogate = Surrogate(
-        model=model, args=["x", "y"], outputs=["corr"], stoichiometries={"corr": {"x": 1.0}}
+        model=model,
+        args=["x", "y"],
+        outputs=["corr"],
+        stoichiometries={"corr": {"x": 1.0}},
     )
     with pytest.raises(SerializationError):
         surrogate.to_mxl_json()
@@ -276,7 +291,9 @@ def test_ode_surrogate_to_mxl_json_round_trips_predictions() -> None:
     assert layers[0]["activation"]["name"] == "relu"
     assert layers[1]["activation"]["name"] == "sigmoid"
 
-    reconstructed = ode_surrogate_from_mxl_json("corr_block", export.spec, export.weights)
+    reconstructed = ode_surrogate_from_mxl_json(
+        "corr_block", export.spec, export.weights
+    )
 
     probe: dict[str, float | pd.Series | pd.DataFrame] = {"x": 0.3, "y": -0.7}
     original = surrogate.predict(probe)["corr"]

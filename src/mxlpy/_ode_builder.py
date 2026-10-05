@@ -1635,9 +1635,7 @@ class OdeModelBuilder:
                 names.extend(surrogate.outputs)
         else:
             for surrogate in self._surrogates.values():
-                names.extend(
-                    o for o in surrogate.outputs if o not in surrogate.targets
-                )
+                names.extend(o for o in surrogate.outputs if o not in surrogate.targets)
         return names
 
     def get_surrogate_target_output_names(self) -> list[str]:

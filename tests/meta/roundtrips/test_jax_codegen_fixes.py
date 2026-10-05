@@ -66,9 +66,11 @@ def light_dependent_rate(
     return k * s * factor
 
 
-def clipped_branch_rate(x: float, threshold: float, lo: float, hi: float, cap: float) -> float:
+def clipped_branch_rate(
+    x: float, threshold: float, lo: float, hi: float, cap: float
+) -> float:
     """`_frbss_r`-shaped: if/else assigns 1 local, clipped by a trailing statement."""
-    if x <= threshold:
+    if x <= threshold:  # noqa: SIM108  # if/else block is the subject under test
         val = lo
     else:
         val = hi

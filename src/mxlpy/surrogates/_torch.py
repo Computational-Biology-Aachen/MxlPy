@@ -182,8 +182,10 @@ def _revive_dense_sequential(
             name = cast("str", activation["name"])
             module_type = _ACTIVATION_MODULE_BY_NAME.get(name)
             builder = ACTIVATION_BUILDERS.get(name)
-            if module_type is None or builder is None or builder() != activation.get(
-                "expression"
+            if (
+                module_type is None
+                or builder is None
+                or builder() != activation.get("expression")
             ):
                 msg = f"Layer {i}: unrecognized or non-matching activation {activation!r}."
                 raise SerializationError(msg)
@@ -229,7 +231,8 @@ def surrogate_from_mxl_json(
         args=inputs,
         outputs=outputs,
         stoichiometries={
-            output: {target: 1.0} for output, target in zip(outputs, targets, strict=True)
+            output: {target: 1.0}
+            for output, target in zip(outputs, targets, strict=True)
         },
     )
 

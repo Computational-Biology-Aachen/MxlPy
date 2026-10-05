@@ -109,7 +109,12 @@ _UNARY_JAX_FUNCTIONS: list[tuple[str, "sympy.FunctionClass", str, str]] = [
     ("erfc", sympy.erfc, "jax.scipy.special.erfc(x)", "math.erfc(x)"),
     ("gamma", sympy.gamma, "jax.scipy.special.gamma(x)", "math.gamma(x)"),
     ("loggamma", sympy.loggamma, "jax.scipy.special.gammaln(x)", "math.lgamma(x)"),
-    ("factorial", sympy.factorial, "jax.scipy.special.factorial(x)", "math.factorial(x)"),
+    (
+        "factorial",
+        sympy.factorial,
+        "jax.scipy.special.factorial(x)",
+        "math.factorial(x)",
+    ),
 ]
 
 

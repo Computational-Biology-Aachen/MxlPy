@@ -653,7 +653,7 @@ def _surrogate_from_mxl_json(
         # Deliberately lazy: torch is an optional extra, and this module
         # must stay importable (and usable for every model with no
         # nn_blocks, the common case) without it installed.
-        from mxlpy.surrogates._torch import surrogate_from_mxl_json  # noqa: PLC0415
+        from mxlpy.surrogates._torch import surrogate_from_mxl_json
     except ImportError as exc:
         msg = (
             f"nn_block {name!r}: reconstructing it requires torch "
@@ -701,7 +701,7 @@ def _ode_surrogate_from_mxl_json(
     try:
         # Deliberately lazy: torch is an optional extra, see
         # `_surrogate_from_mxl_json`'s identical import.
-        from mxlpy.surrogates._torch import (  # noqa: PLC0415
+        from mxlpy.surrogates._torch import (
             ode_surrogate_from_mxl_json,
         )
     except ImportError as exc:

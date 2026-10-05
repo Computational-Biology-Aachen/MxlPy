@@ -49,8 +49,10 @@ class _MockOdeSurrogate(AbstractOdeSurrogate):
 
 
 def test_single_variable_dxdt_is_actually_computed() -> None:
-    model = OdeModelBuilder().add_parameter("k", 0.5).add_diff_eq(
-        "x", fn=lambda x, k: -k * x, args=["x", "k"], initial_value=2.0
+    model = (
+        OdeModelBuilder()
+        .add_parameter("k", 0.5)
+        .add_diff_eq("x", fn=lambda x, k: -k * x, args=["x", "k"], initial_value=2.0)
     )
     dxdt = model(0.0, [2.0])
     assert dxdt == (-1.0,)
@@ -88,8 +90,10 @@ def test_diff_eq_depending_on_a_dynamic_derived_quantity() -> None:
 
 
 def test_full_simulation_matches_analytic_exponential_decay() -> None:
-    model = OdeModelBuilder().add_parameter("k", 0.5).add_diff_eq(
-        "x", fn=lambda x, k: -k * x, args=["x", "k"], initial_value=2.0
+    model = (
+        OdeModelBuilder()
+        .add_parameter("k", 0.5)
+        .add_diff_eq("x", fn=lambda x, k: -k * x, args=["x", "k"], initial_value=2.0)
     )
     # Simulator's type hint is still KineticModelBuilder-only (widening it
     # pulls in other KineticModelBuilder-only code paths inside Simulator
@@ -121,7 +125,10 @@ def test_add_surrogate_targeted_output_sums_onto_dxdt() -> None:
         .add_surrogate(
             "corr",
             _MockOdeSurrogate(
-                args=[], outputs=["corr_out"], targets={"corr_out": ["x"]}, correction=0.1
+                args=[],
+                outputs=["corr_out"],
+                targets={"corr_out": ["x"]},
+                correction=0.1,
             ),
         )
     )
@@ -137,7 +144,10 @@ def test_add_surrogate_untargeted_output_is_a_plain_derived_value() -> None:
     model = (
         OdeModelBuilder()
         .add_diff_eq(
-            "x", fn=lambda x, corr_extra: -x + corr_extra, args=["x", "corr_extra"], initial_value=2.0
+            "x",
+            fn=lambda x, corr_extra: -x + corr_extra,
+            args=["x", "corr_extra"],
+            initial_value=2.0,
         )
         .add_surrogate(
             "corr",
@@ -157,22 +167,33 @@ def test_derived_can_reference_an_earlier_surrogates_untargeted_output() -> None
         OdeModelBuilder()
         .add_diff_eq("x", fn=lambda x: -x, args=["x"], initial_value=1.0)
         .add_surrogate(
-            "corr", _MockOdeSurrogate(args=[], outputs=["corr_out"], targets={}, correction=3.0)
+            "corr",
+            _MockOdeSurrogate(
+                args=[], outputs=["corr_out"], targets={}, correction=3.0
+            ),
         )
         .add_derived("doubled", fn=lambda corr_out: corr_out * 2, args=["corr_out"])
     )
     assert model.get_args()["doubled"] == pytest.approx(6.0)
 
 
-def test_multiple_surrogates_targeting_the_same_variable_sum_order_independently() -> None:
+def test_multiple_surrogates_targeting_the_same_variable_sum_order_independently() -> (
+    None
+):
     model = (
         OdeModelBuilder()
         .add_diff_eq("x", fn=lambda _x: 0.0, args=["x"], initial_value=1.0)
         .add_surrogate(
-            "a", _MockOdeSurrogate(args=[], outputs=["a_out"], targets={"a_out": ["x"]}, correction=1.0)
+            "a",
+            _MockOdeSurrogate(
+                args=[], outputs=["a_out"], targets={"a_out": ["x"]}, correction=1.0
+            ),
         )
         .add_surrogate(
-            "b", _MockOdeSurrogate(args=[], outputs=["b_out"], targets={"b_out": ["x"]}, correction=1.0)
+            "b",
+            _MockOdeSurrogate(
+                args=[], outputs=["b_out"], targets={"b_out": ["x"]}, correction=1.0
+            ),
         )
     )
     (dxdt,) = model(0.0, [1.0])
@@ -218,7 +239,10 @@ def test_remove_surrogate_removes_its_contribution_and_its_output_ids() -> None:
         .add_surrogate(
             "corr",
             _MockOdeSurrogate(
-                args=[], outputs=["corr_out"], targets={"corr_out": ["x"]}, correction=0.1
+                args=[],
+                outputs=["corr_out"],
+                targets={"corr_out": ["x"]},
+                correction=0.1,
             ),
         )
     )
@@ -248,7 +272,10 @@ def test_remove_diff_eq_strips_it_from_surrogate_targets() -> None:
         .add_surrogate(
             "corr",
             _MockOdeSurrogate(
-                args=[], outputs=["corr_out"], targets={"corr_out": ["x"]}, correction=0.1
+                args=[],
+                outputs=["corr_out"],
+                targets={"corr_out": ["x"]},
+                correction=0.1,
             ),
         )
     )
@@ -277,7 +304,13 @@ def test_rename_updates_surrogate_name_output_name_and_target_references() -> No
             initial_value=1.0,
         )
         .add_surrogate(
-            "corr", _MockOdeSurrogate(args=[], outputs=["corr_out"], targets={"corr_out": ["x"]}, correction=1.0)
+            "corr",
+            _MockOdeSurrogate(
+                args=[],
+                outputs=["corr_out"],
+                targets={"corr_out": ["x"]},
+                correction=1.0,
+            ),
         )
     )
 

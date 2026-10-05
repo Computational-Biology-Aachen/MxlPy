@@ -173,7 +173,9 @@ select = ["ALL"]
     "S101",    # assert
     "SLF",
 ]
-"tests/sbml/assets/*" = [
+"tests/sbml/assets/**" = [
+    "ARG001", # generated rate functions take unused compartment args
+    "E743",   # generated function names mirror SBML ids
     "INP001",
     "N802",   # lowercase name
     "N803",   # lowercase name
