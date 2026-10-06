@@ -56,6 +56,7 @@ def test_generate_model_code_mxlweb_variable() -> None:
         "  }",
     ]
 
+
 def test_generate_model_code_mxlweb_derived() -> None:
     model = (
         KineticModelBuilder()
@@ -204,24 +205,20 @@ def test_generate_model_code_mxlweb_options() -> None:
         "      })",
         "  }",
     ]
-    
+
+
 def test_generate_model_code_mxlweb_units() -> None:
     model = (
         KineticModelBuilder()
-        .add_parameter("p1", value=1.0, unit='unit_param')
-        .add_variable("x1", initial_value=2.0, unit='unit_var')
-        .add_derived(
-            "d1",
-            fn=constant,
-            args=["x1"],
-            unit='unit_derived'
-        )
+        .add_parameter("p1", value=1.0, unit="unit_param")
+        .add_variable("x1", initial_value=2.0, unit="unit_var")
+        .add_derived("d1", fn=constant, args=["x1"], unit="unit_derived")
         .add_reaction(
             "r1",
             fn=mass_action_1s,
             args=["x1", "p1"],
             stoichiometry={"x1": -1.0},
-            unit='unit_reaction'
+            unit="unit_reaction",
         )
         .add_readout("half_x1", fn=readout_fn, args=["x1"], unit="unit_readout")
     )

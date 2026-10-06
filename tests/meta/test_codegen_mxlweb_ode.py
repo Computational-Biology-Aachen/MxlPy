@@ -121,7 +121,8 @@ def test_generate_model_code_mxlweb_ode_options() -> None:
         '      .setDifferential("x", new Minus([new Mul([new Name("k"), new Name("x")])]))',
         "  }",
     ]
-    
+
+
 def test_generate_model_code_mxlweb_ode_units() -> None:
     model = (
         OdeModelBuilder()

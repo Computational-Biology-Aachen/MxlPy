@@ -50,9 +50,11 @@ __all__ = [
     "NormalizedSymbolicModel",
     "ReducedSymbolicRepr",
     "ReturnTemplate",
+    "SymbolicDerived",
     "SymbolicFn",
     "SymbolicParameter",
     "SymbolicReaction",
+    "SymbolicReadout",
     "SymbolicRepr",
     "SymbolicSurrogate",
     "SymbolicVariable",
@@ -238,12 +240,12 @@ class SymbolicReaction:
 
     fn: SymbolicFn
     stoichiometry: dict[str, sympy.Float | SymbolicFn]
-    unit: Quantity | None
+    unit: Quantity | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
-    
+
 
 @dataclass(unsafe_hash=True)
 class SymbolicDerived:
@@ -264,21 +266,24 @@ class SymbolicSurrogate:
     fns: list[SymbolicFn]
     outputs: list[str]
     stoichiometry: dict[str, dict[str, sympy.Float | SymbolicFn]]
+    unit: Quantity | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
+
 
 @dataclass(unsafe_hash=True)
 class SymbolicReadout:
     """Container for symbolic readout quantities."""
 
     fn: SymbolicFn
-    unit: Quantity | None
+    unit: Quantity | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
+
 
 @dataclass
 class ReducedSymbolicRepr:
@@ -286,8 +291,8 @@ class ReducedSymbolicRepr:
 
     variables: dict[str, SymbolicVariable]
     parameters: dict[str, SymbolicParameter]
-    derived: dict[str, SymbolicFn]
-    reactions: dict[str, SymbolicFn]
+    derived: dict[str, SymbolicDerived]
+    reactions: dict[str, SymbolicReaction]
     diffeqs: dict[str, sympy.Expr]
 
     def difference(self, other: ReducedSymbolicRepr) -> ReducedSymbolicRepr:
@@ -370,7 +375,7 @@ class SymbolicRepr:
         )
 
     def reduce(self) -> ReducedSymbolicRepr:
-        all_derived = self.derived# | self.readouts
+        all_derived = self.derived | self.readouts
         all_reactions = self.reactions
 
         for srg in self.surrogates.values():
@@ -755,7 +760,7 @@ def _ode_builder_to_symbolic_repr(
                 custom_fns=custom_fns,
             ),
             stoichiometry={k: sympy.Float(1.0)},
-            unit=None
+            unit=None,
         )
 
     for k, parameter in model.get_raw_parameters().items():
@@ -882,7 +887,7 @@ def _kinetic_builder_to_symbolic_repr(
                 else sympy.Float(v)
                 for k, v in rxn.stoichiometry.items()
             },
-            unit=cast(Quantity, rxn.unit)
+            unit=cast(Quantity, rxn.unit),
         )
 
     for k, srg in model.get_raw_surrogates().items():
@@ -1174,14 +1179,14 @@ def _normalized_symbolic_model(
         else:
             assignments[k] = val
     for k, v in sr.derived.items():
-        assignments[k] = v.expr
+        assignments[k] = v.fn.expr
     for k, v in sr.reactions.items():
         assignments[k] = v.fn.expr
     for v in sr.surrogates.values():
         for output, fn in zip(v.outputs, v.fns, strict=True):
             assignments[output] = fn.expr
     for k, v in sr.readouts.items():
-        assignments[k] = v.expr
+        assignments[k] = v.fn.expr
 
     ##################################
     # Main fn body
@@ -1607,10 +1612,10 @@ def generate_model_code_mxlweb(
         if unit is not None:
             return f"        unit: '{unit}',\n"
         return ""
-    
+
     def _gen_tail(k: str, unit: Quantity | None) -> str:
         return _gen_unit(unit) + _gen_slider(k)
-    
+
     def _gen_var(
         k: str,
         el: SymbolicVariable,
@@ -1624,7 +1629,7 @@ def generate_model_code_mxlweb(
         )
 
         optional_tail = _gen_tail(k, el.unit)
-        
+
         # FIXME: rewrite mxlweb to only take `Base`
         # then you can use new Num instead of float
         if isinstance(var := el.value, SymbolicFn):
@@ -1653,7 +1658,7 @@ def generate_model_code_mxlweb(
             if (texName := tex_names.get(k)) is None
             else texName
         )
-        
+
         optional_tail = _gen_tail(k, el.unit)
 
         # FIXME: rewrite mxlweb to only take `Base`
@@ -1685,7 +1690,7 @@ def generate_model_code_mxlweb(
         )
 
         optional_tail = _gen_tail(k, el.unit)
-        
+
         value = sympy_to_inline_mxlweb(el.fn.expr, used, subs)
         return (
             f'      .addAssignment("{name_map[k]}", {{\n'
@@ -1706,9 +1711,9 @@ def generate_model_code_mxlweb(
             if (texName := tex_names.get(k)) is None
             else texName
         )
-        
+
         optional_tail = _gen_tail(k, el.unit)
-        
+
         value = sympy_to_inline_mxlweb(el.fn.expr, used, subs)
         return (
             f'      .addReadout("{name_map[k]}", {{\n'
@@ -1760,7 +1765,7 @@ def generate_model_code_mxlweb(
         stoich = f"[{', '.join(_gen_stoich(k, v, used, subs) for k, v in el.stoichiometry.items())}]"
 
         optional_tail = _gen_tail(k, el.unit)
-        
+
         return (
             f'      .addReaction("{name_map[k]}", {{\n'
             f"        fn: {fn},\n"
@@ -1807,7 +1812,6 @@ def generate_model_code_mxlweb(
     lines = []
     lines.extend(_gen_par(k, v, used, subs) for k, v in sr.parameters.items())
     lines.extend(_gen_var(k, v, used, subs) for k, v in sr.variables.items())
-    print(sr.derived)
     lines.extend(_gen_der(k, v, used, subs) for k, v in sr.derived.items())
     if isinstance(model, OdeModelBuilder):
         lines.extend(_gen_diff_eq(v, used, subs) for v in sr.reactions.values())
@@ -2950,7 +2954,13 @@ def generate_model_code_latex(
             )
             for k, v in rsr.parameters.items()
         ],
-        derived=[(_math_name(k), expr.expr) for k, expr in rsr.derived.items()],
+        derived=[
+            (
+                _math_name(k),
+                expr.expr if isinstance(expr := der, SymbolicFn) else expr.fn.expr,
+            )
+            for k, der in rsr.derived.items()
+        ],
         reactions=[(_math_name(k), rxn.expr) for k, rxn in rsr.reactions.items()],
         diff_eqs=[(_tex_lhs(_math_name(k)), eq) for k, eq in rsr.diffeqs.items()],
         long_name_cutoff=long_name_cutoff,
@@ -3193,8 +3203,10 @@ def generate_latex_diff(
             for k, v in items.items()
         }
 
-    def _fn_exprs(items: dict[str, SymbolicFn]) -> dict[str, sympy.Expr]:
-        return {k: v.expr for k, v in items.items()}
+    def _fn_exprs(
+        items: dict[str, SymbolicDerived | SymbolicReaction],
+    ) -> dict[str, sympy.Expr]:
+        return {k: v.fn.expr for k, v in items.items()}
 
     return DiffLatexCodegen(
         parameters=_build_rows(
