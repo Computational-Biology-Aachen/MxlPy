@@ -9,6 +9,14 @@ def readout_fn(x: float) -> float:
     return x / 2.0
 
 
+def constant(x: float) -> float:
+    return x
+
+
+def mass_action_1s(s1: float, k: float) -> float:
+    return k * s1
+
+
 def test_generate_model_code_mxlweb_ode_empty() -> None:
     assert meta.generate_model_code_mxlweb(OdeModelBuilder()).split("\n") == [
         'import { OdeModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
@@ -111,5 +119,37 @@ def test_generate_model_code_mxlweb_ode_options() -> None:
         "        texName: 'X',",
         "      })",
         '      .setDifferential("x", new Minus([new Mul([new Name("k"), new Name("x")])]))',
+        "  }",
+    ]
+    
+def test_generate_model_code_mxlweb_ode_units() -> None:
+    model = (
+        OdeModelBuilder()
+        .add_parameter("k", 0.5, unit="unit_param")
+        .add_diff_eq("x", fn=decay, args=["x", "k"], initial_value=2.0, unit="unit_var")
+        .add_readout("half_x", fn=readout_fn, args=["x"], unit="unit_readout")
+    )
+    assert meta.generate_model_code_mxlweb(model).split("\n") == [
+        'import { OdeModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
+        'import { Minus, Mul, Name, Num } from "@computational-biology-aachen/mxlweb-core/mathml";',
+        "",
+        "export function initModel(): OdeModelBuilder {",
+        "    return new OdeModelBuilder()",
+        '      .addParameter("k", {',
+        "        value: 0.5,",
+        "        texName: 'k',",
+        "        unit: 'unit_param',",
+        "      })",
+        '      .addVariable("x", {',
+        "        value: 2.0,",
+        "        texName: 'x',",
+        "        unit: 'unit_var',",
+        "      })",
+        '      .setDifferential("x", new Minus([new Mul([new Name("k"), new Name("x")])]))',
+        '      .addReadout("half_x", {',
+        '        fn: new Mul([new Num(0.5), new Name("x")]),',
+        "        texName: 'half\\\\_x',",
+        "        unit: 'unit_readout',",
+        "      })",
         "  }",
     ]
