@@ -84,3 +84,29 @@ def test_generate_model_code_mxlweb_steady_state_options() -> None:
         "      })",
         "  }",
     ]
+    
+def test_generate_model_code_mxlweb_steady_state_units() -> None:
+    """Test units"""
+    model = (
+        SteadyStateModelBuilder()
+        .add_parameter("p", 2.0, unit="unit_param")
+        .add_derived("d", fn=double, args=["p"], unit="unit_derived")
+    )
+    assert meta.generate_model_code_mxlweb(model).split("\n") == [
+        'import { SteadyStateModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
+        'import { Mul, Name, Num } from "@computational-biology-aachen/mxlweb-core/mathml";',
+        "",
+        "export function initModel(): SteadyStateModelBuilder {",
+        "    return new SteadyStateModelBuilder()",
+        '      .addParameter("p", {',
+        "        value: 2.0,",
+        "        texName: 'p',",
+        "        unit: 'unit_param',",
+        "      })",
+        '      .addAssignment("d", {',
+        '        fn: new Mul([new Num(2.0), new Name("p")]),',
+        "        texName: 'd',",
+        "        unit: 'unit_derived',",
+        "      })",
+        "  }",
+    ]

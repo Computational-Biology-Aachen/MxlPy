@@ -9,6 +9,10 @@ def mass_action_1s(s1: float, k: float) -> float:
     return k * s1
 
 
+def readout_fn(x: float) -> float:
+    return x / 2.0
+
+
 def test_generate_model_code_mxlweb_empty() -> None:
     assert meta.generate_model_code_mxlweb(KineticModelBuilder()).split("\n") == [
         'import { KineticModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
@@ -51,7 +55,6 @@ def test_generate_model_code_mxlweb_variable() -> None:
         "      })",
         "  }",
     ]
-
 
 def test_generate_model_code_mxlweb_derived() -> None:
     model = (
@@ -198,6 +201,61 @@ def test_generate_model_code_mxlweb_options() -> None:
         '      .addVariable("v1", {',
         "        value: 2.0,",
         "        texName: 'V',",
+        "      })",
+        "  }",
+    ]
+    
+def test_generate_model_code_mxlweb_units() -> None:
+    model = (
+        KineticModelBuilder()
+        .add_parameter("p1", value=1.0, unit='unit_param')
+        .add_variable("x1", initial_value=2.0, unit='unit_var')
+        .add_derived(
+            "d1",
+            fn=constant,
+            args=["x1"],
+            unit='unit_derived'
+        )
+        .add_reaction(
+            "r1",
+            fn=mass_action_1s,
+            args=["x1", "p1"],
+            stoichiometry={"x1": -1.0},
+            unit='unit_reaction'
+        )
+        .add_readout("half_x1", fn=readout_fn, args=["x1"], unit="unit_readout")
+    )
+    assert meta.generate_model_code_mxlweb(model).split("\n") == [
+        'import { KineticModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
+        'import { Mul, Name, Num } from "@computational-biology-aachen/mxlweb-core/mathml";',
+        "",
+        "export function initModel(): KineticModelBuilder {",
+        "    return new KineticModelBuilder()",
+        '      .addParameter("p1", {',
+        "        value: 1.0,",
+        "        texName: 'p1',",
+        "        unit: 'unit_param',",
+        "      })",
+        '      .addVariable("x1", {',
+        "        value: 2.0,",
+        "        texName: 'x1',",
+        "        unit: 'unit_var',",
+        "      })",
+        '      .addAssignment("d1", {',
+        '        fn: new Name("x1"),',
+        "        texName: 'd1',",
+        "        unit: 'unit_derived',",
+        "      })",
+        '      .addReaction("r1", {',
+        '        fn: new Mul([new Name("p1"), new Name("x1")]),',
+        '        stoichiometry: [{ name: "x1", value: new Num(-1.0) }],',
+        "        texName: 'r1',",
+        "        unit: 'unit_reaction',",
+        "      })",
+        '      .addReadout("half_x1", {',
+        '        fn: new Mul([new Num(0.5), new Name("x1")]),',
+        "        texName: 'half\\\\_x1',",
+        "        unit: 'unit_readout',",
         "      })",
         "  }",
     ]
