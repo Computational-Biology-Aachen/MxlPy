@@ -84,7 +84,8 @@ def test_generate_model_code_mxlweb_steady_state_options() -> None:
         "      })",
         "  }",
     ]
-    
+
+
 def test_generate_model_code_mxlweb_steady_state_units() -> None:
     """Test units"""
     model = (

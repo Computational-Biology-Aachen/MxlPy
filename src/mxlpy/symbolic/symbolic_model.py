@@ -9,6 +9,9 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy.meta._via_sym_repr import (
+    SymbolicDerived,
+    SymbolicFn,
+    SymbolicReaction,
     _get_dependencies_and_leaves,
     _get_order,
     model_to_symbolic_repr,
@@ -124,6 +127,10 @@ def to_symbolic_model(
         fn = rsr.derived.get(name) or rsr.reactions.get(name)
         if fn is None:
             return
+        if isinstance(fn, SymbolicFn):
+            pass
+        elif isinstance(fn, (SymbolicDerived, SymbolicReaction)):
+            fn = fn.fn
         subs_map[name] = cast(
             sympy.Expr,
             fn.expr.subs({sympy.Symbol(a): subs_map[a] for a in fn.args}),
