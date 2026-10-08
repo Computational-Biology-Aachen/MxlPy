@@ -1,4 +1,4 @@
-from mxlpy import OdeModelBuilder, meta
+from mxlpy import OdeModelBuilder, meta, units
 
 
 def decay(x: float, k: float) -> float:
@@ -126,12 +126,12 @@ def test_generate_model_code_mxlweb_ode_options() -> None:
 def test_generate_model_code_mxlweb_ode_units() -> None:
     model = (
         OdeModelBuilder()
-        .add_parameter("k", 0.5, unit="unit_param")
-        .add_diff_eq("x", fn=decay, args=["x", "k"], initial_value=2.0, unit="unit_var")
-        .add_readout("half_x", fn=readout_fn, args=["x"], unit="unit_readout")
+        .add_parameter("k", 0.5, unit=units.per_second)
+        .add_diff_eq("x", fn=decay, args=["x", "k"], initial_value=2.0, unit=units.mmol)
+        .add_readout("half_x", fn=readout_fn, args=["x"], unit=units.mmol)
     )
     assert meta.generate_model_code_mxlweb(model).split("\n") == [
-        'import { OdeModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
+        'import { OdeModelBuilder, Unit } from "@computational-biology-aachen/mxlweb-core";',
         'import { Minus, Mul, Name, Num } from "@computational-biology-aachen/mxlweb-core/mathml";',
         "",
         "export function initModel(): OdeModelBuilder {",
@@ -139,18 +139,18 @@ def test_generate_model_code_mxlweb_ode_units() -> None:
         '      .addParameter("k", {',
         "        value: 0.5,",
         "        texName: 'k',",
-        "        unit: 'unit_param',",
+        '        unit: Unit.fromJson({"factors": [{"kind": "second", "exponent": -1}]}),',
         "      })",
         '      .addVariable("x", {',
         "        value: 2.0,",
         "        texName: 'x',",
-        "        unit: 'unit_var',",
+        '        unit: Unit.fromJson({"factors": [{"kind": "mole", "prefix": "milli", "exponent": 1}]}),',
         "      })",
         '      .setDifferential("x", new Minus([new Mul([new Name("k"), new Name("x")])]))',
         '      .addReadout("half_x", {',
         '        fn: new Mul([new Num(0.5), new Name("x")]),',
         "        texName: 'half\\\\_x',",
-        "        unit: 'unit_readout',",
+        '        unit: Unit.fromJson({"factors": [{"kind": "mole", "prefix": "milli", "exponent": 1}]}),',
         "      })",
         "  }",
     ]

@@ -75,7 +75,7 @@ def _make_model_with_surrogate() -> OdeModelBuilder:
 def test_ode_model_to_dict_has_kind_and_no_reactions() -> None:
     data = ode_model_to_dict(_make_model(), model_id="m")
     assert data["kind"] == "ode"
-    assert data["spec_version"] == "1.0"
+    assert data["spec_version"] == "1.1"
     assert "reactions" not in data["model"]
     assert "fn" in data["model"]["variables"]["x"]
     assert "value" in data["model"]["variables"]["x"]

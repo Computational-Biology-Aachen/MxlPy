@@ -44,7 +44,7 @@ def _make_model() -> SteadyStateModelBuilder:
 def test_steady_state_model_to_dict_has_kind_and_only_parameters_and_derived() -> None:
     data = steady_state_model_to_dict(_make_model(), model_id="m")
     assert data["kind"] == "steady-state"
-    assert data["spec_version"] == "1.0"
+    assert data["spec_version"] == "1.1"
     assert set(data["model"]) == {"parameters", "derived"}
     assert "value" in data["model"]["parameters"]["p"]
     assert "fn" in data["model"]["derived"]["d"]
