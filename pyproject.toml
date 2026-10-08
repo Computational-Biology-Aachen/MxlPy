@@ -122,6 +122,9 @@ markers = [
 ]
 
 [tool.ruff]
+# verbatim output of other tools (e.g. mxlweb-core codegen), kept as generated
+extend-exclude = ["tests/assets"]
+force-exclude = true  # also when pre-commit passes the file explicitly
 indent-width = 4
 line-length = 88
 
