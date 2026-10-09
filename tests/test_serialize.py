@@ -172,7 +172,7 @@ def test_save_writes_schema_and_default_model_id(tmp_path: Path) -> None:
     data = json.loads(path.read_text())
 
     assert data["$schema"].endswith("kinetic-model.schema.json")
-    assert data["spec_version"] == "1.0"
+    assert data["spec_version"] == "1.1"
     assert data["model_id"] == "glycolysis"
     assert set(data["model"]) == {
         "variables",

@@ -1,4 +1,6 @@
-from mxlpy import KineticModelBuilder, meta
+from sympy.physics.units.quantities import Quantity
+
+from mxlpy import KineticModelBuilder, meta, units
 
 
 def constant(x: float) -> float:
@@ -210,49 +212,56 @@ def test_generate_model_code_mxlweb_options() -> None:
 def test_generate_model_code_mxlweb_units() -> None:
     model = (
         KineticModelBuilder()
-        .add_parameter("p1", value=1.0, unit="unit_param")
-        .add_variable("x1", initial_value=2.0, unit="unit_var")
-        .add_derived("d1", fn=constant, args=["x1"], unit="unit_derived")
+        .add_parameter("p1", value=1.0, unit=units.per_second)
+        .add_variable("x1", initial_value=2.0, unit=units.mmol)
+        .add_derived("d1", fn=constant, args=["x1"], unit=units.mmol)
         .add_reaction(
             "r1",
             fn=mass_action_1s,
             args=["x1", "p1"],
             stoichiometry={"x1": -1.0},
-            unit="unit_reaction",
+            unit=units.mmol_s,
         )
-        .add_readout("half_x1", fn=readout_fn, args=["x1"], unit="unit_readout")
+        .add_readout(
+            "half_x1",
+            fn=readout_fn,
+            args=["x1"],
+            unit=Quantity("OD600", abbrev="OD600"),
+        )
     )
+    mmol = '{"factors": [{"kind": "mole", "prefix": "milli", "exponent": 1}]}'
     assert meta.generate_model_code_mxlweb(model).split("\n") == [
-        'import { KineticModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
+        'import { KineticModelBuilder, Unit } from "@computational-biology-aachen/mxlweb-core";',
         'import { Mul, Name, Num } from "@computational-biology-aachen/mxlweb-core/mathml";',
         "",
         "export function initModel(): KineticModelBuilder {",
         "    return new KineticModelBuilder()",
+        '      .addCustomUnit("OD600", {})',
         '      .addParameter("p1", {',
         "        value: 1.0,",
         "        texName: 'p1',",
-        "        unit: 'unit_param',",
+        '        unit: Unit.fromJson({"factors": [{"kind": "second", "exponent": -1}]}),',
         "      })",
         '      .addVariable("x1", {',
         "        value: 2.0,",
         "        texName: 'x1',",
-        "        unit: 'unit_var',",
+        f"        unit: Unit.fromJson({mmol}),",
         "      })",
         '      .addAssignment("d1", {',
         '        fn: new Name("x1"),',
         "        texName: 'd1',",
-        "        unit: 'unit_derived',",
+        f"        unit: Unit.fromJson({mmol}),",
         "      })",
         '      .addReaction("r1", {',
         '        fn: new Mul([new Name("p1"), new Name("x1")]),',
         '        stoichiometry: [{ name: "x1", value: new Num(-1.0) }],',
         "        texName: 'r1',",
-        "        unit: 'unit_reaction',",
+        '        unit: Unit.fromJson({"factors": [{"kind": "mole", "prefix": "milli", "exponent": 1}, {"kind": "second", "exponent": -1}]}),',
         "      })",
         '      .addReadout("half_x1", {',
         '        fn: new Mul([new Num(0.5), new Name("x1")]),',
         "        texName: 'half\\\\_x1',",
-        "        unit: 'unit_readout',",
+        '        unit: Unit.fromJson({"factors": [{"kind": "OD600", "exponent": 1}]}),',
         "      })",
         "  }",
     ]

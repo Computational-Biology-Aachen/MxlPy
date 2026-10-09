@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Callable
@@ -28,7 +29,7 @@ from mxlpy.meta.sympy_tools import (
 from mxlpy.surrogates import qss
 from mxlpy.surrogates.abstract import AbstractSurrogate
 from mxlpy.types import Derived, InitialAssignment
-from mxlpy.units import Quantity
+from mxlpy.units import Quantity, unit_to_json
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -1608,10 +1609,15 @@ def generate_model_code_mxlweb(
             )
         return ""
 
+    # Custom unit kinds (quantities outside the shared registry) the emitted
+    # units reference, declared via `.addCustomUnit` ahead of every use.
+    unit_customs: dict[str, dict[str, str]] = {}
+
     def _gen_unit(unit: Quantity | None) -> str:
-        if unit is not None:
-            return f"        unit: '{unit}',\n"
-        return ""
+        if unit is None:
+            return ""
+        unit_json = json.dumps(unit_to_json(unit, unit_customs))
+        return f"        unit: Unit.fromJson({unit_json}),\n"
 
     def _gen_tail(k: str, unit: Quantity | None) -> str:
         return _gen_unit(unit) + _gen_slider(k)
@@ -1819,6 +1825,11 @@ def generate_model_code_mxlweb(
         lines.extend(_gen_rxn(k, v, used, subs) for k, v in sr.reactions.items())
     lines.extend(_gen_srg(v, used, subs) for v in sr.surrogates.values())
     lines.extend(_gen_rdo(k, v, used, subs) for k, v in sr.readouts.items())
+    lines[:0] = [
+        f'      .addCustomUnit("{k}", {json.dumps(v)})' for k, v in unit_customs.items()
+    ]
+    uses_units = any("Unit.fromJson(" in line for line in lines)
+    core_import = f"{builder_class}, Unit" if uses_units else builder_class
 
     # Build import list from collected class names
     mathml_import_str = ", ".join(sorted(used))
@@ -1832,7 +1843,7 @@ def generate_model_code_mxlweb(
     )
     return "\n".join(
         [
-            f'import {{ {builder_class} }} from "@computational-biology-aachen/mxlweb-core";',
+            f'import {{ {core_import} }} from "@computational-biology-aachen/mxlweb-core";',
             f'import {{ {mathml_import_str} }} from "@computational-biology-aachen/mxlweb-core/mathml";',
             f"\n{docstring}" if docstring else "",
             model_builder_str,

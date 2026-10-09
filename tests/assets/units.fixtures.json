@@ -1,0 +1,19 @@
+{
+  "$comment": "Cross-language unit fixtures. For each case, a consumer converting `unit` (with custom kinds from `units`) to sympy must produce an expression equal to `sympy` evaluated with `su = sympy.physics.units` and `Quantity = sympy.physics.units.quantities.Quantity` in scope, comparing prefixes as their numeric scale. `null` sympy means dimensionless (mxlpy: None).",
+  "cases": [
+    { "name": "dimensionless", "unit": { "factors": [] }, "sympy": null },
+    { "name": "mole", "unit": { "factors": [{ "kind": "mole", "exponent": 1 }] }, "sympy": "su.mol" },
+    { "name": "mmol", "unit": { "factors": [{ "kind": "mole", "prefix": "milli", "exponent": 1 }] }, "sympy": "su.mol*su.milli" },
+    { "name": "mmol_s", "unit": { "factors": [{ "kind": "mole", "prefix": "milli", "exponent": 1 }, { "kind": "second", "exponent": -1 }] }, "sympy": "su.mol*su.milli/su.second" },
+    { "name": "per_hour", "unit": { "factors": [{ "kind": "hour", "exponent": -1 }] }, "sympy": "1/su.hour" },
+    { "name": "ppfd", "unit": { "factors": [{ "kind": "mole", "prefix": "micro", "exponent": 1 }, { "kind": "metre", "exponent": -2 }, { "kind": "second", "exponent": -1 }] }, "sympy": "su.mol*su.micro/su.meter**2/su.second" },
+    { "name": "per_km2", "unit": { "factors": [{ "kind": "metre", "prefix": "kilo", "exponent": -2 }] }, "sympy": "1/(su.meter*su.kilo)**2" },
+    { "name": "mM", "unit": { "factors": [{ "kind": "mole", "prefix": "milli", "exponent": 1 }, { "kind": "litre", "exponent": -1 }] }, "sympy": "su.mol*su.milli/su.liter" },
+    { "name": "kg_m3", "unit": { "factors": [{ "kind": "gram", "prefix": "kilo", "exponent": 1 }, { "kind": "metre", "exponent": -3 }] }, "sympy": "su.kilogram/su.meter**3" },
+    { "name": "lumen", "unit": { "factors": [{ "kind": "lumen", "exponent": 1 }] }, "sympy": "su.candela*su.steradian" },
+    { "name": "mmol_mol_chl", "unit": { "factors": [{ "kind": "mole", "prefix": "milli", "exponent": 1 }, { "kind": "mol_chl", "exponent": -1 }] }, "sympy": "su.mol*su.milli/Quantity('mol_chl', abbrev='mol_chl')" },
+    { "name": "celsius", "unit": { "factors": [{ "kind": "celsius", "exponent": 1 }] }, "sympy": "Quantity('celsius', abbrev='°C')" },
+    { "name": "multiplier", "unit": { "factors": [{ "kind": "second", "exponent": 1 }], "multiplier": 86400 }, "sympy": "86400*su.second" },
+    { "name": "custom_od600", "unit": { "factors": [{ "kind": "OD600", "exponent": 1 }, { "kind": "hour", "exponent": -1 }] }, "units": { "OD600": { "description": "optical density at 600 nm" } }, "sympy": "Quantity('OD600', abbrev='OD600')/su.hour" }
+  ]
+}

@@ -43,6 +43,7 @@ from mxlpy.meta.sympy_tools import (
 )
 from mxlpy.surrogates.abstract import mxl_json_mechanism_additive
 from mxlpy.types import Derived, InitialAssignment, SerializationError
+from mxlpy.units import unit_from_json, unit_to_json
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -70,7 +71,7 @@ __all__ = [
     "steady_state_model_to_dict",
 ]
 
-SPEC_VERSION = "1.0"
+SPEC_VERSION = "1.1"
 # The schema is maintained in the shared, language-agnostic `mxl-schemas` repo
 # so it can be consumed by both mxlpy and mxlweb. It is intentionally not
 # vendored into this package. The URL is pinned to the major spec version, so a
@@ -128,6 +129,23 @@ def _stoich_to_node_dict(
     if isinstance(value, Derived):
         return _fn_to_node_dict(value.fn, origin=origin, args=value.args)
     return mml.Num(value=float(value)).to_dict()
+
+
+def _with_unit(
+    entry: dict[str, Any],
+    unit: sympy.Expr | None,
+    customs: dict[str, dict[str, str]],
+    *,
+    origin: str,
+) -> dict[str, Any]:
+    """Attach `unit` to a serialised entity, collecting custom kinds into `customs`."""
+    if unit is not None:
+        try:
+            entry["unit"] = unit_to_json(unit, customs)
+        except ValueError as exc:
+            msg = f"unit of {origin!r}: {exc}"
+            raise SerializationError(msg) from exc
+    return entry
 
 
 def _unexportable_surrogates(model: KineticModelBuilder) -> list[str]:
@@ -235,30 +253,56 @@ def model_to_dict(
         raise SerializationError(msg)
     nn_blocks, _ = _mxl_json_blocks_and_weights(model)
 
+    customs: dict[str, dict[str, str]] = {}
     variables = {
-        name: {"value": _value_to_node_dict(var.initial_value, origin=name)}
+        name: _with_unit(
+            {"value": _value_to_node_dict(var.initial_value, origin=name)},
+            var.unit,
+            customs,
+            origin=name,
+        )
         for name, var in model.get_raw_variables().items()
     }
     parameters = {
-        name: {"value": _value_to_node_dict(par.value, origin=name)}
+        name: _with_unit(
+            {"value": _value_to_node_dict(par.value, origin=name)},
+            par.unit,
+            customs,
+            origin=name,
+        )
         for name, par in model.get_raw_parameters().items()
     }
     reactions = {
-        name: {
-            "fn": _fn_to_node_dict(rxn.fn, origin=name, args=rxn.args),
-            "stoichiometry": {
-                var: _stoich_to_node_dict(stoich, origin=f"{name}:{var}")
-                for var, stoich in rxn.stoichiometry.items()
+        name: _with_unit(
+            {
+                "fn": _fn_to_node_dict(rxn.fn, origin=name, args=rxn.args),
+                "stoichiometry": {
+                    var: _stoich_to_node_dict(stoich, origin=f"{name}:{var}")
+                    for var, stoich in rxn.stoichiometry.items()
+                },
             },
-        }
+            rxn.unit,
+            customs,
+            origin=name,
+        )
         for name, rxn in model.get_raw_reactions().items()
     }
     derived = {
-        name: {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)}
+        name: _with_unit(
+            {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)},
+            der.unit,
+            customs,
+            origin=name,
+        )
         for name, der in model.get_raw_derived().items()
     }
     readouts = {
-        name: {"fn": _fn_to_node_dict(rdt.fn, origin=name, args=rdt.args)}
+        name: _with_unit(
+            {"fn": _fn_to_node_dict(rdt.fn, origin=name, args=rdt.args)},
+            rdt.unit,
+            customs,
+            origin=name,
+        )
         for name, rdt in model.get_raw_readouts().items()
     }
 
@@ -271,6 +315,8 @@ def model_to_dict(
     }
     if nn_blocks:
         model_section["nn_blocks"] = nn_blocks
+    if customs:
+        model_section["units"] = customs
 
     return {
         "$schema": SCHEMA_URL,
@@ -385,23 +431,44 @@ def ode_model_to_dict(
         raise SerializationError(msg)
     nn_blocks, _ = _ode_mxl_json_blocks_and_weights(model)
 
+    customs: dict[str, dict[str, str]] = {}
     variables = {
-        name: {
-            "value": _value_to_node_dict(diff_eq.initial_value, origin=name),
-            "fn": _fn_to_node_dict(diff_eq.fn, origin=name, args=diff_eq.args),
-        }
+        name: _with_unit(
+            {
+                "value": _value_to_node_dict(diff_eq.initial_value, origin=name),
+                "fn": _fn_to_node_dict(diff_eq.fn, origin=name, args=diff_eq.args),
+            },
+            diff_eq.unit,
+            customs,
+            origin=name,
+        )
         for name, diff_eq in model.get_raw_diff_eqs().items()
     }
     parameters = {
-        name: {"value": _value_to_node_dict(par.value, origin=name)}
+        name: _with_unit(
+            {"value": _value_to_node_dict(par.value, origin=name)},
+            par.unit,
+            customs,
+            origin=name,
+        )
         for name, par in model.get_raw_parameters().items()
     }
     derived = {
-        name: {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)}
+        name: _with_unit(
+            {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)},
+            der.unit,
+            customs,
+            origin=name,
+        )
         for name, der in model.get_raw_derived().items()
     }
     readouts = {
-        name: {"fn": _fn_to_node_dict(rdt.fn, origin=name, args=rdt.args)}
+        name: _with_unit(
+            {"fn": _fn_to_node_dict(rdt.fn, origin=name, args=rdt.args)},
+            rdt.unit,
+            customs,
+            origin=name,
+        )
         for name, rdt in model.get_raw_readouts().items()
     }
 
@@ -413,6 +480,8 @@ def ode_model_to_dict(
     }
     if nn_blocks:
         model_section["nn_blocks"] = nn_blocks
+    if customs:
+        model_section["units"] = customs
 
     return {
         "$schema": ODE_SCHEMA_URL,
@@ -466,14 +535,32 @@ def steady_state_model_to_dict(
         expression.
 
     """
+    customs: dict[str, dict[str, str]] = {}
     parameters = {
-        name: {"value": _value_to_node_dict(par.value, origin=name)}
+        name: _with_unit(
+            {"value": _value_to_node_dict(par.value, origin=name)},
+            par.unit,
+            customs,
+            origin=name,
+        )
         for name, par in model.get_raw_parameters().items()
     }
     derived = {
-        name: {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)}
+        name: _with_unit(
+            {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)},
+            der.unit,
+            customs,
+            origin=name,
+        )
         for name, der in model.get_raw_derived().items()
     }
+
+    model_section: dict[str, Any] = {
+        "parameters": parameters,
+        "derived": derived,
+    }
+    if customs:
+        model_section["units"] = customs
 
     return {
         "$schema": STEADY_STATE_SCHEMA_URL,
@@ -481,10 +568,7 @@ def steady_state_model_to_dict(
         "kind": "steady-state",
         "model_id": model_id,
         "description": description,
-        "model": {
-            "parameters": parameters,
-            "derived": derived,
-        },
+        "model": model_section,
     }
 
 
@@ -579,6 +663,22 @@ def _node_dict_to_fn(
     expr = mathml_to_sympy(mml.node_from_dict(node_dict))
     args = sorted(str(s) for s in expr.free_symbols)
     return _compile_fn(expr, args), args
+
+
+def _entry_unit(
+    entry: Mapping[str, Any],
+    customs: Mapping[str, Any],
+    *,
+    origin: str,
+) -> sympy.Expr | None:
+    """Revive an entity's optional `unit`, resolving custom kinds from `model.units`."""
+    if (unit := entry.get("unit")) is None:
+        return None
+    try:
+        return unit_from_json(unit, customs)
+    except ValueError as exc:
+        msg = f"unit of {origin!r}: {exc}"
+        raise SerializationError(msg) from exc
 
 
 def _node_dict_to_value(node_dict: dict[str, Any]) -> float | InitialAssignment:
@@ -749,10 +849,15 @@ def ode_model_from_dict(
 
     """
     spec = data["model"]
+    customs = spec.get("units", {})
     model = OdeModelBuilder()
 
     for name, par in spec["parameters"].items():
-        model.add_parameter(name, _node_dict_to_value(par["value"]))
+        model.add_parameter(
+            name,
+            _node_dict_to_value(par["value"]),
+            unit=_entry_unit(par, customs, origin=name),
+        )
     for name, var in spec["variables"].items():
         fn, args = _node_dict_to_fn(var["fn"])
         model.add_diff_eq(
@@ -760,13 +865,18 @@ def ode_model_from_dict(
             initial_value=_node_dict_to_value(var["value"]),
             fn=fn,
             args=args,
+            unit=_entry_unit(var, customs, origin=name),
         )
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])
-        model.add_derived(name, fn, args=args)
+        model.add_derived(
+            name, fn, args=args, unit=_entry_unit(der, customs, origin=name)
+        )
     for name, rdt in spec["readouts"].items():
         fn, args = _node_dict_to_fn(rdt["fn"])
-        model.add_readout(name, fn, args=args)
+        model.add_readout(
+            name, fn, args=args, unit=_entry_unit(rdt, customs, origin=name)
+        )
     for name, block in spec.get("nn_blocks", {}).items():
         surrogate = _ode_surrogate_from_mxl_json(name, block, weights_by_ref or {})
         model.add_surrogate(name, surrogate)
@@ -800,13 +910,20 @@ def steady_state_model_from_dict(data: Mapping[str, Any]) -> SteadyStateModelBui
 
     """
     spec = data["model"]
+    customs = spec.get("units", {})
     model = SteadyStateModelBuilder()
 
     for name, par in spec["parameters"].items():
-        model.add_parameter(name, _node_dict_to_value(par["value"]))
+        model.add_parameter(
+            name,
+            _node_dict_to_value(par["value"]),
+            unit=_entry_unit(par, customs, origin=name),
+        )
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])
-        model.add_derived(name, fn, args=args)
+        model.add_derived(
+            name, fn, args=args, unit=_entry_unit(der, customs, origin=name)
+        )
 
     return model
 
@@ -844,25 +961,44 @@ def model_from_dict(
 
     """
     spec = data["model"]
+    customs = spec.get("units", {})
     model = KineticModelBuilder()
 
     for name, par in spec["parameters"].items():
-        model.add_parameter(name, _node_dict_to_value(par["value"]))
+        model.add_parameter(
+            name,
+            _node_dict_to_value(par["value"]),
+            unit=_entry_unit(par, customs, origin=name),
+        )
     for name, var in spec["variables"].items():
-        model.add_variable(name, _node_dict_to_value(var["value"]))
+        model.add_variable(
+            name,
+            _node_dict_to_value(var["value"]),
+            unit=_entry_unit(var, customs, origin=name),
+        )
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])
-        model.add_derived(name, fn, args=args)
+        model.add_derived(
+            name, fn, args=args, unit=_entry_unit(der, customs, origin=name)
+        )
     for name, rxn in spec["reactions"].items():
         fn, args = _node_dict_to_fn(rxn["fn"])
         stoichiometry = {
             var: _node_dict_to_stoich(node)
             for var, node in rxn["stoichiometry"].items()
         }
-        model.add_reaction(name, fn, args=args, stoichiometry=stoichiometry)
+        model.add_reaction(
+            name,
+            fn,
+            args=args,
+            stoichiometry=stoichiometry,
+            unit=_entry_unit(rxn, customs, origin=name),
+        )
     for name, rdt in spec["readouts"].items():
         fn, args = _node_dict_to_fn(rdt["fn"])
-        model.add_readout(name, fn, args=args)
+        model.add_readout(
+            name, fn, args=args, unit=_entry_unit(rdt, customs, origin=name)
+        )
     for name, block in spec.get("nn_blocks", {}).items():
         surrogate = _surrogate_from_mxl_json(name, block, weights_by_ref or {})
         model.add_surrogate(name, surrogate)
