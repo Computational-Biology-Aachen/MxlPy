@@ -1701,6 +1701,107 @@ def test_train_normalize_axis_zero_normalizes_per_quantity() -> None:
     assert losses[0].to_numpy()[0] == pytest.approx(expected)
 
 
+def test_train_explicit_y_mean_y_scale_overrides_computed() -> None:
+    """Explicit y_mean/y_scale are passed through as-is instead of being
+    computed from ys, so training can optimise a caller-defined loss.
+    """
+    model = _decay_model()
+    ts, ys = _multi_quantity_training_data()
+    y_mean = jnp.array([1.0, 2.0])
+    y_scale = jnp.array([3.0, 4.0])
+
+    @eqx.filter_value_and_grad
+    def probe_grad_fn(
+        model: Ode,
+        ts: jnp.ndarray,  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,
+        y_scale: jnp.ndarray,
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,  # noqa: ARG001
+        args: jnp.ndarray | None = None,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
+
+    _, losses, _ = jax_train.train(
+        model,
+        ts=ts,
+        ys=ys,
+        training_steps=[(1, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=probe_grad_fn,
+        y_mean=y_mean,
+        y_scale=y_scale,
+    )
+
+    assert losses[0].to_numpy()[0] == pytest.approx(10.0)
+
+
+def test_train_explicit_y_mean_requires_y_scale() -> None:
+    model = _decay_model()
+    ts, ys = _multi_quantity_training_data()
+    with pytest.raises(ValueError, match="together"):
+        jax_train.train(
+            model, ts=ts, ys=ys, training_steps=[(1, 1.0)], y_mean=jnp.zeros(2)
+        )
+
+
+def test_train_explicit_y_mean_rejects_renormalize_per_stage() -> None:
+    model = _decay_model()
+    ts, ys = _multi_quantity_training_data()
+    with pytest.raises(ValueError, match="renormalize_per_stage"):
+        jax_train.train(
+            model,
+            ts=ts,
+            ys=ys,
+            training_steps=[(1, 1.0)],
+            y_mean=jnp.zeros(2),
+            y_scale=jnp.ones(2),
+            renormalize_per_stage=True,
+        )
+
+
+def test_train_protocol_explicit_y_mean_y_scale_overrides_computed() -> None:
+    model = _decay_model()
+    ys = jnp.array([[1.0, 2.0], [0.5, 3.0]])
+    y_mean = jnp.array([1.0, 2.0])
+    y_scale = jnp.array([3.0, 4.0])
+
+    @eqx.filter_value_and_grad
+    def probe_grad_fn(
+        model: Ode,
+        y0: jnp.ndarray,  # noqa: ARG001
+        ts: list[jnp.ndarray],  # noqa: ARG001
+        ys: jnp.ndarray,  # noqa: ARG001
+        protocol: jnp.ndarray,  # noqa: ARG001
+        y_mean: jnp.ndarray,
+        y_scale: jnp.ndarray,
+        ctx: jax_train.IntegrationSettings,  # noqa: ARG001
+        simulation_fn: jax_train.ProtoSimulationFn,  # noqa: ARG001
+        global_step: jnp.ndarray,  # noqa: ARG001
+        total_steps: jnp.ndarray,  # noqa: ARG001
+    ) -> jnp.ndarray:
+        return jnp.sum(model.pars) * 0.0 + jnp.sum(y_mean) + jnp.sum(y_scale)
+
+    _, losses, _ = jax_train.train_protocol(
+        model,
+        y0=jnp.array([1.0]),
+        ts=[jnp.array([1.0])],
+        ys=ys,
+        protocol=jnp.zeros((1, 0)),
+        training_steps=[(1, 1.0)],
+        avg_every=1,
+        target_loss=-1.0,
+        grad_fn=probe_grad_fn,
+        y_mean=y_mean,
+        y_scale=y_scale,
+    )
+
+    assert losses[0].to_numpy()[0] == pytest.approx(10.0)
+
+
 def test_train_protocol_normalize_axis_defaults_to_flattened_scalar() -> None:
     model = _decay_model()
     ys = jnp.array([[1.0, 2.0], [0.5, 3.0]])

@@ -1119,6 +1119,26 @@ def make_step_split[T: JaxModel](
     return loss, eqx.apply_updates(trainable, updates), opt_state, grad_norm
 
 
+def _resolve_normalisation(
+    ys: jax.Array,
+    *,
+    normalize_axis: int | None,
+    y_mean: jax.Array | None,
+    y_scale: jax.Array | None,
+    renormalize_per_stage: bool,
+) -> tuple[jax.Array, jax.Array]:
+    """Return explicit ``y_mean``/``y_scale`` if given, else compute them from ``ys``."""
+    if (y_mean is None) != (y_scale is None):
+        msg = "y_mean and y_scale must be given together"
+        raise ValueError(msg)
+    if y_mean is not None and renormalize_per_stage:
+        msg = "explicit y_mean/y_scale can't be combined with renormalize_per_stage"
+        raise ValueError(msg)
+    if y_mean is None or y_scale is None:
+        return jnp.mean(ys, axis=normalize_axis), jnp.std(ys, axis=normalize_axis)
+    return y_mean, y_scale
+
+
 def train[Model: JaxModel](
     model: Model,
     *,
@@ -1143,6 +1163,8 @@ def train[Model: JaxModel](
     grad_pars_history: GradParsHistory | None = None,
     normalize_axis: int | None = None,
     renormalize_per_stage: bool = False,
+    y_mean: jax.Array | None = None,
+    y_scale: jax.Array | None = None,
     disable_tqdm: bool = False,
     freeze: FreezeFn | None = None,
     split_grad_fn: GradLossSplitFn = grad_loss_split,
@@ -1281,6 +1303,13 @@ def train[Model: JaxModel](
         transition changes the normalisation -- accepted here the same way
         a caller manually re-invoking this function once per stage already
         would.
+    y_mean, y_scale : jax.Array or None
+        Explicit normalisation, used instead of computing it from ``ys``
+        (both or neither must be given). Needed when the loss the caller
+        reports or compares against uses a normalisation that isn't a plain
+        ``mean``/``std`` of ``ys`` -- e.g. one fit to the measured data
+        points while ``ys`` is an interpolated grid -- so training optimises
+        exactly that loss. Incompatible with ``renormalize_per_stage``.
     disable_tqdm : bool
         Suppress the per-step progress bar. Useful when running under a
         scheduler that captures stdout to a log file (a live progress bar's
@@ -1343,8 +1372,13 @@ def train[Model: JaxModel](
     )
     ctx = default_ctx
 
-    y_mean = jnp.mean(ys, axis=normalize_axis)
-    y_scale = jnp.std(ys, axis=normalize_axis)
+    norm_mean, norm_scale = _resolve_normalisation(
+        ys,
+        normalize_axis=normalize_axis,
+        y_mean=y_mean,
+        y_scale=y_scale,
+        renormalize_per_stage=renormalize_per_stage,
+    )
 
     filter_spec = None
     if freeze is not None:
@@ -1367,8 +1401,8 @@ def train[Model: JaxModel](
                 ys=_ys,
                 opt_state=opt_state,
                 optim=optim,
-                y_mean=y_mean,
-                y_scale=y_scale,
+                y_mean=norm_mean,
+                y_scale=norm_scale,
                 ctx=ctx,
                 global_step=jnp.asarray(global_step),
                 total_steps=jnp.asarray(total_steps),
@@ -1383,8 +1417,8 @@ def train[Model: JaxModel](
             ys=_ys,
             opt_state=opt_state,
             optim=optim,
-            y_mean=y_mean,
-            y_scale=y_scale,
+            y_mean=norm_mean,
+            y_scale=norm_scale,
             ctx=ctx,
             global_step=jnp.asarray(global_step),
             total_steps=jnp.asarray(total_steps),
@@ -1427,8 +1461,8 @@ def train[Model: JaxModel](
             _ts = ts[:length]
             _ys = ys[:length]
             if renormalize_per_stage:
-                y_mean = jnp.mean(_ys, axis=normalize_axis)
-                y_scale = jnp.std(_ys, axis=normalize_axis)
+                norm_mean = jnp.mean(_ys, axis=normalize_axis)
+                norm_scale = jnp.std(_ys, axis=normalize_axis)
             losses: dict[int, float] = {}
             grad_norms: dict[int, float] = {}
             losses_per_lesson.append(losses)
@@ -1457,8 +1491,8 @@ def train[Model: JaxModel](
                                     ys=_ys,
                                     opt_state=opt_state,
                                     optim=optim,
-                                    y_mean=y_mean,
-                                    y_scale=y_scale,
+                                    y_mean=norm_mean,
+                                    y_scale=norm_scale,
                                     ctx=ctx,
                                     global_step=jnp.asarray(global_step),
                                     total_steps=jnp.asarray(total_steps),
@@ -1764,6 +1798,8 @@ def train_protocol[Model: JaxModel](
     grad_pars_history: GradParsHistory | None = None,
     normalize_axis: int | None = None,
     renormalize_per_stage: bool = False,
+    y_mean: jax.Array | None = None,
+    y_scale: jax.Array | None = None,
     disable_tqdm: bool = False,
     freeze: FreezeFn | None = None,
     split_grad_fn: ProtoGradLossSplitFn = proto_grad_loss_split,
@@ -1877,6 +1913,9 @@ def train_protocol[Model: JaxModel](
         Recompute ``y_mean``/``y_scale`` from each stage's own truncated
         ``ys`` prefix instead of once from the full ``ys``; see
         :func:`train`.
+    y_mean, y_scale : jax.Array or None
+        Explicit normalisation used instead of computing it from ``ys``;
+        see :func:`train`.
     disable_tqdm : bool
         Suppress the per-step progress bar; see :func:`train`.
     freeze : FreezeFn or None
@@ -1928,8 +1967,13 @@ def train_protocol[Model: JaxModel](
     )
     ctx = default_ctx
 
-    y_mean = jnp.mean(ys, axis=normalize_axis)
-    y_scale = jnp.std(ys, axis=normalize_axis)
+    norm_mean, norm_scale = _resolve_normalisation(
+        ys,
+        normalize_axis=normalize_axis,
+        y_mean=y_mean,
+        y_scale=y_scale,
+        renormalize_per_stage=renormalize_per_stage,
+    )
 
     filter_spec = None
     if freeze is not None:
@@ -1954,8 +1998,8 @@ def train_protocol[Model: JaxModel](
                 protocol=_protocol,
                 opt_state=opt_state,
                 optim=optim,
-                y_mean=y_mean,
-                y_scale=y_scale,
+                y_mean=norm_mean,
+                y_scale=norm_scale,
                 ctx=ctx,
                 simulation_fn=simulation_fn,
                 global_step=jnp.asarray(global_step),
@@ -1972,8 +2016,8 @@ def train_protocol[Model: JaxModel](
             protocol=_protocol,
             opt_state=opt_state,
             optim=optim,
-            y_mean=y_mean,
-            y_scale=y_scale,
+            y_mean=norm_mean,
+            y_scale=norm_scale,
             ctx=ctx,
             simulation_fn=simulation_fn,
             global_step=jnp.asarray(global_step),
@@ -2018,8 +2062,8 @@ def train_protocol[Model: JaxModel](
             n_obs = sum(t.shape[0] for t in _ts)
             _ys = ys[: n_obs + 1]
             if renormalize_per_stage:
-                y_mean = jnp.mean(_ys, axis=normalize_axis)
-                y_scale = jnp.std(_ys, axis=normalize_axis)
+                norm_mean = jnp.mean(_ys, axis=normalize_axis)
+                norm_scale = jnp.std(_ys, axis=normalize_axis)
             losses: dict[int, float] = {}
             grad_norms: dict[int, float] = {}
             losses_per_lesson.append(losses)
@@ -2048,8 +2092,8 @@ def train_protocol[Model: JaxModel](
                                     protocol=_protocol,
                                     opt_state=opt_state,
                                     optim=optim,
-                                    y_mean=y_mean,
-                                    y_scale=y_scale,
+                                    y_mean=norm_mean,
+                                    y_scale=norm_scale,
                                     ctx=ctx,
                                     simulation_fn=simulation_fn,
                                     global_step=jnp.asarray(global_step),
