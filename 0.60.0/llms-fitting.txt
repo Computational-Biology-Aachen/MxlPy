@@ -1,0 +1,155 @@
+# MxlPy — Fitting, Monte Carlo & parameterisation
+
+[← back to index](llms.txt)
+
+## Parameter fitting (`mxlpy.fit`)
+
+Fit parameters to data. The base routines take `(model, *, p0, data, minimizer, ...)` and return `Result[Fit]`. `p0` is a `dict[str, float]` initial guess; `data` is a `pd.Series` for steady states or a `pd.DataFrame` (index = time) for time courses. The `Fit` has `.model`, `.best_pars` (dict) and `.loss`.
+
+```python
+from mxlpy import fit
+
+# Steady state — data is a Series of variable/flux values; only the keys present are fitted
+fitted = fit.steady_state(
+    model, p0={"k1": 1.0, "k2": 1.0, "k3": 1.0}, data=ss_series,
+    minimizer=fit.LocalScipyMinimizer(),
+).unwrap_or_err()
+fitted.best_pars; fitted.loss; fitted.model
+
+# Time course — data is a DataFrame
+fitted = fit.time_course(model, p0={...}, data=df, minimizer=fit.LocalScipyMinimizer()).unwrap_or_err()
+
+# Protocol time course — the protocol parameter (here k1) cannot be fitted
+fitted = fit.protocol_time_course(
+    model, p0={"k2": 1.87, "k3": 1.09}, data=df, protocol=protocol,
+    minimizer=fit.LocalScipyMinimizer(),
+).unwrap_or_err()
+```
+
+By default fitting applies **standard scaling** to data and predictions (`(x - data.mean()) / data.std()`); pass `standard_scale=False` to opt out.
+
+### Routine families
+
+Every family comes in `steady_state` / `time_course` / `protocol_time_course` variants.
+
+| Family | Shape | `p0` | Returns |
+|---|---|---|---|
+| `steady_state`, … | 1 model, 1 data | `dict` | `Result[Fit]` |
+| `group_*` | 1 model, 1 data, **many starts** (multi-start) | `pd.DataFrame` (one row per start) | `GroupFit` |
+| `ensemble_*` | **many models**, 1 data, shared params | `dict` | `EnsembleFit` |
+| `joint_*` | many models, many data | `dict` + `FitSettings` list | `JointFit` |
+| `joint_mixed` | many models/data, **mixed methods** | `dict` + `MixedSettings` list | `JointFit` |
+| `carousel_*` | a reaction-kinetics ensemble (see [mechanistic learning](llms-mxl.txt)) | `dict` | ensemble fit |
+
+```python
+import pandas as pd
+from mxlpy.distributions import Uniform, sample
+
+# Group (multi-start): each p0 row is one start, run in parallel
+group_fit = fit.group_steady_state(
+    model, data=ss_series, minimizer=fit.LocalScipyMinimizer(tol=1e-6),
+    p0=sample({"k1": Uniform(1.0, 2.0), "k2": Uniform(1.0, 2.0)}, n=50),  # or a hand-built DataFrame
+)
+group_fit.get_losses()              # pd.Series of every start's loss
+best_model = group_fit.get_best_fit().model
+
+# Ensemble: list of models, shared p0
+ensemble_fit = fit.ensemble_steady_state([model_a, model_b], data=ss_series, p0={"k1": 1.0},
+                                          minimizer=fit.LocalScipyMinimizer())
+ensemble_fit.get_best_fit(); [f.loss for f in ensemble_fit.fits]
+
+# Joint: per-(model, data) settings; shared parameters fitted across all
+fit.joint_steady_state(
+    [fit.FitSettings(model=model_a, data=data_a), fit.FitSettings(model=model_b, data=data_b)],
+    p0={"k1": 1.0}, minimizer=fit.LocalScipyMinimizer(),
+)
+
+# Mixed: each entry chooses its own residual (mix steady-state, time-course, protocol)
+fit.joint_mixed(
+    [
+        fit.MixedSettings(model=m, data=ss_series, residual_fn=fit.steady_state_residual),
+        fit.MixedSettings(model=m, data=df, residual_fn=fit.time_course_residual),
+        fit.MixedSettings(model=m, data=df, protocol=protocol, residual_fn=fit.protocol_time_course_residual),
+    ],
+    p0={"k2": 1.87, "k3": 1.09}, minimizer=fit.LocalScipyMinimizer(),
+)
+```
+
+### Minimizers, loss functions, injection
+
+- Minimizers: `fit.LocalScipyMinimizer(tol=..., method="Nelder-Mead"|"L-BFGS-B"|...)`, `fit.GlobalScipyMinimizer(bounds=fit.Bounds(lower={...}, upper={...}))` (basin hopping / dual annealing).
+- Loss functions (pass `loss_fn=`): `fit.rmse`, `fit.mae`, `fit.mean_squared`, `fit.mean_absolute_percentage`, `fit.mean_squared_logarithmic`, `fit.cosine_similarity`, or any `(pred, data) -> float`.
+- The call tree is `minimizer → residual_fn → (integrator, loss_fn)`; override any of `minimizer`, `loss_fn`, `integrator` (e.g. `integrator=partial(Scipy, rtol=1e-6, atol=1e-6)`).
+
+## Fuzzy fitting (`mxlpy.fuzzy`)
+
+Thompson sampling over a discrete grid of parameter values — a Bayesian alternative to gradient optimisation that returns success/fail counts per grid point (a posterior over each parameter).
+
+```python
+from mxlpy.fuzzy import ThompsonState, thompson_sampling
+import numpy as np
+
+state = thompson_sampling(
+    model, data=data,
+    state=ThompsonState.from_parameter_values({"k1": np.geomspace(1e-1, 1e2, 21), ...}),
+    rtol=0.11, n=1000, parallel=True,
+)
+state.state  # per-parameter dict with grid "x" and "success"/"fail" counts
+```
+
+## Monte Carlo (`mxlpy.mc`)
+
+Propagate parameter/initial-condition distributions through any scan or MCA. The sampled parameters go in `mc_to_scan=` (a DataFrame, typically from `distributions.sample`); results carry an `n × ...` MultiIndex and expose `.variables`, `.fluxes`, `.parameters`.
+
+```python
+from mxlpy import mc
+from mxlpy.distributions import LogNormal, Uniform, sample
+import numpy as np
+
+mc_pars = sample({"k1": Uniform(0.9, 1.1), "k2": Uniform(1.0, 1.3), "k3": LogNormal(mean=1.0, sigma=0.2)}, n=10)
+
+ss = mc.steady_state(model, mc_to_scan=mc_pars)
+tc = mc.time_course(model, time_points=np.linspace(0, 1, 11), mc_to_scan=mc_pars)
+ptc = mc.protocol_time_course(model, time_points=np.linspace(0, 6, 21), protocol=protocol, mc_to_scan=mc_pars)
+
+# MC-distributed MCA: robustness of coefficients across the distribution
+mc.variable_elasticities(model, variables={...}, to_scan=["GLC", "F6P"], mc_to_scan=mc_pars)
+mc.parameter_elasticities(model, variables={...}, to_scan=["k1", "k2"], mc_to_scan=mc_pars)
+mc.response_coefficients(model, to_scan=["vmax_1", "vmax_2"], mc_to_scan=mc_pars)
+
+# Combine an MC distribution with a systematic scan
+mc.scan_steady_state(model, to_scan=pd.DataFrame({"k1": np.linspace(0, 1, 3)}), mc_to_scan=mc_pars)
+```
+
+Visualise with `plot.violins(ss.variables)` / `plot.violins_from_2d_idx(...)` / `plot.lines_mean_std_from_2d_idx(...)` (see [visualization](llms-visualization.txt)).
+
+## Distributions (`mxlpy.distributions`)
+
+`sample({name: Distribution}, n=...) -> pd.DataFrame`. Built-ins include `Uniform(lower, upper)`, `LogUniform(lower, upper)`, `Normal(mean, sigma)`, `LogNormal(mean, sigma)`, `GaussianKde.from_data(series)`. A custom distribution is any class with `sample(self, num, rng=None) -> Array`:
+
+```python
+@dataclass
+class MyDist:
+    loc: float = 0.0
+    scale: float = 1.0
+    def sample(self, num, rng=None):
+        rng = rng or np.random.default_rng()
+        return rng.normal(self.loc, self.scale, size=num)
+
+sample({"p1": MyDist()}, n=5)
+```
+
+## Parameterisation from BRENDA (`mxlpy.parameterise`)
+
+Obtain empirical kinetic-parameter distributions from the [BRENDA](https://www.brenda-enzymes.org/) database (download the DB manually due to licensing), then feed them straight into Monte Carlo.
+
+```python
+from mxlpy.parameterise import get_km_and_kcat_from_brenda
+from mxlpy.distributions import GaussianKde, sample
+from pathlib import Path
+
+kms, kcats = get_km_and_kcat_from_brenda(ec="4.1.1.39", brenda_path=Path("brenda.json"))
+kms = kms[kms["substrate"] == "CO2"]                 # filter by substrate
+km_dist = GaussianKde.from_data(kms["value"])        # kernel density estimate
+ss = mc.steady_state(model, mc_to_scan=sample({"km": km_dist}, n=10))
+```
