@@ -1,0 +1,882 @@
+{
+ "tests/jax/test_ensemble.py::test_batch_simulate_composes_with_fluxode_simulate_time_course": {
+  "compiles": 30,
+  "peak_mb": 122
+ },
+ "tests/jax/test_ensemble.py::test_batch_simulate_reuses_jit_cache_across_calls": {
+  "compiles": 8,
+  "peak_mb": 75
+ },
+ "tests/jax/test_ensemble.py::test_batch_simulate_runs_every_member_in_one_call": {
+  "compiles": 16,
+  "peak_mb": 111
+ },
+ "tests/jax/test_ensemble.py::test_load_stacked_models_loads_recasts_and_stacks": {
+  "compiles": 5,
+  "peak_mb": 4
+ },
+ "tests/jax/test_ensemble.py::test_stack_models_adds_leading_axis_to_array_leaves": {
+  "compiles": 5,
+  "peak_mb": 7
+ },
+ "tests/jax/test_ensemble.py::test_unstack_models_round_trips_stack_models": {
+  "compiles": 5,
+  "peak_mb": 6
+ },
+ "tests/jax/test_invariants.py::test_anode_protocol_from_steady_state[HardLatentMapper]": {
+  "compiles": 53,
+  "peak_mb": 146
+ },
+ "tests/jax/test_invariants.py::test_anode_protocol_from_steady_state[TrainableZ0LatentMapper]": {
+  "compiles": 60,
+  "peak_mb": 156
+ },
+ "tests/jax/test_invariants.py::test_fluxanode_hidden_state_invariants[FullLatentMapper]": {
+  "compiles": 191,
+  "peak_mb": 337
+ },
+ "tests/jax/test_invariants.py::test_fluxanode_hidden_state_invariants[HardLatentMapper]": {
+  "compiles": 175,
+  "peak_mb": 320
+ },
+ "tests/jax/test_invariants.py::test_fluxanode_hidden_state_invariants[MixedLatentMapper]": {
+  "compiles": 190,
+  "peak_mb": 321
+ },
+ "tests/jax/test_invariants.py::test_fluxanode_hidden_state_invariants[SoftLatentMapper]": {
+  "compiles": 182,
+  "peak_mb": 319
+ },
+ "tests/jax/test_invariants.py::test_fluxanode_hidden_state_invariants[TrainableZ0LatentMapper]": {
+  "compiles": 184,
+  "peak_mb": 317
+ },
+ "tests/jax/test_invariants.py::test_fluxanode_without_pars_attribute_still_works": {
+  "compiles": 39,
+  "peak_mb": 139
+ },
+ "tests/jax/test_invariants.py::test_fluxnode_invariants": {
+  "compiles": 100,
+  "peak_mb": 211
+ },
+ "tests/jax/test_invariants.py::test_fluxode_invariants": {
+  "compiles": 94,
+  "peak_mb": 200
+ },
+ "tests/jax/test_invariants.py::test_fluxude_additive_fluxes_balance_state": {
+  "compiles": 57,
+  "peak_mb": 130
+ },
+ "tests/jax/test_invariants.py::test_model_invariants[Anode]": {
+  "compiles": 63,
+  "peak_mb": 206
+ },
+ "tests/jax/test_invariants.py::test_model_invariants[FluxAnode-TrainableZ0]": {
+  "compiles": 199,
+  "peak_mb": 520
+ },
+ "tests/jax/test_invariants.py::test_model_invariants[FluxAnode]": {
+  "compiles": 108,
+  "peak_mb": 303
+ },
+ "tests/jax/test_invariants.py::test_model_invariants[FluxNode]": {
+  "compiles": 77,
+  "peak_mb": 222
+ },
+ "tests/jax/test_invariants.py::test_model_invariants[FluxOde]": {
+  "compiles": 49,
+  "peak_mb": 181
+ },
+ "tests/jax/test_invariants.py::test_model_invariants[FluxUde]": {
+  "compiles": 64,
+  "peak_mb": 205
+ },
+ "tests/jax/test_invariants.py::test_model_invariants[Node]": {
+  "compiles": 57,
+  "peak_mb": 198
+ },
+ "tests/jax/test_invariants.py::test_model_invariants[Ode]": {
+  "compiles": 29,
+  "peak_mb": 165
+ },
+ "tests/jax/test_invariants.py::test_model_invariants[Ude]": {
+  "compiles": 57,
+  "peak_mb": 192
+ },
+ "tests/jax/test_invariants.py::test_repeated_integration_does_not_recompile": {
+  "compiles": 47,
+  "peak_mb": 167
+ },
+ "tests/jax/test_io.py::test_recast_to_template_backfill_does_not_mask_unrelated_mismatch": {
+  "compiles": 1,
+  "peak_mb": 1
+ },
+ "tests/jax/test_io.py::test_recast_to_template_backfill_key_typo_still_raises": {
+  "compiles": 1,
+  "peak_mb": 1
+ },
+ "tests/jax/test_io.py::test_recast_to_template_backfill_wrong_target_leaf_still_raises": {
+  "compiles": 1,
+  "peak_mb": 1
+ },
+ "tests/jax/test_io.py::test_recast_to_template_backfills_a_missing_field_by_name": {
+  "compiles": 2,
+  "peak_mb": 2
+ },
+ "tests/jax/test_io.py::test_recast_to_template_fixes_treedef": {
+  "compiles": 10,
+  "peak_mb": 29
+ },
+ "tests/jax/test_io.py::test_recast_to_template_raises_on_leaf_count_mismatch": {
+  "compiles": 12,
+  "peak_mb": 34
+ },
+ "tests/jax/test_io.py::test_save_load_round_trips_a_model": {
+  "compiles": 10,
+  "peak_mb": 29
+ },
+ "tests/jax/test_models.py::test_boundaries_to_ts_converts_flat_array_to_per_step_singletons": {
+  "compiles": 3,
+  "peak_mb": 2
+ },
+ "tests/jax/test_models.py::test_boundaries_to_ts_is_jit_compatible": {
+  "compiles": 6,
+  "peak_mb": 72
+ },
+ "tests/jax/test_models.py::test_boundaries_to_ts_matches_hand_built_ts_in_integrate_protocol": {
+  "compiles": 7,
+  "peak_mb": 79
+ },
+ "tests/jax/test_models.py::test_conditional_model_from_mxlpy_integrates_under_jit": {
+  "compiles": 13,
+  "peak_mb": 75
+ },
+ "tests/jax/test_models.py::test_conditional_rate_generates_jnp_select_not_ternary": {
+  "compiles": 0,
+  "peak_mb": 0
+ },
+ "tests/jax/test_models.py::test_fluxode_call_appends_pars_after_free_args": {
+  "compiles": 8,
+  "peak_mb": 14
+ },
+ "tests/jax/test_models.py::test_fluxode_direct_construction_has_no_names": {
+  "compiles": 3,
+  "peak_mb": 0
+ },
+ "tests/jax/test_models.py::test_fluxode_from_mxlpy_sets_names": {
+  "compiles": 1,
+  "peak_mb": 1
+ },
+ "tests/jax/test_models.py::test_fluxode_from_mxlpy_translates_math_to_jnp": {
+  "compiles": 9,
+  "peak_mb": 11
+ },
+ "tests/jax/test_models.py::test_fluxode_from_mxlpy_wires_derived_fn_in_correct_arg_order": {
+  "compiles": 9,
+  "peak_mb": 11
+ },
+ "tests/jax/test_models.py::test_fluxode_integrate_protocol_with_ragged_step_lengths": {
+  "compiles": 9,
+  "peak_mb": 80
+ },
+ "tests/jax/test_models.py::test_fluxode_simulate_protocol_time_course_prepends_t0": {
+  "compiles": 19,
+  "peak_mb": 75
+ },
+ "tests/jax/test_models.py::test_fluxode_simulate_time_course": {
+  "compiles": 16,
+  "peak_mb": 73
+ },
+ "tests/jax/test_models.py::test_fluxode_simulate_time_course_defaults_args_to_empty_array": {
+  "compiles": 14,
+  "peak_mb": 73
+ },
+ "tests/jax/test_models.py::test_fluxode_simulate_to_steady_state": {
+  "compiles": 18,
+  "peak_mb": 28
+ },
+ "tests/jax/test_models.py::test_freeze_preeq_gradient_cuts_preeq_path_sensitivity": {
+  "compiles": 28,
+  "peak_mb": 208
+ },
+ "tests/jax/test_models.py::test_freeze_preeq_gradient_does_not_change_forward_value": {
+  "compiles": 12,
+  "peak_mb": 82
+ },
+ "tests/jax/test_models.py::test_generated_model_unpacks_free_then_fit": {
+  "compiles": 0,
+  "peak_mb": 0
+ },
+ "tests/jax/test_models.py::test_generated_nv_takes_single_flux_argument": {
+  "compiles": 0,
+  "peak_mb": 0
+ },
+ "tests/jax/test_models.py::test_integrate_to_steady_state_returns_time_and_state": {
+  "compiles": 10,
+  "peak_mb": 22
+ },
+ "tests/jax/test_models.py::test_max_rate_jax_export_matches_reference": {
+  "compiles": 9,
+  "peak_mb": 8
+ },
+ "tests/jax/test_models.py::test_min_and_sign_rates_are_jit_compatible": {
+  "compiles": 5,
+  "peak_mb": 5
+ },
+ "tests/jax/test_models.py::test_min_rate_jax_export_matches_reference": {
+  "compiles": 9,
+  "peak_mb": 10
+ },
+ "tests/jax/test_models.py::test_ode_and_fluxode_from_mxlpy_agree": {
+  "compiles": 8,
+  "peak_mb": 10
+ },
+ "tests/jax/test_models.py::test_ode_call_appends_pars_after_free_args": {
+  "compiles": 6,
+  "peak_mb": 14
+ },
+ "tests/jax/test_models.py::test_ode_call_with_empty_pars_passes_args_unchanged": {
+  "compiles": 6,
+  "peak_mb": 6
+ },
+ "tests/jax/test_models.py::test_ode_derived_scale_multiplies_derived_fn_output": {
+  "compiles": 6,
+  "peak_mb": 5
+ },
+ "tests/jax/test_models.py::test_ode_from_mxlpy_accepts_ode_model_builder": {
+  "compiles": 9,
+  "peak_mb": 9
+ },
+ "tests/jax/test_models.py::test_ode_from_mxlpy_pars_hold_only_fit_parameters": {
+  "compiles": 2,
+  "peak_mb": 0
+ },
+ "tests/jax/test_models.py::test_ode_from_mxlpy_uses_runtime_free_arg_and_fit_pars": {
+  "compiles": 9,
+  "peak_mb": 11
+ },
+ "tests/jax/test_models.py::test_ode_from_mxlpy_wires_derived_fn_in_correct_arg_order": {
+  "compiles": 9,
+  "peak_mb": 12
+ },
+ "tests/jax/test_models.py::test_ode_integrate_accepts_explicit_dt0": {
+  "compiles": 18,
+  "peak_mb": 97
+ },
+ "tests/jax/test_models.py::test_ode_integrate_defaults_args_to_empty_array": {
+  "compiles": 17,
+  "peak_mb": 74
+ },
+ "tests/jax/test_models.py::test_ode_integrate_dt0_defaults_to_none_and_is_unaffected": {
+  "compiles": 13,
+  "peak_mb": 72
+ },
+ "tests/jax/test_models.py::test_ode_integrate_protocol_from_steady_state_preequilibrates_first": {
+  "compiles": 16,
+  "peak_mb": 83
+ },
+ "tests/jax/test_models.py::test_ode_integrate_to_steady_state_defaults_args_to_empty_array": {
+  "compiles": 12,
+  "peak_mb": 24
+ },
+ "tests/jax/test_models.py::test_single_variable_model_integrates_with_correct_shape": {
+  "compiles": 15,
+  "peak_mb": 72
+ },
+ "tests/jax/test_models.py::test_single_variable_model_unpacks_scalar_state": {
+  "compiles": 0,
+  "peak_mb": 0
+ },
+ "tests/jax/test_models.py::test_unary_special_function_jax_export_matches_reference[ceiling]": {
+  "compiles": 9,
+  "peak_mb": 9
+ },
+ "tests/jax/test_models.py::test_unary_special_function_jax_export_matches_reference[erf]": {
+  "compiles": 9,
+  "peak_mb": 9
+ },
+ "tests/jax/test_models.py::test_unary_special_function_jax_export_matches_reference[floor]": {
+  "compiles": 9,
+  "peak_mb": 9
+ },
+ "tests/jax/test_models.py::test_unary_special_function_jax_export_matches_reference[gamma]": {
+  "compiles": 12,
+  "peak_mb": 15
+ },
+ "tests/jax/test_models.py::test_unary_special_function_jax_export_matches_reference[log]": {
+  "compiles": 9,
+  "peak_mb": 9
+ },
+ "tests/jax/test_models.py::test_unary_special_function_jax_export_matches_reference[loggamma]": {
+  "compiles": 9,
+  "peak_mb": 12
+ },
+ "tests/jax/test_models.py::test_unary_special_function_jax_export_matches_reference[sign]": {
+  "compiles": 9,
+  "peak_mb": 9
+ },
+ "tests/jax/test_models.py::test_unary_special_function_jax_export_matches_reference[sin]": {
+  "compiles": 9,
+  "peak_mb": 8
+ },
+ "tests/jax/test_models.py::test_unary_special_function_jax_export_matches_reference[sqrt]": {
+  "compiles": 9,
+  "peak_mb": 9
+ },
+ "tests/jax/test_models_nn.py::test_anode_derived_scale_multiplies_derived_fn_output": {
+  "compiles": 19,
+  "peak_mb": 37
+ },
+ "tests/jax/test_models_nn.py::test_anode_integrate_alpha_defaults_to_none_for_non_blending_mapper": {
+  "compiles": 25,
+  "peak_mb": 94
+ },
+ "tests/jax/test_models_nn.py::test_anode_integrate_decodes_to_n_obs": {
+  "compiles": 27,
+  "peak_mb": 95
+ },
+ "tests/jax/test_models_nn.py::test_anode_integrate_protocol_decodes_to_n_obs": {
+  "compiles": 23,
+  "peak_mb": 101
+ },
+ "tests/jax/test_models_nn.py::test_anode_integrate_protocol_from_steady_state_decodes_to_n_obs": {
+  "compiles": 31,
+  "peak_mb": 117
+ },
+ "tests/jax/test_models_nn.py::test_anode_integrate_threads_alpha_to_blending_latent_mapper": {
+  "compiles": 32,
+  "peak_mb": 95
+ },
+ "tests/jax/test_models_nn.py::test_anode_integrate_to_steady_state_decodes_to_n_obs": {
+  "compiles": 29,
+  "peak_mb": 78
+ },
+ "tests/jax/test_models_nn.py::test_anode_n_args_field_stores_raw_n_args": {
+  "compiles": 11,
+  "peak_mb": 39
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_derived_scale_multiplies_derived_fn_output": {
+  "compiles": 18,
+  "peak_mb": 35
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_from_flux_ode_defaults_widths_from_dims": {
+  "compiles": 40,
+  "peak_mb": 81
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_from_flux_ode_requires_names": {
+  "compiles": 2,
+  "peak_mb": 1
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_from_flux_ode_reuses_dims_nv_and_derived_fn": {
+  "compiles": 32,
+  "peak_mb": 103
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_integrate_accepts_explicit_dt0": {
+  "compiles": 31,
+  "peak_mb": 128
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_integrate_decodes_to_n_obs": {
+  "compiles": 28,
+  "peak_mb": 96
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_integrate_dt0_defaults_to_none_and_is_unaffected": {
+  "compiles": 28,
+  "peak_mb": 95
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_integrate_protocol_decodes_to_n_obs": {
+  "compiles": 24,
+  "peak_mb": 100
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_integrate_protocol_from_steady_state_decodes_to_n_obs": {
+  "compiles": 32,
+  "peak_mb": 121
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_integrate_threads_alpha_to_blending_latent_mapper": {
+  "compiles": 32,
+  "peak_mb": 98
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_integrate_to_steady_state_decodes_to_n_obs": {
+  "compiles": 30,
+  "peak_mb": 80
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_n_args_defaults_to_zero": {
+  "compiles": 12,
+  "peak_mb": 32
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_n_args_field_stores_raw_n_args": {
+  "compiles": 12,
+  "peak_mb": 40
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_simulate_fluxes_use_integrated_hidden_state[HardLatentMapper]": {
+  "compiles": 45,
+  "peak_mb": 110
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_simulate_fluxes_use_integrated_hidden_state[MixedLatentMapper]": {
+  "compiles": 47,
+  "peak_mb": 110
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_simulate_fluxes_use_integrated_hidden_state[TrainableZ0LatentMapper]": {
+  "compiles": 43,
+  "peak_mb": 104
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_simulate_protocol_time_course_prepends_t0": {
+  "compiles": 37,
+  "peak_mb": 104
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_simulate_requires_names": {
+  "compiles": 15,
+  "peak_mb": 31
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_simulate_steady_state_and_protocol_fluxes_use_latent_state": {
+  "compiles": 57,
+  "peak_mb": 144
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_simulate_time_course_decodes_and_recomputes_fluxes": {
+  "compiles": 41,
+  "peak_mb": 109
+ },
+ "tests/jax/test_models_nn.py::test_fluxanode_simulate_to_steady_state": {
+  "compiles": 40,
+  "peak_mb": 96
+ },
+ "tests/jax/test_models_nn.py::test_fluxnode_derived_scale_multiplies_derived_fn_output": {
+  "compiles": 15,
+  "peak_mb": 28
+ },
+ "tests/jax/test_models_nn.py::test_fluxnode_forward_pass_shape": {
+  "compiles": 23,
+  "peak_mb": 39
+ },
+ "tests/jax/test_models_nn.py::test_fluxnode_from_flux_ode_requires_names": {
+  "compiles": 2,
+  "peak_mb": 1
+ },
+ "tests/jax/test_models_nn.py::test_fluxnode_from_flux_ode_reuses_dims_nv_and_derived_fn": {
+  "compiles": 23,
+  "peak_mb": 40
+ },
+ "tests/jax/test_models_nn.py::test_fluxnode_simulate_protocol_time_course_prepends_t0": {
+  "compiles": 26,
+  "peak_mb": 92
+ },
+ "tests/jax/test_models_nn.py::test_fluxnode_simulate_requires_names": {
+  "compiles": 12,
+  "peak_mb": 24
+ },
+ "tests/jax/test_models_nn.py::test_fluxnode_simulate_time_course": {
+  "compiles": 34,
+  "peak_mb": 93
+ },
+ "tests/jax/test_models_nn.py::test_fluxnode_simulate_to_steady_state": {
+  "compiles": 33,
+  "peak_mb": 80
+ },
+ "tests/jax/test_models_nn.py::test_fluxnode_with_nonzero_n_args_does_not_raise": {
+  "compiles": 22,
+  "peak_mb": 39
+ },
+ "tests/jax/test_models_nn.py::test_fluxude_call_combines_flux_ode_and_flux_nn_via_op": {
+  "compiles": 21,
+  "peak_mb": 34
+ },
+ "tests/jax/test_models_nn.py::test_fluxude_derived_delegates_to_flux_ode": {
+  "compiles": 13,
+  "peak_mb": 25
+ },
+ "tests/jax/test_models_nn.py::test_mixed_latent_mapper_decode_alpha_one_is_pure_learned": {
+  "compiles": 13,
+  "peak_mb": 25
+ },
+ "tests/jax/test_models_nn.py::test_mixed_latent_mapper_decode_alpha_zero_is_pure_hard_slice": {
+  "compiles": 13,
+  "peak_mb": 26
+ },
+ "tests/jax/test_models_nn.py::test_mixed_latent_mapper_decode_requires_alpha": {
+  "compiles": 8,
+  "peak_mb": 22
+ },
+ "tests/jax/test_models_nn.py::test_node_derived_scale_multiplies_derived_fn_output": {
+  "compiles": 15,
+  "peak_mb": 28
+ },
+ "tests/jax/test_models_nn.py::test_node_forward_pass_shape": {
+  "compiles": 21,
+  "peak_mb": 39
+ },
+ "tests/jax/test_models_nn.py::test_trainable_z0_latent_mapper_decode_alpha_zero_is_pure_hard_slice": {
+  "compiles": 12,
+  "peak_mb": 24
+ },
+ "tests/jax/test_models_nn.py::test_trainable_z0_latent_mapper_decode_requires_alpha": {
+  "compiles": 7,
+  "peak_mb": 20
+ },
+ "tests/jax/test_models_nn.py::test_trainable_z0_latent_mapper_encode_keeps_observed_slice_verbatim": {
+  "compiles": 9,
+  "peak_mb": 19
+ },
+ "tests/jax/test_models_nn.py::test_trainable_z0_latent_mapper_hidden_slice_is_independent_of_y0": {
+  "compiles": 9,
+  "peak_mb": 21
+ },
+ "tests/jax/test_models_nn.py::test_trainable_z0_latent_mapper_z0_init_range_is_configurable": {
+  "compiles": 8,
+  "peak_mb": 33
+ },
+ "tests/jax/test_models_nn.py::test_ude_call_combines_ode_and_nn_via_op": {
+  "compiles": 21,
+  "peak_mb": 36
+ },
+ "tests/jax/test_models_nn.py::test_ude_derived_delegates_to_ode": {
+  "compiles": 13,
+  "peak_mb": 25
+ },
+ "tests/jax/test_train.py::test_curriculum_length[5-0.5-3]": {
+  "compiles": 0,
+  "peak_mb": 0
+ },
+ "tests/jax/test_train.py::test_curriculum_length[5-1.0-5]": {
+  "compiles": 0,
+  "peak_mb": 0
+ },
+ "tests/jax/test_train.py::test_curriculum_length[5-10-5]": {
+  "compiles": 0,
+  "peak_mb": 0
+ },
+ "tests/jax/test_train.py::test_curriculum_length[5-3-3]": {
+  "compiles": 0,
+  "peak_mb": 0
+ },
+ "tests/jax/test_train.py::test_derived_simulation_fn_maps_states_through_derived": {
+  "compiles": 17,
+  "peak_mb": 71
+ },
+ "tests/jax/test_train.py::test_derived_simulation_fn_pairs_each_row_with_its_active_protocol_arg": {
+  "compiles": 21,
+  "peak_mb": 76
+ },
+ "tests/jax/test_train.py::test_derived_simulation_fn_pairs_ragged_steps_with_their_active_protocol_arg": {
+  "compiles": 24,
+  "peak_mb": 78
+ },
+ "tests/jax/test_train.py::test_derived_simulation_fn_t0_args_prepends_genuine_t0_row": {
+  "compiles": 25,
+  "peak_mb": 75
+ },
+ "tests/jax/test_train.py::test_derived_simulation_fn_without_t0_args_is_unchanged": {
+  "compiles": 17,
+  "peak_mb": 74
+ },
+ "tests/jax/test_train.py::test_grad_pars_history_multiple_lessons_kept_separate": {
+  "compiles": 23,
+  "peak_mb": 126
+ },
+ "tests/jax/test_train.py::test_perturb_model_changes_trainable_leaves": {
+  "compiles": 10,
+  "peak_mb": 19
+ },
+ "tests/jax/test_train.py::test_perturb_model_leaves_zero_scale_unchanged": {
+  "compiles": 10,
+  "peak_mb": 16
+ },
+ "tests/jax/test_train.py::test_proto_grad_loss_t0_uses_full_prediction_no_ys0_substitution": {
+  "compiles": 58,
+  "peak_mb": 139
+ },
+ "tests/jax/test_train.py::test_proto_make_step_clips_large_gradients_to_unit_norm": {
+  "compiles": 28,
+  "peak_mb": 25
+ },
+ "tests/jax/test_train.py::test_proto_make_step_does_not_rescale_small_gradients_upward": {
+  "compiles": 26,
+  "peak_mb": 24
+ },
+ "tests/jax/test_train.py::test_sigmoid_schedule_decreases_monotonically": {
+  "compiles": 12,
+  "peak_mb": 22
+ },
+ "tests/jax/test_train.py::test_sigmoid_schedule_is_close_to_one_early_in_training": {
+  "compiles": 7,
+  "peak_mb": 6
+ },
+ "tests/jax/test_train.py::test_sigmoid_schedule_is_close_to_zero_late_in_training": {
+  "compiles": 7,
+  "peak_mb": 6
+ },
+ "tests/jax/test_train.py::test_sigmoid_schedule_is_one_half_at_the_midpoint": {
+  "compiles": 7,
+  "peak_mb": 6
+ },
+ "tests/jax/test_train.py::test_squeeze_derived_leaves_multi_quantity_unchanged": {
+  "compiles": 2,
+  "peak_mb": 2
+ },
+ "tests/jax/test_train.py::test_squeeze_derived_squeezes_single_quantity": {
+  "compiles": 3,
+  "peak_mb": 3
+ },
+ "tests/jax/test_train.py::test_train_disable_tqdm_defaults_to_false": {
+  "compiles": 21,
+  "peak_mb": 125
+ },
+ "tests/jax/test_train.py::test_train_disable_tqdm_true_suppresses_progress_bar": {
+  "compiles": 21,
+  "peak_mb": 120
+ },
+ "tests/jax/test_train.py::test_train_does_not_catch_unlisted_exceptions": {
+  "compiles": 14,
+  "peak_mb": 11
+ },
+ "tests/jax/test_train.py::test_train_explicit_int_cutoff_slices_exact_point_count": {
+  "compiles": 22,
+  "peak_mb": 127
+ },
+ "tests/jax/test_train.py::test_train_explicit_y_mean_rejects_renormalize_per_stage": {
+  "compiles": 9,
+  "peak_mb": 9
+ },
+ "tests/jax/test_train.py::test_train_explicit_y_mean_requires_y_scale": {
+  "compiles": 9,
+  "peak_mb": 10
+ },
+ "tests/jax/test_train.py::test_train_explicit_y_mean_y_scale_overrides_computed": {
+  "compiles": 17,
+  "peak_mb": 28
+ },
+ "tests/jax/test_train.py::test_train_freeze_defaults_to_none_and_matches_a_hand_rolled_make_step_loop": {
+  "compiles": 23,
+  "peak_mb": 158
+ },
+ "tests/jax/test_train.py::test_train_freeze_keeps_frozen_subtree_exactly_unchanged": {
+  "compiles": 36,
+  "peak_mb": 156
+ },
+ "tests/jax/test_train.py::test_train_freeze_raises_with_grad_pars_history": {
+  "compiles": 13,
+  "peak_mb": 30
+ },
+ "tests/jax/test_train.py::test_train_freeze_retries_after_solver_error_without_perturbing_frozen_subtree": {
+  "compiles": 60,
+  "peak_mb": 193
+ },
+ "tests/jax/test_train.py::test_train_gives_up_after_max_consecutive_solver_errors": {
+  "compiles": 22,
+  "peak_mb": 29
+ },
+ "tests/jax/test_train.py::test_train_global_step_persists_across_curriculum_stages": {
+  "compiles": 19,
+  "peak_mb": 29
+ },
+ "tests/jax/test_train.py::test_train_grad_pars_history_defaults_columns_to_positional_index": {
+  "compiles": 24,
+  "peak_mb": 132
+ },
+ "tests/jax/test_train.py::test_train_grad_pars_history_records_per_parameter_gradients": {
+  "compiles": 24,
+  "peak_mb": 124
+ },
+ "tests/jax/test_train.py::test_train_integration_settings_per_stage_length_mismatch_raises": {
+  "compiles": 5,
+  "peak_mb": 4
+ },
+ "tests/jax/test_train.py::test_train_integration_settings_per_stage_overrides_method_per_stage": {
+  "compiles": 40,
+  "peak_mb": 191
+ },
+ "tests/jax/test_train.py::test_train_keyboard_interrupt_returns_best_so_far": {
+  "compiles": 21,
+  "peak_mb": 123
+ },
+ "tests/jax/test_train.py::test_train_normalize_axis_defaults_to_flattened_scalar": {
+  "compiles": 18,
+  "peak_mb": 27
+ },
+ "tests/jax/test_train.py::test_train_normalize_axis_zero_normalizes_per_quantity": {
+  "compiles": 22,
+  "peak_mb": 34
+ },
+ "tests/jax/test_train.py::test_train_only_nde_explicit_int_cutoff_slices_exact_point_count": {
+  "compiles": 33,
+  "peak_mb": 156
+ },
+ "tests/jax/test_train.py::test_train_only_nde_gives_up_after_max_consecutive_solver_errors": {
+  "compiles": 51,
+  "peak_mb": 80
+ },
+ "tests/jax/test_train.py::test_train_only_nde_resume_prepends_prior_history": {
+  "compiles": 33,
+  "peak_mb": 182
+ },
+ "tests/jax/test_train.py::test_train_only_nde_retries_after_solver_error": {
+  "compiles": 58,
+  "peak_mb": 184
+ },
+ "tests/jax/test_train.py::test_train_only_nde_returns_best_model_not_last_model": {
+  "compiles": 59,
+  "peak_mb": 90
+ },
+ "tests/jax/test_train.py::test_train_only_nde_returns_losses_and_grad_norms_per_lesson": {
+  "compiles": 35,
+  "peak_mb": 156
+ },
+ "tests/jax/test_train.py::test_train_only_nde_triggers_early_stopping_on_last_stage": {
+  "compiles": 28,
+  "peak_mb": 43
+ },
+ "tests/jax/test_train.py::test_train_only_nde_uses_custom_grad_fn": {
+  "compiles": 30,
+  "peak_mb": 65
+ },
+ "tests/jax/test_train.py::test_train_protocol_disable_tqdm_true_suppresses_progress_bar": {
+  "compiles": 19,
+  "peak_mb": 128
+ },
+ "tests/jax/test_train.py::test_train_protocol_does_not_catch_unlisted_exceptions": {
+  "compiles": 12,
+  "peak_mb": 9
+ },
+ "tests/jax/test_train.py::test_train_protocol_early_stop_returns_best_model_not_current_model": {
+  "compiles": 17,
+  "peak_mb": 14
+ },
+ "tests/jax/test_train.py::test_train_protocol_explicit_int_cutoff_slices_exact_window_count": {
+  "compiles": 23,
+  "peak_mb": 159
+ },
+ "tests/jax/test_train.py::test_train_protocol_explicit_y_mean_y_scale_overrides_computed": {
+  "compiles": 15,
+  "peak_mb": 25
+ },
+ "tests/jax/test_train.py::test_train_protocol_freeze_keeps_frozen_subtree_exactly_unchanged": {
+  "compiles": 36,
+  "peak_mb": 184
+ },
+ "tests/jax/test_train.py::test_train_protocol_freeze_raises_with_grad_pars_history": {
+  "compiles": 15,
+  "peak_mb": 28
+ },
+ "tests/jax/test_train.py::test_train_protocol_freeze_retries_after_solver_error_without_perturbing_frozen_subtree": {
+  "compiles": 61,
+  "peak_mb": 206
+ },
+ "tests/jax/test_train.py::test_train_protocol_freeze_works_with_derived_simulation_fn": {
+  "compiles": 39,
+  "peak_mb": 186
+ },
+ "tests/jax/test_train.py::test_train_protocol_freeze_works_with_derived_simulation_fn_t0": {
+  "compiles": 40,
+  "peak_mb": 173
+ },
+ "tests/jax/test_train.py::test_train_protocol_global_step_persists_across_curriculum_stages": {
+  "compiles": 17,
+  "peak_mb": 28
+ },
+ "tests/jax/test_train.py::test_train_protocol_grad_pars_history_records_per_parameter_gradients": {
+  "compiles": 22,
+  "peak_mb": 129
+ },
+ "tests/jax/test_train.py::test_train_protocol_integration_settings_per_stage_length_mismatch_raises": {
+  "compiles": 7,
+  "peak_mb": 5
+ },
+ "tests/jax/test_train.py::test_train_protocol_integration_settings_per_stage_overrides_method": {
+  "compiles": 33,
+  "peak_mb": 210
+ },
+ "tests/jax/test_train.py::test_train_protocol_keyboard_interrupt_returns_best_so_far": {
+  "compiles": 19,
+  "peak_mb": 129
+ },
+ "tests/jax/test_train.py::test_train_protocol_normalize_axis_defaults_to_flattened_scalar": {
+  "compiles": 16,
+  "peak_mb": 27
+ },
+ "tests/jax/test_train.py::test_train_protocol_normalize_axis_zero_normalizes_per_quantity": {
+  "compiles": 20,
+  "peak_mb": 33
+ },
+ "tests/jax/test_train.py::test_train_protocol_renormalize_per_stage_uses_each_stages_own_prefix": {
+  "compiles": 29,
+  "peak_mb": 192
+ },
+ "tests/jax/test_train.py::test_train_protocol_resume_prepends_prior_history": {
+  "compiles": 20,
+  "peak_mb": 163
+ },
+ "tests/jax/test_train.py::test_train_protocol_returns_losses_and_grad_norms_per_lesson": {
+  "compiles": 25,
+  "peak_mb": 147
+ },
+ "tests/jax/test_train.py::test_train_protocol_stops_on_custom_stop_exception": {
+  "compiles": 19,
+  "peak_mb": 130
+ },
+ "tests/jax/test_train.py::test_train_protocol_uses_custom_grad_fn": {
+  "compiles": 17,
+  "peak_mb": 26
+ },
+ "tests/jax/test_train.py::test_train_protocol_with_derived_simulation_fn_t0_trains_end_to_end": {
+  "compiles": 27,
+  "peak_mb": 143
+ },
+ "tests/jax/test_train.py::test_train_protocol_with_derived_simulation_fn_trains_end_to_end": {
+  "compiles": 26,
+  "peak_mb": 146
+ },
+ "tests/jax/test_train.py::test_train_protocol_wraps_optim_with_apply_if_finite_and_adaptive_grad_clip": {
+  "compiles": 21,
+  "peak_mb": 149
+ },
+ "tests/jax/test_train.py::test_train_renormalize_per_stage_uses_each_stages_own_prefix": {
+  "compiles": 27,
+  "peak_mb": 176
+ },
+ "tests/jax/test_train.py::test_train_resets_solver_error_budget_per_curriculum_stage": {
+  "compiles": 28,
+  "peak_mb": 135
+ },
+ "tests/jax/test_train.py::test_train_resume_never_regresses_below_the_starting_model": {
+  "compiles": 50,
+  "peak_mb": 227
+ },
+ "tests/jax/test_train.py::test_train_resume_prepends_prior_history": {
+  "compiles": 22,
+  "peak_mb": 158
+ },
+ "tests/jax/test_train.py::test_train_retries_after_solver_error": {
+  "compiles": 29,
+  "peak_mb": 135
+ },
+ "tests/jax/test_train.py::test_train_returns_losses_and_grad_norms_per_lesson": {
+  "compiles": 24,
+  "peak_mb": 129
+ },
+ "tests/jax/test_train.py::test_train_stops_on_custom_stop_exception": {
+  "compiles": 21,
+  "peak_mb": 125
+ },
+ "tests/jax/test_train.py::test_train_total_steps_is_the_curriculum_sum_throughout": {
+  "compiles": 19,
+  "peak_mb": 30
+ },
+ "tests/jax/test_train.py::test_train_uses_custom_grad_fn": {
+  "compiles": 19,
+  "peak_mb": 29
+ },
+ "tests/jax/test_train.py::test_train_without_grad_pars_history_is_unaffected": {
+  "compiles": 32,
+  "peak_mb": 159
+ },
+ "tests/jax/test_train.py::test_train_without_integration_settings_per_stage_is_unchanged": {
+  "compiles": 21,
+  "peak_mb": 128
+ },
+ "tests/jax/test_train.py::test_train_without_prior_history_starts_fresh": {
+  "compiles": 21,
+  "peak_mb": 126
+ },
+ "tests/jax/test_train.py::test_train_without_renormalize_per_stage_uses_full_ys_every_stage": {
+  "compiles": 25,
+  "peak_mb": 164
+ }
+}
