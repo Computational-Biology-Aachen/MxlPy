@@ -93,10 +93,10 @@ from mxlpy.jax.train import IntegrationSettings, train
 
 lv = Ode.from_mxlpy(get_lotka_volterra())     # mechanistic prior
 ts = jnp.linspace(0, 50, 100)
-ys = lv.integrate(ts, jnp.array([10.0, 10.0]))
+ys = lv.integrate(ts, jnp.array([10.0, 10.0]), max_steps=8192)
 
-ude, losses = train(
-    Ude(ode=lv, nn=Node(n_obs=2, width=8, depth=3, key=jax.random.PRNGKey(42), out_scale=jnp.array([0.1])),
+ude, losses, grad_norms = train(                # per-lesson loss / grad-norm Series
+    Ude(ode=lv, nn=Node(variable_names=lv.variable_names, width=8, depth=3, key=jax.random.PRNGKey(42), out_scale=jnp.array([0.1])),
         op="+"),                               # NDE output is added to the ODE rhs
     ts=ts, ys=ys_observed,
     training_steps=[(500, 0.2), (500, 0.5), (10_000, 1.0)],  # curriculum: (steps, trajectory fraction)
@@ -104,7 +104,11 @@ ude, losses = train(
     integration_settings=IntegrationSettings(max_steps=8192, method=diffrax.Tsit5),
     optim=optax.adabelief(learning_rate=2e-4),
 )
-ys_pred = ude.integrate(ts, y0)
+ys_pred = ude.integrate(ts, y0, max_steps=8192)
+
+# Named result: arrays (usable under jax.grad) plus DataFrames
+sim = ude.simulate_time_course(ts, y0, max_steps=8192)
+sim.variables_df, sim.readouts_df
 
 # Decompose the trained dynamics into ODE and learned-NDE contributions
 rhs_ode = jax.vmap(ude.ode, in_axes=(0, 0, None))(ts, ys_pred, jnp.array([]))
