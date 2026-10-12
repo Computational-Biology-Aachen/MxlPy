@@ -241,12 +241,25 @@ class IntegrationSettings:
         Diffrax Runge-Kutta solver class (default: Tsit5).
     max_steps : int
         Maximum number of solver steps before aborting.
+    alpha : float or None
+        Hard/learned decode mix forwarded to ``integrate*`` for
+        :class:`~mxlpy.jax.models.Anode`/:class:`~mxlpy.jax.models.FluxAnode`
+        with an annealed latent mapper (:class:`~mxlpy.jax.models.MixedLatentMapper`,
+        :class:`~mxlpy.jax.models.TrainableZ0LatentMapper`), which require it.
+        ``None`` (the default) forwards nothing, as models without a latent
+        mapper don't accept it. Anneal it across a curriculum by giving
+        each stage its own settings (:data:`IntegrationSettingsPerStage`).
     """
 
     atol: float = 1e-6
     rtol: float = 1e-4
     method: Method = diffrax.Tsit5
     max_steps: int = 8192
+    alpha: float | None = None
+
+    def decode_kwargs(self) -> dict[str, Any]:
+        """``{"alpha": alpha}`` for ``integrate*`` calls, or ``{}`` if unset."""
+        return {} if self.alpha is None else {"alpha": self.alpha}
 
 
 type IntegrationSettingsPerStage = list[IntegrationSettings | None]
@@ -325,6 +338,7 @@ def grad_loss(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
+        **ctx.decode_kwargs(),
     )
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
@@ -356,6 +370,7 @@ def integrate_protocol_states(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
+        **ctx.decode_kwargs(),
     )
 
 
@@ -418,6 +433,7 @@ def derived_simulation_fn(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
+        **ctx.decode_kwargs(),
     )
     ts_flat = jnp.concatenate(ts)
     step_lengths = [t.shape[0] for t in ts]
@@ -691,6 +707,7 @@ def grad_loss_split(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
+        **ctx.decode_kwargs(),
     )
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
