@@ -1,5 +1,6 @@
 """JAX model classes for mechanistic and neural ODE components."""
 
+import functools
 import operator
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -111,6 +112,17 @@ def _default_derived(
     args: PyTree,  # noqa: ARG001
 ) -> jax.Array:
     return jnp.array([])
+
+
+@functools.cache
+def _steady_state_event(rtol: float | None, atol: float | None) -> diffrax.Event:
+    """One shared :class:`diffrax.Event` per tolerance pair.
+
+    ``diffrax.steady_state_event`` returns a fresh closure on every call, and
+    the event is a static argument of ``diffeqsolve`` -- building it per call
+    made every steady-state solve recompile the whole solver.
+    """
+    return diffrax.Event(diffrax.steady_state_event(rtol=rtol, atol=atol))
 
 
 def boundaries_to_ts(boundaries: jax.Array) -> list[jax.Array]:
@@ -230,15 +242,13 @@ class Base(eqx.Module, ABC):
             max_steps=max_steps,
         )
         ys = cast(jax.Array, sol.ys)
-        return lax.cond(
+        # jnp.where rather than lax.cond over lambdas: outside jit, every
+        # cond call traces fresh closures and compiles (and caches) a new
+        # executable, leaking memory linearly in the number of integrations.
+        return jnp.where(
             sol.result == diffrax.RESULTS.successful,
-            lambda: ys,
-            lambda: jnp.nan_to_num(
-                ys,
-                nan=0.0,
-                posinf=0.0,
-                neginf=0.0,
-            ),
+            ys,
+            jnp.nan_to_num(ys, nan=0.0, posinf=0.0, neginf=0.0),
         )
 
     def integrate(
@@ -289,6 +299,7 @@ class Base(eqx.Module, ABC):
             dt0=dt0,
         )
 
+    @eqx.filter_jit
     def _integrate_protocol_raw(
         self,
         y0: jax.Array,
@@ -443,20 +454,16 @@ class Base(eqx.Module, ABC):
             args=jnp.zeros((0,)) if args is None else args,
             stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
             saveat=diffrax.SaveAt(t1=True),
-            event=diffrax.Event(
-                diffrax.steady_state_event(
-                    rtol=steady_state_rtol,
-                    atol=steady_state_atol,
-                )
-            ),
+            event=_steady_state_event(steady_state_rtol, steady_state_atol),
             max_steps=max_steps,
         )
         t = cast(jax.Array, sol.ts)[-1]
         y = cast(jax.Array, sol.ys)[-1]
-        return t, lax.cond(
+        # jnp.where, not lax.cond over lambdas: see _solve.
+        return t, jnp.where(
             sol.result == diffrax.RESULTS.event_occurred,
-            lambda: y,
-            lambda: jnp.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0),
+            y,
+            jnp.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0),
         )
 
     def integrate_to_steady_state(
