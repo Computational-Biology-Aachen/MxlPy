@@ -18,7 +18,7 @@ class _ModelV1(eqx.Module):
 
 
 class _ModelV2(eqx.Module):
-    """Simulates _ModelV1 gaining a field (e.g. derived_scale) later."""
+    """Simulates _ModelV1 gaining a field (e.g. readout_scale) later."""
 
     a: jax.Array
     b: jax.Array
@@ -40,7 +40,7 @@ class _ModelV2c(eqx.Module):
 
 
 def test_save_load_round_trips_a_model(tmp_path: Path) -> None:
-    model = Node(n_obs=2, width=4, depth=1, key=_KEY)
+    model = Node(variable_names=("a", "b"), width=4, depth=1, key=_KEY)
     path = tmp_path / "model.dill"
 
     jax_io.save(path, model)
@@ -51,8 +51,8 @@ def test_save_load_round_trips_a_model(tmp_path: Path) -> None:
 
 
 def test_recast_to_template_fixes_treedef() -> None:
-    model = Node(n_obs=2, width=4, depth=1, key=_KEY)
-    template = Node(n_obs=2, width=4, depth=1, key=_KEY)
+    model = Node(variable_names=("a", "b"), width=4, depth=1, key=_KEY)
+    template = Node(variable_names=("a", "b"), width=4, depth=1, key=_KEY)
 
     recast = jax_io.recast_to_template(model, template)
 
@@ -61,10 +61,10 @@ def test_recast_to_template_fixes_treedef() -> None:
 
 
 def test_recast_to_template_raises_on_leaf_count_mismatch() -> None:
-    model = Node(n_obs=2, width=4, depth=1, key=_KEY)
+    model = Node(variable_names=("a", "b"), width=4, depth=1, key=_KEY)
     # Different depth -> different number of MLP layers -> different leaf
     # count, not just different shapes.
-    template = Node(n_obs=2, width=4, depth=2, key=_KEY)
+    template = Node(variable_names=("a", "b"), width=4, depth=2, key=_KEY)
 
     with pytest.raises(ValueError, match="Leaf count mismatch"):
         jax_io.recast_to_template(model, template)

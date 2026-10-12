@@ -82,7 +82,7 @@ def recast_to_template[T: eqx.Module](
         only its pytree treedef is used, its own leaf values are discarded.
     backfill : dict[str, Any] or None
         Maps a leaf's :func:`jax.tree_util.keystr` path on ``template``
-        (e.g. ``".derived_scale"``) to a default value to substitute for a
+        (e.g. ``".readout_scale"``) to a default value to substitute for a
         leaf that exists on ``template`` but not on ``model`` -- e.g. a
         field added to the class after ``model`` was pickled. Every leaf
         missing from ``model`` relative to ``template`` must be named here;

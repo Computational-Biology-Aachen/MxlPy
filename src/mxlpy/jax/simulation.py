@@ -1,103 +1,134 @@
-"""Named, DataFrame-based simulation results for JAX models."""
+"""Simulation results for JAX models.
+
+Returned by every model's ``simulate_*`` methods. All results are JAX pytrees
+of arrays computed at simulation time, so they work inside ``jit``/``grad``/
+``vmap`` (e.g. a loss penalising ``sim.fluxes``) and batch through
+:func:`~mxlpy.jax.ensemble.batch_simulate`. The ``*_df`` properties give
+named, time-indexed DataFrames of a single (unbatched) result.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from functools import cached_property, partial
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from functools import partial
 
 import jax
 import numpy as np
 import pandas as pd
 
-if TYPE_CHECKING:
-    from mxlpy.jax.models import FluxAnode, FluxNode, FluxOde
+__all__ = ["FluxSimulation", "Simulation"]
 
-__all__ = ["FluxOdeSimulation"]
+
+def _frame(
+    values: jax.Array, ts: jax.Array, names: tuple[str, ...], success: jax.Array
+) -> pd.DataFrame:
+    """Time-indexed DataFrame of ``values``; NaN-filled if the solve failed."""
+    data = np.asarray(values)
+    if not bool(success):
+        data = np.full(data.shape, np.nan)
+    return pd.DataFrame(data, index=np.asarray(ts), columns=list(names))
 
 
 @partial(
     jax.tree_util.register_dataclass,
-    data_fields=["model", "ts", "ys", "args", "latent_ys"],
-    meta_fields=["variable_names", "flux_names"],
+    data_fields=["ts", "ys", "args", "readouts", "success", "_latent_ys"],
+    meta_fields=["variable_names", "readout_names"],
 )
-@dataclass(slots=False)  # cached_property needs an instance __dict__
-class FluxOdeSimulation:
-    """Named simulation result for a flux-based JAX model.
-
-    Bridges the raw ``jax.Array`` output of ``integrate*``/``simulate_*``
-    back to named, pandas-based results, mirroring
-    :class:`mxlpy.simulation.Simulation` for the (much narrower) set of
-    things a frozen JAX model can report. Returned by
-    :class:`~mxlpy.jax.models.FluxOde`, :class:`~mxlpy.jax.models.FluxNode`,
-    and :class:`~mxlpy.jax.models.FluxAnode`'s ``simulate_time_course``/
-    ``simulate_protocol_time_course``/``simulate_to_steady_state`` -- each
-    model class implements its own ``simulate_flux_row(t, y, args)`` so
-    :attr:`fluxes` can recompute correctly regardless of what ``args`` a
-    particular model class additionally needs (e.g. ``FluxOde`` re-appends
-    its trainable ``pars``; ``FluxAnode`` evaluates its fluxes on the
-    latent trajectory in :attr:`latent_ys`).
-
-    Registered as a JAX pytree (``model``/``ts``/``ys``/``args`` as dynamic
-    data, ``variable_names``/``flux_names`` as static metadata) so it
-    composes with JAX transformations -- in particular
-    :func:`~mxlpy.jax.ensemble.batch_simulate`, which would otherwise treat
-    an unregistered dataclass as a single opaque leaf and silently return
-    leaked tracers instead of a properly batched result.
+@dataclass(frozen=True)
+class Simulation:
+    """Result of a JAX model simulation.
 
     Parameters
     ----------
-    model : FluxOde or FluxNode or FluxAnode
-        Model the trajectory was produced from; used to recompute fluxes.
     ts : jax.Array
         Time points, shape ``(T,)``.
     ys : jax.Array
-        State trajectory, shape ``(T, n_state)``.
+        Observed variables, shape ``(T, n_obs)``.
     args : jax.Array
-        Per-row external arguments (excluding trainable ``pars``, which are
-        added back in when computing fluxes), shape ``(T, n_args)``.
-    variable_names : tuple[str, ...]
-        Column names for :attr:`variables`, in ``ys``'s column order.
-    flux_names : tuple[str, ...]
-        Column names for :attr:`fluxes`, in ``model.fluxes``'s output order.
-    latent_ys : jax.Array or None
-        State the model's fluxes are evaluated on, shape ``(T, n_latent)``,
-        when it differs from ``ys`` -- a latent model's trajectory before
-        decoding. ``None`` (the default) evaluates fluxes on ``ys``.
+        External arguments active at every row, shape ``(T, n_args)``;
+        excludes trainable ``pars``.
+    readouts : jax.Array
+        Readouts at every row, shape ``(T, n_readouts)``.
+    success : jax.Array
+        Whether every solve behind this result succeeded (boolean scalar).
+        Solver failures raise unless ``simulate_*(throw=False)``; then, like
+        a steady state not reached by ``t1``, they leave zero-filled arrays
+        and ``success=False``, and the ``*_df`` properties return NaN.
+    variable_names, readout_names : tuple[str, ...]
+        Column names of ``ys`` and ``readouts``.
+    _latent_ys : jax.Array
+        The ODE-state trajectory, shape ``(T, n_state)``; differs from
+        ``ys`` only for latent models. Private: for diagnostics, not a
+        stable interface.
     """
 
-    model: FluxOde | FluxNode | FluxAnode
     ts: jax.Array
     ys: jax.Array
     args: jax.Array
+    readouts: jax.Array
+    success: jax.Array
     variable_names: tuple[str, ...]
-    flux_names: tuple[str, ...]
-    latent_ys: jax.Array | None = None
+    readout_names: tuple[str, ...]
+    _latent_ys: jax.Array
 
-    @cached_property
-    def variables(self) -> pd.DataFrame:
-        """State trajectory as a time-indexed DataFrame."""
-        return pd.DataFrame(
-            np.asarray(self.ys),
-            index=np.asarray(self.ts),
-            columns=list(self.variable_names),
-        )
+    @property
+    def variables_df(self) -> pd.DataFrame:
+        """Observed variables as a time-indexed DataFrame."""
+        return _frame(self.ys, self.ts, self.variable_names, self.success)
 
-    @cached_property
-    def fluxes(self) -> pd.DataFrame:
-        """Flux trajectory as a time-indexed DataFrame.
-
-        Recomputed via ``model.simulate_flux_row``, since ``integrate*``
-        only ever saves state, not fluxes.
-        """
-        states = self.ys if self.latent_ys is None else self.latent_ys
-        flux_ys = jax.vmap(self.model.simulate_flux_row)(self.ts, states, self.args)
-        return pd.DataFrame(
-            np.asarray(flux_ys),
-            index=np.asarray(self.ts),
-            columns=list(self.flux_names),
-        )
+    @property
+    def readouts_df(self) -> pd.DataFrame:
+        """Readouts as a time-indexed DataFrame."""
+        return _frame(self.readouts, self.ts, self.readout_names, self.success)
 
     def get_combined(self) -> pd.DataFrame:
-        """Variables and fluxes as a single time-indexed DataFrame."""
-        return pd.concat((self.variables, self.fluxes), axis=1)
+        """All named quantities as a single time-indexed DataFrame."""
+        return pd.concat((self.variables_df, self.readouts_df), axis=1)
+
+
+@partial(
+    jax.tree_util.register_dataclass,
+    data_fields=[
+        "ts",
+        "ys",
+        "args",
+        "readouts",
+        "success",
+        "_latent_ys",
+        "fluxes",
+        "ode_fluxes",
+        "nn_fluxes",
+    ],
+    meta_fields=["variable_names", "readout_names", "flux_names"],
+)
+@dataclass(frozen=True)
+class FluxSimulation(Simulation):
+    """Result of a flux-based JAX model simulation.
+
+    Parameters
+    ----------
+    fluxes : jax.Array
+        The fluxes driving the ODE at every row, evaluated on the
+        ODE-state trajectory, shape ``(T, n_flux)``.
+    flux_names : tuple[str, ...]
+        Column names of ``fluxes``.
+    ode_fluxes, nn_fluxes : jax.Array or None
+        For :class:`~mxlpy.jax.models.FluxUde`: the mechanistic and neural
+        fluxes that ``op`` combines into ``fluxes``; ``None`` otherwise.
+
+    See :class:`Simulation` for the other parameters.
+    """
+
+    fluxes: jax.Array = field(kw_only=True)
+    flux_names: tuple[str, ...] = field(kw_only=True)
+    ode_fluxes: jax.Array | None = field(default=None, kw_only=True)
+    nn_fluxes: jax.Array | None = field(default=None, kw_only=True)
+
+    @property
+    def fluxes_df(self) -> pd.DataFrame:
+        """Fluxes as a time-indexed DataFrame."""
+        return _frame(self.fluxes, self.ts, self.flux_names, self.success)
+
+    def get_combined(self) -> pd.DataFrame:
+        """All named quantities as a single time-indexed DataFrame."""
+        return pd.concat((self.variables_df, self.fluxes_df, self.readouts_df), axis=1)

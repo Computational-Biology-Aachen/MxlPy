@@ -62,14 +62,14 @@ from mxlpy.jax.models import (
     TrainableZ0LatentMapper,
     Ude,
 )
-from mxlpy.jax.simulation import FluxOdeSimulation
+from mxlpy.jax.simulation import FluxSimulation
 from mxlpy.jax.train import (
     IntegrationSettings,
-    derived_simulation_fn,
     grad_loss,
     integrate_protocol_states,
     make_step_split,
     proto_grad_loss,
+    readout_simulation_fn,
 )
 
 _KEY = jax.random.PRNGKey(42)
@@ -92,11 +92,12 @@ ALL_MAPPERS = [
     MixedLatentMapper,
     TrainableZ0LatentMapper,
 ]
-_ANNEALED = (MixedLatentMapper, TrainableZ0LatentMapper)
-_SLICE_DECODING = (HardLatentMapper, *_ANNEALED)
+_SLICE_DECODING = (HardLatentMapper, MixedLatentMapper, TrainableZ0LatentMapper)
 # alpha=0.0 makes the annealed mappers decode by slicing, so the observed
-# state also obeys the balance; mappers without alpha don't accept it.
+# state also obeys the balance. Every model accepts alpha; only annealed
+# mappers use it.
 _ALPHA = 0.0
+_NAMES = ("A", "B", "S")
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +140,7 @@ def _flux_ode() -> FluxOde:
         _model(),
         parameters_to_fit=["k1", "c"],
         free_parameters=["u"],
-        derived_to_calculate=["d"],
+        readouts_to_calculate=["d"],
     )
 
 
@@ -150,12 +151,12 @@ def _ode() -> Ode:
 
 def _flux_node() -> FluxNode:
     return FluxNode.from_flux_ode(
-        _flux_ode(), width=8, depth=1, key=_KEY, n_args=1, out_scale=jnp.array([1.0])
+        _flux_ode(), width=8, depth=1, key=_KEY, n_args=1, flux_scale=jnp.array([1.0])
     )
 
 
 def _node() -> Node:
-    return Node(n_obs=3, width=8, depth=1, key=_KEY, n_args=1)
+    return Node(variable_names=_NAMES, width=8, depth=1, key=_KEY, n_args=1)
 
 
 def _flux_anode(mapper: type) -> FluxAnode:
@@ -232,7 +233,7 @@ def _anode(mapper: type) -> Anode:
     slice-decoding mappers.
     """
     model = Anode(
-        n_obs=3,
+        variable_names=_NAMES,
         n_hidden=_N_HIDDEN,
         width=8,
         depth=0,
@@ -252,9 +253,8 @@ def _anode(mapper: type) -> Anode:
     )
 
 
-def _alpha_kw(model: Any) -> dict[str, Any]:
-    mapper = getattr(model, "latent_mapper", None)
-    return {"alpha": _ALPHA} if isinstance(mapper, _ANNEALED) else {}
+def _alpha_kw(model: Any) -> dict[str, Any]:  # noqa: ARG001
+    return {"alpha": _ALPHA}
 
 
 # ---------------------------------------------------------------------------
@@ -285,20 +285,20 @@ def _balance_error(
     return float(jnp.max(jnp.abs(produced - change))) / scale
 
 
-def _sim_fluxes(sim: FluxOdeSimulation) -> jax.Array:
-    return jnp.asarray(sim.fluxes.to_numpy())
+def _sim_fluxes(sim: FluxSimulation) -> jax.Array:
+    return jnp.asarray(sim.fluxes)
 
 
-def _state(sim: FluxOdeSimulation) -> jax.Array:
-    return sim.ys if sim.latent_ys is None else sim.latent_ys
+def _state(sim: FluxSimulation) -> jax.Array:
+    return sim.ys if sim._latent_ys is None else sim._latent_ys
 
 
-def _assert_balanced(sim: FluxOdeSimulation, nv: Callable) -> None:
+def _assert_balanced(sim: FluxSimulation, nv: Callable) -> None:
     err = _balance_error(sim.ts, _state(sim), _sim_fluxes(sim), nv)
     assert err < _BALANCE_TOL, f"flux/state balance violated: rel. error {err:.2e}"
 
 
-def _assert_protocol_balanced(sim: FluxOdeSimulation, nv: Callable) -> None:
+def _assert_protocol_balanced(sim: FluxSimulation, nv: Callable) -> None:
     """Balance within each protocol step.
 
     Fluxes jump where ``u`` changes, and the trapezoid rule would smear that
@@ -314,23 +314,25 @@ def _assert_protocol_balanced(sim: FluxOdeSimulation, nv: Callable) -> None:
         offset += step_ts.shape[0]
 
 
-def _assert_steady(sim: FluxOdeSimulation, nv: Callable) -> None:
+def _assert_steady(sim: FluxSimulation, nv: Callable) -> None:
     residual = nv(_sim_fluxes(sim)[0])
     assert float(jnp.max(jnp.abs(residual))) < 1e-3 * float(_U[0])
 
 
 def _integrate(model: Any, **kw: Any) -> jax.Array:
-    return model.integrate(_TS, _Y0, _MAX_STEPS, args=_U, rtol=_RTOL, **kw)
+    return model.integrate(_TS, _Y0, max_steps=_MAX_STEPS, args=_U, rtol=_RTOL, **kw)
 
 
 def _integrate_protocol(model: Any, protocol: jax.Array, **kw: Any) -> jax.Array:
     return model.integrate_protocol(
-        _PROTO_TS, _Y0, protocol, _MAX_STEPS, rtol=_RTOL, **kw
+        _PROTO_TS, _Y0, protocol, max_steps=_MAX_STEPS, rtol=_RTOL, **kw
     )
 
 
-def _simulate(model: Any, **kw: Any) -> FluxOdeSimulation:
-    return model.simulate_time_course(_TS, _Y0, _MAX_STEPS, args=_U, rtol=_RTOL, **kw)
+def _simulate(model: Any, **kw: Any) -> FluxSimulation:
+    return model.simulate_time_course(
+        _TS, _Y0, max_steps=_MAX_STEPS, args=_U, rtol=_RTOL, **kw
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -360,19 +362,11 @@ def _members(model: Any, n: int = 3) -> list[Any]:
 
 # Module-level, so batch_simulate's compile cache (keyed on the callable)
 # is shared between the checks below.
-def _integrate_plain(model: Any) -> jax.Array:
-    return _integrate(model)
-
-
 def _integrate_alpha(model: Any) -> jax.Array:
     return _integrate(model, alpha=_ALPHA)
 
 
-def _simulate_plain(model: Any) -> FluxOdeSimulation:
-    return _simulate(model)
-
-
-def _simulate_alpha(model: Any) -> FluxOdeSimulation:
+def _simulate_alpha(model: Any) -> FluxSimulation:
     return _simulate(model, alpha=_ALPHA)
 
 
@@ -388,10 +382,22 @@ def _check_path_agreement(model: Any) -> None:
     # catches any reset of state carried across a step boundary.
     ys_proto = _integrate_protocol(model, _PROTOCOL_CONST, **kw)
     np.testing.assert_allclose(ys_proto, ys[1:], rtol=1e-4, atol=1e-5)
+    # Every model here is autonomous, so starting the protocol at t0 and
+    # shifting its save points by t0 gives the same trajectory.
+    ys_shifted = model.integrate_protocol(
+        [t + 0.5 for t in _PROTO_TS],
+        _Y0,
+        _PROTOCOL_CONST,
+        max_steps=_MAX_STEPS,
+        rtol=_RTOL,
+        t0=0.5,
+        **kw,
+    )
+    np.testing.assert_allclose(ys_shifted, ys_proto, rtol=1e-4, atol=1e-5)
     if hasattr(model, "simulate_time_course"):
         np.testing.assert_allclose(_simulate(model, **kw).ys, ys, rtol=1e-6, atol=1e-7)
         sim_p = model.simulate_protocol_time_course(
-            _PROTO_TS, _Y0, _PROTOCOL, _MAX_STEPS, rtol=_RTOL, **kw
+            _PROTO_TS, _Y0, _PROTOCOL, max_steps=_MAX_STEPS, rtol=_RTOL, **kw
         )
         np.testing.assert_allclose(sim_p.ys[0], _Y0)
         np.testing.assert_allclose(
@@ -409,7 +415,7 @@ def _check_ensembles_and_io(model: Any, tmp_path: Path) -> None:
     assert float(jnp.max(jnp.abs(singles[0] - singles[1]))) > 5e-3, (
         "perturbed members indistinguishable; the checks below would be vacuous"
     )
-    integrate_fn = _integrate_alpha if kw else _integrate_plain
+    integrate_fn = _integrate_alpha
 
     batched = batch_simulate(members, integrate_fn)
     for i, want in enumerate(singles):
@@ -435,23 +441,23 @@ def _check_ensembles_and_io(model: Any, tmp_path: Path) -> None:
         np.testing.assert_allclose(loaded[i], want, rtol=_BATCH_RTOL, atol=_BATCH_ATOL)
 
     if isinstance(model, FluxAnode):
-        # Batched FluxOdeSimulations must carry each member's own latent
+        # Batched FluxSimulations must carry each member's own latent
         # trajectory, so unstacked fluxes match the member's own simulation.
-        simulate_fn = _simulate_alpha if kw else _simulate_plain
+        simulate_fn = _simulate_alpha
         unstacked = unstack_models(batch_simulate(members, simulate_fn), len(members))
         for m, got in zip(members, unstacked, strict=True):
             want = simulate_fn(m)
             np.testing.assert_allclose(
                 got.ys, want.ys, rtol=_BATCH_RTOL, atol=_BATCH_ATOL
             )
-            if want.latent_ys is not None:
-                assert got.latent_ys is not None
+            if want._latent_ys is not None:
+                assert got._latent_ys is not None
                 np.testing.assert_allclose(
-                    got.latent_ys, want.latent_ys, rtol=_BATCH_RTOL, atol=_BATCH_ATOL
+                    got._latent_ys, want._latent_ys, rtol=_BATCH_RTOL, atol=_BATCH_ATOL
                 )
             np.testing.assert_allclose(
-                got.fluxes.to_numpy(),
-                want.fluxes.to_numpy(),
+                got.fluxes,
+                want.fluxes,
                 rtol=_BATCH_RTOL,
                 atol=_BATCH_ATOL,
             )
@@ -607,24 +613,24 @@ def test_fluxode_invariants(subtests: Any) -> None:
     model = _flux_ode()
     with subtests.test("time course balance"):
         _assert_balanced(_simulate(model), model.nv)
-    with subtests.test("time course balance with out_scale"):
-        # out_scale is a trainable array field; the reported fluxes must
+    with subtests.test("time course balance with flux_scale"):
+        # flux_scale is a trainable array field; the reported fluxes must
         # still be the ones that drive the trajectory.
-        scaled = eqx.tree_at(lambda m: m.out_scale, model, jnp.array([2.0]))
+        scaled = eqx.tree_at(lambda m: m.flux_scale, model, jnp.array([2.0]))
         _assert_balanced(_simulate(scaled), scaled.nv)
     with subtests.test("protocol balance"):
         sim = model.simulate_protocol_time_course(
-            _PROTO_TS, _Y0, _PROTOCOL, _MAX_STEPS, rtol=_RTOL
+            _PROTO_TS, _Y0, _PROTOCOL, max_steps=_MAX_STEPS, rtol=_RTOL
         )
         _assert_protocol_balanced(sim, model.nv)
     with subtests.test("steady state"):
         _assert_steady(
-            model.simulate_to_steady_state(_Y0, _MAX_STEPS, args=_U), model.nv
+            model.simulate_to_steady_state(_Y0, max_steps=_MAX_STEPS, args=_U), model.nv
         )
     with subtests.test("protocol from steady state is stationary"):
-        _, y_ss = model.integrate_to_steady_state(_Y0, _MAX_STEPS, args=_U)
+        _, y_ss = model.integrate_to_steady_state(_Y0, max_steps=_MAX_STEPS, args=_U)
         ys = model.integrate_protocol_from_steady_state(
-            _PROTO_TS, _Y0, _PROTOCOL_CONST, _MAX_STEPS
+            _PROTO_TS, _Y0, _PROTOCOL_CONST, max_steps=_MAX_STEPS
         )
         np.testing.assert_allclose(ys, jnp.broadcast_to(y_ss, ys.shape), atol=1e-3)
 
@@ -635,20 +641,19 @@ def test_fluxnode_invariants(subtests: Any) -> None:
         _assert_balanced(_simulate(model), model.nv)
     with subtests.test("protocol balance"):
         sim = model.simulate_protocol_time_course(
-            _PROTO_TS, _Y0, _PROTOCOL, _MAX_STEPS, rtol=_RTOL
+            _PROTO_TS, _Y0, _PROTOCOL, max_steps=_MAX_STEPS, rtol=_RTOL
         )
         _assert_protocol_balanced(sim, model.nv)
-    with subtests.test("derived matches source FluxOde"):
-        _check_derived(model)
+    with subtests.test("readouts match source FluxOde"):
+        _check_readouts(model)
 
 
-def test_fluxude_additive_fluxes_balance_state() -> None:
-    flux_ode = _flux_ode()
-    model = FluxUde(flux_ode=flux_ode, flux_nn=_flux_node(), op="+")
-    ys = _integrate(model)
-    # nv is linear, so nv(v_ode) + nv(v_nn) == nv(v_ode + v_nn)
-    fluxes = model.ode_fluxes(_TS, ys, _U) + model.node_fluxes(_TS, ys, _U)
-    assert _balance_error(_TS, ys, fluxes, flux_ode.nv) < _BALANCE_TOL
+@pytest.mark.parametrize("op", ["+", "*"])
+def test_fluxude_combined_fluxes_balance_state(op: str) -> None:
+    """FluxUde combines fluxes before ``nv``, so its reported fluxes drive
+    the state for any ``op`` -- including non-additive ones."""
+    model = FluxUde(flux_ode=_flux_ode(), flux_nn=_flux_node(), op=op)  # type: ignore[arg-type]
+    _assert_balanced(_simulate(model), model.flux_ode.nv)
 
 
 # ---------------------------------------------------------------------------
@@ -658,16 +663,16 @@ def test_fluxude_additive_fluxes_balance_state() -> None:
 _Y_PROBE = jnp.array([1.3, 0.4, 0.9])
 
 
-def _check_derived(model: Any) -> None:
-    """``derived`` reproduces the source FluxOde's, whose parameters stay
+def _check_readouts(model: Any) -> None:
+    """``readouts`` reproduces the source FluxOde's, whose parameters stay
     trainable leaves of the derived model."""
-    expected = _flux_ode().derived(0.0, _Y_PROBE, _U)
+    expected = _flux_ode().readouts(0.0, _Y_PROBE, _U)
     np.testing.assert_allclose(expected, [0.4 * 5.0], rtol=1e-6)  # d = B * c
-    np.testing.assert_allclose(model.derived(0.0, _Y_PROBE, _U), expected)
+    np.testing.assert_allclose(model.readouts(0.0, _Y_PROBE, _U), expected)
 
     @eqx.filter_grad
     def grad(m: Any) -> jax.Array:
-        return jnp.sum(m.derived(0.0, _Y_PROBE, _U))
+        return jnp.sum(m.readouts(0.0, _Y_PROBE, _U))
 
     # d(B * c)/dc = B; k1 does not enter d
     np.testing.assert_allclose(grad(model).pars, [0.0, 0.4], rtol=1e-6)
@@ -679,8 +684,8 @@ def test_fluxanode_hidden_state_invariants(mapper: type, subtests: Any) -> None:
     kw = _alpha_kw(model)
     n_obs = model.n_obs
     sim = _simulate(model, **kw)
-    assert sim.latent_ys is not None
-    latent = sim.latent_ys
+    assert sim._latent_ys is not None
+    latent = sim._latent_ys
     hidden = latent[:, n_obs:]
     assert float(jnp.max(jnp.abs(hidden - hidden[0]))) > 0.1, (
         "hidden state barely moves; a hidden-state reset would go unnoticed"
@@ -699,13 +704,13 @@ def test_fluxanode_hidden_state_invariants(mapper: type, subtests: Any) -> None:
         assert _balance_error(sim.ts, latent, buggy, model.nv) > 10 * _BALANCE_TOL
     with subtests.test("protocol balance"):
         sim_p = model.simulate_protocol_time_course(
-            _PROTO_TS, _Y0, _PROTOCOL, _MAX_STEPS, rtol=_RTOL, **kw
+            _PROTO_TS, _Y0, _PROTOCOL, max_steps=_MAX_STEPS, rtol=_RTOL, **kw
         )
         _assert_protocol_balanced(sim_p, model.nv)
 
-    sim_ss = model.simulate_to_steady_state(_Y0, _MAX_STEPS, args=_U, **kw)
-    assert sim_ss.latent_ys is not None
-    z_ss = sim_ss.latent_ys[0]
+    sim_ss = model.simulate_to_steady_state(_Y0, max_steps=_MAX_STEPS, args=_U, **kw)
+    assert sim_ss._latent_ys is not None
+    z_ss = sim_ss._latent_ys[0]
     with subtests.test("steady state: fluxes and markov vanish"):
         _assert_steady(sim_ss, model.nv)
         markov = model.markov_scale * model.markov_nn(jnp.concat((z_ss, _U)))
@@ -718,27 +723,27 @@ def test_fluxanode_hidden_state_invariants(mapper: type, subtests: Any) -> None:
 
     _check_protocol_from_steady_state(model, subtests)
 
-    with subtests.test("derived matches source FluxOde"):
-        _check_derived(model)
-    with subtests.test("derived_simulation_fn sees the decoded trajectory"):
-        got = derived_simulation_fn(model, _PROTO_TS, _Y0, _PROTOCOL, _ctx(model))
+    with subtests.test("readouts match source FluxOde"):
+        _check_readouts(model)
+    with subtests.test("readout_simulation_fn sees the decoded trajectory"):
+        got = readout_simulation_fn(model, _PROTO_TS, _Y0, _PROTOCOL, _ctx(model))
         ys = _integrate_protocol(model, _PROTOCOL, **kw)
         np.testing.assert_allclose(got[:, 0], ys[:, 1] * 5.0, rtol=1e-5)
 
 
 def _check_protocol_from_steady_state(model: Any, subtests: Any) -> None:
     kw = _alpha_kw(model)
-    _, y_ss = model.integrate_to_steady_state(_Y0, _MAX_STEPS, args=_U, **kw)
+    _, y_ss = model.integrate_to_steady_state(_Y0, max_steps=_MAX_STEPS, args=_U, **kw)
     with subtests.test("protocol from steady state is stationary"):
         ys = model.integrate_protocol_from_steady_state(
-            _PROTO_TS, _Y0, _PROTOCOL_CONST, _MAX_STEPS, **kw
+            _PROTO_TS, _Y0, _PROTOCOL_CONST, max_steps=_MAX_STEPS, **kw
         )
         np.testing.assert_allclose(ys, jnp.broadcast_to(y_ss, ys.shape), atol=1e-3)
     with subtests.test(
         "protocol from re-encoded steady state drifts (negative control)"
     ):
         ys = model.integrate_protocol(
-            _PROTO_TS, y_ss, _PROTOCOL_CONST, _MAX_STEPS, **kw
+            _PROTO_TS, y_ss, _PROTOCOL_CONST, max_steps=_MAX_STEPS, **kw
         )
         assert float(jnp.max(jnp.abs(ys - y_ss))) > 1e-2
 
@@ -748,20 +753,6 @@ def _check_protocol_from_steady_state(model: Any, subtests: Any) -> None:
 )
 def test_anode_protocol_from_steady_state(mapper: type, subtests: Any) -> None:
     _check_protocol_from_steady_state(_anode(mapper), subtests)
-
-
-def test_fluxanode_without_pars_attribute_still_works() -> None:
-    """Models pickled before ``pars`` existed have no such attribute; they
-    must keep flattening to the same leaves and evaluating."""
-    model = _flux_anode(HardLatentMapper)
-    old = object.__new__(FluxAnode)
-    for k, v in vars(model).items():
-        if k != "pars":
-            object.__setattr__(old, k, v)
-    assert old.pars is None  # falls back to the class default
-    # pars=None contributes no leaf, so the old pytree structure is unchanged
-    assert len(jax.tree.leaves(old)) == len(jax.tree.leaves(model)) - 1
-    np.testing.assert_allclose(_integrate(old), _integrate(model))
 
 
 # ---------------------------------------------------------------------------
@@ -784,9 +775,10 @@ def test_repeated_integration_does_not_recompile() -> None:
         "integrate": lambda: _integrate(model),
         "integrate_protocol": lambda: _integrate_protocol(model, _PROTOCOL),
         "integrate_to_steady_state": lambda: model.integrate_to_steady_state(
-            _Y0, _MAX_STEPS, args=_U
+            _Y0, max_steps=_MAX_STEPS, args=_U
         )[1],
     }
+    shifted_ts = [t + 0.5 for t in _PROTO_TS]
     jax.monitoring.register_event_duration_secs_listener(listener)
     try:
         for name, call in calls.items():
@@ -795,5 +787,11 @@ def test_repeated_integration_does_not_recompile() -> None:
             for _ in range(3):
                 call().block_until_ready()
             assert n[0] == before, f"{name} recompiles on every call"
+        # A different protocol start time must reuse the compiled program.
+        before = n[0]
+        model.integrate_protocol(
+            shifted_ts, _Y0, _PROTOCOL, max_steps=_MAX_STEPS, t0=0.5
+        ).block_until_ready()
+        assert n[0] == before, "integrate_protocol recompiles for a new t0"
     finally:
         jax.monitoring.unregister_event_duration_listener(listener)

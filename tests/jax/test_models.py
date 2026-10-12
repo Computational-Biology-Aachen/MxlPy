@@ -214,7 +214,7 @@ def test_ode_call_appends_pars_after_free_args() -> None:
         captured["args"] = args
         return y
 
-    ode = Ode(rhs=rhs, pars=jnp.array([10.0, 20.0]))
+    ode = Ode(rhs=rhs, pars=jnp.array([10.0, 20.0]), variable_names=("y",))
     ode(0.0, jnp.array([1.0]), jnp.array([1.0, 2.0, 3.0]))
 
     # free/runtime args first, trainable pars last
@@ -228,7 +228,7 @@ def test_ode_call_with_empty_pars_passes_args_unchanged() -> None:
         captured["args"] = args
         return y
 
-    ode = Ode(rhs=rhs, pars=jnp.array([]))
+    ode = Ode(rhs=rhs, pars=jnp.array([]), variable_names=("y",))
     ode(0.0, jnp.array([1.0]), jnp.array([7.0, 8.0]))
 
     assert [float(x) for x in captured["args"]] == [7.0, 8.0]
@@ -244,7 +244,13 @@ def test_fluxode_call_appends_pars_after_free_args() -> None:
     def nv(flux_vector: jnp.ndarray) -> jnp.ndarray:
         return flux_vector
 
-    fo = FluxOde(fluxes=fluxes, nv=nv, pars=jnp.array([10.0, 20.0]))
+    fo = FluxOde(
+        flux_fn=fluxes,
+        nv=nv,
+        pars=jnp.array([10.0, 20.0]),
+        variable_names=("y",),
+        flux_names=("v",),
+    )
     fo(0.0, jnp.array([1.0]), jnp.array([1.0, 2.0, 3.0]))
 
     assert [float(x) for x in captured["args"]] == [1.0, 2.0, 3.0, 10.0, 20.0]
@@ -323,46 +329,51 @@ def test_ode_and_fluxode_from_mxlpy_agree() -> None:
 
 
 # ---------------------------------------------------------------------------
-# from_mxlpy wires up the generated derived function, with free args and
-# fit pars landing in the same order derived() actually unpacks them
+# from_mxlpy wires up the generated readout function, with free args and
+# fit pars landing in the same order readouts() actually unpacks them
 # ---------------------------------------------------------------------------
 
 
-def test_ode_from_mxlpy_wires_derived_fn_in_correct_arg_order() -> None:
+def test_ode_from_mxlpy_wires_readout_fn_in_correct_arg_order() -> None:
     ode = Ode.from_mxlpy(
         _distinguishable_model_with_derived(),
         parameters_to_fit=["b"],
         free_parameters=["a"],
-        derived_to_calculate=["d"],
+        readouts_to_calculate=["d"],
     )
     # a=5 (free/call-time), b=3 (fit/default) -> d = 5 + 100*3 = 305.
     # A swapped concat order would instead compute 3 + 100*5 = 503.
-    d = float(ode.derived(0.0, jnp.array([0.0]), jnp.array([5.0]))[0])
+    d = float(ode.readouts(0.0, jnp.array([0.0]), jnp.array([5.0]))[0])
     assert d == pytest.approx(305.0)
 
 
-def test_fluxode_from_mxlpy_wires_derived_fn_in_correct_arg_order() -> None:
+def test_fluxode_from_mxlpy_wires_readout_fn_in_correct_arg_order() -> None:
     fode = FluxOde.from_mxlpy(
         _distinguishable_model_with_derived(),
         parameters_to_fit=["b"],
         free_parameters=["a"],
-        derived_to_calculate=["d"],
+        readouts_to_calculate=["d"],
     )
-    d = float(fode.derived(0.0, jnp.array([0.0]), jnp.array([5.0]))[0])
+    d = float(fode.readouts(0.0, jnp.array([0.0]), jnp.array([5.0]))[0])
     assert d == pytest.approx(305.0)
 
 
-def test_ode_derived_scale_multiplies_derived_fn_output() -> None:
+def test_ode_readout_scale_multiplies_readout_fn_output() -> None:
     def rhs(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
         return y
 
-    def derived_fn(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
+    def readout_fn(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
         return jnp.array([7.0])
 
     ode = Ode(
-        rhs=rhs, pars=jnp.array([]), derived_fn=derived_fn, derived_scale=jnp.array(2.0)
+        rhs=rhs,
+        pars=jnp.array([]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+        readout_scale=jnp.array(2.0),
     )
-    d = float(ode.derived(0.0, jnp.array([1.0]), jnp.array([]))[0])
+    d = float(ode.readouts(0.0, jnp.array([1.0]), jnp.array([]))[0])
     assert d == pytest.approx(14.0)
 
 
@@ -494,7 +505,11 @@ def test_conditional_model_from_mxlpy_integrates_under_jit() -> None:
     ts = jnp.array([0.0, 1.0])
     # would raise TracerBoolConversionError with the old Python-ternary codegen
     ys = ode.integrate(
-        ts, jnp.array([1.0, 1.0]), 8192, args=jnp.array([]), method=diffrax.Tsit5
+        ts,
+        jnp.array([1.0, 1.0]),
+        max_steps=8192,
+        args=jnp.array([]),
+        method=diffrax.Tsit5,
     )
     assert bool(jnp.all(jnp.isfinite(ys)))
 
@@ -517,7 +532,7 @@ def test_single_variable_model_integrates_with_correct_shape() -> None:
     ts = jnp.array([0.0, 1.0])
     # previously produced a (1, 1) rhs and failed to broadcast against y0 (1,)
     ys = ode.integrate(
-        ts, jnp.array([1.0]), 8192, args=jnp.array([]), method=diffrax.Tsit5
+        ts, jnp.array([1.0]), max_steps=8192, args=jnp.array([]), method=diffrax.Tsit5
     )
     assert ys.shape == (2, 1)
     assert bool(jnp.all(jnp.isfinite(ys)))
@@ -536,7 +551,7 @@ def test_single_variable_model_integrates_with_correct_shape() -> None:
 def test_ode_integrate_defaults_args_to_empty_array() -> None:
     ode = Ode.from_mxlpy(_single_variable_model())
     ts = jnp.array([0.0, 1.0])
-    ys = ode.integrate(ts, jnp.array([1.0]), 8192)  # no args= at all
+    ys = ode.integrate(ts, jnp.array([1.0]), max_steps=8192)  # no args= at all
     assert ys.shape == (2, 1)
     assert bool(jnp.all(jnp.isfinite(ys)))
     assert float(ys[-1, 0]) == pytest.approx(float(np.exp(-1.0)), rel=1e-3)
@@ -547,8 +562,10 @@ def test_ode_integrate_dt0_defaults_to_none_and_is_unaffected() -> None:
     ts = jnp.array([0.0, 1.0])
     y0 = jnp.array([1.0])
 
-    ys_omitted = ode.integrate(ts, y0, 8192, args=jnp.array([]))
-    ys_explicit_none = ode.integrate(ts, y0, 8192, args=jnp.array([]), dt0=None)
+    ys_omitted = ode.integrate(ts, y0, max_steps=8192, args=jnp.array([]))
+    ys_explicit_none = ode.integrate(
+        ts, y0, max_steps=8192, args=jnp.array([]), dt0=None
+    )
 
     assert jnp.array_equal(ys_omitted, ys_explicit_none)
 
@@ -569,8 +586,10 @@ def test_ode_integrate_accepts_explicit_dt0() -> None:
     ts = jnp.array([0.0, 1.0])
     y0 = jnp.array([1.0])
 
-    ys_default = ode.integrate(ts, y0, 8192, args=jnp.array([]))
-    ys_explicit = ode.integrate(ts, y0, 8192, args=jnp.array([]), dt0=ts[1] - ts[0])
+    ys_default = ode.integrate(ts, y0, max_steps=8192, args=jnp.array([]))
+    ys_explicit = ode.integrate(
+        ts, y0, max_steps=8192, args=jnp.array([]), dt0=ts[1] - ts[0]
+    )
 
     assert ys_explicit.shape == (2, 1)
     assert bool(jnp.all(jnp.isfinite(ys_explicit)))
@@ -580,7 +599,9 @@ def test_ode_integrate_accepts_explicit_dt0() -> None:
 
 def test_ode_integrate_to_steady_state_defaults_args_to_empty_array() -> None:
     ode = Ode.from_mxlpy(_single_variable_model())
-    t, y = ode.integrate_to_steady_state(jnp.array([1.0]), 8192)  # no args= at all
+    t, y = ode.integrate_to_steady_state(
+        jnp.array([1.0]), max_steps=8192
+    )  # no args= at all
     assert t.shape == ()
     assert y.shape == (1,)
     assert float(y[0]) == pytest.approx(0.0, abs=1e-4)
@@ -588,30 +609,60 @@ def test_ode_integrate_to_steady_state_defaults_args_to_empty_array() -> None:
 
 def test_fluxode_simulate_time_course_defaults_args_to_empty_array() -> None:
     fode = FluxOde.from_mxlpy(_single_variable_model())
-    sim = fode.simulate_time_course(jnp.array([0.0, 1.0]), jnp.array([1.0]), 8192)
-    assert sim.variables.shape == (2, 1)
+    sim = fode.simulate_time_course(
+        jnp.array([0.0, 1.0]), jnp.array([1.0]), max_steps=8192
+    )
+    assert sim.variables_df.shape == (2, 1)
 
 
 # ---------------------------------------------------------------------------
-# FluxOde.simulate_* / FluxOdeSimulation
+# FluxOde.simulate_* / FluxSimulation
 # ---------------------------------------------------------------------------
 
 
-def test_fluxode_direct_construction_has_no_names() -> None:
-    def fluxes(_t: float, y: jnp.ndarray, _args: jnp.ndarray) -> jnp.ndarray:
-        return jnp.zeros_like(y)
+def test_readout_fn_requires_readout_names() -> None:
+    def rhs(_t: float, y: jnp.ndarray, _args: jnp.ndarray) -> jnp.ndarray:
+        return y
+
+    with pytest.raises(ValueError, match="readout_names"):
+        Ode(rhs=rhs, pars=jnp.array([]), variable_names=("y",), readout_fn=rhs)
+
+
+def test_fluxode_fluxes_append_pars_and_apply_flux_scale() -> None:
+    def flux_fn(_t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:
+        return y * jnp.sum(args)
 
     def nv(flux_vector: jnp.ndarray) -> jnp.ndarray:
-        return flux_vector
+        return -flux_vector
 
-    fo = FluxOde(fluxes=fluxes, nv=nv, pars=jnp.array([]))
-    assert fo.variable_names is None
-    assert fo.flux_names is None
+    fo = FluxOde(
+        flux_fn=flux_fn,
+        nv=nv,
+        pars=jnp.array([2.0]),
+        variable_names=("y",),
+        flux_names=("v",),
+        flux_scale=jnp.array([3.0]),
+    )
+    y, args = jnp.array([1.5]), jnp.array([1.0])
+    # (1 + 2) from args + pars, times flux_scale 3
+    assert float(fo.fluxes(0.0, y, args)[0]) == pytest.approx(13.5)
+    assert float(fo(0.0, y, args)[0]) == pytest.approx(-13.5)
 
-    with pytest.raises(ValueError, match="variable_names"):
-        fo.simulate_time_course(
-            jnp.array([0.0, 1.0]), jnp.array([1.0]), 8192, args=jnp.array([])
-        )
+
+def test_from_mxlpy_sets_readout_names_in_return_order() -> None:
+    model = _distinguishable_model_with_derived()
+    fode = FluxOde.from_mxlpy(model, parameters_to_fit=["b"], free_parameters=["a"])
+    ode = Ode.from_mxlpy(model, parameters_to_fit=["b"], free_parameters=["a"])
+    # FluxOde's default readouts leave out the fluxes, which fluxes() reports
+    assert set(ode.readout_names) >= {"d", "ra", "rb"}
+    assert fode.readout_names == tuple(
+        n for n in ode.readout_names if n not in fode.flux_names
+    )
+    assert "d" in fode.readout_names
+    readouts = fode.readouts(0.0, jnp.array([0.0]), jnp.array([5.0]))
+    assert readouts.shape == (len(fode.readout_names),)
+    # d = a + 100*b with a = 5 (free) and b = 3 (fit)
+    assert float(readouts[fode.readout_names.index("d")]) == pytest.approx(305.0)
 
 
 def test_fluxode_from_mxlpy_sets_names() -> None:
@@ -632,14 +683,16 @@ def test_fluxode_simulate_time_course() -> None:
         free_parameters=["a"],
     )
     ts = jnp.array([0.0, 1.0, 2.0])
-    sim = fode.simulate_time_course(ts, jnp.array([0.0]), 8192, args=jnp.array([5.0]))
+    sim = fode.simulate_time_course(
+        ts, jnp.array([0.0]), max_steps=8192, args=jnp.array([5.0])
+    )
 
-    variables = sim.variables
+    variables = sim.variables_df
     assert list(variables.columns) == ["v"]
     assert np.allclose(variables.index.to_numpy(), np.asarray(ts))
     assert np.allclose(variables["v"].to_numpy(), 35.0 * np.asarray(ts), atol=1e-4)
 
-    fluxes = sim.fluxes
+    fluxes = sim.fluxes_df
     assert list(fluxes.columns) == ["ra", "rb"]
     assert np.allclose(fluxes["ra"].to_numpy(), 5.0)
     assert np.allclose(fluxes["rb"].to_numpy(), 3.0)
@@ -659,14 +712,14 @@ def test_fluxode_simulate_protocol_time_course_prepends_t0() -> None:
     protocol = jnp.array([[1.0], [2.0], [3.0]])
     y0 = jnp.array([0.0])
 
-    sim = fode.simulate_protocol_time_course(ts, y0, protocol, 8192)
+    sim = fode.simulate_protocol_time_course(ts, y0, protocol, max_steps=8192)
 
-    variables = sim.variables
+    variables = sim.variables_df
     assert np.allclose(variables.index.to_numpy(), [0.0, 1.0, 2.0, 3.0])
     # v(1)=31, v(2)=31+32=63, v(3)=63+33=96 (dv/dt = a + 30 per step)
     assert np.allclose(variables["v"].to_numpy(), [0.0, 31.0, 63.0, 96.0], atol=1e-4)
 
-    fluxes = sim.fluxes
+    fluxes = sim.fluxes_df
     # t=0 row uses the first step's args (a=1); each subsequent row uses the
     # args active during its own step's window
     assert np.allclose(fluxes["ra"].to_numpy(), [1.0, 1.0, 2.0, 3.0])
@@ -675,7 +728,9 @@ def test_fluxode_simulate_protocol_time_course_prepends_t0() -> None:
 
 def test_integrate_to_steady_state_returns_time_and_state() -> None:
     ode = Ode.from_mxlpy(_single_variable_model())
-    t, y = ode.integrate_to_steady_state(jnp.array([1.0]), 8192, args=jnp.array([]))
+    t, y = ode.integrate_to_steady_state(
+        jnp.array([1.0]), max_steps=8192, args=jnp.array([])
+    )
     assert t.shape == ()
     assert float(t) > 0.0
     assert y.shape == (1,)
@@ -684,14 +739,16 @@ def test_integrate_to_steady_state_returns_time_and_state() -> None:
 
 def test_fluxode_simulate_to_steady_state() -> None:
     fode = FluxOde.from_mxlpy(_single_variable_model())
-    sim = fode.simulate_to_steady_state(jnp.array([1.0]), 8192, args=jnp.array([]))
+    sim = fode.simulate_to_steady_state(
+        jnp.array([1.0]), max_steps=8192, args=jnp.array([])
+    )
 
-    variables = sim.variables
+    variables = sim.variables_df
     assert variables.shape == (1, 1)
     assert float(variables.index[0]) > 0.0
     assert float(variables["v"].iloc[0]) == pytest.approx(0.0, abs=1e-4)
 
-    fluxes = sim.fluxes
+    fluxes = sim.fluxes_df
     assert list(fluxes.columns) == ["r"]
     assert float(fluxes["r"].iloc[0]) == pytest.approx(0.0, abs=1e-4)
 
@@ -719,7 +776,7 @@ def test_fluxode_integrate_protocol_with_ragged_step_lengths() -> None:
     protocol = jnp.array([[1.0], [2.0], [3.0]])
     y0 = jnp.array([0.0])
 
-    ys = fode.integrate_protocol(ts, y0, protocol, 8192)
+    ys = fode.integrate_protocol(ts, y0, protocol, max_steps=8192)
     assert ys.shape == (6, 1)
 
     # slope per step = a + 30 (10*b): 31, 32, 33; each step continues from
@@ -740,7 +797,7 @@ def test_ode_integrate_protocol_from_steady_state_preequilibrates_first() -> Non
     protocol = jnp.zeros((2, 0))
     y0 = jnp.array([5.0])  # far from the steady state (0)
 
-    ys = ode.integrate_protocol_from_steady_state(ts, y0, protocol, 8192)
+    ys = ode.integrate_protocol_from_steady_state(ts, y0, protocol, max_steps=8192)
     assert ys.shape == (2, 1)
     # Already pre-equilibrated to ~0 before the protocol starts, so the
     # trajectory stays near zero throughout -- not decaying from y0=5 as it
@@ -763,9 +820,11 @@ def test_freeze_preeq_gradient_does_not_change_forward_value() -> None:
     protocol = jnp.array([[6.0], [6.0]])
     y0 = jnp.array([0.0])
 
-    ys_normal = ode.integrate_protocol_from_steady_state(ts, y0, protocol, 8192)
+    ys_normal = ode.integrate_protocol_from_steady_state(
+        ts, y0, protocol, max_steps=8192
+    )
     ys_frozen = ode.integrate_protocol_from_steady_state(
-        ts, y0, protocol, 8192, freeze_preeq_gradient=True
+        ts, y0, protocol, max_steps=8192, freeze_preeq_gradient=True
     )
     # stop_gradient is the identity on forward values -- only backward
     # sensitivity should differ, never the actual trajectory.
@@ -784,7 +843,7 @@ def test_freeze_preeq_gradient_cuts_preeq_path_sensitivity() -> None:
         m = eqx.tree_at(lambda m: m.pars, ode, pars)
         return jnp.sum(
             m.integrate_protocol_from_steady_state(
-                ts, y0, protocol, 8192, freeze_preeq_gradient=freeze
+                ts, y0, protocol, max_steps=8192, freeze_preeq_gradient=freeze
             )
         )
 
@@ -800,11 +859,11 @@ def test_freeze_preeq_gradient_cuts_preeq_path_sensitivity() -> None:
     # It should match *exactly* differentiating integrate_protocol alone,
     # seeded from a steady state fixed to a concrete (non-differentiable)
     # value -- i.e. only the preeq-path sensitivity was cut, nothing more.
-    _, y_ss = ode.integrate_to_steady_state(y0, 8192, args=protocol[0])
+    _, y_ss = ode.integrate_to_steady_state(y0, max_steps=8192, args=protocol[0])
 
     def _protocol_only_loss(pars: jax.Array) -> jax.Array:
         m = eqx.tree_at(lambda m: m.pars, ode, pars)
-        return jnp.sum(m.integrate_protocol(ts, y_ss, protocol, 8192))
+        return jnp.sum(m.integrate_protocol(ts, y_ss, protocol, max_steps=8192))
 
     grad_manual = jax.grad(_protocol_only_loss)(ode.pars)
     assert np.allclose(np.asarray(grad_frozen), np.asarray(grad_manual), atol=1e-6)
@@ -834,10 +893,13 @@ def test_boundaries_to_ts_matches_hand_built_ts_in_integrate_protocol() -> None:
     boundaries = jnp.array([1.0, 2.0, 3.0])
 
     ys_from_helper = fode.integrate_protocol(
-        boundaries_to_ts(boundaries), y0, protocol, 8192
+        boundaries_to_ts(boundaries), y0, protocol, max_steps=8192
     )
     ys_hand_built = fode.integrate_protocol(
-        [jnp.array([1.0]), jnp.array([2.0]), jnp.array([3.0])], y0, protocol, 8192
+        [jnp.array([1.0]), jnp.array([2.0]), jnp.array([3.0])],
+        y0,
+        protocol,
+        max_steps=8192,
     )
     assert np.allclose(np.asarray(ys_from_helper), np.asarray(ys_hand_built))
 
@@ -851,7 +913,9 @@ def test_boundaries_to_ts_is_jit_compatible() -> None:
 
     @jax.jit
     def _run(boundaries: jax.Array) -> jax.Array:
-        return fode.integrate_protocol(boundaries_to_ts(boundaries), y0, protocol, 8192)
+        return fode.integrate_protocol(
+            boundaries_to_ts(boundaries), y0, protocol, max_steps=8192
+        )
 
     ys = _run(jnp.array([1.0, 2.0, 3.0]))
     assert ys.shape == (3, 1)

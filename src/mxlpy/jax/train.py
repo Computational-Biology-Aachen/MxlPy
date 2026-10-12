@@ -31,7 +31,7 @@ __all__ = [
     "ProtoGradLossSplitFn",
     "ProtoSimulationFn",
     "TrainingSteps",
-    "derived_simulation_fn",
+    "readout_simulation_fn",
     "grad_loss",
     "grad_loss_split",
     "integrate_protocol_states",
@@ -45,7 +45,7 @@ __all__ = [
     "proto_make_step",
     "proto_make_step_split",
     "sigmoid_schedule",
-    "squeeze_derived",
+    "squeeze_readouts",
     "train",
     "train_only_nde",
     "train_protocol",
@@ -135,19 +135,19 @@ class GradParsHistory:
         return frames
 
 
-def squeeze_derived(derived: jax.Array) -> jax.Array:
-    """Collapse a trailing length-1 axis from ``JaxModel.derived()``'s output.
+def squeeze_readouts(readouts: jax.Array) -> jax.Array:
+    """Collapse a trailing length-1 axis from ``JaxModel.readouts()``'s output.
 
-    ``derived()`` always returns shape ``(T, n_derived)``; for single-quantity
-    models (``n_derived == 1``) that trailing axis would otherwise silently
+    ``readouts()`` always returns shape ``(T, n_readouts)``; for single-quantity
+    models (``n_readouts == 1``) that trailing axis would otherwise silently
     broadcast a ``(T, 1)`` prediction against a ``(T,)`` data series into a
     ``(T, T)`` pairwise loss instead of a per-timepoint one. For
-    ``n_derived > 1`` there's no such axis to squeeze, so ``derived`` is
+    ``n_readouts > 1`` there's no such axis to squeeze, so ``readouts`` is
     returned unchanged.
     """
-    if derived.shape[-1] == 1:
-        return derived[:, 0]
-    return derived
+    if readouts.shape[-1] == 1:
+        return readouts[:, 0]
+    return readouts
 
 
 def sigmoid_schedule(
@@ -245,9 +245,8 @@ class IntegrationSettings:
         Hard/learned decode mix forwarded to ``integrate*`` for
         :class:`~mxlpy.jax.models.Anode`/:class:`~mxlpy.jax.models.FluxAnode`
         with an annealed latent mapper (:class:`~mxlpy.jax.models.MixedLatentMapper`,
-        :class:`~mxlpy.jax.models.TrainableZ0LatentMapper`), which require it.
-        ``None`` (the default) forwards nothing, as models without a latent
-        mapper don't accept it. Anneal it across a curriculum by giving
+        :class:`~mxlpy.jax.models.TrainableZ0LatentMapper`), which require it;
+        ignored by every other model. Anneal it across a curriculum by giving
         each stage its own settings (:data:`IntegrationSettingsPerStage`).
     """
 
@@ -256,10 +255,6 @@ class IntegrationSettings:
     method: Method = diffrax.Tsit5
     max_steps: int = 8192
     alpha: float | None = None
-
-    def decode_kwargs(self) -> dict[str, Any]:
-        """``{"alpha": alpha}`` for ``integrate*`` calls, or ``{}`` if unset."""
-        return {} if self.alpha is None else {"alpha": self.alpha}
 
 
 type IntegrationSettingsPerStage = list[IntegrationSettings | None]
@@ -338,7 +333,7 @@ def grad_loss(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
-        **ctx.decode_kwargs(),
+        alpha=ctx.alpha,
     )
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
@@ -358,9 +353,9 @@ def integrate_protocol_states(
     """Default ``simulation_fn`` for :func:`train_protocol`: raw integrated state.
 
     Compares predictions directly in state space (``ys`` must hold the raw
-    ODE state, not a derived quantity). Models that need to fit a derived
+    ODE state, not a readout). Models that need to fit a derived
     observable (e.g. fluorescence) instead of the raw state should pass
-    :func:`derived_simulation_fn` instead.
+    :func:`readout_simulation_fn` instead.
     """
     return model.integrate_protocol(
         ts=ts,
@@ -370,11 +365,11 @@ def integrate_protocol_states(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
-        **ctx.decode_kwargs(),
+        alpha=ctx.alpha,
     )
 
 
-def derived_simulation_fn(
+def readout_simulation_fn(
     model: JaxModel,
     ts: list[jax.Array],
     y0: jax.Array,
@@ -383,46 +378,46 @@ def derived_simulation_fn(
     *,
     t0_args: jax.Array | None = None,
 ) -> jax.Array:
-    """Alternative ``simulation_fn`` for :func:`train_protocol`: a derived observable.
+    """Alternative ``simulation_fn`` for :func:`train_protocol`: a readout.
 
     Maps :meth:`JaxModel.integrate_protocol`'s raw state through
-    ``model.derived(...)``, for fitting a derived quantity (e.g.
+    ``model.readouts(...)``, for fitting a readout (e.g.
     fluorescence) instead of the raw state -- exactly the pattern
     :func:`integrate_protocol_states`'s own docstring tells callers to
     write themselves. Pass this directly as ``train_protocol``'s
-    ``simulation_fn`` when ``ys`` holds a derived observable rather than
+    ``simulation_fn`` when ``ys`` holds a readout rather than
     raw state.
 
-    Keeps ``model.derived``'s trailing quantity axis intact (shape
-    ``(T, n_derived)``), matching ``ys``'s own shape convention -- the
-    caller composes :func:`squeeze_derived` themselves (via a thin
+    Keeps ``model.readouts``'s trailing quantity axis intact (shape
+    ``(T, n_readouts)``), matching ``ys``'s own shape convention -- the
+    caller composes :func:`squeeze_readouts` themselves (via a thin
     wrapper) for the less common case of a 1-D ``ys`` with that axis
     already dropped.
 
     Every saved time point is paired with the external argument active at
     that point (``protocol[i]``, held constant for the duration of
-    ``ts[i]``) before calling ``model.derived``, since a derived quantity
+    ``ts[i]``) before calling ``model.readouts``, since a readout
     can itself depend on that argument (e.g. a light-dependent
     fluorescence yield).
 
     Parameters
     ----------
     t0_args : jax.Array or None
-        When given, prepend a genuine ``model.derived(0.0, y0, t0_args)``
-        row for ``t=0`` -- returning shape ``(T + 1, n_derived)`` instead
-        of ``(T, n_derived)``. Needed because ``train_protocol``'s
+        When given, prepend a genuine ``model.readouts(0.0, y0, t0_args)``
+        row for ``t=0`` -- returning shape ``(T + 1, n_readouts)`` instead
+        of ``(T, n_readouts)``. Needed because ``train_protocol``'s
         ``ts``/``protocol`` (see :func:`~mxlpy.jax.models.boundaries_to_ts`)
         describe only the protocol's steps, never ``t=0`` itself, yet a
-        derived quantity's value at ``t=0`` generally isn't ``ys[0]`` for
+        readout's value at ``t=0`` generally isn't ``ys[0]`` for
         free the way the raw state trivially is (``y0`` *is* the state at
-        ``t=0``, but ``model.derived(0, y0, t0_args)`` still has to be
-        computed to know the derived quantity there). ``None`` (the
+        ``t=0``, but ``model.readouts(0, y0, t0_args)`` still has to be
+        computed to know the readout there). ``None`` (the
         default) leaves the return shape unchanged, so this stays a
         drop-in :data:`ProtoSimulationFn` -- pair a bound ``t0_args``
         (e.g. via ``functools.partial``) with :func:`proto_grad_loss_t0`/
         :func:`proto_grad_loss_split_t0` rather than the plain
         ``proto_grad_loss``/``proto_grad_loss_split``, which assume a
-        ``(T, n_derived)``-shaped ``simulation_fn`` and free-pass ``ys[0]``
+        ``(T, n_readouts)``-shaped ``simulation_fn`` and free-pass ``ys[0]``
         as the ``t=0`` prediction instead.
     """
     states = model.integrate_protocol(
@@ -433,7 +428,7 @@ def derived_simulation_fn(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
-        **ctx.decode_kwargs(),
+        alpha=ctx.alpha,
     )
     ts_flat = jnp.concatenate(ts)
     step_lengths = [t.shape[0] for t in ts]
@@ -444,11 +439,11 @@ def derived_simulation_fn(
         ],
         axis=0,
     )
-    derived = jax.vmap(model.derived)(ts_flat, states, args_flat)
+    readouts = jax.vmap(model.readouts)(ts_flat, states, args_flat)
     if t0_args is None:
-        return derived
-    t0_derived = model.derived(jnp.zeros(()), y0, t0_args)
-    return jnp.concatenate((t0_derived[None], derived), axis=0)
+        return readouts
+    t0_readouts = model.readouts(jnp.zeros(()), y0, t0_args)
+    return jnp.concatenate((t0_readouts[None], readouts), axis=0)
 
 
 type ProtoGradLossFn = Callable[
@@ -542,11 +537,11 @@ def proto_grad_loss_t0(
 
     ``proto_grad_loss`` free-passes ``ys[0]`` as the ``t=0`` "prediction",
     which is exact for the raw-state default (``y0`` *is* the state at
-    ``t=0``) but wrong for a derived observable, silently zeroing out any
+    ``t=0``) but wrong for a readout, silently zeroing out any
     loss contribution at ``t=0`` regardless of whether the model actually
     reproduces it there. Use this instead when ``simulation_fn`` already
     returns a genuine, full-length prediction spanning ``ys`` (e.g.
-    :func:`derived_simulation_fn` with ``t0_args`` bound via
+    :func:`readout_simulation_fn` with ``t0_args`` bound via
     ``functools.partial``) -- compares ``simulation_fn``'s output against
     ``ys`` directly, with no substitution.
 
@@ -707,7 +702,7 @@ def grad_loss_split(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
-        **ctx.decode_kwargs(),
+        alpha=ctx.alpha,
     )
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
 
@@ -1887,8 +1882,8 @@ def train_protocol[Model: JaxModel](
         Maps ``(model, ts, y0, protocol, ctx)`` to predictions aligned with
         ``ys[1:]``; defaults to raw-state integration
         (:func:`integrate_protocol_states`). Pass
-        :func:`derived_simulation_fn` (or a custom function with the same
-        signature) for models that fit a derived observable (e.g.
+        :func:`readout_simulation_fn` (or a custom function with the same
+        signature) for models that fit a readout (e.g.
         fluorescence) instead of raw state.
     clip_norm : float
         Per-parameter weight-norm clip threshold for

@@ -98,9 +98,9 @@ def unstack_models[T](batched: T, n: int) -> list[T]:
     sliced off member-by-member; non-array/static structure is shared
     (taken directly from ``batched``) since it's identical across members
     by construction. Also applies to :func:`batch_simulate`'s return value
-    when it's a batched :class:`~mxlpy.jax.simulation.FluxOdeSimulation` --
-    unstacking it recovers per-member results whose ``.variables``/
-    ``.fluxes`` accessors work as usual (they assume unbatched arrays).
+    when it's a batched :class:`~mxlpy.jax.simulation.Simulation` --
+    unstacking it recovers per-member results whose ``*_df`` accessors
+    work as usual (they assume unbatched arrays).
 
     Parameters
     ----------
@@ -161,7 +161,7 @@ def batch_simulate[T: eqx.Module, R](
     leaked tracers in the unbatched fields instead of raising, since
     ``eqx.filter_vmap`` treats an unregistered object as a single opaque
     static leaf rather than batching through it.
-    :class:`~mxlpy.jax.simulation.FluxOdeSimulation` is registered as a
+    :class:`~mxlpy.jax.simulation.Simulation` is registered as a
     pytree specifically so it composes with this function.
 
     Parameters

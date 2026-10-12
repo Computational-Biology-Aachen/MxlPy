@@ -1,4 +1,4 @@
-"""Tests for mxlpy.jax.train: squeeze_derived, perturb_model, and train()'s
+"""Tests for mxlpy.jax.train: squeeze_readouts, perturb_model, and train()'s
 solver-retry / KeyboardInterrupt / grad-norm-history behaviour.
 
 Also covers regressions for four bugs found in a review of this module:
@@ -36,11 +36,15 @@ def _decay_rhs(t: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # n
 
 
 def _decay_model() -> Ode:
-    return Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))
+    return Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), variable_names=("y",))
 
 
 def _ude_model() -> Ude:
-    return Ude(ode=_decay_model(), nn=Node(n_obs=1, width=4, depth=1, key=_KEY), op="+")
+    return Ude(
+        ode=_decay_model(),
+        nn=Node(variable_names=("y",), width=4, depth=1, key=_KEY),
+        op="+",
+    )
 
 
 def _tiny_training_data() -> tuple[jnp.ndarray, jnp.ndarray]:
@@ -71,37 +75,43 @@ def _allclose_models(a: eqx.Module, b: eqx.Module) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# squeeze_derived
+# squeeze_readouts
 # ---------------------------------------------------------------------------
 
 
-def test_squeeze_derived_squeezes_single_quantity() -> None:
+def test_squeeze_readouts_squeezes_single_quantity() -> None:
     derived = jnp.ones((4, 1))
-    out = jax_train.squeeze_derived(derived)
+    out = jax_train.squeeze_readouts(derived)
     assert out.shape == (4,)
 
 
-def test_squeeze_derived_leaves_multi_quantity_unchanged() -> None:
+def test_squeeze_readouts_leaves_multi_quantity_unchanged() -> None:
     derived = jnp.ones((4, 3))
-    out = jax_train.squeeze_derived(derived)
+    out = jax_train.squeeze_readouts(derived)
     assert out.shape == (4, 3)
 
 
 # ---------------------------------------------------------------------------
-# derived_simulation_fn: train_protocol's simulation_fn for fitting a
+# readout_simulation_fn: train_protocol's simulation_fn for fitting a
 # derived observable instead of raw state
 # ---------------------------------------------------------------------------
 
 
-def test_derived_simulation_fn_maps_states_through_derived() -> None:
-    def derived_fn(
+def test_readout_simulation_fn_maps_states_through_readouts() -> None:
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,
         args: jnp.ndarray,  # noqa: ARG001
     ) -> jnp.ndarray:
         return y * 2.0
 
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.zeros((2, 0))
@@ -116,7 +126,7 @@ def test_derived_simulation_fn_maps_states_through_derived() -> None:
         atol=ctx.atol,
         method=ctx.method,
     )
-    derived = jax_train.derived_simulation_fn(model, ts, y0, protocol, ctx)
+    derived = jax_train.readout_simulation_fn(model, ts, y0, protocol, ctx)
 
     # keeps the trailing quantity axis, matching ys's own (T, n_obs) shape
     # convention (see train_protocol's proto_grad_loss concatenation with
@@ -125,31 +135,37 @@ def test_derived_simulation_fn_maps_states_through_derived() -> None:
     assert jnp.allclose(derived, states * 2.0)
 
 
-def test_derived_simulation_fn_pairs_each_row_with_its_active_protocol_arg() -> None:
+def test_readout_simulation_fn_pairs_each_row_with_its_active_protocol_arg() -> None:
     """Every saved row must see the protocol value active during its own
     window (held constant for that window's duration), not e.g. always
     the first or last step's value.
     """
 
-    def derived_fn(
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,
         args: jnp.ndarray,
     ) -> jnp.ndarray:
         return args[0] * jnp.ones_like(y)
 
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.25, 0.5]), jnp.array([0.75, 1.0])]
     protocol = jnp.array([[1.0], [2.0]])
     ctx = jax_train.IntegrationSettings()
 
-    derived = jax_train.derived_simulation_fn(model, ts, y0, protocol, ctx)
+    derived = jax_train.readout_simulation_fn(model, ts, y0, protocol, ctx)
 
     assert jnp.allclose(derived, jnp.array([[1.0], [1.0], [2.0], [2.0]]))
 
 
-def test_derived_simulation_fn_pairs_ragged_steps_with_their_active_protocol_arg() -> (
+def test_readout_simulation_fn_pairs_ragged_steps_with_their_active_protocol_arg() -> (
     None
 ):
     """Same as the uniform-length case above, but with differing per-step
@@ -158,20 +174,26 @@ def test_derived_simulation_fn_pairs_ragged_steps_with_their_active_protocol_arg
     jnp.repeat-based implementations tried before this one.
     """
 
-    def derived_fn(
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,
         args: jnp.ndarray,
     ) -> jnp.ndarray:
         return args[0] * jnp.ones_like(y)
 
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.2, 0.4]), jnp.array([0.6]), jnp.array([0.8, 0.9, 1.0])]
     protocol = jnp.array([[10.0], [20.0], [30.0]])
     ctx = jax_train.IntegrationSettings()
 
-    derived = jax_train.derived_simulation_fn(model, ts, y0, protocol, ctx)
+    derived = jax_train.readout_simulation_fn(model, ts, y0, protocol, ctx)
 
     assert jnp.allclose(
         derived,
@@ -179,22 +201,30 @@ def test_derived_simulation_fn_pairs_ragged_steps_with_their_active_protocol_arg
     )
 
 
-def test_train_protocol_freeze_works_with_derived_simulation_fn() -> None:
+def test_train_protocol_freeze_works_with_readout_simulation_fn() -> None:
     """freeze routes through proto_grad_loss_split/proto_make_step_split
     rather than proto_grad_loss/proto_make_step -- confirm
-    derived_simulation_fn's un-squeezed output is shape-compatible with
+    readout_simulation_fn's un-squeezed output is shape-compatible with
     that path too, and that the frozen partition stays untouched.
     """
 
-    def derived_fn(
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,
         args: jnp.ndarray,  # noqa: ARG001
     ) -> jnp.ndarray:
         return y * 2.0
 
-    ode = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
-    model = Ude(ode=ode, nn=Node(n_obs=1, width=4, depth=1, key=_KEY), op="+")
+    ode = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
+    model = Ude(
+        ode=ode, nn=Node(variable_names=("y",), width=4, depth=1, key=_KEY), op="+"
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.zeros((2, 0))
@@ -209,7 +239,7 @@ def test_train_protocol_freeze_works_with_derived_simulation_fn() -> None:
         training_steps=[(3, 1.0)],
         avg_every=100,
         target_loss=-1.0,
-        simulation_fn=jax_train.derived_simulation_fn,
+        simulation_fn=jax_train.readout_simulation_fn,
         freeze=lambda m: m.ode,
     )
 
@@ -218,15 +248,21 @@ def test_train_protocol_freeze_works_with_derived_simulation_fn() -> None:
     assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
 
 
-def test_train_protocol_with_derived_simulation_fn_trains_end_to_end() -> None:
-    def derived_fn(
+def test_train_protocol_with_readout_simulation_fn_trains_end_to_end() -> None:
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,
         args: jnp.ndarray,  # noqa: ARG001
     ) -> jnp.ndarray:
         return y * 2.0
 
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.zeros((2, 0))
@@ -241,7 +277,7 @@ def test_train_protocol_with_derived_simulation_fn_trains_end_to_end() -> None:
         training_steps=[(3, 1.0)],
         avg_every=100,
         target_loss=-1.0,
-        simulation_fn=jax_train.derived_simulation_fn,
+        simulation_fn=jax_train.readout_simulation_fn,
     )
 
     assert isinstance(trained, Ode)
@@ -249,26 +285,32 @@ def test_train_protocol_with_derived_simulation_fn_trains_end_to_end() -> None:
     assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
 
 
-def test_derived_simulation_fn_without_t0_args_is_unchanged() -> None:
+def test_readout_simulation_fn_without_t0_args_is_unchanged() -> None:
     """t0_args=None (the default) must reproduce the exact old shape/values --
     every existing caller relies on this.
     """
 
-    def derived_fn(
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,
         args: jnp.ndarray,  # noqa: ARG001
     ) -> jnp.ndarray:
         return y * 2.0
 
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.zeros((2, 0))
     ctx = jax_train.IntegrationSettings()
 
-    without_kw = jax_train.derived_simulation_fn(model, ts, y0, protocol, ctx)
-    with_none = jax_train.derived_simulation_fn(
+    without_kw = jax_train.readout_simulation_fn(model, ts, y0, protocol, ctx)
+    with_none = jax_train.readout_simulation_fn(
         model, ts, y0, protocol, ctx, t0_args=None
     )
 
@@ -276,24 +318,30 @@ def test_derived_simulation_fn_without_t0_args_is_unchanged() -> None:
     assert jnp.array_equal(without_kw, with_none)
 
 
-def test_derived_simulation_fn_t0_args_prepends_genuine_t0_row() -> None:
-    def derived_fn(
+def test_readout_simulation_fn_t0_args_prepends_genuine_t0_row() -> None:
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,  # noqa: ARG001
         args: jnp.ndarray,
     ) -> jnp.ndarray:
-        # depends only on the external arg (args[0]; Ode.derived appends
+        # depends only on the external arg (args[0]; Ode.readouts appends
         # trainable pars after it), so the t=0 row is trivially
         # distinguishable from a state-derived value
         return args[0] * jnp.ones((1,))
 
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.array([[2.0], [3.0]])
     ctx = jax_train.IntegrationSettings()
 
-    derived = jax_train.derived_simulation_fn(
+    derived = jax_train.readout_simulation_fn(
         model, ts, y0, protocol, ctx, t0_args=jnp.array([9.0])
     )
 
@@ -307,14 +355,20 @@ def test_proto_grad_loss_t0_uses_full_prediction_no_ys0_substitution() -> None:
     contribute to the loss.
     """
 
-    def derived_fn(
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,  # noqa: ARG001
         args: jnp.ndarray,
     ) -> jnp.ndarray:
         return args[0] * jnp.ones((1,))
 
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.array([[2.0], [3.0]])
@@ -323,7 +377,7 @@ def test_proto_grad_loss_t0_uses_full_prediction_no_ys0_substitution() -> None:
     # deliberately wrong t=0 target, to confirm it isn't ignored
     ys = jnp.array([[0.0], [2.0], [3.0]])
 
-    simulation_fn = partial(jax_train.derived_simulation_fn, t0_args=t0_args)
+    simulation_fn = partial(jax_train.readout_simulation_fn, t0_args=t0_args)
     loss, _ = jax_train.proto_grad_loss_t0(
         model,
         y0=y0,
@@ -343,15 +397,21 @@ def test_proto_grad_loss_t0_uses_full_prediction_no_ys0_substitution() -> None:
     assert float(loss) == pytest.approx(27.0)
 
 
-def test_train_protocol_with_derived_simulation_fn_t0_trains_end_to_end() -> None:
-    def derived_fn(
+def test_train_protocol_with_readout_simulation_fn_t0_trains_end_to_end() -> None:
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,
         args: jnp.ndarray,  # noqa: ARG001
     ) -> jnp.ndarray:
         return y * 2.0
 
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
+    model = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.zeros((2, 0))
@@ -366,7 +426,7 @@ def test_train_protocol_with_derived_simulation_fn_t0_trains_end_to_end() -> Non
         training_steps=[(3, 1.0)],
         avg_every=100,
         target_loss=-1.0,
-        simulation_fn=partial(jax_train.derived_simulation_fn, t0_args=jnp.zeros((0,))),
+        simulation_fn=partial(jax_train.readout_simulation_fn, t0_args=jnp.zeros((0,))),
         grad_fn=jax_train.proto_grad_loss_t0,
     )
 
@@ -375,16 +435,24 @@ def test_train_protocol_with_derived_simulation_fn_t0_trains_end_to_end() -> Non
     assert bool(jnp.all(jnp.isfinite(grad_norms[0].to_numpy())))
 
 
-def test_train_protocol_freeze_works_with_derived_simulation_fn_t0() -> None:
-    def derived_fn(
+def test_train_protocol_freeze_works_with_readout_simulation_fn_t0() -> None:
+    def readout_fn(
         t: jnp.ndarray,  # noqa: ARG001
         y: jnp.ndarray,
         args: jnp.ndarray,  # noqa: ARG001
     ) -> jnp.ndarray:
         return y * 2.0
 
-    ode = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), derived_fn=derived_fn)
-    model = Ude(ode=ode, nn=Node(n_obs=1, width=4, depth=1, key=_KEY), op="+")
+    ode = Ode(
+        rhs=_decay_rhs,
+        pars=jnp.array([0.5]),
+        variable_names=("y",),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
+    model = Ude(
+        ode=ode, nn=Node(variable_names=("y",), width=4, depth=1, key=_KEY), op="+"
+    )
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.zeros((2, 0))
@@ -399,7 +467,7 @@ def test_train_protocol_freeze_works_with_derived_simulation_fn_t0() -> None:
         training_steps=[(3, 1.0)],
         avg_every=100,
         target_loss=-1.0,
-        simulation_fn=partial(jax_train.derived_simulation_fn, t0_args=jnp.zeros((0,))),
+        simulation_fn=partial(jax_train.readout_simulation_fn, t0_args=jnp.zeros((0,))),
         grad_fn=jax_train.proto_grad_loss_t0,
         split_grad_fn=jax_train.proto_grad_loss_split_t0,
         freeze=lambda m: m.ode,
@@ -504,7 +572,7 @@ def test_train_integration_settings_per_stage_length_mismatch_raises() -> None:
 def test_train_protocol_integration_settings_per_stage_overrides_method(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), variable_names=("y",))
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.zeros((2, 0))
@@ -538,7 +606,7 @@ def test_train_protocol_integration_settings_per_stage_overrides_method(
 
 
 def test_train_protocol_integration_settings_per_stage_length_mismatch_raises() -> None:
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), variable_names=("y",))
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.5]), jnp.array([1.0])]
     protocol = jnp.zeros((2, 0))
@@ -632,7 +700,7 @@ def test_train_without_renormalize_per_stage_uses_full_ys_every_stage(
 def test_train_protocol_renormalize_per_stage_uses_each_stages_own_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), variable_names=("y",))
     y0 = jnp.array([1.0])
     ts = [jnp.array([0.25, 0.5]), jnp.array([0.75, 1.0])]
     protocol = jnp.zeros((2, 0))
@@ -1222,9 +1290,15 @@ def test_train_protocol_early_stop_returns_best_model_not_current_model(
     ``initial_model``, not either of the two models proto_make_step
     returns as its "new" model.
     """
-    initial_model = Ode(rhs=_decay_rhs, pars=jnp.array([0.1]))  # the true best
-    stage1_new_model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))  # stage 1's update
-    stage2_new_model = Ode(rhs=_decay_rhs, pars=jnp.array([0.9]))  # stage 2's update
+    initial_model = Ode(
+        rhs=_decay_rhs, pars=jnp.array([0.1]), variable_names=("y",)
+    )  # the true best
+    stage1_new_model = Ode(
+        rhs=_decay_rhs, pars=jnp.array([0.5]), variable_names=("y",)
+    )  # stage 1's update
+    stage2_new_model = Ode(
+        rhs=_decay_rhs, pars=jnp.array([0.9]), variable_names=("y",)
+    )  # stage 2's update
     # Each entry's loss describes kwargs["model"] as passed into that call
     # (0.02 for initial_model, 0.5 for stage1_new_model) -- matching
     # proto_make_step's real pre-update-loss/post-update-model contract.
@@ -2193,7 +2267,7 @@ def test_train_only_nde_resume_prepends_prior_history() -> None:
 
 
 def test_train_grad_pars_history_records_per_parameter_gradients() -> None:
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5, 0.2]))
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5, 0.2]), variable_names=("y",))
     ts, ys = _tiny_training_data()
     history = jax_train.GradParsHistory()
 
@@ -2220,7 +2294,7 @@ def test_train_grad_pars_history_records_per_parameter_gradients() -> None:
 
 
 def test_train_grad_pars_history_defaults_columns_to_positional_index() -> None:
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5, 0.2]))
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5, 0.2]), variable_names=("y",))
     ts, ys = _tiny_training_data()
     history = jax_train.GradParsHistory()
 
@@ -2253,7 +2327,7 @@ def test_train_without_grad_pars_history_is_unaffected() -> None:
 
 
 def test_train_protocol_grad_pars_history_records_per_parameter_gradients() -> None:
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5, 0.2]))
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5, 0.2]), variable_names=("y",))
     history = jax_train.GradParsHistory()
 
     trained, _, _ = jax_train.train_protocol(
@@ -2278,7 +2352,7 @@ def test_train_protocol_grad_pars_history_records_per_parameter_gradients() -> N
 
 
 def test_grad_pars_history_multiple_lessons_kept_separate() -> None:
-    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]))
+    model = Ode(rhs=_decay_rhs, pars=jnp.array([0.5]), variable_names=("y",))
     ts, ys = _tiny_training_data()
     history = jax_train.GradParsHistory()
 
