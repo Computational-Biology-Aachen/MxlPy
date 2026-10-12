@@ -18,7 +18,7 @@ __all__ = ["FluxOdeSimulation"]
 
 @partial(
     jax.tree_util.register_dataclass,
-    data_fields=["model", "ts", "ys", "args"],
+    data_fields=["model", "ts", "ys", "args", "latent_ys"],
     meta_fields=["variable_names", "flux_names"],
 )
 @dataclass(slots=False)  # cached_property needs an instance __dict__
@@ -35,8 +35,8 @@ class FluxOdeSimulation:
     model class implements its own ``simulate_flux_row(t, y, args)`` so
     :attr:`fluxes` can recompute correctly regardless of what ``args`` a
     particular model class additionally needs (e.g. ``FluxOde`` re-appends
-    its trainable ``pars``; ``FluxAnode`` re-encodes ``y`` through its
-    latent mapper first).
+    its trainable ``pars``; ``FluxAnode`` evaluates its fluxes on the
+    latent trajectory in :attr:`latent_ys`).
 
     Registered as a JAX pytree (``model``/``ts``/``ys``/``args`` as dynamic
     data, ``variable_names``/``flux_names`` as static metadata) so it
@@ -60,6 +60,10 @@ class FluxOdeSimulation:
         Column names for :attr:`variables`, in ``ys``'s column order.
     flux_names : tuple[str, ...]
         Column names for :attr:`fluxes`, in ``model.fluxes``'s output order.
+    latent_ys : jax.Array or None
+        State the model's fluxes are evaluated on, shape ``(T, n_latent)``,
+        when it differs from ``ys`` -- a latent model's trajectory before
+        decoding. ``None`` (the default) evaluates fluxes on ``ys``.
     """
 
     model: FluxOde | FluxNode | FluxAnode
@@ -68,6 +72,7 @@ class FluxOdeSimulation:
     args: jax.Array
     variable_names: tuple[str, ...]
     flux_names: tuple[str, ...]
+    latent_ys: jax.Array | None = None
 
     @cached_property
     def variables(self) -> pd.DataFrame:
@@ -85,7 +90,8 @@ class FluxOdeSimulation:
         Recomputed via ``model.simulate_flux_row``, since ``integrate*``
         only ever saves state, not fluxes.
         """
-        flux_ys = jax.vmap(self.model.simulate_flux_row)(self.ts, self.ys, self.args)
+        states = self.ys if self.latent_ys is None else self.latent_ys
+        flux_ys = jax.vmap(self.model.simulate_flux_row)(self.ts, states, self.args)
         return pd.DataFrame(
             np.asarray(flux_ys),
             index=np.asarray(self.ts),

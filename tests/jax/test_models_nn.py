@@ -6,6 +6,7 @@ exist) and a shape bug in ``FluxNode`` (no ``n_args`` slot despite accepting
 ``args``) went unnoticed.
 """
 
+import diffrax
 import jax
 import jax.numpy as jnp
 import pytest
@@ -600,6 +601,57 @@ def test_fluxanode_simulate_time_course_decodes_and_recomputes_fluxes() -> None:
     assert sim.variables.shape == (2, 2)  # decoded to n_obs, not n_obs+n_hidden
     assert list(sim.fluxes.columns) == ["ra", "rb"]
     assert bool(jnp.all(jnp.isfinite(sim.fluxes.to_numpy())))
+
+
+@pytest.mark.parametrize(
+    "latent_mapper", [HardLatentMapper, MixedLatentMapper, TrainableZ0LatentMapper]
+)
+def test_fluxanode_simulate_fluxes_use_integrated_hidden_state(
+    latent_mapper: type,
+) -> None:
+    """Regression: fluxes were recomputed as ``fluxes(t, encode(decoded y))``,
+    which replaces the hidden dims with their t=0 value (or a function of
+    ``y``) instead of the hidden state the ODE actually reached.
+    """
+    fanode = FluxAnode.from_flux_ode(
+        _flux_ode(), n_hidden=1, key=_KEY, latent_mapper=latent_mapper,
+        markov_scale=jnp.array([1.0]),
+    )  # fmt: skip
+    ts = jnp.linspace(0.0, 2.0, 5)
+    y0 = jnp.ones(2)
+    sim = fanode.simulate_time_course(ts, y0, 4096, alpha=0.0)
+
+    zs = fanode._solve(
+        t0=ts[0], t1=ts[-1], y0=fanode.latent_mapper.encode(y0), args=None,
+        saveat_ts=ts, max_steps=4096, rtol=1e-6, atol=1e-6, method=diffrax.Tsit5,
+    )  # fmt: skip
+    expected = jax.vmap(lambda t, z: fanode.fluxes(t, z, jnp.zeros((0,))))(ts, zs)
+    re_encoded = jax.vmap(
+        lambda t, y: fanode.fluxes(t, fanode.latent_mapper.encode(y), jnp.zeros((0,)))
+    )(ts, sim.ys)
+
+    assert jnp.allclose(sim.fluxes.to_numpy(), expected, atol=1e-5)
+    assert not jnp.allclose(sim.fluxes.to_numpy()[1:], re_encoded[1:], atol=1e-3)
+
+
+def test_fluxanode_simulate_steady_state_and_protocol_fluxes_use_latent_state() -> None:
+    fanode = FluxAnode.from_flux_ode(
+        _flux_ode(), n_hidden=1, key=_KEY, latent_mapper=TrainableZ0LatentMapper
+    )
+    ts = [jnp.array([1.0]), jnp.array([2.0])]
+    sim = fanode.simulate_protocol_time_course(
+        ts, jnp.ones(2), jnp.zeros((2, 0)), 4096, alpha=0.0
+    )
+    assert sim.latent_ys is not None
+    assert sim.latent_ys.shape == (3, 3)
+    expected = jax.vmap(lambda t, z: fanode.fluxes(t, z, jnp.zeros((0,))))(
+        sim.ts, sim.latent_ys
+    )
+    assert jnp.allclose(sim.fluxes.to_numpy(), expected)
+
+    ss = fanode.simulate_to_steady_state(jnp.ones(2), 8192, alpha=0.0)
+    assert ss.latent_ys is not None
+    assert ss.latent_ys.shape == (1, 3)
 
 
 def test_fluxanode_simulate_protocol_time_course_prepends_t0() -> None:
