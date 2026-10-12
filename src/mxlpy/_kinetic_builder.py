@@ -44,6 +44,7 @@ from mxlpy.unit_inference import (
     _fmt_success,
     _latex_view,
     unit_of,
+    unit_of_expr,
 )
 from mxlpy.unit_inference import (
     infer_units as _infer_units,
@@ -3240,47 +3241,96 @@ class KineticModelBuilder:
             Results of the unit consistency check.
 
         """
-        units_per_fn = {}
-        for name, rxn in self._reactions.items():
-            unit_per_arg = {}
-            for arg in rxn.args:
-                if (par := self._parameters.get(arg)) is not None:
-                    unit_per_arg[sympy.Symbol(arg)] = par.unit
-                elif (var := self._variables.get(arg)) is not None:
-                    unit_per_arg[sympy.Symbol(arg)] = var.unit
-                else:
-                    msg = f"Argument '{arg}' in reaction '{name}' is neither a parameter nor a variable - unit checking only supports parameters and variables"
-                    raise NotImplementedError(msg)
+        derived_units: dict[str, sympy.Expr | None] = {}
 
-            symbolic_fn = fn_to_sympy_expr(
-                rxn.fn,
-                origin="unit-checking",
-                model_args=list_of_symbols(rxn.args),
-            )
-            units_per_fn[name] = None
-            if symbolic_fn is None:
-                continue
+        def fn_unit(
+            fn: Callable,
+            args: list[str],
+            owner: str,
+            stack: tuple[str, ...],
+        ) -> sympy.Expr | None:
+            unit_per_arg = {
+                sympy.Symbol(arg): arg_unit(arg, owner, stack) for arg in args
+            }
             if any(i is None for i in unit_per_arg.values()):
-                continue
-            units_per_fn[name] = symbolic_fn.subs(unit_per_arg)
+                return None
+            symbolic_fn = fn_to_sympy_expr(
+                fn,
+                origin="unit-checking",
+                model_args=list_of_symbols(args),
+            )
+            if symbolic_fn is None:
+                return None
+            return unit_of_expr(symbolic_fn, unit_per_arg)  # type: ignore[arg-type]
+
+        surrogate_units = {
+            output: surrogate.units.get(output)
+            for surrogate in self._surrogates.values()
+            for output in surrogate.outputs
+        }
+
+        def arg_unit(arg: str, owner: str, stack: tuple[str, ...]) -> sympy.Expr | None:
+            if arg == "time":
+                return time_unit
+            if arg in surrogate_units:
+                return surrogate_units[arg]
+            if (par := self._parameters.get(arg)) is not None:
+                return par.unit
+            if (var := self._variables.get(arg)) is not None:
+                return var.unit
+            if (der := self._derived.get(arg)) is not None:
+                if der.unit is not None:
+                    return der.unit
+                if arg in stack:
+                    msg = f"Cyclic dependency while resolving unit of derived '{arg}'"
+                    raise ValueError(msg)
+                if arg not in derived_units:
+                    derived_units[arg] = fn_unit(der.fn, der.args, arg, (*stack, arg))
+                return derived_units[arg]
+            msg = f"Argument '{arg}' in '{owner}' is neither a parameter, variable, derived value nor surrogate output - unit checking only supports those"
+            raise NotImplementedError(msg)
+
+        def stoich_unit(stoich: float | Derived, owner: str) -> sympy.Expr | None:
+            if not isinstance(stoich, Derived):
+                return sympy.S.One
+            if stoich.unit is not None:
+                return stoich.unit
+            return fn_unit(stoich.fn, stoich.args, owner, ())
+
+        flux_units: dict[str, dict[str, sympy.Expr | None]] = {}
+        for name, rxn in self._reactions.items():
+            rxn_unit = fn_unit(rxn.fn, rxn.args, name, ())
+            for var, stoich in rxn.stoichiometry.items():
+                factor = stoich_unit(stoich, name)
+                flux_units.setdefault(var, {})[name] = (
+                    None
+                    if rxn_unit is None or factor is None
+                    else unit_of(rxn_unit * factor)  # type: ignore[operator]
+                )
+        for surrogate in self._surrogates.values():
+            for flux, stoichs in surrogate.stoichiometries.items():
+                for var, stoich in stoichs.items():
+                    flux_unit = surrogate_units.get(flux)
+                    factor = stoich_unit(stoich, flux)
+                    flux_units.setdefault(var, {})[flux] = (
+                        None
+                        if flux_unit is None or factor is None
+                        else unit_of(flux_unit * factor)  # type: ignore[operator]
+                    )
 
         check_per_variable = {}
         for name, var in self._variables.items():
-            check_per_rxn = {}
-
             if (var_unit := var.unit) is None:
                 continue
-
-            for rxn in self.get_stoichiometries_of_variable(name):
-                if (rxn_unit := units_per_fn.get(rxn)) is None:
+            expected = var_unit / time_unit  # type: ignore[operator]
+            check_per_rxn: dict[str, bool | Failure | None] = {}
+            for rxn, flux_unit in flux_units.get(name, {}).items():
+                if flux_unit is None:
                     check_per_rxn[rxn] = None
-                elif unit_of(rxn_unit) == var_unit / time_unit:  # type: ignore
+                elif flux_unit == expected:
                     check_per_rxn[rxn] = True
                 else:
-                    check_per_rxn[rxn] = Failure(
-                        expected=unit_of(rxn_unit),
-                        obtained=var_unit / time_unit,  # type: ignore
-                    )
+                    check_per_rxn[rxn] = Failure(expected=expected, obtained=flux_unit)
             check_per_variable[name] = check_per_rxn
         return UnitCheck(check_per_variable)
 
@@ -3322,4 +3372,5 @@ class KineticModelBuilder:
             derived=self._derived,
             readouts=self._readouts,
             time_unit=time_unit,
+            surrogates=self._surrogates,
         )

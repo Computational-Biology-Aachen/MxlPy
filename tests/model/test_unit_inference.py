@@ -5,14 +5,17 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import numpy as np
 import sympy
 
 if TYPE_CHECKING:
     import pytest
 
-from mxlpy import Conflict, KineticModelBuilder, fns
+from mxlpy import Conflict, Derived, KineticModelBuilder, fns
 from mxlpy._kinetic_builder import MdText
-from mxlpy.units import mmol, second
+from mxlpy.surrogates import qss
+from mxlpy.unit_inference import unit_of_expr
+from mxlpy.units import liter, mmol, second
 
 mmol_per_second = mmol / second
 per_second = 1 / second  # type: ignore
@@ -117,17 +120,31 @@ def test_backward_parameter_unit_simple() -> None:
     assert k_unit == 1 / second  # type: ignore
 
 
-def test_backward_parameter_additive_returns_none() -> None:
-    """Backward inference via additive terms (Michaelis-Menten km) returns None.
-
-    sympy.solve produces a trivial algebraic solution (km=0) which is filtered
-    out.  This is a known limitation - additive constraints require AST-level
-    unit analysis beyond what sympy.solve provides.
-    """
+def test_backward_parameter_additive() -> None:
+    """km is inferred from the additive term of Michaelis-Menten (S + km)."""
     model = _mm_model()
     result = model.infer_units(time_unit=second)
-    km_unit = result.parameters["km"]
-    assert km_unit is None
+    assert result.parameters["km"] == mmol
+
+
+def test_backward_difference_no_false_conflict() -> None:
+    """v = vmax * S / (S + km * (1 + I / ki)) with all units set is consistent."""
+
+    def rate(s: float, i: float, vmax: float, km: float, ki: float) -> float:
+        return vmax * s / (s + km * (1 + i / ki))
+
+    model = (
+        KineticModelBuilder()
+        .add_parameter("vmax", 10.0, unit=mmol_per_second)
+        .add_parameter("km", 0.5, unit=mmol)
+        .add_parameter("ki", 0.5, unit=mmol)
+        .add_variable("S", 1.0, unit=mmol)
+        .add_variable("I", 1.0, unit=mmol)
+        .add_reaction(
+            "v1", rate, stoichiometry={"S": -1}, args=["S", "I", "vmax", "km", "ki"]
+        )
+    )
+    assert not model.infer_units(time_unit=second).has_conflicts()
 
 
 def test_backward_variable_unit_from_reaction_and_variable() -> None:
@@ -365,3 +382,111 @@ def test_time_arg_uses_time_unit() -> None:
     assert isinstance(slope_unit, sympy.Expr)
     # unit(time * k) = second * (mmol/second) = mmol
     assert slope_unit == mmol
+
+
+# ── Sums ─────────────────────────────────────────────────────────────────────
+
+
+def test_forward_difference_keeps_unit() -> None:
+    model = (
+        KineticModelBuilder()
+        .add_parameter("total", 1.0, unit=mmol)
+        .add_variable("S", 0.5, unit=mmol)
+        .add_derived("free", fns.moiety_1s, args=["S", "total"])
+    )
+    result = model.infer_units(time_unit=second)
+    assert result.derived["free"] == mmol
+
+
+def test_unit_of_expr_mismatched_sum() -> None:
+    a, b = sympy.symbols("a b")
+    unit = unit_of_expr(a + b, {a: mmol, b: sympy.S.One})
+    assert unit is not None
+    assert unit not in (mmol, sympy.S.One)
+
+
+def test_unit_of_expr_missing_unit() -> None:
+    a, b = sympy.symbols("a b")
+    assert unit_of_expr(a * b, {a: mmol}) is None
+
+
+# ── Stoichiometries and surrogates ───────────────────────────────────────────
+
+
+def test_variable_unit_from_derived_stoichiometry() -> None:
+    model = (
+        KineticModelBuilder()
+        .add_variable("A", 1.0, unit=mmol)
+        .add_variable("B", 0.0)
+        .add_parameter("k", 1.0, unit=per_second)
+        .add_parameter("scale", 2.0, unit=1 / liter)  # type: ignore[arg-type]
+        .add_reaction(
+            "v1",
+            fns.mass_action_1s,
+            stoichiometry={"A": -1, "B": Derived(fn=fns.constant, args=["scale"])},
+            args=["A", "k"],
+        )
+    )
+    result = model.infer_units(time_unit=second)
+    assert result.variables["B"] == mmol / liter  # type: ignore[operator]
+    assert not result.has_conflicts()
+
+
+def test_surrogate_output_units_propagate() -> None:
+    def rate(a: float, k: float) -> tuple[float]:
+        return (k * a,)
+
+    model = (
+        KineticModelBuilder()
+        .add_variable("A", 1.0, unit=mmol)
+        .add_parameter("k", 1.0)
+        .add_derived("twice", fns.twice, args=["r1"])
+        .add_surrogate(
+            "s",
+            qss.Surrogate(
+                model=rate,
+                args=["A", "k"],
+                outputs=["r1"],
+                units={"r1": mmol_per_second},
+            ),
+        )
+    )
+    result = model.infer_units(time_unit=second)
+    assert result.derived["twice"] == mmol_per_second
+
+
+def test_no_backward_constraint_through_functions() -> None:
+    """pH-like log conversions hide unit constants; they must not cause conflicts."""
+
+    def ph(h: float) -> float:
+        return -np.log10(h * 2.5e-4)
+
+    model = (
+        KineticModelBuilder()
+        .add_variable("H", 1.0, unit=mmol)
+        .add_derived("pH", ph, args=["H"])
+    )
+    assert not model.infer_units(time_unit=second).has_conflicts()
+
+
+def test_unit_of_expr_float_exponent() -> None:
+    a = sympy.Symbol("a")
+    assert unit_of_expr(a**2.0, {a: mmol}) == mmol**2
+
+
+def test_inconsistent_sum_is_not_propagated() -> None:
+    """A reaction mixing units must not push its broken unit onto other components."""
+
+    def rate(s: float, k: float) -> float:
+        return k * s + k
+
+    model = (
+        KineticModelBuilder()
+        .add_variable("S", 1.0, unit=mmol)
+        .add_parameter("k", 1.0, unit=per_second)
+        .add_derived("d", fns.twice, args=["v1"])
+        .add_reaction("v1", rate, stoichiometry={"S": -1}, args=["S", "k"])
+    )
+    result = model.infer_units(time_unit=second)
+    assert result.reactions["v1"] == mmol_per_second
+    assert result.derived["d"] == mmol_per_second

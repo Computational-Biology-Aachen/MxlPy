@@ -1,5 +1,6 @@
 """Unit definitions for MxlPy."""
 
+import sympy
 from sympy.physics.units import (
     ampere,
     becquerel,
@@ -14,6 +15,7 @@ from sympy.physics.units import (
     joule,
     katal,
     kelvin,
+    kilo,
     kilogram,
     liter,
     lux,
@@ -53,6 +55,7 @@ __all__ = [
     "joule",
     "katal",
     "kelvin",
+    "kilo",
     "liter",
     "lumen",
     "lux",
@@ -125,7 +128,7 @@ ppfd = mumol / sqm / second
 avogadro = 6.02214076e23
 sievert = joule / kilogram  # type: ignore
 lumen = candela * steradian  # type: ignore
-dimensionless = None
+dimensionless = sympy.S.One
 item = 1  # pseudounit for one thing
 
 # Plant units

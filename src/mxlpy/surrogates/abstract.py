@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
     import pandas as pd
+    import sympy
 
     from mxlpy.types import Derived
 
@@ -147,6 +148,7 @@ class SurrogateProtocol(Protocol):
     args: list[str]
     outputs: list[str]
     stoichiometries: dict[str, dict[str, float | Derived]]
+    units: dict[str, sympy.Expr]
 
     def predict(
         self, args: dict[str, float | pd.Series | pd.DataFrame]
@@ -201,6 +203,8 @@ class AbstractSurrogate:
         List of input variable names.
     stoichiometries
         Dictionary mapping reaction names to stoichiometries.
+    units
+        Dictionary mapping output names to their units.
 
     Methods
     -------
@@ -211,6 +215,7 @@ class AbstractSurrogate:
     args: list[str]
     outputs: list[str]
     stoichiometries: dict[str, dict[str, float | Derived]] = field(default_factory=dict)
+    units: dict[str, sympy.Expr] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""

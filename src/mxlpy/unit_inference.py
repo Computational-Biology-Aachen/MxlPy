@@ -12,15 +12,26 @@ from wadler_lindig import pformat
 
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import list_of_symbols
-from mxlpy.types import InitialAssignment
+from mxlpy.types import Derived, InitialAssignment
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     from sympy.physics.units.quantities import Quantity
 
     from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy.types import Derived, Parameter, Reaction, Readout, Variable
+    from mxlpy.surrogates.abstract import SurrogateProtocol
+    from mxlpy.types import Parameter, Reaction, Readout, Variable
 
-__all__ = ["Conflict", "LOGGER", "MdText", "UnitInference", "infer_units", "unit_of"]
+__all__ = [
+    "Conflict",
+    "LOGGER",
+    "MdText",
+    "UnitInference",
+    "infer_units",
+    "unit_of",
+    "unit_of_expr",
+]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -40,6 +51,143 @@ def unit_of(expr: sympy.Expr) -> sympy.Expr:
 
     """
     return expr.as_coeff_Mul()[1]
+
+
+def unit_of_expr(
+    expr: sympy.Expr,
+    units: dict[sympy.Symbol, sympy.Expr],
+) -> sympy.Expr | None:
+    """Get unit of a symbolic expression, given the units of its symbols.
+
+    Unlike substituting the units into the expression, terms of a sum are
+    not combined arithmetically, so ``a - b`` with ``a`` and ``b`` in
+    ``mol`` yields ``mol`` instead of ``0``.
+    If the terms of a sum have different dimensions, the unevaluated sum of
+    their units is returned, which will not match any valid unit.
+
+    Parameters
+    ----------
+    expr
+        A sympy expression of model symbols.
+    units
+        Units of the symbols in ``expr``.
+
+    Returns
+    -------
+    sympy.Expr | None
+        The unit of ``expr``, or None if a symbol has no known unit.
+
+    """
+    match expr:
+        case sympy.Symbol():
+            return units.get(expr)
+        case _ if expr.is_number:
+            return sympy.S.One
+        case sympy.Mul():
+            factors = [unit_of_expr(arg, units) for arg in expr.args]  # type: ignore[arg-type]
+            known = [i for i in factors if i is not None]
+            if len(known) != len(factors):
+                return None
+            return unit_of(sympy.Mul(*known))
+        case sympy.Pow():
+            base, exp = expr.args
+            if not exp.is_number:
+                return sympy.S.One
+            if (base_unit := unit_of_expr(base, units)) is None:
+                return None
+            return base_unit ** _exact(exp)
+        case sympy.Add() | sympy.Min() | sympy.Max():
+            return _unit_of_terms(expr.args, units)  # type: ignore[arg-type]
+        case sympy.Abs():
+            return unit_of_expr(expr.args[0], units)
+        case sympy.Piecewise():
+            return _unit_of_terms([e for e, _ in expr.args], units)  # type: ignore[misc]
+        case _:
+            return sympy.S.One
+
+
+def _exact(exp: sympy.Expr) -> sympy.Expr:
+    """Convert float exponents such as ``2.0`` (from ``x**2`` in source) to rationals."""
+    if isinstance(exp, sympy.Float):
+        return sympy.nsimplify(exp, rational=True)
+    return exp
+
+
+def _is_consistent(unit: sympy.Expr) -> bool:
+    """Return False if *unit* is a sum of incompatible units from :func:`unit_of_expr`."""
+    return not isinstance(unit, sympy.Add)
+
+
+def _unit_of_terms(
+    terms: Sequence[sympy.Expr],
+    units: dict[sympy.Symbol, sympy.Expr],
+) -> sympy.Expr | None:
+    term_units = [unit_of_expr(term, units) for term in terms]
+    known = [i for i in term_units if i is not None]
+    if len(known) != len(term_units):
+        return None
+    first, *rest = known
+    if all(_same_dim(first, i) for i in rest):
+        return first
+    return sympy.Add(*known, evaluate=False)
+
+
+def _solve_unit(
+    expr: sympy.Expr,
+    target: sympy.Expr,
+    candidate: sympy.Symbol,
+    units: dict[sympy.Symbol, sympy.Expr],
+) -> sympy.Expr | None:
+    """Get unit of *candidate* such that *expr* has unit *target*.
+
+    Walks the expression tree like :func:`unit_of_expr`, so every term of a
+    sum must have the target unit.
+    Returns None if *candidate* occurs in more than one factor of a product
+    or a symbol other than *candidate* has no known unit.
+    Like :func:`unit_of_expr`, function arguments and non-numeric exponents
+    are not constrained, as they commonly hide unit-carrying constants
+    (e.g. ``log10(h * 2.5e-4)``), so no unit is inferred through them.
+    """
+    if candidate not in expr.free_symbols:
+        return None
+    match expr:
+        case sympy.Symbol():
+            return target
+        case sympy.Mul():
+            inner = [arg for arg in expr.args if candidate in arg.free_symbols]
+            if len(inner) != 1:
+                return None
+            rest = [arg for arg in expr.args if candidate not in arg.free_symbols]
+            if (rest_unit := unit_of_expr(sympy.Mul(*rest), units)) is None:
+                return None
+            return _solve_unit(inner[0], unit_of(target / rest_unit), candidate, units)  # type: ignore[arg-type, operator]
+        case sympy.Pow():
+            base, exp = expr.args
+            if not exp.is_number:
+                return None
+            return _solve_unit(
+                base, unit_of(target ** (1 / _exact(exp))), candidate, units
+            )  # type: ignore[arg-type, operator]
+        case sympy.Add() | sympy.Min() | sympy.Max():
+            return _solve_terms(expr.args, target, candidate, units)  # type: ignore[arg-type]
+        case sympy.Abs():
+            return _solve_unit(expr.args[0], target, candidate, units)  # type: ignore[arg-type]
+        case sympy.Piecewise():
+            return _solve_terms([e for e, _ in expr.args], target, candidate, units)  # type: ignore[misc]
+        case _:
+            return None
+
+
+def _solve_terms(
+    terms: Sequence[sympy.Expr],
+    target: sympy.Expr,
+    candidate: sympy.Symbol,
+    units: dict[sympy.Symbol, sympy.Expr],
+) -> sympy.Expr | None:
+    for term in terms:
+        if (unit := _solve_unit(term, target, candidate, units)) is not None:
+            return unit
+    return None
 
 
 def _latex_view(expr: sympy.Expr | None) -> str:
@@ -292,6 +440,8 @@ def infer_units(
     derived: dict[str, Derived],
     readouts: dict[str, Readout],
     time_unit: Quantity,
+    *,
+    surrogates: Mapping[str, SurrogateProtocol] | None = None,
 ) -> UnitInference:
     """Infer physical units via bidirectional constraint propagation.
 
@@ -318,6 +468,9 @@ def infer_units(
     time_unit
         The unit of time used in the model
         (e.g. ``sympy.physics.units.second``).
+    surrogates
+        Model surrogates.  Their explicit output units act as anchors and
+        their stoichiometries link outputs to variables.
 
     Returns
     -------
@@ -325,6 +478,7 @@ def infer_units(
         Per-component inference results.
 
     """
+    surrogates = {} if surrogates is None else surrogates
     # all_inferences[name] = {source_label: unit}
     # The first entry is used for further propagation (get_unit).
     # All entries are used at the end for conflict detection.
@@ -360,6 +514,9 @@ def infer_units(
     for name, ro in readouts.items():
         if ro.unit is not None:
             record(name, ro.unit, "explicit")
+    for surrogate in surrogates.values():
+        for name, unit in surrogate.units.items():
+            record(name, unit, "explicit")
 
     # ── Precompute helpers ───────────────────────────────────────────────
     fn_sym_cache: dict[str, sympy.Expr | None] = {}
@@ -371,11 +528,37 @@ def infer_units(
             )
         return fn_sym_cache[cache_key]
 
-    reactions_for_variable: dict[str, list[str]] = {k: [] for k in variables}
-    for rxn_name, rxn in reactions.items():
-        for var_name in rxn.stoichiometry:
+    # reactions_for_variable[var] = [(flux name, stoichiometry), ...]
+    reactions_for_variable: dict[str, list[tuple[str, float | Derived]]] = {
+        k: [] for k in variables
+    }
+    flux_stoichiometries = [
+        *((n, r.stoichiometry) for n, r in reactions.items()),
+        *(
+            (flux, stoichs)
+            for surrogate in surrogates.values()
+            for flux, stoichs in surrogate.stoichiometries.items()
+        ),
+    ]
+    for rxn_name, stoichiometry in flux_stoichiometries:
+        for var_name, stoich in stoichiometry.items():
             if var_name in reactions_for_variable:
-                reactions_for_variable[var_name].append(rxn_name)
+                reactions_for_variable[var_name].append((rxn_name, stoich))
+
+    def stoich_unit(
+        rxn_name: str, var_name: str, stoich: float | Derived
+    ) -> sympy.Expr | None:
+        if not isinstance(stoich, Derived):
+            return sympy.S.One
+        if stoich.unit is not None:
+            return stoich.unit
+        arg_units = {sympy.Symbol(a): get_unit(a) for a in stoich.args}
+        if any(u is None for u in arg_units.values()):
+            return None
+        sym = get_sym(f"stoich:{rxn_name}:{var_name}", stoich.fn, stoich.args)
+        if sym is None:
+            return None
+        return unit_of_expr(sym, arg_units)  # type: ignore[arg-type]
 
     # ── Fixpoint ─────────────────────────────────────────────────────────
     changed = True
@@ -398,8 +581,10 @@ def infer_units(
             if sym is None:
                 continue
             try:
-                inferred = unit_of(sym.subs(arg_units))  # type: ignore[arg-type]
+                inferred = unit_of_expr(sym, arg_units)  # type: ignore[arg-type]
             except Exception:  # noqa: BLE001, S112
+                continue
+            if inferred is None or not _is_consistent(inferred):
                 continue
             if record(comp_name, inferred, f"forward:{comp_name}"):
                 changed = True
@@ -419,8 +604,10 @@ def infer_units(
             if sym is None:
                 continue
             try:
-                inferred = unit_of(sym.subs(arg_units))  # type: ignore[arg-type]
+                inferred = unit_of_expr(sym, arg_units)  # type: ignore[arg-type]
             except Exception:  # noqa: BLE001, S112
+                continue
+            if inferred is None or not _is_consistent(inferred):
                 continue
             if record(name, inferred, f"forward_ia:{name}"):
                 changed = True
@@ -438,8 +625,10 @@ def infer_units(
             if sym is None:
                 continue
             try:
-                inferred = unit_of(sym.subs(arg_units))  # type: ignore[arg-type]
+                inferred = unit_of_expr(sym, arg_units)  # type: ignore[arg-type]
             except Exception:  # noqa: BLE001, S112
+                continue
+            if inferred is None or not _is_consistent(inferred):
                 continue
             if record(name, inferred, f"forward_ia:{name}"):
                 changed = True
@@ -448,11 +637,12 @@ def infer_units(
         for var_name in variables:
             if get_unit(var_name) is not None:
                 continue
-            for rxn_name in reactions_for_variable.get(var_name, []):
+            for rxn_name, stoich in reactions_for_variable.get(var_name, []):
                 rxn_unit = get_unit(rxn_name)
-                if rxn_unit is None:
+                factor = stoich_unit(rxn_name, var_name, stoich)
+                if rxn_unit is None or factor is None:
                     continue
-                candidate = unit_of(rxn_unit * time_unit)  # type: ignore[operator]
+                candidate = unit_of(rxn_unit * factor * time_unit)  # type: ignore[operator]
                 if record(var_name, candidate, f"from_rxn:{rxn_name}"):
                     changed = True
 
@@ -461,14 +651,16 @@ def infer_units(
             var_unit = get_unit(var_name)
             if var_unit is None:
                 continue
-            for rxn_name in reactions_for_variable.get(var_name, []):
+            for rxn_name, stoich in reactions_for_variable.get(var_name, []):
                 if get_unit(rxn_name) is not None:
                     continue
-                rxn_unit = unit_of(var_unit / time_unit)  # type: ignore[operator]
+                if (factor := stoich_unit(rxn_name, var_name, stoich)) is None:
+                    continue
+                rxn_unit = unit_of(var_unit / time_unit / factor)  # type: ignore[operator]
                 if record(rxn_name, rxn_unit, f"from_var:{var_name}"):
                     changed = True
 
-        # Backward: arg unit ← fn output unit (solve symbolically).
+        # Backward: arg unit ← fn output unit (see _solve_unit).
         # For each arg candidate (unknown or already known), if all other
         # args are known we solve for the candidate.  For unknown args this
         # drives propagation; for already-known args it records an extra
@@ -491,27 +683,21 @@ def infer_units(
                 ]
                 if len(other_known) != len(args) - 1:
                     continue  # Need all-but-one to be known
-                other_subs = {sympy.Symbol(a): get_unit(a) for a in other_known}
-                partial = sym.subs(other_subs)
+                other_units = {sympy.Symbol(a): get_unit(a) for a in other_known}
                 try:
-                    solutions = sympy.solve(
-                        partial - out_unit,  # type: ignore[operator]
+                    inferred = _solve_unit(
+                        sym,
+                        out_unit,
                         sympy.Symbol(candidate),
+                        other_units,  # type: ignore[arg-type]
                     )
                 except Exception:  # noqa: BLE001, S112
                     continue
-                if len(solutions) != 1:
+                if inferred is None or not _is_consistent(inferred):
                     continue
-                sol = solutions[0]
-                if sol.free_symbols or sol == 0:
-                    continue
-                inferred = unit_of(sol)  # type: ignore[arg-type]
-                is_first = record(candidate, inferred, f"backward:{comp_name}")
-                if is_first and get_unit(candidate) is not None:
-                    # arg was already known - don't re-trigger propagation
-                    pass
-                elif is_first:
-                    changed = True
+                was_unknown = get_unit(candidate) is None
+                record(candidate, inferred, f"backward:{comp_name}")
+                changed = changed or was_unknown
 
         # Extra conflict-detection pass: record inferences for already-known
         # components (does not set changed, only enriches all_inferences)
@@ -519,11 +705,12 @@ def infer_units(
             var_unit_known = get_unit(var_name)
             if var_unit_known is None:
                 continue
-            for rxn_name in reactions_for_variable.get(var_name, []):
+            for rxn_name, stoich in reactions_for_variable.get(var_name, []):
                 rxn_unit = get_unit(rxn_name)
-                if rxn_unit is None:
+                factor = stoich_unit(rxn_name, var_name, stoich)
+                if rxn_unit is None or factor is None:
                     continue
-                candidate = unit_of(rxn_unit * time_unit)  # type: ignore[operator]
+                candidate = unit_of(rxn_unit * factor * time_unit)  # type: ignore[operator]
                 record(var_name, candidate, f"extra_from_rxn:{rxn_name}")
 
     # ── Build result ─────────────────────────────────────────────────────
