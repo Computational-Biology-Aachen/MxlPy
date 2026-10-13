@@ -61,6 +61,7 @@ __all__ = [
     "liter",
     "lumen",
     "lux",
+    "meter",
     "micro",
     "milli",
     "minute",
