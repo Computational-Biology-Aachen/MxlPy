@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Experimental features for mxlpy.
 
 APIs should be considered unstable and may change without notice.

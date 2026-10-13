@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for mxlpy.jax.ensemble: stack_models, batch_simulate, unstack_models.
 
 Also covers two regressions in batch_simulate found in review:

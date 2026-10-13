@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Neural Process Estimation (NPE) module.
 
 This module provides classes and functions for estimating metabolic processes using

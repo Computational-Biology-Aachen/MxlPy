@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for nn_blocks export/import (mxl-schemas nn_blocks v2) via a torch surrogate.
 
 Closes the gap `test_serialize.py::test_surrogate_raises_serialization_error`

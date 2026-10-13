@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for OdeModelBuilder's .mxl.json serialisation (ode-model.schema.json, kind="ode").
 
 Mirrors `test_serialize.py`/`test_serialize_nn_blocks.py`'s coverage of

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Model database integration for BioModels and JWS Online."""
 
 from __future__ import annotations

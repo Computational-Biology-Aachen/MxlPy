@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any

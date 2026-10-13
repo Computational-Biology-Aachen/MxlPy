@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for native JSON model serialization (mxlpy.save / mxlpy.load)."""
 
 from __future__ import annotations

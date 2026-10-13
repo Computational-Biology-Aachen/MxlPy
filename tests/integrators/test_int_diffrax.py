@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 def test_diffrax_integrate() -> None:
     # FIXME: implement this
     assert True

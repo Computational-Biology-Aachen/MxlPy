@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 ###############################################################################
 # Ensemble / carousel
 # This is multi-model, single data fitting, where the models share parameters

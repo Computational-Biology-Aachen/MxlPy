@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """String-based DSL for specifying reaction networks."""
 
 from __future__ import annotations

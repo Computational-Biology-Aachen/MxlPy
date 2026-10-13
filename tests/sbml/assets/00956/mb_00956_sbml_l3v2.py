@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 import math
 
 from mxlpy import InitialAssignment, KineticModelBuilder

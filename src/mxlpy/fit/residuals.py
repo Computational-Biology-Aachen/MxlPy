@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Residual functions used for the different fittting approaches."""
 
 import numpy as np

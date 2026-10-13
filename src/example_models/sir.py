@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Compartmental models of infectious disease spread.
 
 These models are based on the SIR (Susceptible-Infectious-Recovered) framework,

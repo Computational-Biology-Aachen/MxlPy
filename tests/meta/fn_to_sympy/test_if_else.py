@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Regression tests for `if`/`elif`/`else` chains followed by more code.
 
 `_handle_fn_body` used to treat an `if`/`else` chain as *being* the

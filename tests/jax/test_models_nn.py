@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for the neural JAX model classes: Node, FluxNode, Anode, FluxAnode, Ude, FluxUde, AugUde, FluxAugUde.
 
 Until now these classes had zero test coverage, which is exactly how a real

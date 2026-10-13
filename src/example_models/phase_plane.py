@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Example models for phase plane analysis."""
 
 from __future__ import annotations

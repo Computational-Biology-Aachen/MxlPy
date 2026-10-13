@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for mxlpy.jax.train: squeeze_readouts, perturb_model, and train()'s
 solver-retry / KeyboardInterrupt / grad-norm-history behaviour.
 

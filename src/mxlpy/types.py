@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Types Module.
 
 This module provides type definitions and utility types for use throughout the project.

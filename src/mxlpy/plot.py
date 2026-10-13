@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Plotting Utilities Module.
 
 This module provides functions and classes for creating various plots and visualizations

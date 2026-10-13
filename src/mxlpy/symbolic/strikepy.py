@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Reimplementation of strikepy from.
 
 StrikePy: https://github.com/afvillaverde/StrikePy

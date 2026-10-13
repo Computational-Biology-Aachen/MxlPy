@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Calvin cycle model from Poolman et al. 2000."""
 
 from __future__ import annotations

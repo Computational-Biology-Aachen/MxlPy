@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for cross-namespace name collisions in Model."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 import numpy as np
 import pandas as pd
 import pytest

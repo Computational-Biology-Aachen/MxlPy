@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Unit inference for MxlPy models via bidirectional constraint propagation."""
 
 from __future__ import annotations

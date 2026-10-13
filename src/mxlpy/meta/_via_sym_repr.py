@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Generate multi-language model code from a symbolic model representation."""
 
 from __future__ import annotations

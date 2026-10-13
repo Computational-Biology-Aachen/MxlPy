@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Persistence utilities for JAX/equinox models."""
 
 from pathlib import Path

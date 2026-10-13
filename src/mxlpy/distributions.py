@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Probability Distribution Classes for Parameter Sampling.
 
 This module provides a collection of probability distributions used for parameter sampling

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Per-test resource accounting for the JAX tests.
 
 JAX has many sharp edges that silently multiply compilations or memory

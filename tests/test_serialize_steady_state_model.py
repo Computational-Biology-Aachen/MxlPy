@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for SteadyStateModelBuilder's .mxl.json serialisation (steady-state-model.schema.json, kind="steady-state").
 
 Mirrors `test_serialize_ode_model.py`'s coverage of `OdeModelBuilder`, but for

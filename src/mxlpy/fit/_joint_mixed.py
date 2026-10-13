@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 ###############################################################################
 # Joint fitting
 # This is multi-model, multi-data, multi-simulation fitting

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Fuzzy / bayesian fitting methods."""
 
 from __future__ import annotations

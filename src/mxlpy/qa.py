@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Quality assurance reporting for kinetic models.
 
 Provides a single entry point, :func:`report`, that inspects a

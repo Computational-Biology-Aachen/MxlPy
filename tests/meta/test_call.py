@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Test call function of fn_to_sympy."""
 
 import sympy

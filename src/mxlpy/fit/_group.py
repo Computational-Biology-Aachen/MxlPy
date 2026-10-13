@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 ###############################################################################
 # Group
 # This is single-model, single data fitting, multiple initial parameter guesses

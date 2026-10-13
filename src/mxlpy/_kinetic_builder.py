@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Model for Metabolic System Representation.
 
 This module provides the core Model class and supporting functionality for representing

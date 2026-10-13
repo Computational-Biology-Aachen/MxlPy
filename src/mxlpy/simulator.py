@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Simulation Module.
 
 This module provides classes and functions for simulating metabolic models.

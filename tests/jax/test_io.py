@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for mxlpy.jax.io: save/load round-trip and recast_to_template."""
 
 from pathlib import Path

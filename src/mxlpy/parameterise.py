@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Module to parameterise models."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Linear Label Mapping Module for Metabolic Models.
 
 This module implements linear label mapping functionality for tracking isotope labels

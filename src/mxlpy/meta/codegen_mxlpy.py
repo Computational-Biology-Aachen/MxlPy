@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Module to export models as code without the SymPy roundtrip.
 
 See Also

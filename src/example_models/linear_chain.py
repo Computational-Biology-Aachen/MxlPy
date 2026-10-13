@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Example models of linear chains of reactions."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for the equinox surrogate backend, including nn_blocks export/import.
 
 Mirrors `tests/surrogates/test_torch.py`'s/`test_keras.py`'s coverage. Unlike

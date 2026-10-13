@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 def test_docstringremover_visit_expr() -> None:
     # FIXME: implement this
     assert True

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Regression coverage for OdeModelBuilder's dx/dt computation.
 
 This class had zero test coverage before this file and, until fixed here,

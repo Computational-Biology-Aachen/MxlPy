@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Generate a report comparing two models."""
 
 from __future__ import annotations

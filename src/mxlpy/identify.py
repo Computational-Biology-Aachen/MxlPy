@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Numerical parameter identification estimations."""
 
 from __future__ import annotations

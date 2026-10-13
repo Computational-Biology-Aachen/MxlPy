@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Label Mapping Module for Metabolic Models.
 
 This module provides functionality for mapping between labeled metabolites and their

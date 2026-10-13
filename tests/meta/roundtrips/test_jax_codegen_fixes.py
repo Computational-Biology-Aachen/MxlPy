@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Regression tests for jax codegen dependency-closure filtering.
 
 ``derived``/``fluxes``/``model`` used to share one unfiltered list of

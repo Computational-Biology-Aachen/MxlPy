@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Upper glycolysis model developed by Klipp et al. (2005)."""
 
 from __future__ import annotations

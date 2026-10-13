@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Diffrax integrator for solving ODEs."""
 
 from __future__ import annotations

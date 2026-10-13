@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Hierarchical model composition.
 
 Merge multiple :class:`~mxlpy.model.Model` instances into a single model,

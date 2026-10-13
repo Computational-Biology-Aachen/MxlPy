@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for the JAX ``Ode``/``FluxOde`` models.
 
 Focus areas (all regressions that were previously broken):

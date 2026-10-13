@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 import sympy
 
 from mxlpy.symbolic.strikepy import StrikepyModel, strike_goldd

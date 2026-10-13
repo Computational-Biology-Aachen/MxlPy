@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Topological searches for dependencies."""
 
 from dataclasses import dataclass

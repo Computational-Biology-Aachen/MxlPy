@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Ode surrogate interface, for OdeModelBuilder.
 
 Deliberately unrelated to :mod:`mxlpy.surrogates.abstract` — that module's

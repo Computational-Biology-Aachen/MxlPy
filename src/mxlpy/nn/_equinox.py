@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Neural network architectures.
 
 This module provides implementations of neural network architectures used for mechanistic learning.

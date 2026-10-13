@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 from dataclasses import dataclass, field
 
 from mxlpy.meta.source_tools import fn_to_sympy_expr

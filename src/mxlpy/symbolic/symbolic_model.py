@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Conversions into symbolic representation."""
 
 from __future__ import annotations

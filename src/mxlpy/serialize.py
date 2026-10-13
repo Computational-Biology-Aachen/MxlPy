@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Native JSON serialisation for MxlPy models.
 
 This module reads and writes the ``.mxl.json`` format: a MxlPy-native, version

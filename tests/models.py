@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 from mxlpy import Derived, KineticModelBuilder, fns
 from mxlpy.surrogates import qss
 

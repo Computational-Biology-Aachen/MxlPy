@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Parallel Execution Module.
 
 This module provides functions and classes for parallel execution and caching of

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """SBML support for mxlpy.
 
 Allows importing and exporting metabolic models in SBML format.

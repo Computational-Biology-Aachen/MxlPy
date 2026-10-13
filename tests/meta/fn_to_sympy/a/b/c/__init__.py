@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 __all__ = [
     "attr_c",
     "fn_c",

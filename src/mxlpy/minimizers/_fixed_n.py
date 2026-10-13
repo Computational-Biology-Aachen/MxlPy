@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Fixed-N minimizer: run exactly N optimizer iterations."""
 
 from __future__ import annotations

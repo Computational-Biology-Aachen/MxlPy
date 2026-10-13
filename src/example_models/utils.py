@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """General utility functions for example models."""
 
 from __future__ import annotations

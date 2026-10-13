@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tools for working with sympy expressions."""
 
 from __future__ import annotations

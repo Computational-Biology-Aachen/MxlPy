@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Symbolic utilities."""
 
 from __future__ import annotations

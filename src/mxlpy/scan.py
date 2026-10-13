@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Parameter Scanning Module.
 
 This module provides functions and classes for performing parameter scans on metabolic models.

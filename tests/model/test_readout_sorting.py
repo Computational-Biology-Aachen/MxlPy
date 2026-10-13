@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Readouts are calculated in dependency order, not insertion order."""
 
 from collections.abc import Callable

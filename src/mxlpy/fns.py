@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Module containing functions for reactions and derived quatities."""
 
 from __future__ import annotations

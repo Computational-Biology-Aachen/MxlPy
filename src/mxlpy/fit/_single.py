@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 ###############################################################################
 # Single fitting
 # This is single-model, single-data fitting

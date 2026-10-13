@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Lotka-Volterra predator-prey model (v2): predation uses derived stoichiometry."""
 
 from mxlpy import KineticModelBuilder, fns

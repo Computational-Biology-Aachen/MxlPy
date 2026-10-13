@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Metabolic Control Analysis (MCA) Module.
 
 Provides functions for analyzing control and regulation in metabolic networks through:

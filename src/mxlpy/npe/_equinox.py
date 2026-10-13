@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Neural Network Parameter Estimation (NPE) Module.
 
 This module provides classes and functions for training neural network models to estimate

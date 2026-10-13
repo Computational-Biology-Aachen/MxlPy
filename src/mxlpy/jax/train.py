@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Training loop utilities for JAX ODE and neural ODE models."""
 
 import logging

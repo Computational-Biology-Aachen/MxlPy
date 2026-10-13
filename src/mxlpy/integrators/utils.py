@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Utility fns for integrators."""
 
 from __future__ import annotations

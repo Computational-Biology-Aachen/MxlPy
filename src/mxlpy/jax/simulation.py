@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Simulation results for JAX models.
 
 Returned by every model's ``simulate_*`` methods. All results are JAX pytrees

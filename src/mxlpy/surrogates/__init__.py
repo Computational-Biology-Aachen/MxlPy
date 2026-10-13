@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Surrogate Models Module.
 
 This module provides classes and functions for creating and training surrogate models

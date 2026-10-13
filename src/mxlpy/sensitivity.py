@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Global sensitivity analysis for mechanistic models.
 
 This module provides screening and variance-based methods to identify which

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """mxlpy: A Python Package for Metabolic Modeling and Analysis.
 
 This package provides tools for creating, simulating and analyzing metabolic models

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Minimizers."""
 
 from ._fixed_n import FixedNMinimizer

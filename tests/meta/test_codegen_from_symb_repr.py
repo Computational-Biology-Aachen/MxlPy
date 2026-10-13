@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 def test_generate_model_code_cpp() -> None:
     # FIXME: implement this
     assert True

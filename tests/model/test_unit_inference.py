@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for Model.infer_units() - bidirectional unit constraint propagation."""
 
 from __future__ import annotations

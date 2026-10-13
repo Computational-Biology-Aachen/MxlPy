@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 def test_valid_identifier() -> None:
     # FIXME: implement this
     assert True

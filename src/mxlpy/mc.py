@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Monte Carlo Analysis (MC) Module for Metabolic Models.
 
 This module provides functions for performing Monte Carlo analysis on metabolic models.

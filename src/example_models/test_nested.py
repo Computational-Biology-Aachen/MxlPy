@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Test nested function calls in MXLpy."""
 
 from __future__ import annotations

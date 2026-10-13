@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Collection of rate functions for enzyme kinetics."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Batched ensemble simulation utilities for JAX/equinox models."""
 
 from collections.abc import Callable, Iterable

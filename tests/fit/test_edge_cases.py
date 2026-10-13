@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Edge case tests for the fit module."""
 
 from __future__ import annotations

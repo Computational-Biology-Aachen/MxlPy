@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Example models.
 
 This package provides functions for retrieving various predefined metabolic models.

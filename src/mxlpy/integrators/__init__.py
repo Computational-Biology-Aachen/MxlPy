@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Integrator Package.
 
 This package provides integrators for solving ordinary differential equations (ODEs).

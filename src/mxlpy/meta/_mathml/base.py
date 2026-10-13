@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
 from typing import Any

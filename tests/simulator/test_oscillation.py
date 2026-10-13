@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Tests for oscillation detection in steady-state simulations."""
 
 from __future__ import annotations

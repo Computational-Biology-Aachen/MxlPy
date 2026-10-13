@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Physical invariants of the JAX models' simulation and training paths.
 
 Line coverage of ``mxlpy.jax`` was already ~98% when ``FluxAnode`` was found

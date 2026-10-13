@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Diffing utilities for comparing models."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Edge case tests for parallel.py."""
 
 from __future__ import annotations

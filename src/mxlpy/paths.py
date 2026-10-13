@@ -1,3 +1,5 @@
+# Copyright 2025 Marvin van Aalst, Anna Matuszyńska
+
 """Shared paths between the mxlpy package."""
 
 from __future__ import annotations
