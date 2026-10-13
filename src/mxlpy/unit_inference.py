@@ -102,7 +102,11 @@ def unit_of_expr(
             if (base_unit := unit_of_expr(base, units)) is None:
                 return None
             return base_unit ** _exact(exp)
-        case sympy.Add() | sympy.Min() | sympy.Max():
+        case sympy.Min() | sympy.Max():
+            # numeric guards such as max(1e-30, x) take the unit of the other terms
+            terms = [arg for arg in expr.args if not arg.is_number] or list(expr.args)
+            return _unit_of_terms(terms, units)  # type: ignore[arg-type]
+        case sympy.Add():
             return _unit_of_terms(expr.args, units)  # type: ignore[arg-type]
         case sympy.Abs():
             return unit_of_expr(expr.args[0], units)

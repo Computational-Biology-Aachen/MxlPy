@@ -521,3 +521,10 @@ def test_zero_rate_does_not_infer_units() -> None:
     )
     result = model.infer_units(time_unit=second)
     assert not result.has_conflicts()
+
+
+def test_unit_of_expr_numeric_guard_in_max() -> None:
+    a = sympy.Symbol("a")
+    assert unit_of_expr(sympy.Max(1e-30, a), {a: mmol}) == mmol
+    assert unit_of_expr(sympy.Min(1.0, a), {a: mmol}) == mmol
+    assert unit_of_expr(a + 1, {a: mmol}) not in (mmol, sympy.S.One)
