@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import cast
 
+import pandas as pd
 import pytest
 
 from mxlpy import Derived, KineticModelBuilder, fns
@@ -178,3 +179,16 @@ def test_check_units_unparseable_rate_is_none() -> None:
     )
     assert model.check_units(time_unit=second).per_variable == {"A": {"v1": None}}
     assert model.infer_units(time_unit=second).reactions["v1"] is not None
+
+
+def test_check_units_data_argument_is_none() -> None:
+    def scaled(a: float, data: pd.Series) -> float:
+        return a * float(data.sum())
+
+    model = (
+        KineticModelBuilder()
+        .add_variable("A", 1.0, unit=mmol)
+        .add_data("spectrum", pd.Series([1.0, 2.0]))
+        .add_reaction("v1", scaled, stoichiometry={"A": -1}, args=["A", "spectrum"])
+    )
+    assert model.check_units(time_unit=second).per_variable == {"A": {"v1": None}}

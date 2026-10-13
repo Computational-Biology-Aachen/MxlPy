@@ -3277,6 +3277,9 @@ class KineticModelBuilder:
                 return time_unit
             if arg in surrogate_units:
                 return surrogate_units[arg]
+            if arg in self._data:
+                # data (e.g. spectra) carries no unit information
+                return None
             if (par := self._parameters.get(arg)) is not None:
                 return par.unit
             if (var := self._variables.get(arg)) is not None:
