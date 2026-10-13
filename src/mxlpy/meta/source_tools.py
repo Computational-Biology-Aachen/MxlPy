@@ -1240,7 +1240,7 @@ def fn_to_sympy_expr(
 
         return cast(sympy.Expr, sympy_expr)
 
-    except (TypeError, ValueError, NotImplementedError) as e:
+    except (KeyError, TypeError, ValueError, NotImplementedError) as e:
         msg = f"Failed parsing function of {origin}"
         _LOGGER.warning(msg)
         _LOGGER.debug("", exc_info=e)

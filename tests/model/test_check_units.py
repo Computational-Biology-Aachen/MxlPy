@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from mxlpy import Derived, KineticModelBuilder, fns
@@ -161,3 +163,18 @@ def test_check_units_zero_branch_is_unitless() -> None:
         .add_reaction("v1", gated, stoichiometry={"A": -1}, args=["A", "k", "light"])
     )
     assert model.check_units(time_unit=second).per_variable == {"A": {"v1": True}}
+
+
+def _cast_rate(s: float, k: float) -> float:
+    return cast(float, k * s)
+
+
+def test_check_units_unparseable_rate_is_none() -> None:
+    model = (
+        KineticModelBuilder()
+        .add_variable("A", 1.0, unit=mmol)
+        .add_parameter("k", 1.0, unit=1 / second)  # type: ignore[arg-type]
+        .add_reaction("v1", _cast_rate, stoichiometry={"A": -1}, args=["A", "k"])
+    )
+    assert model.check_units(time_unit=second).per_variable == {"A": {"v1": None}}
+    assert model.infer_units(time_unit=second).reactions["v1"] is not None
