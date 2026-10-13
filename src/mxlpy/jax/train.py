@@ -244,7 +244,8 @@ class IntegrationSettings:
     alpha : float or None
         Hard/learned decode mix forwarded to ``integrate*`` for
         :class:`~mxlpy.jax.models.Anode`/:class:`~mxlpy.jax.models.FluxAnode`
-        with an annealed latent mapper (:class:`~mxlpy.jax.models.MixedLatentMapper`,
+        (and the :class:`~mxlpy.jax.models.AugUde`/:class:`~mxlpy.jax.models.FluxAugUde`
+        built on them) with an annealed latent mapper (:class:`~mxlpy.jax.models.MixedLatentMapper`,
         :class:`~mxlpy.jax.models.TrainableZ0LatentMapper`), which require it;
         ignored by every other model. Anneal it across a curriculum by giving
         each stage its own settings (:data:`IntegrationSettingsPerStage`).

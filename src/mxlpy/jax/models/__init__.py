@@ -5,8 +5,8 @@
 Conventions shared by every model here:
 
 * Every model integrates in its own *ODE state*. For most models that's
-  simply the observed variables; :class:`Anode`/:class:`FluxAnode`
-  integrate in a latent space of
+  simply the observed variables; :class:`Anode`/:class:`FluxAnode` and
+  :class:`AugUde`/:class:`FluxAugUde` integrate in a latent space of
   ``n_obs + n_hidden`` dimensions instead, mapped to and from observations
   by a :class:`LatentMapper` (see :meth:`Base._encode`/:meth:`Base._decode`). ``integrate*`` always takes and returns
   observations; ``alpha`` is forwarded to the latent decode and ignored by
@@ -19,6 +19,7 @@ Conventions shared by every model here:
 """
 
 from ._aug_node import Anode, FluxAnode
+from ._aug_ude import AugUde, FluxAugUde
 from ._base import (
     Base,
     CombineOp,
@@ -45,9 +46,11 @@ from ._ude import FluxUde, Ude
 
 __all__ = [
     "Anode",
+    "AugUde",
     "Base",
     "CombineOp",
     "FluxAnode",
+    "FluxAugUde",
     "FluxBase",
     "FluxNode",
     "FluxOde",

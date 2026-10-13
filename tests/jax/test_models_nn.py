@@ -1,4 +1,4 @@
-"""Tests for the neural JAX model classes: Node, FluxNode, Anode, FluxAnode, Ude, FluxUde.
+"""Tests for the neural JAX model classes: Node, FluxNode, Anode, FluxAnode, Ude, FluxUde, AugUde, FluxAugUde.
 
 Until now these classes had zero test coverage, which is exactly how a real
 ``AttributeError`` in ``FluxUde.__call__`` (it referenced a field that didn't
@@ -18,14 +18,19 @@ import pytest
 from mxlpy.jax.ensemble import batch_simulate, unstack_models
 from mxlpy.jax.models import (
     Anode,
+    AugUde,
     FluxAnode,
+    FluxAugUde,
     FluxNode,
     FluxOde,
     FluxUde,
+    FullLatentMapper,
     HardLatentMapper,
+    LatentMapperFn,
     MixedLatentMapper,
     Node,
     Ode,
+    SoftLatentMapper,
     TrainableZ0LatentMapper,
     Ude,
 )
@@ -855,6 +860,187 @@ def test_fluxude_simulate_reports_combined_fluxes() -> None:
     assert sim.ode_fluxes is not None
     assert sim.nn_fluxes is not None
     assert jnp.allclose(sim.fluxes, sim.ode_fluxes + sim.nn_fluxes)
+
+
+# ---------------------------------------------------------------------------
+# AugUde
+# ---------------------------------------------------------------------------
+
+
+def _augude_parts(
+    latent_mapper: LatentMapperFn = HardLatentMapper,
+) -> tuple[Ode, Anode]:
+    def rhs(time: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
+        return -y
+
+    def readout_fn(time: float, y: jnp.ndarray, args: jnp.ndarray) -> jnp.ndarray:  # noqa: ARG001
+        return jnp.array([9.0])
+
+    ode = Ode(
+        rhs=rhs,
+        pars=jnp.array([]),
+        variable_names=_names(2),
+        readout_fn=readout_fn,
+        readout_names=("r",),
+    )
+    nn = Anode(
+        variable_names=_names(2),
+        n_hidden=1,
+        width=4,
+        depth=1,
+        key=_KEY,
+        latent_mapper=latent_mapper,
+    )
+    return ode, nn
+
+
+@pytest.mark.parametrize("op", ["+", "*", "rel"])
+def test_augude_call_combines_observed_slice_and_passes_hidden(op: str) -> None:
+    ode, nn = _augude_parts()
+    aude = AugUde(ode=ode, nn=nn, op=op)  # type: ignore[arg-type]
+    z, args = jnp.array([2.0, 3.0, 0.5]), jnp.array([])
+    d = nn(0.0, z, args)
+    dz = aude(0.0, z, args)
+    assert dz.shape == (3,)
+    assert jnp.allclose(dz[:2], aude.op(ode(0.0, z[:2], args), d[:2]))
+    assert jnp.allclose(dz[2:], d[2:])
+
+
+def test_augude_mechanistic_part_ignores_hidden_dims() -> None:
+    ode, nn = _augude_parts()
+    aude = AugUde(ode=ode, nn=nn, op="-")
+    args = jnp.array([])
+    z1, z2 = jnp.array([2.0, 3.0, 0.5]), jnp.array([2.0, 3.0, -4.0])
+    # with op "-", dy + nn_obs recovers the mechanistic term alone
+    mech1 = aude(0.0, z1, args)[:2] + nn(0.0, z1, args)[:2]
+    mech2 = aude(0.0, z2, args)[:2] + nn(0.0, z2, args)[:2]
+    assert jnp.allclose(mech1, mech2)
+
+
+def test_augude_rejects_mismatched_variable_names() -> None:
+    ode, _ = _augude_parts()
+    nn = Anode(variable_names=("p", "q"), n_hidden=1, width=4, depth=1, key=_KEY)
+    with pytest.raises(ValueError, match="variable_names"):
+        AugUde(ode=ode, nn=nn, op="+")
+
+
+def test_augude_rejects_unknown_op() -> None:
+    ode, nn = _augude_parts()
+    with pytest.raises(ValueError, match="unknown op"):
+        AugUde(ode=ode, nn=nn, op="adjust")  # type: ignore[arg-type]
+
+
+def test_augude_rejects_full_latent_mapper() -> None:
+    ode, nn = _augude_parts(FullLatentMapper)
+    with pytest.raises(TypeError, match="FullLatentMapper"):
+        AugUde(ode=ode, nn=nn, op="+")
+
+
+@pytest.mark.parametrize(
+    "latent_mapper", [HardLatentMapper, SoftLatentMapper, MixedLatentMapper]
+)
+def test_augude_accepts_observation_preserving_mappers(
+    latent_mapper: LatentMapperFn,
+) -> None:
+    ode, nn = _augude_parts(latent_mapper)
+    AugUde(ode=ode, nn=nn, op="+")
+
+
+def test_augude_integrate_decodes_to_n_obs() -> None:
+    ode, nn = _augude_parts()
+    aude = AugUde(ode=ode, nn=nn, op="+")
+    y0 = jnp.array([1.0, 2.0])
+    ts = jnp.linspace(0.0, 1.0, 5)
+    ys = aude.integrate(ts, y0, max_steps=4096, args=jnp.array([]))
+    assert ys.shape == (5, 2)
+    assert jnp.allclose(ys[0], y0)
+    protocol = jnp.zeros((2, 0))
+    ys_p = aude.integrate_protocol(
+        [jnp.array([0.5]), jnp.array([1.0])], y0, protocol, max_steps=4096
+    )
+    assert ys_p.shape == (2, 2)
+    # random hidden dynamics need not settle; t1 caps the solve, only shapes matter
+    _, y_ss = aude.integrate_to_steady_state(
+        y0, max_steps=4096, args=jnp.array([]), t1=1.0
+    )
+    assert y_ss.shape == (2,)
+
+
+def test_augude_simulate_keeps_latent_and_delegates_readouts() -> None:
+    ode, nn = _augude_parts()
+    aude = AugUde(ode=ode, nn=nn, op="+")
+    sim = aude.simulate_time_course(
+        jnp.array([0.0, 0.1]), jnp.array([1.0, 2.0]), max_steps=4096
+    )
+    assert sim.ys.shape == (2, 2)
+    assert sim.readout_names == ("r",)
+    assert jnp.allclose(sim.readouts, 9.0)
+
+
+# ---------------------------------------------------------------------------
+# FluxAugUde
+# ---------------------------------------------------------------------------
+
+
+def _fluxaugude_parts(
+    latent_mapper: LatentMapperFn = HardLatentMapper,
+) -> tuple[FluxOde, FluxAnode]:
+    flux_ode, _ = _fluxude_parts()
+    flux_nn = FluxAnode.from_flux_ode(
+        flux_ode, n_hidden=1, key=_KEY, latent_mapper=latent_mapper
+    )
+    return flux_ode, flux_nn
+
+
+def test_fluxaugude_combines_fluxes_on_observed_slice_before_nv() -> None:
+    flux_ode, flux_nn = _fluxaugude_parts()
+    faude = FluxAugUde(flux_ode=flux_ode, flux_nn=flux_nn, op="*")
+    z, args = jnp.array([2.0, 3.0, 0.5]), jnp.array([])
+    fluxes = flux_ode.fluxes(0.0, z[:2], args) * flux_nn.fluxes(0.0, z, args)
+    assert jnp.allclose(faude.fluxes(0.0, z, args), fluxes)
+    dz = faude(0.0, z, args)
+    assert dz.shape == (3,)
+    assert jnp.allclose(dz[:2], flux_ode.nv(fluxes))
+    assert jnp.allclose(dz[2:], flux_nn(0.0, z, args)[2:])
+
+
+def test_fluxaugude_rejects_mismatched_flux_names() -> None:
+    flux_ode, _ = _fluxude_parts()
+    flux_nn = FluxAnode(
+        variable_names=("a", "b"),
+        flux_names=("v0", "v1"),
+        n_hidden=1,
+        flux_width=4,
+        flux_depth=1,
+        markov_width=4,
+        markov_depth=1,
+        key=_KEY,
+        nv=flux_ode.nv,
+    )
+    with pytest.raises(ValueError, match="flux_names"):
+        FluxAugUde(flux_ode=flux_ode, flux_nn=flux_nn, op="+")
+
+
+def test_fluxaugude_rejects_full_latent_mapper() -> None:
+    flux_ode, flux_nn = _fluxaugude_parts(FullLatentMapper)
+    with pytest.raises(TypeError, match="FullLatentMapper"):
+        FluxAugUde(flux_ode=flux_ode, flux_nn=flux_nn, op="+")
+
+
+def test_fluxaugude_simulate_reports_flux_parts() -> None:
+    flux_ode, flux_nn = _fluxaugude_parts()
+    faude = FluxAugUde(flux_ode=flux_ode, flux_nn=flux_nn, op="+")
+    sim = faude.simulate_time_course(jnp.array([0.0, 0.1]), jnp.ones(2), max_steps=4096)
+    assert sim.ys.shape == (2, 2)
+    assert list(sim.fluxes_df.columns) == ["v0", "v1", "v2"]
+    assert sim.ode_fluxes is not None
+    assert sim.nn_fluxes is not None
+    assert jnp.allclose(sim.fluxes, sim.ode_fluxes + sim.nn_fluxes)
+    assert jnp.allclose(
+        sim.ode_fluxes,
+        jax.vmap(lambda t, y: flux_ode.fluxes(t, y, jnp.zeros((0,))))(sim.ts, sim.ys),
+    )
+    assert float(sim.readouts[0, 0]) == 11.0
 
 
 # ---------------------------------------------------------------------------

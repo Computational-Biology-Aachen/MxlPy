@@ -367,6 +367,54 @@
   "compiles": 19,
   "peak_mb": 38
  },
+ "tests/jax/test_models_nn.py::test_augude_accepts_observation_preserving_mappers[HardLatentMapper]": {
+  "compiles": 12,
+  "peak_mb": 32
+ },
+ "tests/jax/test_models_nn.py::test_augude_accepts_observation_preserving_mappers[MixedLatentMapper]": {
+  "compiles": 14,
+  "peak_mb": 36
+ },
+ "tests/jax/test_models_nn.py::test_augude_accepts_observation_preserving_mappers[SoftLatentMapper]": {
+  "compiles": 14,
+  "peak_mb": 38
+ },
+ "tests/jax/test_models_nn.py::test_augude_call_combines_observed_slice_and_passes_hidden[*]": {
+  "compiles": 31,
+  "peak_mb": 58
+ },
+ "tests/jax/test_models_nn.py::test_augude_call_combines_observed_slice_and_passes_hidden[+]": {
+  "compiles": 31,
+  "peak_mb": 55
+ },
+ "tests/jax/test_models_nn.py::test_augude_call_combines_observed_slice_and_passes_hidden[rel]": {
+  "compiles": 32,
+  "peak_mb": 53
+ },
+ "tests/jax/test_models_nn.py::test_augude_integrate_decodes_to_n_obs": {
+  "compiles": 39,
+  "peak_mb": 139
+ },
+ "tests/jax/test_models_nn.py::test_augude_mechanistic_part_ignores_hidden_dims": {
+  "compiles": 31,
+  "peak_mb": 53
+ },
+ "tests/jax/test_models_nn.py::test_augude_rejects_full_latent_mapper": {
+  "compiles": 13,
+  "peak_mb": 35
+ },
+ "tests/jax/test_models_nn.py::test_augude_rejects_mismatched_variable_names": {
+  "compiles": 14,
+  "peak_mb": 38
+ },
+ "tests/jax/test_models_nn.py::test_augude_rejects_unknown_op": {
+  "compiles": 12,
+  "peak_mb": 32
+ },
+ "tests/jax/test_models_nn.py::test_augude_simulate_keeps_latent_and_delegates_readouts": {
+  "compiles": 28,
+  "peak_mb": 94
+ },
  "tests/jax/test_models_nn.py::test_batched_simulation_reports_success_per_member": {
   "compiles": 41,
   "peak_mb": 106
@@ -450,6 +498,22 @@
  "tests/jax/test_models_nn.py::test_fluxanode_simulate_to_steady_state": {
   "compiles": 30,
   "peak_mb": 87
+ },
+ "tests/jax/test_models_nn.py::test_fluxaugude_combines_fluxes_on_observed_slice_before_nv": {
+  "compiles": 43,
+  "peak_mb": 77
+ },
+ "tests/jax/test_models_nn.py::test_fluxaugude_rejects_full_latent_mapper": {
+  "compiles": 18,
+  "peak_mb": 47
+ },
+ "tests/jax/test_models_nn.py::test_fluxaugude_rejects_mismatched_flux_names": {
+  "compiles": 16,
+  "peak_mb": 41
+ },
+ "tests/jax/test_models_nn.py::test_fluxaugude_simulate_reports_flux_parts": {
+  "compiles": 43,
+  "peak_mb": 118
  },
  "tests/jax/test_models_nn.py::test_fluxnode_forward_pass_shape": {
   "compiles": 23,
