@@ -124,7 +124,10 @@ def _unit_of_terms(
     terms: Sequence[sympy.Expr],
     units: dict[sympy.Symbol, sympy.Expr],
 ) -> sympy.Expr | None:
-    term_units = [unit_of_expr(term, units) for term in terms]
+    # a literal zero (e.g. an `else: return 0` branch) is compatible with any unit
+    term_units = [unit_of_expr(term, units) for term in terms if not term.is_zero]
+    if not term_units:
+        return sympy.S.One
     known = [i for i in term_units if i is not None]
     if len(known) != len(term_units):
         return None

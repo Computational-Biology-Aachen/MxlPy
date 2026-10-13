@@ -145,3 +145,19 @@ def test_check_units_reaction_as_argument() -> None:
     )
     check = model.check_units(time_unit=second)
     assert check.per_variable == {"A": {"v1": True}, "B": {"v2": True}}
+
+
+def test_check_units_zero_branch_is_unitless() -> None:
+    def gated(s: float, k: float, light: float) -> float:
+        if light > 0:
+            return k * s
+        return 0
+
+    model = (
+        KineticModelBuilder()
+        .add_variable("A", 1.0, unit=mmol)
+        .add_parameter("k", 1.0, unit=1 / second)  # type: ignore[arg-type]
+        .add_parameter("light", 1.0, unit=dimensionless)
+        .add_reaction("v1", gated, stoichiometry={"A": -1}, args=["A", "k", "light"])
+    )
+    assert model.check_units(time_unit=second).per_variable == {"A": {"v1": True}}
