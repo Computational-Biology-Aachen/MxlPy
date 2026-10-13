@@ -3308,7 +3308,14 @@ class KineticModelBuilder:
             return fn_unit(stoich.fn, stoich.args, owner, ())
 
         flux_units: dict[str, dict[str, sympy.Expr | None]] = {}
+        # a rate that is identically zero is compatible with any unit
+        zero_rates: set[str] = set()
         for name, rxn in self._reactions.items():
+            symbolic_rate = fn_to_sympy_expr(
+                rxn.fn, origin="unit-checking", model_args=list_of_symbols(rxn.args)
+            )
+            if symbolic_rate is not None and symbolic_rate.is_zero:
+                zero_rates.add(name)
             rxn_unit = fn_unit(rxn.fn, rxn.args, name, (name,))
             for var, stoich in rxn.stoichiometry.items():
                 factor = stoich_unit(stoich, name)
@@ -3335,7 +3342,9 @@ class KineticModelBuilder:
             expected = var_unit / time_unit  # type: ignore[operator]
             check_per_rxn: dict[str, bool | Failure | None] = {}
             for rxn, flux_unit in flux_units.get(name, {}).items():
-                if flux_unit is None:
+                if rxn in zero_rates:
+                    check_per_rxn[rxn] = True
+                elif flux_unit is None:
                     check_per_rxn[rxn] = None
                 elif flux_unit == expected:
                     check_per_rxn[rxn] = True

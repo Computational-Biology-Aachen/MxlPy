@@ -192,3 +192,16 @@ def test_check_units_data_argument_is_none() -> None:
         .add_reaction("v1", scaled, stoichiometry={"A": -1}, args=["A", "spectrum"])
     )
     assert model.check_units(time_unit=second).per_variable == {"A": {"v1": None}}
+
+
+def _zero() -> float:
+    return 0
+
+
+def test_check_units_zero_rate_is_compatible() -> None:
+    model = (
+        KineticModelBuilder()
+        .add_variable("A", 1.0, unit=mmol)
+        .add_reaction("v1", _zero, stoichiometry={"A": 1}, args=[])
+    )
+    assert model.check_units(time_unit=second).per_variable == {"A": {"v1": True}}
