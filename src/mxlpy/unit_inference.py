@@ -667,10 +667,13 @@ def infer_units(
         # args are known we solve for the candidate.  For unknown args this
         # drives propagation; for already-known args it records an extra
         # constraint for conflict detection.
+        # An explicit unit on a derived value or readout overrides its function
+        # (e.g. one hiding a unit-carrying constant), so it does not constrain
+        # the function's arguments.
         backward_items: list[tuple[str, object, list[str]]] = [
             *((n, r.fn, r.args) for n, r in reactions.items()),
-            *((n, d.fn, d.args) for n, d in derived.items()),
-            *((n, ro.fn, ro.args) for n, ro in readouts.items()),
+            *((n, d.fn, d.args) for n, d in derived.items() if d.unit is None),
+            *((n, ro.fn, ro.args) for n, ro in readouts.items() if ro.unit is None),
         ]
         for comp_name, fn, args in backward_items:
             out_unit = get_unit(comp_name)

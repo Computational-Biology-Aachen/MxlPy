@@ -17,7 +17,7 @@ from mxlpy import Conflict, Derived, KineticModelBuilder, fns
 from mxlpy._kinetic_builder import MdText
 from mxlpy.surrogates import qss
 from mxlpy.unit_inference import unit_of_expr
-from mxlpy.units import liter, mmol, second
+from mxlpy.units import liter, mmol, second, volt
 
 mmol_per_second = mmol / second
 per_second = 1 / second  # type: ignore
@@ -492,3 +492,19 @@ def test_inconsistent_sum_is_not_propagated() -> None:
     result = model.infer_units(time_unit=second)
     assert result.reactions["v1"] == mmol_per_second
     assert result.derived["d"] == mmol_per_second
+
+
+def test_explicit_derived_unit_does_not_constrain_args() -> None:
+    """pmf = dpsi + 0.06 * dpH hides 0.06 V/pH; the explicit unit overrides it."""
+
+    def pmf(dpsi: float, ph_st: float, ph_lu: float) -> float:
+        return dpsi + 0.06 * (ph_st - ph_lu)
+
+    model = (
+        KineticModelBuilder()
+        .add_parameter("dpsi", 0.1, unit=volt)
+        .add_parameter("pH_st", 7.8, unit=sympy.S.One)
+        .add_parameter("pH_lu", 6.0, unit=sympy.S.One)
+        .add_derived("pmf", pmf, args=["dpsi", "pH_st", "pH_lu"], unit=volt)
+    )
+    assert not model.infer_units(time_unit=second).has_conflicts()
