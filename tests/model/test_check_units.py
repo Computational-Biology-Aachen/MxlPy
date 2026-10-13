@@ -130,3 +130,18 @@ def test_check_units_surrogate_output_units() -> None:
 def test_check_units_surrogate_without_units_is_none() -> None:
     check = _surrogate_model({}).check_units(time_unit=second)
     assert check.per_variable == {"A": {"v1": None, "r2": None}}
+
+
+def test_check_units_reaction_as_argument() -> None:
+    model = (
+        KineticModelBuilder()
+        .add_variable("A", 1.0, unit=mmol)
+        .add_variable("B", 1.0, unit=mmol)
+        .add_parameter("k", 1.0, unit=1 / second)  # type: ignore[arg-type]
+        .add_reaction(
+            "v1", fns.mass_action_1s, stoichiometry={"A": -1}, args=["A", "k"]
+        )
+        .add_reaction("v2", fns.twice, stoichiometry={"B": 1}, args=["v1"])
+    )
+    check = model.check_units(time_unit=second)
+    assert check.per_variable == {"A": {"v1": True}, "B": {"v2": True}}

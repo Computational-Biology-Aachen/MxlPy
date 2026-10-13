@@ -3243,7 +3243,8 @@ class KineticModelBuilder:
             Results of the unit consistency check.
 
         """
-        derived_units: dict[str, sympy.Expr | None] = {}
+        # units of derived values and reactions computed from their inputs
+        computed_units: dict[str, sympy.Expr | None] = {}
 
         def fn_unit(
             fn: Callable,
@@ -3280,16 +3281,20 @@ class KineticModelBuilder:
                 return par.unit
             if (var := self._variables.get(arg)) is not None:
                 return var.unit
-            if (der := self._derived.get(arg)) is not None:
-                if der.unit is not None:
-                    return der.unit
+            if (
+                fn_el := self._derived.get(arg) or self._reactions.get(arg)
+            ) is not None:
+                if fn_el.unit is not None:
+                    return fn_el.unit
                 if arg in stack:
-                    msg = f"Cyclic dependency while resolving unit of derived '{arg}'"
+                    msg = f"Cyclic dependency while resolving unit of '{arg}'"
                     raise ValueError(msg)
-                if arg not in derived_units:
-                    derived_units[arg] = fn_unit(der.fn, der.args, arg, (*stack, arg))
-                return derived_units[arg]
-            msg = f"Argument '{arg}' in '{owner}' is neither a parameter, variable, derived value nor surrogate output - unit checking only supports those"
+                if arg not in computed_units:
+                    computed_units[arg] = fn_unit(
+                        fn_el.fn, fn_el.args, arg, (*stack, arg)
+                    )
+                return computed_units[arg]
+            msg = f"Argument '{arg}' in '{owner}' is neither a parameter, variable, derived value, reaction nor surrogate output - unit checking only supports those"
             raise NotImplementedError(msg)
 
         def stoich_unit(stoich: float | Derived, owner: str) -> sympy.Expr | None:
@@ -3301,7 +3306,7 @@ class KineticModelBuilder:
 
         flux_units: dict[str, dict[str, sympy.Expr | None]] = {}
         for name, rxn in self._reactions.items():
-            rxn_unit = fn_unit(rxn.fn, rxn.args, name, ())
+            rxn_unit = fn_unit(rxn.fn, rxn.args, name, (name,))
             for var, stoich in rxn.stoichiometry.items():
                 factor = stoich_unit(stoich, name)
                 flux_units.setdefault(var, {})[name] = (
