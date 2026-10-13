@@ -77,9 +77,13 @@ def unit_of_expr(
     Returns
     -------
     sympy.Expr | None
-        The unit of ``expr``, or None if a symbol has no known unit.
+        The unit of ``expr``, or None if a symbol has no known unit or
+        ``expr`` is identically zero.
 
     """
+    if expr.is_zero:
+        # an identically zero expression is compatible with any unit
+        return None
     match expr:
         case sympy.Symbol():
             return units.get(expr)

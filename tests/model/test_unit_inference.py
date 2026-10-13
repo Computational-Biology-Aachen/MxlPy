@@ -508,3 +508,16 @@ def test_explicit_derived_unit_does_not_constrain_args() -> None:
         .add_derived("pmf", pmf, args=["dpsi", "pH_st", "pH_lu"], unit=volt)
     )
     assert not model.infer_units(time_unit=second).has_conflicts()
+
+
+def test_zero_rate_does_not_infer_units() -> None:
+    def zero() -> float:
+        return 0
+
+    model = (
+        KineticModelBuilder()
+        .add_variable("A", 1.0, unit=mmol)
+        .add_reaction("v1", zero, stoichiometry={"A": 1}, args=[])
+    )
+    result = model.infer_units(time_unit=second)
+    assert not result.has_conflicts()
