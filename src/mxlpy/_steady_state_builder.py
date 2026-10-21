@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 import copy
+import inspect
+import itertools as it
 import logging
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Self, cast
 
 import pandas as pd
 from wadler_lindig import pformat
 
+from mxlpy import _topo
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
 )
+from mxlpy.parallel import Cache, parallelise
+from mxlpy.surrogates.abstract import AbstractSurrogate
 from mxlpy.types import (
     Annotation,
     Derived,
@@ -28,7 +34,7 @@ from mxlpy.unit_inference import (
 __all__ = ["LOGGER", "ModelCache", "SteadyStateModelBuilder", "TableView"]
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Hashable, Iterable, Mapping
 
     import sympy
 
@@ -58,6 +64,54 @@ class TableView:
         """
         return self.data.to_markdown()
 
+def _check_function_arity(function: Callable, arity: int) -> bool:
+    """Check if the amount of arguments given fits the argument count of the function."""
+    argspec = inspect.getfullargspec(function)
+    # Give up on *args functions
+    if argspec.varargs is not None:
+        return True
+
+    # The sane case
+    if len(argspec.args) == arity:
+        return True
+
+    # It might be that the user has set some args to default values,
+    # in which case they are also ok (might be kwonly as well)
+    defaults = argspec.defaults
+    if defaults is not None and len(argspec.args) + len(defaults) == arity:
+        return True
+    kwonly = argspec.kwonlyargs
+    return bool(defaults is not None and len(argspec.args) + len(kwonly) == arity)
+
+
+def _simulate_worker(
+    params: dict[str, float], *, model: SteadyStateModelBuilder
+) -> pd.Series:
+    local_model = copy.deepcopy(model)
+    local_model.update_parameters(params)
+    return local_model.simulate()
+
+
+class ArityMismatchError(Exception):
+    """Mismatch between python function and model arguments."""
+
+    def __init__(self, name: str, fn: Callable, args: list[str]) -> None:
+        """Format message."""
+        argspec = inspect.getfullargspec(fn)
+
+        message = f"Function arity mismatch for {name}.\n"
+        message += "\n".join(
+            (
+                f"{i:<8.8} | {j:<10.10}"
+                for i, j in [
+                    ("Fn args", "Model args"),
+                    ("-------", "----------"),
+                    *it.zip_longest(argspec.args, args, fillvalue="---"),
+                ]
+            )
+        )
+        super().__init__(message)
+
 
 @dataclass(slots=True)
 class ModelCache:
@@ -65,8 +119,6 @@ class ModelCache:
 
     Attributes
     ----------
-    var_names
-        A list of variable names.
     parameter_values
         A dictionary mapping parameter names to their values.
     derived_parameters
@@ -77,10 +129,6 @@ class ModelCache:
         A dictionary mapping compound names to their stoichiometric coefficients.
     dyn_stoich_by_cpds
         A dictionary mapping compound names to their dynamic stoichiometric coefficients.
-    dxdt
-        A pandas Series representing the rate of change of variables.
-    initial_conditions
-        calculated initial conditions
 
     """
 
@@ -89,13 +137,9 @@ class ModelCache:
         return pformat(self)
 
     order: list[str]  # mostly for debug purposes
-    var_names: list[str]
     dyn_order: list[str]
     base_parameter_values: dict[str, float]
     all_parameter_values: dict[str, float]
-    stoich_by_cpds: dict[str, dict[str, float]]
-    dyn_stoich_by_cpds: dict[str, dict[str, Derived]]
-    initial_conditions: dict[str, float]
 
 
 def _normalize_annotations(
@@ -159,7 +203,75 @@ class SteadyStateModelBuilder:
             An instance of ModelCache containing the initialized cache data.
 
         """
-        raise NotImplementedError
+        parameter_names = set(self._parameters)
+        all_parameter_names = set(parameter_names)
+
+        base_parameter_values: dict[str, float] = {
+            k: val
+            for k, v in self._parameters.items()
+            if not isinstance(val := v.value, InitialAssignment)
+        }
+
+        # Sanity checks
+        for name, el in it.chain(
+            self._derived.items(),
+        ):
+            if not _check_function_arity(el.fn, len(el.args)):
+                raise ArityMismatchError(name, el.fn, el.args)
+
+        # Sort derived & reactions
+        available = (
+            set(base_parameter_values)
+        )
+        to_sort = (
+            self._derived
+        )
+        order = _topo.sort_dependencies(
+            available=available,
+            elements=[
+                _topo.Dependency(name=k, required=set(v.args), provided={k})
+                if not isinstance(v, AbstractSurrogate)
+                else _topo.Dependency(
+                    name=k, required=set(v.args), provided=set(v.outputs)
+                )
+                for k, v in to_sort.items()
+            ],
+        )
+
+        # Calculate all values once, including dynamic ones
+        # That way, we can make initial conditions dependent on e.g. rates
+        dependent = (
+            base_parameter_values
+        )
+        for name in order:
+            to_sort[name].calculate_inpl(name, dependent)
+
+        # Split derived into static and dynamic variables
+        static_order = []
+        dyn_order = []
+        for name in order:
+            derived = self._derived[name]
+            if all(i in all_parameter_names for i in derived.args):
+                static_order.append(name)
+                all_parameter_names.add(name)
+            else:
+                dyn_order.append(name)
+
+        all_parameter_values = dict(base_parameter_values)
+        for name in static_order:
+            if name in self._parameters or name in self._derived:
+                all_parameter_values[name] = cast(float, dependent[name])
+            else:
+                msg = f"Internal error: '{name}' appears in static_order but is not a parameter, variable, or derived - this is a bug in dependency sorting"
+                raise KeyError(msg)
+
+        self._cache = ModelCache(
+            order=order,
+            dyn_order=dyn_order,
+            base_parameter_values=base_parameter_values,
+            all_parameter_values=all_parameter_values,
+        )
+        return self._cache
 
     ###########################################################################
     # Ids
@@ -876,3 +988,85 @@ class SteadyStateModelBuilder:
         self._remove_id(name=name)
         self._derived.pop(name)
         return self
+
+    ##########################################################################
+    # Simulate
+    ##########################################################################
+
+    @_invalidate_cache
+    def simulate(self) -> pd.Series:
+        """Simulate the model with the current parameter values and return the derived values.
+        
+        Examples
+        --------
+            >>> model.simulate()
+                {"d1": 10, "d2": 20}
+
+        Returns
+        -------
+            A Series of the calculated derived values.
+
+        """
+        derived = self.get_raw_derived(as_copy=False)
+
+        res = {}
+
+        for name, der in derived.items():
+            res[name] = der.calculate(self.get_parameter_values())
+
+        return pd.Series(res)
+
+    @_invalidate_cache
+    def simulate_scan(
+        self,
+        to_scan: pd.DataFrame,
+        cache: Cache | None = None,
+        parallel: bool = True,
+    ) -> pd.DataFrame:
+        """Simulate the model for each row of parameter values.
+        
+        Returns
+        -------
+        SteadyStates
+            Steady-state results for each parameter set.
+
+        Examples
+        --------
+            >>> model.simulate_scan(
+            >>>     to_scan=pd.DataFrame({"k1": np.linspace(1, 2, 3)})
+            >>> )
+            k1      x      y
+            1.0   0.50   1.00
+            1.5   0.75   1.50
+            2.0   1.00   2.00
+            
+            >>> model.simulate_scan(
+            >>>     to_scan=cartesian_product({"k1": [1, 2], "k2": [3, 4]})
+            >>> )
+            | k1 | k2 |    x |   y |
+            | 1  | 3  | 0.33 |   1 |
+            | 1  | 4  | 0.25 |   1 |
+            | 2  | 3  | 0.66 |   2 |
+            | 2  | 4  | 0.5  |   2 |
+    
+        """
+        raw_index = (
+            pd.Index(to_scan.iloc[:, 0])
+            if to_scan.shape[1] == 1
+            else pd.MultiIndex.from_frame(to_scan)
+        )
+
+        inputs: list[tuple[Hashable, dict[str, float]]] = [
+            (index, cast(dict[str, float], row.to_dict()))
+            for index, row in to_scan.iterrows()
+        ]
+        res = parallelise(
+            partial(_simulate_worker, model=self),
+            inputs=inputs,
+            cache=cache,
+            parallel=parallel,
+        )
+
+        raw_results = [i[1] for i in res]
+
+        return pd.DataFrame(raw_results, index=raw_index)
