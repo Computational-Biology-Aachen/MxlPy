@@ -119,6 +119,20 @@ def _sympy_true_divide(x: sympy.Expr, y: sympy.Expr) -> sympy.Expr:
     return x / y  # type: ignore
 
 
+def _sympy_positive(x: sympy.Expr) -> sympy.Expr:
+    return x
+
+
+def _sympy_trunc(x: sympy.Expr) -> sympy.Expr:
+    # sympy.trunc is polynomial coefficient truncation, not rounding towards zero
+    return sympy.sign(x) * sympy.floor(sympy.Abs(x))  # type: ignore
+
+
+def _sympy_fmod(x: sympy.Expr, y: sympy.Expr) -> sympy.Expr:
+    # sympy.Mod is floored (sign of y); math.fmod is truncated (sign of x)
+    return x - y * _sympy_trunc(x / y)  # type: ignore
+
+
 KNOWN_CONSTANTS: dict[float, sympy.Float] = {
     math.e: sympy.E,
     math.pi: sympy.pi,
@@ -164,7 +178,7 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     math.fabs: sympy.Abs,
     math.factorial: sympy.factorial,
     math.floor: sympy.floor,
-    math.fmod: sympy.Mod,
+    math.fmod: _sympy_fmod,
     # math.frexp: returns tuple, no sympy equivalent
     # math.fsum: takes iterable, no sympy equivalent
     math.gamma: sympy.gamma,
@@ -188,14 +202,15 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     math.pow: sympy.Pow,
     math.prod: sympy.prod,
     math.radians: sympy.rad,
-    math.remainder: sympy.rem,
+    # math.remainder: IEEE round-half-even remainder, no sympy equivalent
+    # (sympy.rem is polynomial remainder)
     math.sin: sympy.sin,
     math.sinh: sympy.sinh,
     math.sqrt: sympy.sqrt,
     # math.sumprod: takes iterables, no sympy equivalent
     math.tan: sympy.tan,
     math.tanh: sympy.tanh,
-    math.trunc: sympy.trunc,
+    math.trunc: _sympy_trunc,
     # math.ulp: float-specific, no sympy equivalent
     # numpy
     np.abs: sympy.Abs,
@@ -224,18 +239,18 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     np.exp: sympy.exp,
     np.floor: sympy.floor,
     np.gcd: sympy.gcd,
-    np.greater: sympy.GreaterThan,
+    np.greater: sympy.Gt,
     np.greater_equal: sympy.Ge,
-    np.invert: sympy.invert,
+    # np.invert: bitwise not (sympy.invert is modular inverse), no sympy equivalent
     np.lcm: sympy.lcm,
-    np.less: sympy.LessThan,
+    np.less: sympy.Lt,
     np.less_equal: sympy.Le,
     np.log: sympy.log,
     np.log10: _sympy_log10,
-    np.maximum: sympy.maximum,
-    np.minimum: sympy.minimum,
+    np.maximum: sympy.Max,
+    np.minimum: sympy.Min,
     np.mod: sympy.Mod,
-    np.positive: sympy.Abs,
+    np.positive: _sympy_positive,
     np.power: sympy.Pow,
     np.sign: sympy.sign,
     np.sin: sympy.sin,
@@ -246,7 +261,7 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     np.tan: sympy.tan,
     np.tanh: sympy.tanh,
     np.true_divide: _sympy_true_divide,
-    np.trunc: sympy.trunc,
+    np.trunc: _sympy_trunc,
     # np.vecdot: vector operation, no scalar sympy equivalent
 }
 
