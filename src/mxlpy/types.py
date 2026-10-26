@@ -264,6 +264,8 @@ class Variable:
     unit: sympy.Expr | None = None
     source: str | None = None
     annotations: list[Annotation] = field(default_factory=list)
+    display_name: str | None = None
+    tex_name: str | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -278,6 +280,8 @@ class Parameter:
     unit: sympy.Expr | None = None
     source: str | None = None
     annotations: list[Annotation] = field(default_factory=list)
+    display_name: str | None = None
+    tex_name: str | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -292,6 +296,8 @@ class Derived:
     args: list[str]
     unit: sympy.Expr | None = None
     annotations: list[Annotation] = field(default_factory=list)
+    display_name: str | None = None
+    tex_name: str | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -374,6 +380,8 @@ class Readout:
     fn: RateFn
     args: list[str]
     unit: sympy.Expr | None = None
+    display_name: str | None = None
+    tex_name: str | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -417,6 +425,8 @@ class Reaction:
     args: list[str]
     unit: sympy.Expr | None = None
     annotations: list[Annotation] = field(default_factory=list)
+    display_name: str | None = None
+    tex_name: str | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -480,6 +490,8 @@ class DiffEq:
     unit: sympy.Expr | None = None
     source: str | None = None
     annotations: list[Annotation] = field(default_factory=list)
+    display_name: str | None = None
+    tex_name: str | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""

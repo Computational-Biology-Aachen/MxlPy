@@ -17,7 +17,7 @@ import json
 from typing import TYPE_CHECKING
 
 import mxlpy
-from mxlpy import InitialAssignment, SteadyStateModelBuilder
+from mxlpy import InitialAssignment, SteadyStateModelBuilder, fns
 from mxlpy.serialize import (
     steady_state_model_from_dict,
     steady_state_model_to_dict,
@@ -140,3 +140,16 @@ def test_multi_parameter_derived_round_trips() -> None:
     restored_total = restored.get_raw_derived()["total"]
     args = {"p1": 4.0, "p2": 5.0}
     assert restored_total.calculate(args) == original_total.calculate(args)
+
+
+def test_display_and_tex_name_roundtrip() -> None:
+    model = (
+        SteadyStateModelBuilder()
+        .add_parameter("k", 1.0, tex_name="k_1")
+        .add_derived("d", fns.twice, args=["k"], display_name="Output")
+    )
+    restored = steady_state_model_from_dict(
+        steady_state_model_to_dict(model, model_id="m")
+    )
+    assert restored.get_raw_parameters()["k"].tex_name == "k_1"
+    assert restored.get_raw_derived()["d"].display_name == "Output"
