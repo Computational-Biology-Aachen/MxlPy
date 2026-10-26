@@ -21,7 +21,7 @@ from example_models import (
     get_tpi_ald_model,
     get_upper_glycolysis,
 )
-from mxlpy import Derived, InitialAssignment, KineticModelBuilder, fns
+from mxlpy import Derived, InitialAssignment, KineticModelBuilder, Slider, fns
 from mxlpy.meta import _mathml as mml
 from mxlpy.meta.sympy_tools import mathml_to_sympy, sympy_to_mathml
 from mxlpy.serialize import model_from_dict, model_to_dict
@@ -246,7 +246,13 @@ def test_surrogate_raises_serialization_error() -> None:
 def test_display_and_tex_name_roundtrip() -> None:
     model = (
         KineticModelBuilder()
-        .add_parameter("p1", 2.0, display_name="Rate", tex_name="k_1")
+        .add_parameter(
+            "p1",
+            2.0,
+            display_name="Rate",
+            tex_name="k_1",
+            slider=Slider(min="0", max="10", step="0.5", desc="rate"),
+        )
         .add_variable("v1", 1.0, display_name="Substrate")
         .add_derived("d1", fns.twice, args=["v1"], tex_name="d_1")
         .add_reaction(
@@ -265,6 +271,15 @@ def test_display_and_tex_name_roundtrip() -> None:
     restored = model_from_dict(data)
     assert restored.get_raw_parameters()["p1"].display_name == "Rate"
     assert restored.get_raw_parameters()["p1"].tex_name == "k_1"
+    assert restored.get_raw_parameters()["p1"].slider == Slider(
+        min="0", max="10", step="0.5", desc="rate"
+    )
+    assert data["model"]["parameters"]["p1"]["slider"] == {
+        "min": "0",
+        "max": "10",
+        "step": "0.5",
+        "desc": "rate",
+    }
     assert restored.get_raw_variables()["v1"].display_name == "Substrate"
     assert restored.get_raw_derived()["d1"].tex_name == "d_1"
     assert restored.get_raw_reactions()["r1"].display_name == "Consumption"

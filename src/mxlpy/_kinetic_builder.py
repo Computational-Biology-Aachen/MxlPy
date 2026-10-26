@@ -37,6 +37,7 @@ from mxlpy.types import (
     Parameter,
     Reaction,
     Readout,
+    Slider,
     Variable,
 )
 from mxlpy.unit_inference import (
@@ -686,6 +687,7 @@ class KineticModelBuilder:
         *,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Adds a parameter to the model.
 
@@ -709,6 +711,8 @@ class KineticModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -724,6 +728,7 @@ class KineticModelBuilder:
             annotations=_normalize_annotations(annotations),
             display_name=display_name,
             tex_name=tex_name,
+            slider=slider,
         )
         return self
 
@@ -758,6 +763,7 @@ class KineticModelBuilder:
                     annotations=v.annotations,
                     display_name=v.display_name,
                     tex_name=v.tex_name,
+                    slider=v.slider,
                 )
             else:
                 self.add_parameter(k, v)
@@ -827,6 +833,7 @@ class KineticModelBuilder:
         annotations: Annotation | Iterable[Annotation] | None = None,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Update the value of a parameter.
 
@@ -850,6 +857,8 @@ class KineticModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -879,6 +888,8 @@ class KineticModelBuilder:
             parameter.display_name = display_name
         if tex_name is not None:
             parameter.tex_name = tex_name
+        if slider is not None:
+            parameter.slider = slider
         return self
 
     def update_parameters(
@@ -911,6 +922,7 @@ class KineticModelBuilder:
                     annotations=v.annotations,
                     display_name=v.display_name,
                     tex_name=v.tex_name,
+                    slider=v.slider,
                 )
             else:
                 self.update_parameter(k, v)
@@ -1155,6 +1167,7 @@ class KineticModelBuilder:
         *,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Adds a variable to the model with the given name and initial condition.
 
@@ -1178,6 +1191,8 @@ class KineticModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -1193,6 +1208,7 @@ class KineticModelBuilder:
             annotations=_normalize_annotations(annotations),
             display_name=display_name,
             tex_name=tex_name,
+            slider=slider,
         )
         return self
 
@@ -1227,6 +1243,7 @@ class KineticModelBuilder:
                     annotations=v.annotations,
                     display_name=v.display_name,
                     tex_name=v.tex_name,
+                    slider=v.slider,
                 )
             else:
                 self.add_variable(name=name, initial_value=v)
@@ -1313,6 +1330,7 @@ class KineticModelBuilder:
         *,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Updates the value of a variable in the model.
 
@@ -1336,6 +1354,8 @@ class KineticModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -1361,6 +1381,8 @@ class KineticModelBuilder:
             variable.display_name = display_name
         if tex_name is not None:
             variable.tex_name = tex_name
+        if slider is not None:
+            variable.slider = slider
         return self
 
     def update_variables(
@@ -1393,6 +1415,7 @@ class KineticModelBuilder:
                     annotations=v.annotations,
                     display_name=v.display_name,
                     tex_name=v.tex_name,
+                    slider=v.slider,
                 )
             else:
                 self.update_variable(k, v)

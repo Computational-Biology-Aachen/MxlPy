@@ -56,6 +56,7 @@ __all__ = [
     "RetType",
     "Rhs",
     "SerializationError",
+    "Slider",
     "Variable",
 ]
 
@@ -257,6 +258,24 @@ class Annotation:
 
 
 @dataclass
+class Slider:
+    """Interactive-slider configuration for mxlweb.
+
+    Bounds are strings so the authored precision is preserved verbatim
+    (mxl-schemas ``slider``).
+    """
+
+    min: str
+    max: str
+    step: str
+    desc: str | None = None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+
+@dataclass
 class Variable:
     """Container for variable meta information."""
 
@@ -266,6 +285,7 @@ class Variable:
     annotations: list[Annotation] = field(default_factory=list)
     display_name: str | None = None
     tex_name: str | None = None
+    slider: Slider | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -282,6 +302,7 @@ class Parameter:
     annotations: list[Annotation] = field(default_factory=list)
     display_name: str | None = None
     tex_name: str | None = None
+    slider: Slider | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -492,6 +513,7 @@ class DiffEq:
     annotations: list[Annotation] = field(default_factory=list)
     display_name: str | None = None
     tex_name: str | None = None
+    slider: Slider | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""

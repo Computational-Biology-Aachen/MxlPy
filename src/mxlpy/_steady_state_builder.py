@@ -19,6 +19,7 @@ from mxlpy.types import (
     Derived,
     InitialAssignment,
     Parameter,
+    Slider,
 )
 from mxlpy.unit_inference import (
     _latex_view,
@@ -320,6 +321,7 @@ class SteadyStateModelBuilder:
         *,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Adds a parameter to the model.
 
@@ -343,6 +345,8 @@ class SteadyStateModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -358,6 +362,7 @@ class SteadyStateModelBuilder:
             annotations=_normalize_annotations(annotations),
             display_name=display_name,
             tex_name=tex_name,
+            slider=slider,
         )
         return self
 
@@ -392,6 +397,7 @@ class SteadyStateModelBuilder:
                     annotations=v.annotations,
                     display_name=v.display_name,
                     tex_name=v.tex_name,
+                    slider=v.slider,
                 )
             else:
                 self.add_parameter(k, v)
@@ -461,6 +467,7 @@ class SteadyStateModelBuilder:
         annotations: Annotation | Iterable[Annotation] | None = None,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Update the value of a parameter.
 
@@ -484,6 +491,8 @@ class SteadyStateModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -513,6 +522,8 @@ class SteadyStateModelBuilder:
             parameter.display_name = display_name
         if tex_name is not None:
             parameter.tex_name = tex_name
+        if slider is not None:
+            parameter.slider = slider
         return self
 
     def update_parameters(
@@ -545,6 +556,7 @@ class SteadyStateModelBuilder:
                     annotations=v.annotations,
                     display_name=v.display_name,
                     tex_name=v.tex_name,
+                    slider=v.slider,
                 )
             else:
                 self.update_parameter(k, v)

@@ -33,6 +33,7 @@ from mxlpy.types import (
     InitialAssignment,
     Parameter,
     Readout,
+    Slider,
 )
 from mxlpy.unit_inference import (
     MdText,
@@ -660,6 +661,7 @@ class OdeModelBuilder:
         *,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Adds a parameter to the model.
 
@@ -683,6 +685,8 @@ class OdeModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -698,6 +702,7 @@ class OdeModelBuilder:
             annotations=_normalize_annotations(annotations),
             display_name=display_name,
             tex_name=tex_name,
+            slider=slider,
         )
         return self
 
@@ -732,6 +737,7 @@ class OdeModelBuilder:
                     annotations=v.annotations,
                     display_name=v.display_name,
                     tex_name=v.tex_name,
+                    slider=v.slider,
                 )
             else:
                 self.add_parameter(k, v)
@@ -801,6 +807,7 @@ class OdeModelBuilder:
         annotations: Annotation | Iterable[Annotation] | None = None,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Update the value of a parameter.
 
@@ -824,6 +831,8 @@ class OdeModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -853,6 +862,8 @@ class OdeModelBuilder:
             parameter.display_name = display_name
         if tex_name is not None:
             parameter.tex_name = tex_name
+        if slider is not None:
+            parameter.slider = slider
         return self
 
     def update_parameters(
@@ -885,6 +896,7 @@ class OdeModelBuilder:
                     annotations=v.annotations,
                     display_name=v.display_name,
                     tex_name=v.tex_name,
+                    slider=v.slider,
                 )
             else:
                 self.update_parameter(k, v)
@@ -1388,6 +1400,7 @@ class OdeModelBuilder:
         # source: str | None = None,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Adds a diff_eq to the model.
 
@@ -1417,6 +1430,8 @@ class OdeModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -1433,6 +1448,7 @@ class OdeModelBuilder:
             annotations=_normalize_annotations(annotations),
             display_name=display_name,
             tex_name=tex_name,
+            slider=slider,
         )
         return self
 
@@ -1485,6 +1501,7 @@ class OdeModelBuilder:
         annotations: Annotation | Iterable[Annotation] | None = None,
         display_name: str | None = None,
         tex_name: str | None = None,
+        slider: Slider | None = None,
     ) -> Self:
         """Updates the properties of an existing diff_eq in the model.
 
@@ -1514,6 +1531,8 @@ class OdeModelBuilder:
             Human-readable name, e.g. for user interfaces.
         tex_name
             LaTeX rendering of the name.
+        slider
+            Interactive-slider configuration for mxlweb.
 
         Returns
         -------
@@ -1535,6 +1554,8 @@ class OdeModelBuilder:
             diff_eq.display_name = display_name
         if tex_name is not None:
             diff_eq.tex_name = tex_name
+        if slider is not None:
+            diff_eq.slider = slider
         return self
 
     @_invalidate_cache

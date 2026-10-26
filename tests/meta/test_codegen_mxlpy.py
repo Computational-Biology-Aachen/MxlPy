@@ -1,6 +1,6 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
-from mxlpy import KineticModelBuilder
+from mxlpy import KineticModelBuilder, Slider
 from mxlpy.meta import generate_mxlpy_code
 
 
@@ -18,7 +18,12 @@ def test_generate_mxlpy_code_names() -> None:
     model = (
         KineticModelBuilder()
         .add_parameter("k", 1.0, display_name="Rate", tex_name="k_1")
-        .add_variable("x", 2.0, display_name="Substrate")
+        .add_variable(
+            "x",
+            2.0,
+            display_name="Substrate",
+            slider=Slider(min="0", max="5", step="1"),
+        )
         .add_variable("y", 3.0)
     )
     namespace: dict[str, object] = {}
@@ -28,4 +33,7 @@ def test_generate_mxlpy_code_names() -> None:
     parameter = restored.get_raw_parameters()["k"]
     assert (parameter.display_name, parameter.tex_name) == ("Rate", "k_1")
     assert restored.get_raw_variables()["x"].display_name == "Substrate"
+    assert restored.get_raw_variables()["x"].slider == Slider(
+        min="0", max="5", step="1"
+    )
     assert restored.get_raw_variables()["y"].display_name is None

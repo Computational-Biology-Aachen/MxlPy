@@ -9,6 +9,7 @@ mxlpy.meta.codegen_mxlpy
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -68,11 +69,18 @@ def _handle_fn_source(
 def _codegen_names(
     el: Variable | Parameter | Derived | Reaction | Readout, *, ctx: Context
 ) -> str:
-    return "".join(
+    out = "".join(
         f"{ctx.space}  {kw}={v!r},\n"
         for kw, v in (("display_name", el.display_name), ("tex_name", el.tex_name))
         if v is not None
     )
+    if (slider := getattr(el, "slider", None)) is not None:
+        ctx.mxlpy_imports.add("Slider")
+        fields = ", ".join(
+            f"{k}={v!r}" for k, v in dataclasses.asdict(slider).items() if v is not None
+        )
+        out += f"{ctx.space}  slider=Slider({fields}),\n"
+    return out
 
 
 def _codegen_variable(k: str, variable: Variable, *, ctx: Context) -> str:

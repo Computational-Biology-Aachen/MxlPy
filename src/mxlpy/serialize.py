@@ -22,6 +22,7 @@ Examples
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import linecache
 import math
@@ -44,7 +45,7 @@ from mxlpy.meta.sympy_tools import (
     sympy_to_python_fn,
 )
 from mxlpy.surrogates.abstract import mxl_json_mechanism_additive
-from mxlpy.types import Derived, InitialAssignment, SerializationError
+from mxlpy.types import Derived, InitialAssignment, SerializationError, Slider
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -101,8 +102,15 @@ _FN_NAME = "_mxl_fn"
 
 def _names_to_dict(
     entity: Variable | Parameter | Derived | Readout | Reaction | DiffEq,
-) -> dict[str, str]:
-    names = {"displayName": entity.display_name, "texName": entity.tex_name}
+) -> dict[str, Any]:
+    names: dict[str, Any] = {
+        "displayName": entity.display_name,
+        "texName": entity.tex_name,
+    }
+    if (slider := getattr(entity, "slider", None)) is not None:
+        names["slider"] = {
+            k: v for k, v in dataclasses.asdict(slider).items() if v is not None
+        }
     return {k: v for k, v in names.items() if v is not None}
 
 
@@ -616,6 +624,10 @@ class _Names(TypedDict):
     tex_name: str | None
 
 
+def _slider_from_dict(entity: Mapping[str, Any]) -> Slider | None:
+    return None if (s := entity.get("slider")) is None else Slider(**s)
+
+
 def _names_from_dict(entity: Mapping[str, Any]) -> _Names:
     return {
         "display_name": entity.get("displayName"),
@@ -803,7 +815,10 @@ def ode_model_from_dict(
 
     for name, par in spec["parameters"].items():
         model.add_parameter(
-            name, _node_dict_to_value(par["value"]), **_names_from_dict(par)
+            name,
+            _node_dict_to_value(par["value"]),
+            **_names_from_dict(par),
+            slider=_slider_from_dict(par),
         )
     for name, var in spec["variables"].items():
         fn, args = _node_dict_to_fn(var["fn"])
@@ -813,6 +828,7 @@ def ode_model_from_dict(
             fn=fn,
             args=args,
             **_names_from_dict(var),
+            slider=_slider_from_dict(var),
         )
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])
@@ -857,7 +873,10 @@ def steady_state_model_from_dict(data: Mapping[str, Any]) -> SteadyStateModelBui
 
     for name, par in spec["parameters"].items():
         model.add_parameter(
-            name, _node_dict_to_value(par["value"]), **_names_from_dict(par)
+            name,
+            _node_dict_to_value(par["value"]),
+            **_names_from_dict(par),
+            slider=_slider_from_dict(par),
         )
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])
@@ -903,11 +922,17 @@ def model_from_dict(
 
     for name, par in spec["parameters"].items():
         model.add_parameter(
-            name, _node_dict_to_value(par["value"]), **_names_from_dict(par)
+            name,
+            _node_dict_to_value(par["value"]),
+            **_names_from_dict(par),
+            slider=_slider_from_dict(par),
         )
     for name, var in spec["variables"].items():
         model.add_variable(
-            name, _node_dict_to_value(var["value"]), **_names_from_dict(var)
+            name,
+            _node_dict_to_value(var["value"]),
+            **_names_from_dict(var),
+            slider=_slider_from_dict(var),
         )
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])

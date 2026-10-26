@@ -1627,13 +1627,22 @@ def generate_model_code_mxlweb(
         return out
 
     def _gen_slider(k: str) -> str:
-        if (s := sliders.get(k)) is not None:
+        if (el := entities.get(k)) is not None and (
+            slider := getattr(el, "slider", None)
+        ) is not None:
+            s = {"min": slider.min, "max": slider.max, "step": slider.step}
+            if slider.desc is not None:
+                s["desc"] = slider.desc
+        else:
+            s = sliders.get(k)
+        if s is not None:
             return (
                 f"        slider: {{\n"
                 f'          min: "{s["min"]}",\n'
                 f'          max: "{s["max"]}",\n'
                 f'          step: "{s["step"]}",\n'
-                f"        }},\n"
+                + (f"          desc: {s['desc']!r},\n" if "desc" in s else "")
+                + "        },\n"
             )
         return ""
 

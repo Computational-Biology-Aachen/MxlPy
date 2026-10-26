@@ -89,6 +89,7 @@ from .types import (
     InitialAssignment,
     OscillationDetected,
     Parameter,
+    Slider,
     Variable,
 )
 from .unit_inference import Conflict, UnitInference
@@ -141,6 +142,7 @@ __all__ = [
     "Scipy",
     "Simulation",
     "Simulator",
+    "Slider",
     "SteadyStateModelBuilder",
     "SurrogateProtocol",
     "SymbolicModel",

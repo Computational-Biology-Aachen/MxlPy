@@ -2,7 +2,7 @@
 
 import pytest
 
-from mxlpy import KineticModelBuilder, meta
+from mxlpy import KineticModelBuilder, Slider, meta
 
 
 def constant(x: float) -> float:
@@ -307,3 +307,22 @@ def test_generate_model_code_mxlweb_name_collision() -> None:
     )
     with pytest.raises(ValueError, match="both map to the identifier 'CO2_dissolved'"):
         meta.generate_model_code_mxlweb(model)
+
+
+def test_generate_model_code_mxlweb_entity_slider() -> None:
+    model = KineticModelBuilder().add_parameter(
+        "k", value=1.0, slider=Slider(min="0", max="2", step="0.1", desc="rate")
+    )
+    code = meta.generate_model_code_mxlweb(
+        model, sliders={"k": {"min": "9", "max": "9", "step": "9"}}
+    )
+    assert code.split("\n")[5:13] == [
+        '      .addParameter("k", {',
+        "        value: 1.0,",
+        "        texName: 'k',",
+        "        slider: {",
+        '          min: "0",',
+        '          max: "2",',
+        '          step: "0.1",',
+        "          desc: 'rate',",
+    ]
