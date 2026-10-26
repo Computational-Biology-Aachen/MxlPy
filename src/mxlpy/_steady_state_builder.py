@@ -317,6 +317,9 @@ class SteadyStateModelBuilder:
         unit: sympy.Expr | None = None,
         source: str | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
+        *,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Adds a parameter to the model.
 
@@ -336,6 +339,10 @@ class SteadyStateModelBuilder:
             source of the information given
         annotations
             MIRIAM annotation(s) for the parameter (bqbiol qualifiers).
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -349,6 +356,8 @@ class SteadyStateModelBuilder:
             unit=unit,
             source=source,
             annotations=_normalize_annotations(annotations),
+            display_name=display_name,
+            tex_name=tex_name,
         )
         return self
 
@@ -381,6 +390,8 @@ class SteadyStateModelBuilder:
                     unit=v.unit,
                     source=v.source,
                     annotations=v.annotations,
+                    display_name=v.display_name,
+                    tex_name=v.tex_name,
                 )
             else:
                 self.add_parameter(k, v)
@@ -448,6 +459,8 @@ class SteadyStateModelBuilder:
         unit: sympy.Expr | None = None,
         source: str | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Update the value of a parameter.
 
@@ -467,6 +480,10 @@ class SteadyStateModelBuilder:
             Source of the information
         annotations
             MIRIAM annotation(s) to replace the parameter's annotations.
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -492,6 +509,10 @@ class SteadyStateModelBuilder:
             parameter.source = source
         if annotations is not None:
             parameter.annotations = _normalize_annotations(annotations)
+        if display_name is not None:
+            parameter.display_name = display_name
+        if tex_name is not None:
+            parameter.tex_name = tex_name
         return self
 
     def update_parameters(
@@ -522,6 +543,8 @@ class SteadyStateModelBuilder:
                     unit=v.unit,
                     source=v.source,
                     annotations=v.annotations,
+                    display_name=v.display_name,
+                    tex_name=v.tex_name,
                 )
             else:
                 self.update_parameter(k, v)
@@ -690,6 +713,8 @@ class SteadyStateModelBuilder:
         args: list[str],
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Adds a derived attribute to the model.
 
@@ -709,6 +734,10 @@ class SteadyStateModelBuilder:
             Unit of the derived value
         annotations
             MIRIAM annotation(s) for the derived value (bqbiol qualifiers).
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -722,6 +751,8 @@ class SteadyStateModelBuilder:
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
+            display_name=display_name,
+            tex_name=tex_name,
         )
         return self
 
@@ -764,6 +795,8 @@ class SteadyStateModelBuilder:
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Updates the derived function and its arguments for a given name.
 
@@ -783,6 +816,10 @@ class SteadyStateModelBuilder:
             Unit of the derived value
         annotations
             MIRIAM annotation(s) to replace the derived value's annotations.
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -799,6 +836,10 @@ class SteadyStateModelBuilder:
             der.unit = unit
         if annotations is not None:
             der.annotations = _normalize_annotations(annotations)
+        if display_name is not None:
+            der.display_name = display_name
+        if tex_name is not None:
+            der.tex_name = tex_name
         return self
 
     @_invalidate_cache

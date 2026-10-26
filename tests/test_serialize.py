@@ -241,3 +241,31 @@ def test_surrogate_raises_serialization_error() -> None:
     model = KineticModelBuilder().add_variable("v1", 1.0).add_surrogate("s1", surrogate)
     with pytest.raises(SerializationError, match="surrogates"):
         model_to_dict(model, model_id="m")
+
+
+def test_display_and_tex_name_roundtrip() -> None:
+    model = (
+        KineticModelBuilder()
+        .add_parameter("p1", 2.0, display_name="Rate", tex_name="k_1")
+        .add_variable("v1", 1.0, display_name="Substrate")
+        .add_derived("d1", fns.twice, args=["v1"], tex_name="d_1")
+        .add_reaction(
+            "r1",
+            fns.mass_action_1s,
+            args=["v1", "p1"],
+            stoichiometry={"v1": -1.0},
+            display_name="Consumption",
+        )
+        .add_readout("o1", fns.twice, args=["v1"], display_name="Output")
+    )
+    data = model_to_dict(model, model_id="m")
+    assert data["model"]["parameters"]["p1"]["displayName"] == "Rate"
+    assert "displayName" not in data["model"]["derived"]["d1"]
+
+    restored = model_from_dict(data)
+    assert restored.get_raw_parameters()["p1"].display_name == "Rate"
+    assert restored.get_raw_parameters()["p1"].tex_name == "k_1"
+    assert restored.get_raw_variables()["v1"].display_name == "Substrate"
+    assert restored.get_raw_derived()["d1"].tex_name == "d_1"
+    assert restored.get_raw_reactions()["r1"].display_name == "Consumption"
+    assert restored.get_raw_readouts()["o1"].display_name == "Output"

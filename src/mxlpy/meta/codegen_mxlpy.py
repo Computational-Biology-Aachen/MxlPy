@@ -65,6 +65,16 @@ def _handle_fn_source(
     return fn_name
 
 
+def _codegen_names(
+    el: Variable | Parameter | Derived | Reaction | Readout, *, ctx: Context
+) -> str:
+    return "".join(
+        f"{ctx.space}  {kw}={v!r},\n"
+        for kw, v in (("display_name", el.display_name), ("tex_name", el.tex_name))
+        if v is not None
+    )
+
+
 def _codegen_variable(k: str, variable: Variable, *, ctx: Context) -> str:
     val = variable.initial_value
     if isinstance(val, InitialAssignment):
@@ -74,10 +84,19 @@ def _codegen_variable(k: str, variable: Variable, *, ctx: Context) -> str:
             f"{ctx.first}.add_variable(\n"
             f"{ctx.space}  {k!r},\n"
             f"{ctx.space}  initial_value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
+            f"{_codegen_names(variable, ctx=ctx)}"
             f"{ctx.space})"
         )
 
     # val is float | int
+    if names := _codegen_names(variable, ctx=ctx):
+        return (
+            f"{ctx.first}.add_variable(\n"
+            f"{ctx.space}  {k!r},\n"
+            f"{ctx.space}  initial_value={val!r},\n"
+            f"{names}"
+            f"{ctx.space})"
+        )
     return f"{ctx.first}.add_variable({k!r}, initial_value={val!r})"
 
 
@@ -95,10 +114,19 @@ def _codegen_parameter(
             f"{ctx.first}.add_parameter(\n"
             f"{ctx.space}  {k!r},\n"
             f"{ctx.space} value=InitialAssignment(fn={fn_name}, args={val.args!r}),\n"
+            f"{_codegen_names(parameter, ctx=ctx)}"
             f"{ctx.space})"
         )
 
     # val is float | int
+    if names := _codegen_names(parameter, ctx=ctx):
+        return (
+            f"{ctx.first}.add_parameter(\n"
+            f"{ctx.space}  {k!r},\n"
+            f"{ctx.space}  value={val!r},\n"
+            f"{names}"
+            f"{ctx.space})"
+        )
     return f"{ctx.first}.add_parameter({k!r}, value={val!r})"
 
 
@@ -119,6 +147,7 @@ def _codegen_derived(
         f"{ctx.space}  {k!r},\n"
         f"{ctx.space}  fn={fn_name},\n"
         f"{ctx.space}  args={der.args!r},\n"
+        f"{_codegen_names(der, ctx=ctx)}"
         f"{ctx.space})"
     )
 
@@ -157,6 +186,7 @@ def _codegen_reaction(
         f"{ctx.space}  fn={fn_name},\n"
         f"{ctx.space}  args={rxn.args!r},\n"
         f"{ctx.space}  stoichiometry={{{','.join(stoichiometry)}}},\n"
+        f"{_codegen_names(rxn, ctx=ctx)}"
         f"{ctx.space})"
     )
 
@@ -253,6 +283,7 @@ def _codegen_readout(
         f"{ctx.space}  {k!r},\n"
         f"{ctx.space}  fn={fn_name},\n"
         f"{ctx.space}  args={der.args!r},\n"
+        f"{_codegen_names(der, ctx=ctx)}"
         f"{ctx.space})"
     )
 

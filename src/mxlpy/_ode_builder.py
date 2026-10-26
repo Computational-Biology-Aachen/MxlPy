@@ -657,6 +657,9 @@ class OdeModelBuilder:
         unit: sympy.Expr | None = None,
         source: str | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
+        *,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Adds a parameter to the model.
 
@@ -676,6 +679,10 @@ class OdeModelBuilder:
             source of the information given
         annotations
             MIRIAM annotation(s) for the parameter (bqbiol qualifiers).
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -689,6 +696,8 @@ class OdeModelBuilder:
             unit=unit,
             source=source,
             annotations=_normalize_annotations(annotations),
+            display_name=display_name,
+            tex_name=tex_name,
         )
         return self
 
@@ -721,6 +730,8 @@ class OdeModelBuilder:
                     unit=v.unit,
                     source=v.source,
                     annotations=v.annotations,
+                    display_name=v.display_name,
+                    tex_name=v.tex_name,
                 )
             else:
                 self.add_parameter(k, v)
@@ -788,6 +799,8 @@ class OdeModelBuilder:
         unit: sympy.Expr | None = None,
         source: str | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Update the value of a parameter.
 
@@ -807,6 +820,10 @@ class OdeModelBuilder:
             Source of the information
         annotations
             MIRIAM annotation(s) to replace the parameter's annotations.
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -832,6 +849,10 @@ class OdeModelBuilder:
             parameter.source = source
         if annotations is not None:
             parameter.annotations = _normalize_annotations(annotations)
+        if display_name is not None:
+            parameter.display_name = display_name
+        if tex_name is not None:
+            parameter.tex_name = tex_name
         return self
 
     def update_parameters(
@@ -862,6 +883,8 @@ class OdeModelBuilder:
                     unit=v.unit,
                     source=v.source,
                     annotations=v.annotations,
+                    display_name=v.display_name,
+                    tex_name=v.tex_name,
                 )
             else:
                 self.update_parameter(k, v)
@@ -1085,6 +1108,8 @@ class OdeModelBuilder:
         args: list[str],
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Adds a derived attribute to the model.
 
@@ -1104,6 +1129,10 @@ class OdeModelBuilder:
             Unit of the derived value
         annotations
             MIRIAM annotation(s) for the derived value (bqbiol qualifiers).
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -1117,6 +1146,8 @@ class OdeModelBuilder:
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
+            display_name=display_name,
+            tex_name=tex_name,
         )
         return self
 
@@ -1159,6 +1190,8 @@ class OdeModelBuilder:
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Updates the derived function and its arguments for a given name.
 
@@ -1178,6 +1211,10 @@ class OdeModelBuilder:
             Unit of the derived value
         annotations
             MIRIAM annotation(s) to replace the derived value's annotations.
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -1194,6 +1231,10 @@ class OdeModelBuilder:
             der.unit = unit
         if annotations is not None:
             der.annotations = _normalize_annotations(annotations)
+        if display_name is not None:
+            der.display_name = display_name
+        if tex_name is not None:
+            der.tex_name = tex_name
         return self
 
     @_invalidate_cache
@@ -1345,6 +1386,8 @@ class OdeModelBuilder:
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
         # source: str | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Adds a diff_eq to the model.
 
@@ -1370,6 +1413,10 @@ class OdeModelBuilder:
             Unit of the rate
         annotations
             MIRIAM annotation(s) for the diff_eq (bqbiol qualifiers).
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -1384,6 +1431,8 @@ class OdeModelBuilder:
             args=args,
             unit=unit,
             annotations=_normalize_annotations(annotations),
+            display_name=display_name,
+            tex_name=tex_name,
         )
         return self
 
@@ -1434,6 +1483,8 @@ class OdeModelBuilder:
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Updates the properties of an existing diff_eq in the model.
 
@@ -1459,6 +1510,10 @@ class OdeModelBuilder:
             Unit of the diff_eq
         annotations
             MIRIAM annotation(s) to replace the diff_eq's annotations.
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -1476,6 +1531,10 @@ class OdeModelBuilder:
         diff_eq.unit = diff_eq.unit if unit is None else unit
         if annotations is not None:
             diff_eq.annotations = _normalize_annotations(annotations)
+        if display_name is not None:
+            diff_eq.display_name = display_name
+        if tex_name is not None:
+            diff_eq.tex_name = tex_name
         return self
 
     @_invalidate_cache
@@ -1794,6 +1853,8 @@ class OdeModelBuilder:
         *,
         args: list[str],
         unit: sympy.Expr | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
     ) -> Self:
         """Adds a readout to the model.
 
@@ -1814,6 +1875,10 @@ class OdeModelBuilder:
             The list of arguments for the function.
         unit
             Unit of the readout
+        display_name
+            Human-readable name, e.g. for user interfaces.
+        tex_name
+            LaTeX rendering of the name.
 
         Returns
         -------
@@ -1822,7 +1887,13 @@ class OdeModelBuilder:
 
         """
         self._insert_id(name=name, ctx="readout")
-        self._readouts[name] = Readout(fn=fn, args=args, unit=unit)
+        self._readouts[name] = Readout(
+            fn=fn,
+            args=args,
+            unit=unit,
+            display_name=display_name,
+            tex_name=tex_name,
+        )
         return self
 
     def get_readout_names(self) -> list[str]:

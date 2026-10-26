@@ -27,7 +27,7 @@ import linecache
 import math
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import numpy as np
 import scipy.special  # bound as `scipy`, used by generated rate fns
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
     from mxlpy.surrogates.abstract import SurrogateProtocol
     from mxlpy.surrogates.abstract_ode import OdeSurrogateProtocol
-    from mxlpy.types import RateFn
+    from mxlpy.types import DiffEq, Parameter, RateFn, Reaction, Readout, Variable
 
 __all__ = [
     "ODE_SCHEMA_URL",
@@ -97,6 +97,13 @@ _FN_NAME = "_mxl_fn"
 ###############################################################################
 # Save
 ###############################################################################
+
+
+def _names_to_dict(
+    entity: Variable | Parameter | Derived | Readout | Reaction | DiffEq,
+) -> dict[str, str]:
+    names = {"displayName": entity.display_name, "texName": entity.tex_name}
+    return {k: v for k, v in names.items() if v is not None}
 
 
 def _fn_to_node_dict(
@@ -238,11 +245,17 @@ def model_to_dict(
     nn_blocks, _ = _mxl_json_blocks_and_weights(model)
 
     variables = {
-        name: {"value": _value_to_node_dict(var.initial_value, origin=name)}
+        name: {
+            "value": _value_to_node_dict(var.initial_value, origin=name),
+            **_names_to_dict(var),
+        }
         for name, var in model.get_raw_variables().items()
     }
     parameters = {
-        name: {"value": _value_to_node_dict(par.value, origin=name)}
+        name: {
+            "value": _value_to_node_dict(par.value, origin=name),
+            **_names_to_dict(par),
+        }
         for name, par in model.get_raw_parameters().items()
     }
     reactions = {
@@ -252,15 +265,22 @@ def model_to_dict(
                 var: _stoich_to_node_dict(stoich, origin=f"{name}:{var}")
                 for var, stoich in rxn.stoichiometry.items()
             },
+            **_names_to_dict(rxn),
         }
         for name, rxn in model.get_raw_reactions().items()
     }
     derived = {
-        name: {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)}
+        name: {
+            "fn": _fn_to_node_dict(der.fn, origin=name, args=der.args),
+            **_names_to_dict(der),
+        }
         for name, der in model.get_raw_derived().items()
     }
     readouts = {
-        name: {"fn": _fn_to_node_dict(rdt.fn, origin=name, args=rdt.args)}
+        name: {
+            "fn": _fn_to_node_dict(rdt.fn, origin=name, args=rdt.args),
+            **_names_to_dict(rdt),
+        }
         for name, rdt in model.get_raw_readouts().items()
     }
 
@@ -391,19 +411,29 @@ def ode_model_to_dict(
         name: {
             "value": _value_to_node_dict(diff_eq.initial_value, origin=name),
             "fn": _fn_to_node_dict(diff_eq.fn, origin=name, args=diff_eq.args),
+            **_names_to_dict(diff_eq),
         }
         for name, diff_eq in model.get_raw_diff_eqs().items()
     }
     parameters = {
-        name: {"value": _value_to_node_dict(par.value, origin=name)}
+        name: {
+            "value": _value_to_node_dict(par.value, origin=name),
+            **_names_to_dict(par),
+        }
         for name, par in model.get_raw_parameters().items()
     }
     derived = {
-        name: {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)}
+        name: {
+            "fn": _fn_to_node_dict(der.fn, origin=name, args=der.args),
+            **_names_to_dict(der),
+        }
         for name, der in model.get_raw_derived().items()
     }
     readouts = {
-        name: {"fn": _fn_to_node_dict(rdt.fn, origin=name, args=rdt.args)}
+        name: {
+            "fn": _fn_to_node_dict(rdt.fn, origin=name, args=rdt.args),
+            **_names_to_dict(rdt),
+        }
         for name, rdt in model.get_raw_readouts().items()
     }
 
@@ -469,11 +499,17 @@ def steady_state_model_to_dict(
 
     """
     parameters = {
-        name: {"value": _value_to_node_dict(par.value, origin=name)}
+        name: {
+            "value": _value_to_node_dict(par.value, origin=name),
+            **_names_to_dict(par),
+        }
         for name, par in model.get_raw_parameters().items()
     }
     derived = {
-        name: {"fn": _fn_to_node_dict(der.fn, origin=name, args=der.args)}
+        name: {
+            "fn": _fn_to_node_dict(der.fn, origin=name, args=der.args),
+            **_names_to_dict(der),
+        }
         for name, der in model.get_raw_derived().items()
     }
 
@@ -573,6 +609,18 @@ def _compile_fn(expr: sympy.Expr, args: list[str]) -> Callable[..., float]:
     }
     exec(compile(src, filename, "exec"), namespace)  # noqa: S102
     return namespace[_FN_NAME]
+
+
+class _Names(TypedDict):
+    display_name: str | None
+    tex_name: str | None
+
+
+def _names_from_dict(entity: Mapping[str, Any]) -> _Names:
+    return {
+        "display_name": entity.get("displayName"),
+        "tex_name": entity.get("texName"),
+    }
 
 
 def _node_dict_to_fn(
@@ -754,7 +802,9 @@ def ode_model_from_dict(
     model = OdeModelBuilder()
 
     for name, par in spec["parameters"].items():
-        model.add_parameter(name, _node_dict_to_value(par["value"]))
+        model.add_parameter(
+            name, _node_dict_to_value(par["value"]), **_names_from_dict(par)
+        )
     for name, var in spec["variables"].items():
         fn, args = _node_dict_to_fn(var["fn"])
         model.add_diff_eq(
@@ -762,13 +812,14 @@ def ode_model_from_dict(
             initial_value=_node_dict_to_value(var["value"]),
             fn=fn,
             args=args,
+            **_names_from_dict(var),
         )
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])
-        model.add_derived(name, fn, args=args)
+        model.add_derived(name, fn, args=args, **_names_from_dict(der))
     for name, rdt in spec["readouts"].items():
         fn, args = _node_dict_to_fn(rdt["fn"])
-        model.add_readout(name, fn, args=args)
+        model.add_readout(name, fn, args=args, **_names_from_dict(rdt))
     for name, block in spec.get("nn_blocks", {}).items():
         surrogate = _ode_surrogate_from_mxl_json(name, block, weights_by_ref or {})
         model.add_surrogate(name, surrogate)
@@ -805,10 +856,12 @@ def steady_state_model_from_dict(data: Mapping[str, Any]) -> SteadyStateModelBui
     model = SteadyStateModelBuilder()
 
     for name, par in spec["parameters"].items():
-        model.add_parameter(name, _node_dict_to_value(par["value"]))
+        model.add_parameter(
+            name, _node_dict_to_value(par["value"]), **_names_from_dict(par)
+        )
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])
-        model.add_derived(name, fn, args=args)
+        model.add_derived(name, fn, args=args, **_names_from_dict(der))
 
     return model
 
@@ -849,22 +902,32 @@ def model_from_dict(
     model = KineticModelBuilder()
 
     for name, par in spec["parameters"].items():
-        model.add_parameter(name, _node_dict_to_value(par["value"]))
+        model.add_parameter(
+            name, _node_dict_to_value(par["value"]), **_names_from_dict(par)
+        )
     for name, var in spec["variables"].items():
-        model.add_variable(name, _node_dict_to_value(var["value"]))
+        model.add_variable(
+            name, _node_dict_to_value(var["value"]), **_names_from_dict(var)
+        )
     for name, der in spec["derived"].items():
         fn, args = _node_dict_to_fn(der["fn"])
-        model.add_derived(name, fn, args=args)
+        model.add_derived(name, fn, args=args, **_names_from_dict(der))
     for name, rxn in spec["reactions"].items():
         fn, args = _node_dict_to_fn(rxn["fn"])
         stoichiometry = {
             var: _node_dict_to_stoich(node)
             for var, node in rxn["stoichiometry"].items()
         }
-        model.add_reaction(name, fn, args=args, stoichiometry=stoichiometry)
+        model.add_reaction(
+            name,
+            fn,
+            args=args,
+            stoichiometry=stoichiometry,
+            **_names_from_dict(rxn),
+        )
     for name, rdt in spec["readouts"].items():
         fn, args = _node_dict_to_fn(rdt["fn"])
-        model.add_readout(name, fn, args=args)
+        model.add_readout(name, fn, args=args, **_names_from_dict(rdt))
     for name, block in spec.get("nn_blocks", {}).items():
         surrogate = _surrogate_from_mxl_json(name, block, weights_by_ref or {})
         model.add_surrogate(name, surrogate)

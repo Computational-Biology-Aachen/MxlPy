@@ -23,7 +23,7 @@ import torch
 from torch import nn
 
 import mxlpy
-from mxlpy import KineticModelBuilder, OdeModelBuilder
+from mxlpy import KineticModelBuilder, OdeModelBuilder, fns
 from mxlpy.serialize import (
     model_to_dict,
     ode_model_from_dict,
@@ -205,3 +205,24 @@ def test_load_dispatches_kinetic_documents_without_kind_field(tmp_path: Path) ->
 
     reloaded = mxlpy.load(path)
     assert isinstance(reloaded, KineticModelBuilder)
+
+
+def test_display_and_tex_name_roundtrip() -> None:
+    model = (
+        OdeModelBuilder()
+        .add_parameter("k", 1.0, display_name="Rate")
+        .add_diff_eq(
+            "x",
+            initial_value=1.0,
+            fn=fns.mul,
+            args=["x", "k"],
+            display_name="Substrate",
+            tex_name="x_1",
+        )
+        .add_readout("r", fns.twice, args=["x"], tex_name="r_1")
+    )
+    restored = ode_model_from_dict(ode_model_to_dict(model, model_id="m"))
+    diff_eq = restored.get_raw_diff_eqs()["x"]
+    assert (diff_eq.display_name, diff_eq.tex_name) == ("Substrate", "x_1")
+    assert restored.get_raw_parameters()["k"].display_name == "Rate"
+    assert restored.get_raw_readouts()["r"].tex_name == "r_1"
