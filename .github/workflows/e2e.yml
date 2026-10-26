@@ -1,0 +1,23 @@
+name: e2e
+
+# Cross-repo end-to-end tests of the mxl codegen pipeline
+# (https://github.com/Computational-Biology-Aachen/mxl-e2e).
+# Advisory for now: not a required status check.
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    uses: Computational-Biology-Aachen/mxl-e2e/.github/workflows/e2e.yml@main
+    with:
+      repo: ${{ github.repository }}
+      ref: ${{ github.event.pull_request.head.sha || github.sha }}
