@@ -14,6 +14,7 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy import _topo
+from mxlpy.meta.identifiers import canonical_identifier_map
 from mxlpy.meta.source_tools import fn_to_sympy_expr, fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy._steady_state_builder import SteadyStateModelBuilder
+    from mxlpy.types import DiffEq, Parameter, Reaction, Readout, Variable
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1594,10 +1596,35 @@ def generate_model_code_mxlweb(
     custom_fns = {} if custom_fns is None else custom_fns
     tex_names = {} if tex_names is None else tex_names
 
-    name_map = {name: valid_identifier(name) for name in model.ids}
+    name_map = canonical_identifier_map(model.ids)
     subs = {sympy.Symbol(k): sympy.Symbol(v) for k, v in name_map.items()}
     sr = model_to_symbolic_repr(model, custom_fns=custom_fns)
     used: set[str] = set()
+
+    entities: dict[
+        str, Parameter | Variable | DiffEq | Derived | Reaction | Readout
+    ] = {**model.get_raw_parameters(), **model.get_raw_derived()}
+    if isinstance(model, OdeModelBuilder):
+        entities |= model.get_raw_diff_eqs() | model.get_raw_readouts()
+    elif not isinstance(model, SteadyStateModelBuilder):
+        entities |= (
+            model.get_raw_variables()
+            | model.get_raw_reactions()
+            | model.get_raw_readouts()
+        )
+
+    def _gen_names(k: str) -> str:
+        el = entities.get(k)
+        display_name = None if el is None else el.display_name
+        if display_name is None and name_map[k] != k:
+            display_name = k
+        tex_name = None if el is None else el.tex_name
+        if tex_name is None:
+            tex_name = tex_names.get(k, valid_tex_identifier(k))
+        out = f"        texName: {tex_name!r},\n"
+        if display_name is not None:
+            out = f"        displayName: {display_name!r},\n{out}"
+        return out
 
     def _gen_slider(k: str) -> str:
         if (s := sliders.get(k)) is not None:
@@ -1624,11 +1651,7 @@ def generate_model_code_mxlweb(
         used: set[str],
         subs: dict[sympy.Symbol, sympy.Symbol],
     ) -> str:
-        texName = (
-            valid_tex_identifier(k)
-            if (texName := tex_names.get(k)) is None
-            else texName
-        )
+        names = _gen_names(k)
 
         optional_tail = _gen_tail(k, el.unit)
 
@@ -1644,7 +1667,7 @@ def generate_model_code_mxlweb(
         return (
             f'      .addVariable("{name_map[k]}", {{\n'
             f"        value: {value},\n"
-            f"        texName: {texName!r},\n"
+            f"{names}"
             f"{optional_tail}"
             f"      }})"
         )
@@ -1655,11 +1678,7 @@ def generate_model_code_mxlweb(
         used: set[str],
         subs: dict[sympy.Symbol, sympy.Symbol],
     ) -> str:
-        texName = (
-            valid_tex_identifier(k)
-            if (texName := tex_names.get(k)) is None
-            else texName
-        )
+        names = _gen_names(k)
 
         optional_tail = _gen_tail(k, el.unit)
 
@@ -1674,7 +1693,7 @@ def generate_model_code_mxlweb(
         return (
             f'      .addParameter("{name_map[k]}", {{\n'
             f"        value: {value},\n"
-            f"        texName: {texName!r},\n"
+            f"{names}"
             f"{optional_tail}"
             f"      }})"
         )
@@ -1685,11 +1704,7 @@ def generate_model_code_mxlweb(
         used: set[str],
         subs: dict[sympy.Symbol, sympy.Symbol],
     ) -> str:
-        texName = (
-            valid_tex_identifier(k)
-            if (texName := tex_names.get(k)) is None
-            else texName
-        )
+        names = _gen_names(k)
 
         optional_tail = _gen_tail(k, el.unit)
 
@@ -1697,7 +1712,7 @@ def generate_model_code_mxlweb(
         return (
             f'      .addAssignment("{name_map[k]}", {{\n'
             f"        fn: {value},\n"
-            f"        texName: {texName!r},\n"
+            f"{names}"
             f"{optional_tail}"
             f"      }})"
         )
@@ -1708,11 +1723,7 @@ def generate_model_code_mxlweb(
         used: set[str],
         subs: dict[sympy.Symbol, sympy.Symbol],
     ) -> str:
-        texName = (
-            valid_tex_identifier(k)
-            if (texName := tex_names.get(k)) is None
-            else texName
-        )
+        names = _gen_names(k)
 
         optional_tail = _gen_tail(k, el.unit)
 
@@ -1720,7 +1731,7 @@ def generate_model_code_mxlweb(
         return (
             f'      .addReadout("{name_map[k]}", {{\n'
             f"        fn: {value},\n"
-            f"        texName: {texName!r},\n"
+            f"{names}"
             f"{optional_tail}"
             f"      }})"
         )
@@ -1758,11 +1769,7 @@ def generate_model_code_mxlweb(
         used: set[str],
         subs: dict[sympy.Symbol, sympy.Symbol],
     ) -> str:
-        texName = (
-            valid_tex_identifier(k)
-            if (texName := tex_names.get(k)) is None
-            else texName
-        )
+        names = _gen_names(k)
         fn = sympy_to_inline_mxlweb(el.fn.expr, used, subs)
         stoich = f"[{', '.join(_gen_stoich(k, v, used, subs) for k, v in el.stoichiometry.items())}]"
 
@@ -1772,7 +1779,7 @@ def generate_model_code_mxlweb(
             f'      .addReaction("{name_map[k]}", {{\n'
             f"        fn: {fn},\n"
             f"        stoichiometry: {stoich},\n"
-            f"        texName: {texName!r},\n"
+            f"{names}"
             f"{optional_tail}"
             f"      }})"
         )
@@ -1786,11 +1793,7 @@ def generate_model_code_mxlweb(
 
         out = []
         for o, sfn in zip(el.outputs, el.fns, strict=True):
-            texName = (
-                valid_tex_identifier(o)
-                if (texName := tex_names.get(o)) is None
-                else texName
-            )
+            names = _gen_names(o)
             fn = sympy_to_inline_mxlweb(sfn.expr, used, subs)
 
             if (ss := el.stoichiometry.get(o)) is not None:
@@ -1799,14 +1802,14 @@ def generate_model_code_mxlweb(
                     f'      .addReaction("{name_map[o]}", {{\n'
                     f"        fn: {fn},\n"
                     f"        stoichiometry: {stoich},\n"
-                    f"        texName: {texName!r},\n"
+                    f"{names}"
                     f"      }})"
                 )
             else:
                 out.append(
                     f'      .addAssignment("{name_map[o]}", {{\n'
                     f"        fn: {fn},\n"
-                    f"        texName: {texName!r},\n"
+                    f"{names}"
                     f"      }})"
                 )
         return "\n".join(out)

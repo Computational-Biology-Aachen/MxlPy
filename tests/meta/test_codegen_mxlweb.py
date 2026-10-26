@@ -1,5 +1,7 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
+import pytest
+
 from mxlpy import KineticModelBuilder, meta
 
 
@@ -258,3 +260,50 @@ def test_generate_model_code_mxlweb_units() -> None:
         "      })",
         "  }",
     ]
+
+
+def test_generate_model_code_mxlweb_names() -> None:
+    model = (
+        KineticModelBuilder()
+        .add_parameter("k", value=1.0, display_name="Rate constant", tex_name="k_1")
+        .add_parameter("model", value=2.0)
+        .add_variable("P700+FA-", initial_value=3.0)
+        .add_variable("CO2_dissolved", initial_value=4.0)
+    )
+    assert meta.generate_model_code_mxlweb(model).split("\n") == [
+        'import { KineticModelBuilder } from "@computational-biology-aachen/mxlweb-core";',
+        'import {  } from "@computational-biology-aachen/mxlweb-core/mathml";',
+        "",
+        "export function initModel(): KineticModelBuilder {",
+        "    return new KineticModelBuilder()",
+        '      .addParameter("k", {',
+        "        value: 1.0,",
+        "        displayName: 'Rate constant',",
+        "        texName: 'k_1',",
+        "      })",
+        '      .addParameter("model_", {',
+        "        value: 2.0,",
+        "        displayName: 'model',",
+        "        texName: 'model',",
+        "      })",
+        '      .addVariable("P700_plus_FA_minus", {',
+        "        value: 3.0,",
+        "        displayName: 'P700+FA-',",
+        "        texName: 'P700+FA-',",
+        "      })",
+        '      .addVariable("CO2_dissolved", {',
+        "        value: 4.0,",
+        "        texName: 'CO2\\\\_dissolved',",
+        "      })",
+        "  }",
+    ]
+
+
+def test_generate_model_code_mxlweb_name_collision() -> None:
+    model = (
+        KineticModelBuilder()
+        .add_variable("CO2 (dissolved)", initial_value=3.0)
+        .add_variable("CO2_dissolved", initial_value=4.0)
+    )
+    with pytest.raises(ValueError, match="both map to the identifier 'CO2_dissolved'"):
+        meta.generate_model_code_mxlweb(model)

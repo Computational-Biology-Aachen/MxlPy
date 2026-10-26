@@ -61,8 +61,16 @@ from ._via_sym_repr import (
     generate_model_code_ts,
 )
 from .codegen_mxlpy import generate_mxlpy_code
+from .identifiers import (
+    canonical_identifier,
+    canonical_identifier_map,
+    is_canonical_identifier,
+)
 
 __all__ = [
+    "canonical_identifier",
+    "canonical_identifier_map",
+    "is_canonical_identifier",
     "DiffLatexCodegen",
     "generate_latex_diff",
     "generate_latex_document",
