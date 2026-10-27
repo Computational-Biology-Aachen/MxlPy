@@ -48,13 +48,16 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy._ode_builder import OdeModelBuilder
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder
     from mxlpy.types import Array
 
 __all__ = ["OutputFn", "morris", "sobol"]
 
 _LOGGER = logging.getLogger(__name__)
 
-type OutputFn = Callable[[KineticModelBuilder, pd.DataFrame], Array]
+type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
+type OutputFn[M: _Model] = Callable[[M, pd.DataFrame], Array]
 
 
 def _build_problem(param_bounds: Mapping[str, tuple[float, float]]) -> dict:
@@ -79,9 +82,9 @@ def _build_problem(param_bounds: Mapping[str, tuple[float, float]]) -> dict:
     }
 
 
-def _evaluate(
-    model: KineticModelBuilder,
-    output: OutputFn,
+def _evaluate[M: _Model](
+    model: M,
+    output: OutputFn[M],
     sample_matrix: Array,
     names: list[str],
 ) -> Array:
@@ -118,10 +121,10 @@ def _evaluate(
     return y
 
 
-def morris(
-    model: KineticModelBuilder,
+def morris[M: _Model](
+    model: M,
     *,
-    output: OutputFn,
+    output: OutputFn[M],
     param_bounds: Mapping[str, tuple[float, float]],
     n_trajectories: int = 10,
     num_levels: int = 4,
@@ -196,10 +199,10 @@ def morris(
     return cast("pd.DataFrame", result.to_df())
 
 
-def sobol(
-    model: KineticModelBuilder,
+def sobol[M: _Model](
+    model: M,
     *,
-    output: OutputFn,
+    output: OutputFn[M],
     param_bounds: Mapping[str, tuple[float, float]],
     n_samples: int = 1024,
     seed: int | None = None,
