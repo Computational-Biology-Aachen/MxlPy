@@ -24,6 +24,15 @@ This will allow you to create time courses and do steady-state analysis as shown
 
 [Start learning](basics.ipynb){ .md-button }
 
+## Other model builders
+
+Not every model is best described as a reaction network.
+Next to the reaction-based `Model`, *mxlpy* offers an `OdeModelBuilder` for models written directly as **differential equations**, and a `SteadyStateModelBuilder` for purely **algebraic** models, which are evaluated instead of simulated.
+Both can be scanned and fitted just like a `Model`.
+
+[ODE models](ode-model-builder.ipynb){ .md-button }
+[Steady-state models](steady-state-model-builder.ipynb){ .md-button }
+
 ## Parameter scans
 
 Parameter scans allow you to systematically assess the behaviour of your model dependent on the value of one or more parameters.

@@ -7,6 +7,7 @@ Targets Python 3.12–3.13. Part of a tool family with [MxlBricks](https://githu
 ## Core concepts
 
 - **Fluent builder.** Every `Model` mutation (`add_*` / `update_*` / `remove_*` / `scale_*`) returns `Self`, so calls chain. The same applies to `Simulator`.
+- **Three model builders.** `Model` (= `KineticModelBuilder`, reactions + stoichiometry) is the default. `OdeModelBuilder` takes one `dx/dt` per variable (no fluxes), `SteadyStateModelBuilder` has no variables and is evaluated (`.evaluate()`) instead of simulated. Single-model `scan.*` / `fit.*` accept all three where meaningful; see [modeling](llms-modeling.txt#other-model-builders).
 - **Pure named rate functions.** Rate/derived functions take `float` args and return a `float`. They must be pure and **pickle-able**, so **lambdas are not allowed** — always pass a named function reference (e.g. from `mxlpy.fns`). `args` are passed **by position**, so their order must match the function signature.
 - **Result / Option error handling.** Operations that can fail (simulation, fitting) return `Result[T]`. Extract with `.unwrap_or_err()` (raises on failure) or `.value` (`T | Exception`, inspect with `isinstance(..., Exception)`) or `.default(fn)`.
 - **DataFrames everywhere.** Simulations, scans, MCA and MC return `pandas` objects, which feed directly into the `plot` and `fit` modules.
