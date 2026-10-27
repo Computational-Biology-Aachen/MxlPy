@@ -4,6 +4,7 @@ import pytest
 from sympy.physics.units.quantities import Quantity
 
 from mxlpy import KineticModelBuilder, Slider, meta, units
+from mxlpy.surrogates import qss
 
 
 def constant(x: float) -> float:
@@ -334,3 +335,29 @@ def test_generate_model_code_mxlweb_entity_slider() -> None:
         '          step: "0.1",',
         "          desc: 'rate',",
     ]
+
+
+def test_generate_model_code_mxlweb_surrogate_output_units() -> None:
+    def rates(x: float, k: float) -> tuple[float, float]:
+        return k * x, 2 * x
+
+    model = (
+        KineticModelBuilder()
+        .add_parameter("k", value=1.0)
+        .add_variable("x1", initial_value=2.0)
+        .add_surrogate(
+            "s",
+            qss.Surrogate(
+                model=rates,
+                args=["x1", "k"],
+                outputs=["v1", "d1"],
+                stoichiometries={"v1": {"x1": -1.0}},
+                units={"v1": units.mmol_s, "d1": units.mmol},
+            ),
+        )
+    )
+    code = meta.generate_model_code_mxlweb(model)
+    v1 = code.split('.addReaction("v1"')[1].split("})")[0]
+    d1 = code.split('.addAssignment("d1"')[1].split("})")[0]
+    assert '{"kind": "second", "exponent": -1}' in v1
+    assert '"prefix": "milli"' in d1

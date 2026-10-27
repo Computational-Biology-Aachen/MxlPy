@@ -271,7 +271,7 @@ class SymbolicSurrogate:
     fns: list[SymbolicFn]
     outputs: list[str]
     stoichiometry: dict[str, dict[str, sympy.Float | SymbolicFn]]
-    unit: Quantity | None = None
+    units: dict[str, Quantity] = field(default_factory=dict, hash=False)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -387,7 +387,9 @@ class SymbolicRepr:
             for fn, out in zip(srg.fns, srg.outputs, strict=True):
                 if out in srg.stoichiometry:
                     all_reactions[out] = SymbolicReaction(
-                        fn=fn, stoichiometry=srg.stoichiometry[out], unit=srg.unit
+                        fn=fn,
+                        stoichiometry=srg.stoichiometry[out],
+                        unit=srg.units.get(out),
                     )
                 else:
                     all_derived[out] = fn
@@ -924,6 +926,7 @@ def _kinetic_builder_to_symbolic_repr(
                     }
                     for out, stoich in srg.stoichiometries.items()
                 },
+                units=cast(dict[str, Quantity], dict(srg.units)),
             )
         else:
             msg = f"Unsupported surrogate type {type(srg)}."
@@ -1809,6 +1812,7 @@ def generate_model_code_mxlweb(
         out = []
         for o, sfn in zip(el.outputs, el.fns, strict=True):
             names = _gen_names(o)
+            unit = _gen_unit(el.units.get(o))
             fn = sympy_to_inline_mxlweb(sfn.expr, used, subs)
 
             if (ss := el.stoichiometry.get(o)) is not None:
@@ -1818,6 +1822,7 @@ def generate_model_code_mxlweb(
                     f"        fn: {fn},\n"
                     f"        stoichiometry: {stoich},\n"
                     f"{names}"
+                    f"{unit}"
                     f"      }})"
                 )
             else:
@@ -1825,6 +1830,7 @@ def generate_model_code_mxlweb(
                     f'      .addAssignment("{name_map[o]}", {{\n'
                     f"        fn: {fn},\n"
                     f"{names}"
+                    f"{unit}"
                     f"      }})"
                 )
         return "\n".join(out)
