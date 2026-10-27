@@ -7,13 +7,17 @@
 
 from copy import deepcopy
 from functools import partial
+from typing import overload
 
 import pandas as pd
 
 from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit import losses
 from mxlpy.fit.abstract import Fit, FitResidual, _Settings
 from mxlpy.fit.residuals import (
+    evaluate_residual,
     protocol_time_course_residual,
     steady_state_residual,
     time_course_residual,
@@ -33,21 +37,68 @@ from mxlpy.types import Result
 __all__ = ["protocol_time_course", "steady_state", "time_course"]
 
 
-def steady_state(
-    model: KineticModelBuilder,
+def _split_p0(
+    model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
+    p0: dict[str, float],
+) -> tuple[list[str], list[str]]:
+    """Split initial guesses into parameter and variable names."""
+    p_names = set(model.get_parameter_names())
+    v_names = (
+        set()
+        if isinstance(model, SteadyStateModelBuilder)
+        else set(model.get_variable_names())
+    )
+    return [i for i in p0 if i in p_names], [i for i in p0 if i in v_names]
+
+
+@overload
+def steady_state[M: (KineticModelBuilder, OdeModelBuilder)](
+    model: M,
     *,
     p0: dict[str, float],
     data: pd.Series,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
-    residual_fn: FitResidual = steady_state_residual,
+    residual_fn: FitResidual | None = None,
     integrator: IntegratorType | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     oscillation_detector: OscillationDetector | None = detect_oscillations,
-) -> Result[Fit]:
+) -> Result[Fit[M]]: ...
+
+
+@overload
+def steady_state(
+    model: SteadyStateModelBuilder,
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    residual_fn: FitResidual | None = None,
+    loss_fn: LossFn = losses.rmse,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    standard_scale: bool = True,
+) -> Result[Fit[SteadyStateModelBuilder]]: ...
+
+
+def steady_state[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder](
+    model: M,
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    y0: dict[str, float] | None = None,
+    residual_fn: FitResidual | None = None,
+    integrator: IntegratorType | None = None,
+    loss_fn: LossFn = losses.rmse,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    standard_scale: bool = True,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
+) -> Result[Fit[M]]:
     """Fit model parameters to steady-state experimental data.
 
     Examples
@@ -68,7 +119,9 @@ def steady_state(
     minimizer
         Function to minimize fitting error
     residual_fn
-        Function to calculate fitting error
+        Function to calculate fitting error. Defaults to
+        `steady_state_residual`, or `evaluate_residual` for a
+        `SteadyStateModelBuilder`, which is evaluated directly.
     integrator
         ODE integrator class
     loss_fn
@@ -90,9 +143,13 @@ def steady_state(
     """
     if as_deepcopy:
         model = deepcopy(model)
-
-    p_names = model.get_parameter_names()
-    v_names = model.get_variable_names()
+    if residual_fn is None:
+        residual_fn = (
+            evaluate_residual
+            if isinstance(model, SteadyStateModelBuilder)
+            else steady_state_residual
+        )
+    p_names, v_names = _split_p0(model, p0)
 
     fn: MinimizerResidual = partial(
         residual_fn,
@@ -102,8 +159,8 @@ def steady_state(
             y0=y0,
             integrator=integrator,
             loss_fn=loss_fn,
-            p_names=[i for i in p0 if i in p_names],
-            v_names=[i for i in p0 if i in v_names],
+            p_names=p_names,
+            v_names=v_names,
             standard_scale=standard_scale,
             oscillation_detector=oscillation_detector,
         ),
@@ -121,8 +178,8 @@ def steady_state(
             return Result(e)
 
 
-def time_course(
-    model: KineticModelBuilder,
+def time_course[M: (KineticModelBuilder, OdeModelBuilder)](
+    model: M,
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
@@ -134,7 +191,7 @@ def time_course(
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-) -> Result[Fit]:
+) -> Result[Fit[M]]:
     """Fit model parameters to time course of experimental data.
 
     Examples
@@ -174,8 +231,7 @@ def time_course(
     """
     if as_deepcopy:
         model = deepcopy(model)
-    p_names = model.get_parameter_names()
-    v_names = model.get_variable_names()
+    p_names, v_names = _split_p0(model, p0)
 
     fn: MinimizerResidual = partial(
         residual_fn,
@@ -185,8 +241,8 @@ def time_course(
             y0=y0,
             integrator=integrator,
             loss_fn=loss_fn,
-            p_names=[i for i in p0 if i in p_names],
-            v_names=[i for i in p0 if i in v_names],
+            p_names=p_names,
+            v_names=v_names,
             standard_scale=standard_scale,
         ),
     )
@@ -204,8 +260,8 @@ def time_course(
             return Result(e)
 
 
-def protocol_time_course(
-    model: KineticModelBuilder,
+def protocol_time_course[M: (KineticModelBuilder, OdeModelBuilder)](
+    model: M,
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
@@ -218,7 +274,7 @@ def protocol_time_course(
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-) -> Result[Fit]:
+) -> Result[Fit[M]]:
     """Fit model parameters to time course of experimental data.
 
     Time points of protocol time course are taken from the data.
@@ -270,8 +326,7 @@ def protocol_time_course(
     """
     if as_deepcopy:
         model = deepcopy(model)
-    p_names = model.get_parameter_names()
-    v_names = model.get_variable_names()
+    p_names, v_names = _split_p0(model, p0)
     protocol = _normalise_protocol_index(protocol)
 
     fn: MinimizerResidual = partial(
@@ -282,8 +337,8 @@ def protocol_time_course(
             y0=y0,
             integrator=integrator,
             loss_fn=loss_fn,
-            p_names=[i for i in p0 if i in p_names],
-            v_names=[i for i in p0 if i in v_names],
+            p_names=p_names,
+            v_names=v_names,
             protocol=protocol,
             standard_scale=standard_scale,
         ),

@@ -97,6 +97,7 @@ from .losses import (
     rmse,
 )
 from .residuals import (
+    evaluate_residual,
     protocol_time_course_residual,
     steady_state_residual,
     time_course_residual,
@@ -122,6 +123,7 @@ __all__: list[str] = [
     "ensemble_protocol_time_course",
     "ensemble_steady_state",
     "ensemble_time_course",
+    "evaluate_residual",
     "group_protocol_time_course",
     "group_steady_state",
     "group_time_course",

@@ -1294,6 +1294,61 @@ class OdeModelBuilder:
             cache = self._create_cache()
         return cache.initial_conditions
 
+    @_invalidate_cache
+    def update_variable(
+        self,
+        name: str,
+        initial_value: float | InitialAssignment,
+    ) -> Self:
+        """Updates the initial value of a variable in the model.
+
+        Examples
+        --------
+            >>> model.update_variable("x1", 2.0)
+
+        Parameters
+        ----------
+        name
+            The name of the variable to update.
+        initial_value
+            The initial condition or value to set for the variable.
+
+        Returns
+        -------
+        Self
+            The instance of the model with the updated variable.
+
+        """
+        if name not in self._diff_eqs:
+            msg = f"Variable {name!r} not found. Available variables: {sorted(self._diff_eqs)}"
+            raise KeyError(msg)
+        self._diff_eqs[name].initial_value = initial_value
+        return self
+
+    def update_variables(
+        self, variables: Mapping[str, float | InitialAssignment]
+    ) -> Self:
+        """Updates the initial values of multiple variables in the model.
+
+        Examples
+        --------
+            >>> model.update_variables({"x1": 2.0, "x2": 3.0})
+
+        Parameters
+        ----------
+        variables
+            A dictionary where the keys are variable names and the values are their new initial conditions.
+
+        Returns
+        -------
+        Self
+            The instance of the model with updated variables.
+
+        """
+        for k, v in variables.items():
+            self.update_variable(k, v)
+        return self
+
     def make_diff_eq_static(self, name: str, value: float | None = None) -> Self:
         """Converts a variable to a static parameter.
 
@@ -2282,9 +2337,9 @@ class OdeModelBuilder:
         if (cache := self._cache) is None:
             cache = self._create_cache()
 
-        args_by_time = {}
+        args_by_time: dict[float, dict[str, float]] = {}
         for time, values in variables.iterrows():
-            args = self._get_args(
+            args: dict[str, float] = self._get_args(
                 variables=cast(dict, values.to_dict()),
                 time=cast(float, time),
                 cache=cache,
@@ -2292,7 +2347,7 @@ class OdeModelBuilder:
             if include_readouts:
                 for name in cache.readout_order:
                     self._readouts[name].calculate_inpl(name, args)
-            args_by_time[time] = args
+            args_by_time[time] = args  # type: ignore
         return args_by_time
 
     def get_args_time_course(

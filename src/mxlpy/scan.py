@@ -20,15 +20,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast, overload
 
 import numpy as np
 import pandas as pd
 from wadler_lindig import pformat
 
+from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.parallel import Cache, parallelise
-from mxlpy.simulation import Simulation
+from mxlpy.simulation import OdeSimulation, Simulation
 from mxlpy.simulator import Simulator
 from mxlpy.types import Result
 
@@ -41,6 +43,7 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "EvaluationScan",
     "ProtocolScan",
     "ProtocolTimeCourseWorker",
     "ProtocolWorker",
@@ -55,10 +58,13 @@ __all__ = [
 ]
 
 
-def _update_parameters_and_initial_conditions[T](
+def _update_parameters_and_initial_conditions[
+    M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
+    T,
+](
     pars: pd.Series,
-    fn: Callable[[KineticModelBuilder], T],
-    model: KineticModelBuilder,
+    fn: Callable[[M], T],
+    model: M,
 ) -> T:
     """Update model parameters and execute a function.
 
@@ -77,9 +83,31 @@ def _update_parameters_and_initial_conditions[T](
 
     """
     pd: dict[str, float] = cast(dict, pars.to_dict())
-    model.update_variables({k: v for k, v in pd.items() if k in model._variables})  # noqa: SLF001
-    model.update_parameters({k: v for k, v in pd.items() if k in model._parameters})  # noqa: SLF001
+    if not isinstance(model, SteadyStateModelBuilder):
+        variables = set(model.get_variable_names())
+        model.update_variables({k: v for k, v in pd.items() if k in variables})
+    parameters = set(model.get_parameter_names())
+    model.update_parameters({k: v for k, v in pd.items() if k in parameters})
     return fn(model)
+
+
+def _raw_index(to_scan: pd.DataFrame) -> pd.Index | pd.MultiIndex:
+    if to_scan.shape[1] == 1:
+        return pd.Index(to_scan.iloc[:, 0])
+    return pd.MultiIndex.from_frame(to_scan)
+
+
+def _unwrap_or_default(
+    res: Result[Simulation] | Result[OdeSimulation] | Result[Exception],
+    model: KineticModelBuilder | OdeModelBuilder,
+    time_points: Array,
+) -> Simulation | OdeSimulation:
+    """Unwrap a simulation result, falling back to NaNs on failure."""
+    if isinstance(val := res.value, Simulation | OdeSimulation):
+        return val
+    if isinstance(model, OdeModelBuilder):
+        return OdeSimulation.default(model=model, time_points=time_points)
+    return Simulation.default(model=model, time_points=time_points)
 
 
 ###############################################################################
@@ -92,13 +120,14 @@ class SteadyStateWorker(Protocol):
 
     def __call__(
         self,
-        model: KineticModelBuilder,
+        model: KineticModelBuilder | OdeModelBuilder,
         *,
+        tolerance: float = 1e-6,
         rel_norm: bool,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
         oscillation_detector: OscillationDetector | None,
-    ) -> Simulation:
+    ) -> Simulation | OdeSimulation:
         """Call the worker function."""
         ...
 
@@ -108,12 +137,12 @@ class TimeCourseWorker(Protocol):
 
     def __call__(
         self,
-        model: KineticModelBuilder,
+        model: KineticModelBuilder | OdeModelBuilder,
         time_points: Array,
         *,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
-    ) -> Simulation:
+    ) -> Simulation | OdeSimulation:
         """Call the worker function."""
         ...
 
@@ -123,13 +152,13 @@ class ProtocolWorker(Protocol):
 
     def __call__(
         self,
-        model: KineticModelBuilder,
+        model: KineticModelBuilder | OdeModelBuilder,
         protocol: pd.DataFrame,
         *,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
         time_points_per_step: int = 10,
-    ) -> Simulation:
+    ) -> Simulation | OdeSimulation:
         """Call the worker function."""
         ...
 
@@ -139,26 +168,26 @@ class ProtocolTimeCourseWorker(Protocol):
 
     def __call__(
         self,
-        model: KineticModelBuilder,
+        model: KineticModelBuilder | OdeModelBuilder,
         protocol: pd.DataFrame,
         time_points: Array,
         *,
         integrator: IntegratorType | None,
         y0: dict[str, float] | None,
-    ) -> Simulation:
+    ) -> Simulation | OdeSimulation:
         """Call the worker function."""
         ...
 
 
 def _steady_state_worker(
-    model: KineticModelBuilder,
-    tolerance: float = 1e-6,
+    model: KineticModelBuilder | OdeModelBuilder,
     *,
+    tolerance: float = 1e-6,
     rel_norm: bool,
     integrator: IntegratorType | None,
     y0: dict[str, float] | None,
     oscillation_detector: OscillationDetector | None = detect_oscillations,
-) -> Simulation:
+) -> Simulation | OdeSimulation:
     """Simulate the model to steady state and return concentrations and fluxes.
 
     Parameters
@@ -195,17 +224,15 @@ def _steady_state_worker(
     except ZeroDivisionError:
         res = Result(Exception())
 
-    return res.default(
-        lambda: Simulation.default(model=model, time_points=np.array([0.0]))
-    )
+    return _unwrap_or_default(res, model, np.array([0.0]))
 
 
 def _time_course_worker(
-    model: KineticModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder,
     time_points: Array,
     y0: dict[str, float] | None,
     integrator: IntegratorType | None,
-) -> Simulation:
+) -> Simulation | OdeSimulation:
     """Simulate the model to steady state and return concentrations and fluxes.
 
     Parameters
@@ -234,17 +261,17 @@ def _time_course_worker(
     except ZeroDivisionError:
         res = Result(Exception())
 
-    return res.default(lambda: Simulation.default(model=model, time_points=time_points))
+    return _unwrap_or_default(res, model, time_points)
 
 
 def _protocol_worker(
-    model: KineticModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder,
     protocol: pd.DataFrame,
     *,
     integrator: IntegratorType | None,
     y0: dict[str, float] | None,
     time_points_per_step: int = 10,
-) -> Simulation:
+) -> Simulation | OdeSimulation:
     """Simulate the model over a protocol and return concentrations and fluxes.
 
     Parameters
@@ -283,17 +310,17 @@ def _protocol_worker(
         protocol.index[-1].total_seconds(),
         len(protocol) * time_points_per_step,
     )
-    return res.default(lambda: Simulation.default(model=model, time_points=time_points))
+    return _unwrap_or_default(res, model, time_points)
 
 
 def _protocol_time_course_worker(
-    model: KineticModelBuilder,
+    model: KineticModelBuilder | OdeModelBuilder,
     protocol: pd.DataFrame,
     time_points: Array,
     *,
     integrator: IntegratorType | None,
     y0: dict[str, float] | None,
-) -> Simulation:
+) -> Simulation | OdeSimulation:
     """Simulate the model over a protocol and return concentrations and fluxes.
 
     Parameters
@@ -327,16 +354,16 @@ def _protocol_time_course_worker(
     except ZeroDivisionError:
         res = Result(Exception())
 
-    return res.default(lambda: Simulation.default(model=model, time_points=time_points))
+    return _unwrap_or_default(res, model, time_points)
 
 
 @dataclass(kw_only=True, slots=True)
-class SteadyStateScan:
+class SteadyStateScan[S: (Simulation, OdeSimulation)]:
     """Container for steady states by scanned values."""
 
     to_scan: pd.DataFrame
     raw_index: pd.Index | pd.MultiIndex
-    raw_results: list[Simulation]
+    raw_results: list[S]
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -350,7 +377,7 @@ class SteadyStateScan:
         )
 
     @property
-    def fluxes(self) -> pd.DataFrame:
+    def fluxes(self: SteadyStateScan[Simulation]) -> pd.DataFrame:
         """Return steady-state fluxes by scan."""
         return pd.DataFrame(
             [i.fluxes.iloc[-1].T for i in self.raw_results], index=self.raw_index
@@ -359,10 +386,11 @@ class SteadyStateScan:
     @property
     def combined(self) -> pd.DataFrame:
         """Return steady-state args by scan."""
-        return self.get_args()
+        return self._get_args({})
 
+    @overload
     def get_args(
-        self,
+        self: SteadyStateScan[Simulation],
         *,
         include_variables: bool = True,
         include_parameters: bool = False,
@@ -372,27 +400,26 @@ class SteadyStateScan:
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = True,
-    ) -> pd.DataFrame:
-        """Return steady-state args by scan.
+    ) -> pd.DataFrame: ...
 
-        Parameters
-        ----------
-        include_variables
-            Include model variables.
-        include_parameters
-            Include model parameters.
-        include_derived_parameters
-            Include derived parameters.
-        include_derived_variables
-            Include derived variables.
-        include_reactions
-            Include reaction fluxes.
-        include_surrogate_variables
-            Include surrogate variables.
-        include_surrogate_fluxes
-            Include surrogate fluxes.
-        include_readouts
-            Include readouts.
+    @overload
+    def get_args(
+        self: SteadyStateScan[OdeSimulation],
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_surrogate_variables: bool = False,
+        include_surrogate_targets: bool = False,
+        include_readouts: bool = True,
+    ) -> pd.DataFrame: ...
+
+    def get_args(self, **kwargs: bool) -> pd.DataFrame:
+        """Return args by scan.
+
+        Accepts the `include_*` flags of `Simulation.get_args` or
+        `OdeSimulation.get_args` respectively, but defaults to including readouts.
 
         Returns
         -------
@@ -400,30 +427,72 @@ class SteadyStateScan:
             Steady-state args indexed by scan values.
 
         """
+        return self._get_args(kwargs)
+
+    def _get_args(self, kwargs: dict[str, bool]) -> pd.DataFrame:
+        kwargs = {"include_readouts": True} | kwargs
         return pd.DataFrame(
-            [
-                i.get_args(
-                    include_variables=include_variables,
-                    include_parameters=include_parameters,
-                    include_derived_parameters=include_derived_parameters,
-                    include_derived_variables=include_derived_variables,
-                    include_reactions=include_reactions,
-                    include_surrogate_variables=include_surrogate_variables,
-                    include_surrogate_fluxes=include_surrogate_fluxes,
-                    include_readouts=include_readouts,
-                )
-                .iloc[-1]
-                .T
-                for i in self.raw_results
-            ],
+            [i.get_args(**kwargs).iloc[-1].T for i in self.raw_results],
             index=self.raw_index,
         )
 
-    def __iter__(self) -> Iterator[pd.DataFrame]:
+    def __iter__(self: SteadyStateScan[Simulation]) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux steady states."""
         return iter((self.variables, self.fluxes))
 
 
+@dataclass(kw_only=True, slots=True)
+class EvaluationScan:
+    """Container for `SteadyStateModelBuilder` evaluations by scanned values."""
+
+    to_scan: pd.DataFrame
+    raw_index: pd.Index | pd.MultiIndex
+    raw_results: list[pd.Series]
+    parameter_names: list[str]
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    @property
+    def combined(self) -> pd.DataFrame:
+        """Return evaluated values by scan."""
+        return self.get_args()
+
+    def get_args(self, *, include_parameters: bool = False) -> pd.DataFrame:
+        """Return evaluated values by scan.
+
+        Parameters
+        ----------
+        include_parameters
+            Include model parameters.
+
+        Returns
+        -------
+        pd.DataFrame
+            Evaluated values indexed by scan values.
+
+        """
+        args = pd.DataFrame(self.raw_results, index=self.raw_index)
+        if include_parameters:
+            return args
+        return args.drop(columns=self.parameter_names)
+
+
+def _evaluate_worker(model: SteadyStateModelBuilder) -> pd.Series:
+    """Evaluate the model, returning NaNs on arithmetic errors."""
+    try:
+        return model.evaluate(include_parameters=True)
+    except ArithmeticError:
+        return pd.Series(
+            np.nan,
+            index=model.get_parameter_names()
+            + list(model.get_raw_derived(as_copy=False)),
+            dtype=float,
+        )
+
+
+@overload
 def steady_state(
     model: KineticModelBuilder,
     *,
@@ -436,7 +505,48 @@ def steady_state(
     worker: SteadyStateWorker = _steady_state_worker,
     integrator: IntegratorType | None = None,
     oscillation_detector: OscillationDetector | None = detect_oscillations,
-) -> SteadyStateScan:
+) -> SteadyStateScan[Simulation]: ...
+
+
+@overload
+def steady_state(
+    model: OdeModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    tolerance: float = 1e-6,
+    y0: dict[str, float] | None = None,
+    parallel: bool = True,
+    rel_norm: bool = False,
+    cache: Cache | None = None,
+    worker: SteadyStateWorker = _steady_state_worker,
+    integrator: IntegratorType | None = None,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
+) -> SteadyStateScan[OdeSimulation]: ...
+
+
+@overload
+def steady_state(
+    model: SteadyStateModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    parallel: bool = True,
+    cache: Cache | None = None,
+) -> EvaluationScan: ...
+
+
+def steady_state(
+    model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    tolerance: float = 1e-6,
+    y0: dict[str, float] | None = None,
+    parallel: bool = True,
+    rel_norm: bool = False,
+    cache: Cache | None = None,
+    worker: SteadyStateWorker = _steady_state_worker,
+    integrator: IntegratorType | None = None,
+    oscillation_detector: OscillationDetector | None = detect_oscillations,
+) -> SteadyStateScan[Simulation] | SteadyStateScan[OdeSimulation] | EvaluationScan:
     """Get steady-state results over supplied values.
 
     Parameters
@@ -464,9 +574,12 @@ def steady_state(
         :func:`~mxlpy.integrators.utils.no_oscillation_detection` to
         disable.  Default: :func:`~mxlpy.integrators.utils.detect_oscillations`.
 
+    `SteadyStateModelBuilder` models are evaluated directly, so the
+    simulation specific arguments don't apply to them.
+
     Returns
     -------
-    SteadyStates
+    SteadyStateScan | EvaluationScan
         Steady-state results for each parameter set.
 
     Examples
@@ -492,6 +605,24 @@ def steady_state(
         | (2, 4) | 0.5  |   2 |
 
     """
+    if isinstance(model, SteadyStateModelBuilder):
+        evaluated = parallelise(
+            partial(
+                _update_parameters_and_initial_conditions,
+                fn=_evaluate_worker,
+                model=model,
+            ),
+            inputs=list(to_scan.iterrows()),
+            cache=cache,
+            parallel=parallel,
+        )
+        return EvaluationScan(
+            to_scan=to_scan,
+            raw_index=_raw_index(to_scan),
+            raw_results=[i[1] for i in evaluated],
+            parameter_names=model.get_parameter_names(),
+        )
+
     if y0 is not None:
         model.update_variables(y0)
 
@@ -514,18 +645,14 @@ def steady_state(
     )
 
     return SteadyStateScan(
-        raw_index=(
-            pd.Index(to_scan.iloc[:, 0])
-            if to_scan.shape[1] == 1
-            else pd.MultiIndex.from_frame(to_scan)
-        ),
-        raw_results=[i[1] for i in res],
+        raw_index=_raw_index(to_scan),
+        raw_results=[i[1] for i in res],  # type: ignore[misc]
         to_scan=to_scan,
     )
 
 
 @dataclass(kw_only=True, slots=True)
-class TimeCourseScan:
+class TimeCourseScan[S: (Simulation, OdeSimulation)]:
     """Container for time courses by scanned values."""
 
     def __repr__(self) -> str:
@@ -533,7 +660,7 @@ class TimeCourseScan:
         return pformat(self)
 
     to_scan: pd.DataFrame
-    raw_results: dict[Hashable, Simulation]
+    raw_results: dict[Hashable, S]
 
     @property
     def variables(self) -> pd.DataFrame:
@@ -543,7 +670,7 @@ class TimeCourseScan:
         )
 
     @property
-    def fluxes(self) -> pd.DataFrame:
+    def fluxes(self: TimeCourseScan[Simulation]) -> pd.DataFrame:
         """Return all args of the time courses."""
         return pd.concat(
             {k: i.fluxes for k, i in self.raw_results.items()}, names=["n", "time"]
@@ -552,10 +679,11 @@ class TimeCourseScan:
     @property
     def combined(self) -> pd.DataFrame:
         """Return the time courses as a DataFrame."""
-        return self.get_args()
+        return self._get_args({})
 
+    @overload
     def get_args(
-        self,
+        self: TimeCourseScan[Simulation],
         *,
         include_variables: bool = True,
         include_parameters: bool = False,
@@ -565,27 +693,26 @@ class TimeCourseScan:
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = True,
-    ) -> pd.DataFrame:
-        """Return all args of the time courses.
+    ) -> pd.DataFrame: ...
 
-        Parameters
-        ----------
-        include_variables
-            Include model variables.
-        include_parameters
-            Include model parameters.
-        include_derived_parameters
-            Include derived parameters.
-        include_derived_variables
-            Include derived variables.
-        include_reactions
-            Include reaction fluxes.
-        include_surrogate_variables
-            Include surrogate variables.
-        include_surrogate_fluxes
-            Include surrogate fluxes.
-        include_readouts
-            Include readouts.
+    @overload
+    def get_args(
+        self: TimeCourseScan[OdeSimulation],
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_surrogate_variables: bool = False,
+        include_surrogate_targets: bool = False,
+        include_readouts: bool = True,
+    ) -> pd.DataFrame: ...
+
+    def get_args(self, **kwargs: bool) -> pd.DataFrame:
+        """Return args by scan.
+
+        Accepts the `include_*` flags of `Simulation.get_args` or
+        `OdeSimulation.get_args` respectively, but defaults to including readouts.
 
         Returns
         -------
@@ -593,20 +720,12 @@ class TimeCourseScan:
             Combined args with multi-index (n, time).
 
         """
+        return self._get_args(kwargs)
+
+    def _get_args(self, kwargs: dict[str, bool]) -> pd.DataFrame:
+        kwargs = {"include_readouts": True} | kwargs
         return pd.concat(
-            {
-                k: i.get_args(
-                    include_variables=include_variables,
-                    include_parameters=include_parameters,
-                    include_derived_parameters=include_derived_parameters,
-                    include_derived_variables=include_derived_variables,
-                    include_reactions=include_reactions,
-                    include_surrogate_variables=include_surrogate_variables,
-                    include_surrogate_fluxes=include_surrogate_fluxes,
-                    include_readouts=include_readouts,
-                )
-                for k, i in self.raw_results.items()
-            },
+            {k: i.get_args(**kwargs) for k, i in self.raw_results.items()},
             names=["n", "time"],
         )
 
@@ -660,11 +779,12 @@ class TimeCourseScan:
         mean = cast(pd.DataFrame, self.combined.unstack(level=0).agg(agg, axis=0))
         return cast(pd.DataFrame, mean.unstack().T)
 
-    def __iter__(self) -> Iterator[pd.DataFrame]:
+    def __iter__(self: TimeCourseScan[Simulation]) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux time courses."""
         return iter((self.variables, self.fluxes))
 
 
+@overload
 def time_course(
     model: KineticModelBuilder,
     *,
@@ -675,7 +795,34 @@ def time_course(
     cache: Cache | None = None,
     integrator: IntegratorType | None = None,
     worker: TimeCourseWorker = _time_course_worker,
-) -> TimeCourseScan:
+) -> TimeCourseScan[Simulation]: ...
+
+
+@overload
+def time_course(
+    model: OdeModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    time_points: Array,
+    y0: dict[str, float] | None = None,
+    parallel: bool = True,
+    cache: Cache | None = None,
+    integrator: IntegratorType | None = None,
+    worker: TimeCourseWorker = _time_course_worker,
+) -> TimeCourseScan[OdeSimulation]: ...
+
+
+def time_course(
+    model: KineticModelBuilder | OdeModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    time_points: Array,
+    y0: dict[str, float] | None = None,
+    parallel: bool = True,
+    cache: Cache | None = None,
+    integrator: IntegratorType | None = None,
+    worker: TimeCourseWorker = _time_course_worker,
+) -> TimeCourseScan[Simulation] | TimeCourseScan[OdeSimulation]:
     """Get time course for each supplied parameter.
 
     Examples
@@ -760,17 +907,17 @@ def time_course(
     )
     return TimeCourseScan(
         to_scan=to_scan,
-        raw_results=dict(res),
+        raw_results=dict(res),  # type: ignore[misc]
     )
 
 
 @dataclass(kw_only=True, slots=True)
-class ProtocolScan:
+class ProtocolScan[S: (Simulation, OdeSimulation)]:
     """Container for protocols by scanned values."""
 
     to_scan: pd.DataFrame
     protocol: pd.DataFrame
-    raw_results: dict[Hashable, Simulation]
+    raw_results: dict[Hashable, S]
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -785,7 +932,7 @@ class ProtocolScan:
         )
 
     @property
-    def fluxes(self) -> pd.DataFrame:
+    def fluxes(self: ProtocolScan[Simulation]) -> pd.DataFrame:
         """Return all args of the time courses."""
         return pd.concat(
             {k: i.fluxes for k, i in self.raw_results.items()},
@@ -795,10 +942,11 @@ class ProtocolScan:
     @property
     def combined(self) -> pd.DataFrame:
         """Return the time courses as a DataFrame."""
-        return self.get_args()
+        return self._get_args({})
 
+    @overload
     def get_args(
-        self,
+        self: ProtocolScan[Simulation],
         *,
         include_variables: bool = True,
         include_parameters: bool = False,
@@ -808,27 +956,26 @@ class ProtocolScan:
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = True,
-    ) -> pd.DataFrame:
-        """Return all args of the time courses.
+    ) -> pd.DataFrame: ...
 
-        Parameters
-        ----------
-        include_variables
-            Include model variables.
-        include_parameters
-            Include model parameters.
-        include_derived_parameters
-            Include derived parameters.
-        include_derived_variables
-            Include derived variables.
-        include_reactions
-            Include reaction fluxes.
-        include_surrogate_variables
-            Include surrogate variables.
-        include_surrogate_fluxes
-            Include surrogate fluxes.
-        include_readouts
-            Include readouts.
+    @overload
+    def get_args(
+        self: ProtocolScan[OdeSimulation],
+        *,
+        include_variables: bool = True,
+        include_parameters: bool = False,
+        include_derived_parameters: bool = False,
+        include_derived_variables: bool = True,
+        include_surrogate_variables: bool = False,
+        include_surrogate_targets: bool = False,
+        include_readouts: bool = True,
+    ) -> pd.DataFrame: ...
+
+    def get_args(self, **kwargs: bool) -> pd.DataFrame:
+        """Return args by scan.
+
+        Accepts the `include_*` flags of `Simulation.get_args` or
+        `OdeSimulation.get_args` respectively, but defaults to including readouts.
 
         Returns
         -------
@@ -836,20 +983,12 @@ class ProtocolScan:
             Combined args with multi-index (n, time).
 
         """
+        return self._get_args(kwargs)
+
+    def _get_args(self, kwargs: dict[str, bool]) -> pd.DataFrame:
+        kwargs = {"include_readouts": True} | kwargs
         return pd.concat(
-            {
-                k: i.get_args(
-                    include_variables=include_variables,
-                    include_parameters=include_parameters,
-                    include_derived_parameters=include_derived_parameters,
-                    include_derived_variables=include_derived_variables,
-                    include_reactions=include_reactions,
-                    include_surrogate_variables=include_surrogate_variables,
-                    include_surrogate_fluxes=include_surrogate_fluxes,
-                    include_readouts=include_readouts,
-                )
-                for k, i in self.raw_results.items()
-            },
+            {k: i.get_args(**kwargs) for k, i in self.raw_results.items()},
             names=["n", "time"],
         )
 
@@ -903,11 +1042,12 @@ class ProtocolScan:
         mean = cast(pd.DataFrame, self.combined.unstack(level=0).agg(agg, axis=0))
         return cast(pd.DataFrame, mean.unstack().T)
 
-    def __iter__(self) -> Iterator[pd.DataFrame]:
+    def __iter__(self: ProtocolScan[Simulation]) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux protocols."""
         return iter((self.variables, self.fluxes))
 
 
+@overload
 def protocol(
     model: KineticModelBuilder,
     *,
@@ -919,7 +1059,36 @@ def protocol(
     cache: Cache | None = None,
     worker: ProtocolWorker = _protocol_worker,
     integrator: IntegratorType | None = None,
-) -> ProtocolScan:
+) -> ProtocolScan[Simulation]: ...
+
+
+@overload
+def protocol(
+    model: OdeModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    protocol: pd.DataFrame,
+    time_points_per_step: int = 10,
+    y0: dict[str, float] | None = None,
+    parallel: bool = True,
+    cache: Cache | None = None,
+    worker: ProtocolWorker = _protocol_worker,
+    integrator: IntegratorType | None = None,
+) -> ProtocolScan[OdeSimulation]: ...
+
+
+def protocol(
+    model: KineticModelBuilder | OdeModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    protocol: pd.DataFrame,
+    time_points_per_step: int = 10,
+    y0: dict[str, float] | None = None,
+    parallel: bool = True,
+    cache: Cache | None = None,
+    worker: ProtocolWorker = _protocol_worker,
+    integrator: IntegratorType | None = None,
+) -> ProtocolScan[Simulation] | ProtocolScan[OdeSimulation]:
     """Get protocol series for each supplied parameter.
 
     Examples
@@ -986,10 +1155,11 @@ def protocol(
     return ProtocolScan(
         to_scan=to_scan,
         protocol=protocol,
-        raw_results=dict(res),
+        raw_results=dict(res),  # type: ignore[misc]
     )
 
 
+@overload
 def protocol_time_course(
     model: KineticModelBuilder,
     *,
@@ -1001,7 +1171,36 @@ def protocol_time_course(
     cache: Cache | None = None,
     worker: ProtocolTimeCourseWorker = _protocol_time_course_worker,
     integrator: IntegratorType | None = None,
-) -> ProtocolScan:
+) -> ProtocolScan[Simulation]: ...
+
+
+@overload
+def protocol_time_course(
+    model: OdeModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    protocol: pd.DataFrame,
+    time_points: Array,
+    y0: dict[str, float] | None = None,
+    parallel: bool = True,
+    cache: Cache | None = None,
+    worker: ProtocolTimeCourseWorker = _protocol_time_course_worker,
+    integrator: IntegratorType | None = None,
+) -> ProtocolScan[OdeSimulation]: ...
+
+
+def protocol_time_course(
+    model: KineticModelBuilder | OdeModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    protocol: pd.DataFrame,
+    time_points: Array,
+    y0: dict[str, float] | None = None,
+    parallel: bool = True,
+    cache: Cache | None = None,
+    worker: ProtocolTimeCourseWorker = _protocol_time_course_worker,
+    integrator: IntegratorType | None = None,
+) -> ProtocolScan[Simulation] | ProtocolScan[OdeSimulation]:
     """Get protocol series for each supplied parameter.
 
     Examples
@@ -1068,5 +1267,5 @@ def protocol_time_course(
     return ProtocolScan(
         to_scan=to_scan,
         protocol=protocol,
-        raw_results=dict(res),
+        raw_results=dict(res),  # type: ignore[misc]
     )

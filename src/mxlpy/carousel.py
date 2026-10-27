@@ -8,7 +8,7 @@ import itertools as it
 from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pandas as pd
 from wadler_lindig import pformat
@@ -166,7 +166,7 @@ class Carousel:
 
         return CarouselTimeCourse(
             carousel=self.variants,
-            results=results,
+            results=cast("list[Simulation]", results),
         )
 
     def protocol(
@@ -207,7 +207,7 @@ class Carousel:
 
         return CarouselTimeCourse(
             carousel=self.variants,
-            results=results,
+            results=cast("list[Simulation]", results),
         )
 
     def protocol_time_course(
@@ -252,7 +252,7 @@ class Carousel:
 
         return CarouselTimeCourse(
             carousel=self.variants,
-            results=results,
+            results=cast("list[Simulation]", results),
         )
 
     def steady_state(
@@ -293,7 +293,7 @@ class Carousel:
 
         return CarouselSteadyState(
             carousel=self.variants,
-            results=results,
+            results=cast("list[Simulation]", results),
         )
 
 
