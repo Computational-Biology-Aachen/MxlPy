@@ -19,18 +19,16 @@ pre-evaluation snapshot instead.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import pytest
 
-from mxlpy import OdeModelBuilder, Simulator
+from mxlpy import OdeModelBuilder, Simulator, SteadyStateModelBuilder
 from mxlpy.simulation import OdeSimulation
 from mxlpy.surrogates.abstract_ode import AbstractOdeSurrogate
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 @dataclass(kw_only=True)
@@ -388,3 +386,30 @@ def test_simulate_to_steady_state() -> None:
         .unwrap_or_err()
     )
     assert result.get_new_y0()["x"] == pytest.approx(2.0, rel=1e-4)
+
+
+def test_simulator_rejects_steady_state_model() -> None:
+    with pytest.raises(TypeError, match="evaluate"):
+        Simulator(SteadyStateModelBuilder().add_parameter("a", 1.0))  # type: ignore[arg-type]
+
+
+def test_use_jacobian_warns_for_ode_model(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.WARNING):
+        Simulator(production_decay_model(), use_jacobian=True)
+    assert "Jacobians are only supported" in caplog.text
+
+
+def test_simulation_args_robust_to_builder_returning_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = OdeModelBuilder.get_args_time_course
+
+    def with_variables(
+        self: OdeModelBuilder, variables: pd.DataFrame, **kwargs: bool
+    ) -> pd.DataFrame:
+        return pd.concat((variables, original(self, variables, **kwargs)), axis=1)
+
+    monkeypatch.setattr(OdeModelBuilder, "get_args_time_course", with_variables)
+    model = production_decay_model()
+    result = Simulator(model).simulate(1.0).get_result().unwrap_or_err()
+    assert list(result.get_combined().columns) == ["x", "d"]

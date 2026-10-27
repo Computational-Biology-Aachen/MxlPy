@@ -20,10 +20,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Protocol, cast, overload
+from typing import TYPE_CHECKING, Generic, Protocol, cast, overload
 
 import numpy as np
 import pandas as pd
+from typing_extensions import TypeVar
 from wadler_lindig import pformat
 
 from mxlpy._ode_builder import OdeModelBuilder
@@ -35,7 +36,7 @@ from mxlpy.simulator import Simulator
 from mxlpy.types import Result
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Hashable, Iterator
+    from collections.abc import Callable, Hashable, Iterable, Iterator
 
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.integrators import IntegratorType
@@ -56,6 +57,10 @@ __all__ = [
     "steady_state",
     "time_course",
 ]
+
+
+# Defaults to Simulation, so a bare scan result type keeps its meaning
+S = TypeVar("S", Simulation, OdeSimulation, default=Simulation)
 
 
 def _update_parameters_and_initial_conditions[
@@ -95,6 +100,13 @@ def _raw_index(to_scan: pd.DataFrame) -> pd.Index | pd.MultiIndex:
     if to_scan.shape[1] == 1:
         return pd.Index(to_scan.iloc[:, 0])
     return pd.MultiIndex.from_frame(to_scan)
+
+
+def _require_fluxes(results: Iterable[Simulation | OdeSimulation]) -> None:
+    """Raise a helpful error instead of an AttributeError for ODE results."""
+    if any(isinstance(i, OdeSimulation) for i in results):
+        msg = "Scans of an OdeModelBuilder have no fluxes and can't be unpacked into (variables, fluxes) - use .variables or .combined instead"
+        raise TypeError(msg)
 
 
 def _unwrap_or_default(
@@ -358,7 +370,7 @@ def _protocol_time_course_worker(
 
 
 @dataclass(kw_only=True, slots=True)
-class SteadyStateScan[S: (Simulation, OdeSimulation)]:
+class SteadyStateScan(Generic[S]):
     """Container for steady states by scanned values."""
 
     to_scan: pd.DataFrame
@@ -379,6 +391,7 @@ class SteadyStateScan[S: (Simulation, OdeSimulation)]:
     @property
     def fluxes(self: SteadyStateScan[Simulation]) -> pd.DataFrame:
         """Return steady-state fluxes by scan."""
+        _require_fluxes(self.raw_results)
         return pd.DataFrame(
             [i.fluxes.iloc[-1].T for i in self.raw_results], index=self.raw_index
         )
@@ -480,10 +493,10 @@ class EvaluationScan:
 
 
 def _evaluate_worker(model: SteadyStateModelBuilder) -> pd.Series:
-    """Evaluate the model, returning NaNs on arithmetic errors."""
+    """Evaluate the model, returning NaNs on arithmetic or domain errors."""
     try:
         return model.evaluate(include_parameters=True)
-    except ArithmeticError:
+    except (ArithmeticError, ValueError):
         return pd.Series(
             np.nan,
             index=model.get_parameter_names()
@@ -529,7 +542,7 @@ def steady_state(
     model: SteadyStateModelBuilder,
     *,
     to_scan: pd.DataFrame,
-    parallel: bool = True,
+    parallel: bool = False,
     cache: Cache | None = None,
 ) -> EvaluationScan: ...
 
@@ -540,7 +553,7 @@ def steady_state(
     to_scan: pd.DataFrame,
     tolerance: float = 1e-6,
     y0: dict[str, float] | None = None,
-    parallel: bool = True,
+    parallel: bool | None = None,
     rel_norm: bool = False,
     cache: Cache | None = None,
     worker: SteadyStateWorker = _steady_state_worker,
@@ -560,7 +573,9 @@ def steady_state(
     y0
         Initial conditions as a dictionary {variable: value}.
     parallel
-        Whether to execute in parallel (default: True).
+        Whether to execute in parallel. Defaults to True, except for a
+        `SteadyStateModelBuilder`, whose cheap evaluations don't make up for
+        the process pool's overhead.
     rel_norm
         Whether to use relative normalization (default: False).
     cache
@@ -605,6 +620,9 @@ def steady_state(
         | (2, 4) | 0.5  |   2 |
 
     """
+    if parallel is None:
+        parallel = not isinstance(model, SteadyStateModelBuilder)
+
     if isinstance(model, SteadyStateModelBuilder):
         evaluated = parallelise(
             partial(
@@ -652,7 +670,7 @@ def steady_state(
 
 
 @dataclass(kw_only=True, slots=True)
-class TimeCourseScan[S: (Simulation, OdeSimulation)]:
+class TimeCourseScan(Generic[S]):
     """Container for time courses by scanned values."""
 
     def __repr__(self) -> str:
@@ -672,6 +690,7 @@ class TimeCourseScan[S: (Simulation, OdeSimulation)]:
     @property
     def fluxes(self: TimeCourseScan[Simulation]) -> pd.DataFrame:
         """Return all args of the time courses."""
+        _require_fluxes(self.raw_results.values())
         return pd.concat(
             {k: i.fluxes for k, i in self.raw_results.items()}, names=["n", "time"]
         )
@@ -912,7 +931,7 @@ def time_course(
 
 
 @dataclass(kw_only=True, slots=True)
-class ProtocolScan[S: (Simulation, OdeSimulation)]:
+class ProtocolScan(Generic[S]):
     """Container for protocols by scanned values."""
 
     to_scan: pd.DataFrame
@@ -934,6 +953,7 @@ class ProtocolScan[S: (Simulation, OdeSimulation)]:
     @property
     def fluxes(self: ProtocolScan[Simulation]) -> pd.DataFrame:
         """Return all args of the time courses."""
+        _require_fluxes(self.raw_results.values())
         return pd.concat(
             {k: i.fluxes for k, i in self.raw_results.items()},
             names=["n", "time"],

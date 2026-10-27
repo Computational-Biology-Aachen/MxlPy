@@ -28,7 +28,7 @@ fitted = fit.protocol_time_course(
 
 The single-model routines also accept an `OdeModelBuilder`, and `fit.steady_state` accepts a `SteadyStateModelBuilder` (no `y0` / `integrator`; its default residual is `fit.evaluate_residual`, which evaluates instead of simulates). `fitted.model` has the same type as the model passed in. Group / ensemble / joint / carousel fits are `Model`-only.
 
-By default fitting applies **standard scaling** to data and predictions (`(x - data.mean()) / data.std()`); pass `standard_scale=False` to opt out.
+By default fitting applies **standard scaling** to data and predictions (`(x - data.mean()) / data.std()`); pass `standard_scale=False` to opt out. Scaling is skipped for fewer than two data points, whose standard deviation is undefined.
 
 ### Routine families
 
@@ -79,7 +79,7 @@ fit.joint_mixed(
 
 ### Minimizers, loss functions, injection
 
-- Minimizers: `fit.LocalScipyMinimizer(tol=..., method="Nelder-Mead"|"L-BFGS-B"|...)`, `fit.GlobalScipyMinimizer(bounds=fit.Bounds(lower={...}, upper={...}))` (basin hopping / dual annealing).
+- Minimizers: `fit.LocalScipyMinimizer(tol=..., method="Nelder-Mead"|"L-BFGS-B"|...)` (default `method=None`: Nelder-Mead for a single parameter, L-BFGS-B otherwise), `fit.GlobalScipyMinimizer(bounds=fit.Bounds(lower={...}, upper={...}))` (basin hopping / dual annealing).
 - Loss functions (pass `loss_fn=`): `fit.rmse`, `fit.mae`, `fit.mean_squared`, `fit.mean_absolute_percentage`, `fit.mean_squared_logarithmic`, `fit.cosine_similarity`, or any `(pred, data) -> float`.
 - The call tree is `minimizer → residual_fn → (integrator, loss_fn)`; override any of `minimizer`, `loss_fn`, `integrator` (e.g. `integrator=partial(Scipy, rtol=1e-6, atol=1e-6)`).
 

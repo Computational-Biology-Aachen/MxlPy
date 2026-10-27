@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.simulation import OdeSimulation, Simulation
 from mxlpy.simulator import Simulator
 from mxlpy.types import cast
@@ -15,7 +16,6 @@ from mxlpy.types import cast
 if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
-    from mxlpy._steady_state_builder import SteadyStateModelBuilder
     from mxlpy.fit.abstract import _Settings
 
 __all__ = [
@@ -189,11 +189,14 @@ def evaluate_residual(
 
     """
     model = settings.model
+    if not isinstance(model, SteadyStateModelBuilder):
+        msg = f"evaluate_residual requires a SteadyStateModelBuilder, got {type(model).__name__} - use steady_state_residual instead"
+        raise TypeError(msg)
     for p in settings.p_names:
         model.update_parameter(p, updates[p])
 
     try:
         res = model.evaluate(include_parameters=True)
-    except ArithmeticError:
+    except (ArithmeticError, ValueError):
         return cast(float, np.inf)
     return settings.loss(res.loc[cast(list, settings.data.index)])
