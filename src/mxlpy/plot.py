@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast, overload
 import networkx as nx
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from cycler import cycler
 from matplotlib import colormaps
 from matplotlib import pyplot as plt
@@ -721,6 +720,8 @@ def bars(
         Figure and Axes objects.
 
     """
+    import seaborn as sns  # noqa: PLC0415  # ~100 MB, only needed here and in violins
+
     fig, ax = _default_fig_ax(ax=ax, grid=grid)
     sns.barplot(data=cast(pd.DataFrame, x), ax=ax)
 
@@ -1514,6 +1515,8 @@ def violins(
         Figure and Axes objects.
 
     """
+    import seaborn as sns  # noqa: PLC0415  # ~100 MB, only needed here and in bars
+
     fig, ax = _default_fig_ax(ax=ax, grid=grid)
     sns.violinplot(df, ax=ax)
     _default_labels(ax=ax, xlabel="", ylabel=None)
