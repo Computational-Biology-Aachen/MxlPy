@@ -16,6 +16,7 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![security: bandit](https://img.shields.io/badge/security-bandit-yellow.svg)](https://github.com/PyCQA/bandit)
 [![PyPI Downloads](https://static.pepy.tech/badge/mxlpy)](https://pepy.tech/projects/mxlpy)
+[![mxl-e2e](https://img.shields.io/github/actions/workflow/status/Computational-Biology-Aachen/MxlPy/e2e.yml?branch=main&label=mxl-e2e&style=flat-square)](https://github.com/Computational-Biology-Aachen/MxlPy/actions/workflows/e2e.yml)
 
 MxlPy (pronounced "em axe el pie") is a Python package for mechanistic learning (Mxl) - the combination of mechanistic modeling and machine learning to deliver explainable, data-informed solutions.
 
