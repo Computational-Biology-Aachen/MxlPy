@@ -2,7 +2,7 @@
 
 import sympy
 
-from mxlpy.symbolic.strikepy import StrikepyModel, strike_goldd
+from mxlpy.symbolic.strikepy import Options, StrikepyModel, strike_goldd
 
 
 def sir() -> StrikepyModel:
@@ -98,7 +98,7 @@ def los(symbols: str) -> list[sympy.Symbol]:
 
 
 def test_bolie_1961() -> None:
-    res = strike_goldd(bolie_1961())
+    res = strike_goldd(bolie_1961(), Options(parallel=False))
     assert res.rank == 5
     assert res.input_obs == []
     assert res.input_unobs == []
@@ -114,7 +114,7 @@ def test_check_identifiability() -> None:
 
 
 def test_karin_2016_1a() -> None:
-    res = strike_goldd(karin_2016_1a())
+    res = strike_goldd(karin_2016_1a(), Options(parallel=False))
     assert res.rank == 4
     assert res.input_obs == []
     assert res.input_unobs == []
@@ -135,7 +135,7 @@ def test_result_summary() -> None:
 
 
 def test_sir() -> None:
-    res = strike_goldd(sir())
+    res = strike_goldd(sir(), Options(parallel=False))
     assert res.rank == 5
     assert res.input_obs == []
     assert res.input_unobs == []

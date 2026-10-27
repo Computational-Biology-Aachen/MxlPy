@@ -12,7 +12,6 @@ from typing import Any, cast, overload
 
 import pandas as pd
 
-from mxlpy import parallel
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
@@ -25,6 +24,7 @@ from mxlpy.fit.residuals import (
     time_course_residual,
 )
 from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
+from mxlpy.parallel import parallelise
 from mxlpy.runners import DynamicRunner, SteadyStateRunner
 from mxlpy.simulator import _normalise_protocol_index
 from mxlpy.types import Result
@@ -148,6 +148,7 @@ def group_steady_state[M: (KineticModelBuilder, OdeModelBuilder)](
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> GroupFit[M]: ...
 
@@ -165,6 +166,7 @@ def group_steady_state(
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> GroupFit[SteadyStateModelBuilder]: ...
 
@@ -182,6 +184,7 @@ def group_steady_state[M: _Model](
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> GroupFit[M]:
     """Fit model parameters to steady-state experimental data.
@@ -226,6 +229,8 @@ def group_steady_state[M: _Model](
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -237,7 +242,7 @@ def group_steady_state[M: _Model](
     return GroupFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     _wrap_steady_state,
                     model=model,
@@ -252,6 +257,7 @@ def group_steady_state[M: _Model](
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(_iterrows(p0)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
@@ -272,6 +278,7 @@ def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> GroupFit[M]:
     """Fit model parameters to time course of experimental data over a carousel.
@@ -318,6 +325,8 @@ def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -329,7 +338,7 @@ def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
     return GroupFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     _wrap_time_course,
                     model=model,
@@ -344,6 +353,7 @@ def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(_iterrows(p0)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
@@ -365,6 +375,7 @@ def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> GroupFit[M]:
     """Fit model parameters to time course of experimental data over a protocol.
@@ -412,6 +423,8 @@ def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -424,7 +437,7 @@ def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     return GroupFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     _wrap_protocol_time_course,
                     model=model,
@@ -440,6 +453,7 @@ def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(_iterrows(p0)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)

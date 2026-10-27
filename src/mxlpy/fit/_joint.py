@@ -6,6 +6,7 @@
 ###############################################################################
 
 
+import contextlib
 import multiprocessing
 from collections.abc import Callable, Sequence
 from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -49,8 +50,10 @@ def _sum_of_residuals(
     updates: dict[str, float],
     residual_fn: FitResidual,
     fits: list[_Settings],
-    pool: ProcessPoolExecutor,
+    pool: ProcessPoolExecutor | None,
 ) -> float:
+    if pool is None:
+        return sum(residual_fn(updates, i) for i in fits)
     futures = [
         pool.submit(partial(_unpacked, fn=residual_fn), (updates, i)) for i in fits
     ]
@@ -63,6 +66,16 @@ def _sum_of_residuals(
     return error
 
 
+def _pool(
+    *, parallel: bool, max_workers: int | None
+) -> ProcessPoolExecutor | contextlib.nullcontext[None]:
+    if not parallel:
+        return contextlib.nullcontext()
+    return ProcessPoolExecutor(
+        max_workers=multiprocessing.cpu_count() if max_workers is None else max_workers
+    )
+
+
 def joint_steady_state(
     to_fit: Sequence[FitSettings[Any]],
     *,
@@ -73,6 +86,7 @@ def joint_steady_state(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -115,6 +129,8 @@ def joint_steady_state(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to evaluate the models in parallel (default: True).
     max_workers
         maximal amount of workers in parallel
     standard_scale
@@ -141,11 +157,7 @@ def joint_steady_state(
         for i in to_fit
     ]
 
-    with ProcessPoolExecutor(
-        max_workers=(
-            multiprocessing.cpu_count() if max_workers is None else max_workers
-        )
-    ) as pool:
+    with _pool(parallel=parallel, max_workers=max_workers) as pool:
         min_result = minimizer(
             partial(
                 _sum_of_residuals,
@@ -173,6 +185,7 @@ def joint_time_course(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -209,6 +222,8 @@ def joint_time_course(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to evaluate the models in parallel (default: True).
     max_workers
         maximal amount of workers in parallel
     standard_scale
@@ -235,11 +250,7 @@ def joint_time_course(
         for i in to_fit
     ]
 
-    with ProcessPoolExecutor(
-        max_workers=(
-            multiprocessing.cpu_count() if max_workers is None else max_workers
-        )
-    ) as pool:
+    with _pool(parallel=parallel, max_workers=max_workers) as pool:
         min_result = minimizer(
             partial(
                 _sum_of_residuals,
@@ -268,6 +279,7 @@ def joint_protocol_time_course(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -304,6 +316,8 @@ def joint_protocol_time_course(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to evaluate the models in parallel (default: True).
     max_workers
         maximal amount of workers in parallel
     standard_scale
@@ -330,11 +344,7 @@ def joint_protocol_time_course(
         for i in to_fit
     ]
 
-    with ProcessPoolExecutor(
-        max_workers=(
-            multiprocessing.cpu_count() if max_workers is None else max_workers
-        )
-    ) as pool:
+    with _pool(parallel=parallel, max_workers=max_workers) as pool:
         min_result = minimizer(
             partial(
                 _sum_of_residuals,

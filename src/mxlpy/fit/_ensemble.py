@@ -12,7 +12,6 @@ from typing import Any, overload
 
 import pandas as pd
 
-from mxlpy import parallel
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
@@ -25,6 +24,7 @@ from mxlpy.fit.residuals import (
     time_course_residual,
 )
 from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
+from mxlpy.parallel import parallelise
 from mxlpy.runners import DynamicRunner, SteadyStateRunner
 from mxlpy.simulator import _normalise_protocol_index
 
@@ -51,6 +51,7 @@ def ensemble_steady_state[M: (KineticModelBuilder, OdeModelBuilder)](
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> EnsembleFit[M]: ...
 
@@ -68,6 +69,7 @@ def ensemble_steady_state(
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> EnsembleFit[SteadyStateModelBuilder]: ...
 
@@ -85,6 +87,7 @@ def ensemble_steady_state[M: _Model](
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> EnsembleFit[M]:
     """Fit model ensemble parameters to steady-state experimental data.
@@ -132,6 +135,8 @@ def ensemble_steady_state[M: _Model](
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -143,7 +148,7 @@ def ensemble_steady_state[M: _Model](
     return EnsembleFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     _steady_state,
                     p0=p0,
@@ -158,6 +163,7 @@ def ensemble_steady_state[M: _Model](
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
@@ -178,6 +184,7 @@ def ensemble_time_course[M: KineticModelBuilder | OdeModelBuilder](
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> EnsembleFit[M]:
     """Fit model parameters to time course of experimental data over a carousel.
@@ -227,6 +234,8 @@ def ensemble_time_course[M: KineticModelBuilder | OdeModelBuilder](
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -238,7 +247,7 @@ def ensemble_time_course[M: KineticModelBuilder | OdeModelBuilder](
     return EnsembleFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     time_course,
                     p0=p0,
@@ -253,6 +262,7 @@ def ensemble_time_course[M: KineticModelBuilder | OdeModelBuilder](
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
@@ -274,6 +284,7 @@ def ensemble_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
 ) -> EnsembleFit[M]:
     """Fit model parameters to time course of experimental data over a protocol.
@@ -324,6 +335,8 @@ def ensemble_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -336,7 +349,7 @@ def ensemble_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     return EnsembleFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     protocol_time_course,
                     p0=p0,
@@ -352,6 +365,7 @@ def ensemble_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
