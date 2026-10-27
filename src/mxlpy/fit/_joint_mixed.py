@@ -15,15 +15,23 @@ from functools import partial
 import numpy as np
 from loky import ProcessPoolExecutor
 
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.fit import losses
-from mxlpy.fit.abstract import FitResidual, JointFit, MixedSettings, _Settings
-from mxlpy.integrators import IntegratorType
+from mxlpy.fit.abstract import (
+    FitResidual,
+    JointFit,
+    MixedSettings,
+    _pick_runner,
+    _Settings,
+)
 from mxlpy.minimizers.abstract import (
     Bounds,
     LossFn,
     MinimizerProtocol,
     OptimisationState,
 )
+from mxlpy.runners import SteadyStateRunner
+from mxlpy.simulation import Simulation
 from mxlpy.types import Result
 
 __all__ = ["joint_mixed"]
@@ -55,7 +63,7 @@ def joint_mixed(
     p0: dict[str, float],
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
@@ -95,8 +103,9 @@ def joint_mixed(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
     bounds
@@ -123,7 +132,7 @@ def joint_mixed(
                 model=deepcopy(i.model) if as_deepcopy else i.model,
                 data=i.data,
                 y0=i.y0 if i.y0 is not None else y0,
-                integrator=i.integrator if i.integrator is not None else integrator,
+                runner=_pick_runner(i.runner, runner, i.model),
                 loss_fn=i.loss_fn if i.loss_fn is not None else loss_fn,
                 p_names=[j for j in p0 if j in p_names],
                 v_names=[j for j in p0 if j in v_names],
