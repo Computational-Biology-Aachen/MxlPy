@@ -41,6 +41,9 @@ from mxlpy.jax.simulation import FluxSimulation, Simulation
 from mxlpy.meta._via_sym_repr import _get_extended_returns
 
 type Method = Callable[[], diffrax.AbstractRungeKutta]
+
+#: diffrax's own default; differentiates by checkpointed backprop through the solver.
+DEFAULT_ADJOINT: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint()
 type Rhs = Callable[[PyTree, PyTree, PyTree], jax.Array]
 type Nv = Callable[[PyTree], PyTree]
 type CombineOp = Literal["+", "-", "*", "/", "rel", "exp", "pow"]
@@ -90,6 +93,8 @@ class JaxModel(Protocol):
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
     ) -> jax.Array:
         """Integrate from ``ts[0]`` to ``ts[-1]`` and return observations."""
@@ -108,6 +113,8 @@ class JaxModel(Protocol):
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
     ) -> jax.Array:
         """Integrate through a sequence of protocol steps and return observations."""
@@ -126,6 +133,8 @@ class JaxModel(Protocol):
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
     ) -> tuple[jax.Array, jax.Array]:
         """Integrate until a steady state is reached."""
@@ -148,6 +157,8 @@ class JaxModel(Protocol):
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
         freeze_preeq_gradient: bool = False,
     ) -> jax.Array:
@@ -165,6 +176,8 @@ class JaxModel(Protocol):
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
     ) -> Simulation:
         """Integrate and return a simulation result."""
@@ -183,6 +196,8 @@ class JaxModel(Protocol):
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
     ) -> Simulation:
         """Integrate through a protocol and return a simulation result."""
@@ -201,6 +216,8 @@ class JaxModel(Protocol):
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
     ) -> Simulation:
         """Integrate to steady state and return a 1-row simulation result."""
@@ -381,6 +398,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         atol: float,
         method: Method,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         *,
         throw: bool = True,
     ) -> tuple[jax.Array, jax.Array]:
@@ -406,7 +425,10 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             dt0=dt0,
             y0=y0,
             args=jnp.zeros((0,)) if args is None else args,
-            stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
+            stepsize_controller=diffrax.PIDController(
+                rtol=rtol, atol=atol, dtmax=dtmax
+            ),
+            adjoint=adjoint,
             saveat=diffrax.SaveAt(ts=saveat_ts),
             max_steps=max_steps,
             throw=throw,
@@ -431,6 +453,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         atol: float,
         method: Method,
         dt0: jax.Array | float | None,
+        dtmax: float | None,
+        adjoint: diffrax.AbstractAdjoint,
         throw: bool = True,
     ) -> tuple[jax.Array, jax.Array]:
         """:meth:`integrate` without the final decode: ODE states ``(T, n_state)`` and success.
@@ -451,6 +475,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             atol=atol,
             method=method,
             dt0=dt0,
+            dtmax=dtmax,
+            adjoint=adjoint,
             throw=throw,
         )
 
@@ -465,6 +491,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
     ) -> jax.Array:
         """Integrate from ``ts[0]`` to ``ts[-1]`` and return saved observations.
@@ -485,6 +513,15 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             Diffrax Runge-Kutta solver class.
         dt0 : jax.Array, float, or None
             Initial step size; ``None`` lets diffrax choose.
+        dtmax : float or None
+            Upper bound on the step size of the PID step-size controller;
+            ``None`` leaves it unbounded. Capping it keeps the solver from
+            stepping over a sharp transient.
+        adjoint : diffrax.AbstractAdjoint
+            How the solve is differentiated. Defaults to diffrax's
+            :class:`diffrax.RecursiveCheckpointAdjoint`; e.g.
+            :class:`diffrax.BacksolveAdjoint` solves the continuous adjoint
+            ODE instead of backpropagating through the solver's internals.
         alpha : float or None
             Forwarded to the latent mapper's ``decode``; only meaningful
             for an annealed mapper (e.g. :class:`MixedLatentMapper`,
@@ -504,6 +541,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             atol=atol,
             method=method,
             dt0=dt0,
+            dtmax=dtmax,
+            adjoint=adjoint,
         )
         return self._decode(zs, alpha=alpha)
 
@@ -520,6 +559,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         atol: float,
         method: Method,
         dt0: jax.Array | float | None,
+        dtmax: float | None,
+        adjoint: diffrax.AbstractAdjoint,
         *,
         throw: bool,
     ) -> tuple[jax.Array, jax.Array]:
@@ -558,6 +599,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
                 atol=atol,
                 method=method,
                 dt0=dt0,
+                dtmax=dtmax,
+                adjoint=adjoint,
                 throw=throw,
             )
             return (ys[-1], step_ts[-1]), (ys, ok)
@@ -581,6 +624,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         atol: float,
         method: Method,
         dt0: jax.Array | float | None,
+        dtmax: float | None,
+        adjoint: diffrax.AbstractAdjoint,
         throw: bool = True,
     ) -> tuple[jax.Array, jax.Array]:
         """:meth:`integrate_protocol` without the final decode; also returns success."""
@@ -598,6 +643,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             atol,
             method,
             dt0,
+            dtmax,
+            adjoint,
             throw=throw,
         )
 
@@ -614,6 +661,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
     ) -> jax.Array:
         """Integrate through a sequence of protocol steps and return saved observations.
@@ -650,6 +699,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             Diffrax Runge-Kutta solver class.
         dt0 : jax.Array, float, or None
             Initial step size of every step; ``None`` lets diffrax choose.
+        dtmax, adjoint
+            See :meth:`integrate`.
         alpha : float or None
             Forwarded to the latent decode; see :meth:`integrate`.
 
@@ -671,6 +722,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             atol=atol,
             method=method,
             dt0=dt0,
+            dtmax=dtmax,
+            adjoint=adjoint,
         )
         return self._decode(zs, alpha=alpha)
 
@@ -687,6 +740,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         steady_state_atol: float | None,
         method: Method,
         dt0: jax.Array | float | None,
+        dtmax: float | None,
+        adjoint: diffrax.AbstractAdjoint,
         throw: bool = True,
     ) -> tuple[jax.Array, jax.Array, jax.Array]:
         """Run the steady-state event solve in the ODE state.
@@ -702,7 +757,10 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             dt0=dt0,
             y0=z0,
             args=jnp.zeros((0,)) if args is None else args,
-            stepsize_controller=diffrax.PIDController(rtol=rtol, atol=atol),
+            stepsize_controller=diffrax.PIDController(
+                rtol=rtol, atol=atol, dtmax=dtmax
+            ),
+            adjoint=adjoint,
             saveat=diffrax.SaveAt(t1=True),
             event=_steady_state_event(steady_state_rtol, steady_state_atol),
             max_steps=max_steps,
@@ -731,6 +789,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
     ) -> tuple[jax.Array, jax.Array]:
         """Integrate until a steady state is reached and return the final observation.
@@ -761,6 +821,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             Diffrax Runge-Kutta solver class.
         dt0 : jax.Array, float, or None
             Initial step size; ``None`` lets diffrax choose.
+        dtmax, adjoint
+            See :meth:`integrate`.
         alpha : float or None
             Forwarded to the latent decode; see :meth:`integrate`.
 
@@ -782,6 +844,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             steady_state_atol=steady_state_atol,
             method=method,
             dt0=dt0,
+            dtmax=dtmax,
+            adjoint=adjoint,
         )
         return t, self._decode_point(z, alpha=alpha)
 
@@ -802,6 +866,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         steady_state_atol: float | None,
         method: Method,
         dt0: jax.Array | float | None,
+        dtmax: float | None,
+        adjoint: diffrax.AbstractAdjoint,
         freeze_preeq_gradient: bool,
     ) -> tuple[jax.Array, jax.Array, jax.Array]:
         """:meth:`integrate_protocol_from_steady_state` without the final decode.
@@ -830,6 +896,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             steady_state_atol=steady_state_atol,
             method=method,
             dt0=dt0,
+            dtmax=dtmax,
+            adjoint=adjoint,
         )
         zs, ok = self._integrate_protocol_raw(
             z_ss,
@@ -842,6 +910,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             atol,
             method,
             dt0,
+            dtmax,
+            adjoint,
             throw=True,
         )
         return zs, ok_ss, ok
@@ -863,6 +933,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
         freeze_preeq_gradient: bool = False,
     ) -> jax.Array:
@@ -883,7 +955,7 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         t1 : float
             Upper bound on pre-equilibration time; see
             :meth:`integrate_to_steady_state`.
-        rtol, atol, steady_state_rtol, steady_state_atol, method, dt0
+        rtol, atol, steady_state_rtol, steady_state_atol, method, dt0, dtmax, adjoint
             Shared by the pre-equilibration and the protocol steps; see
             :meth:`integrate_to_steady_state`.
         alpha : float or None
@@ -919,6 +991,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             steady_state_atol=steady_state_atol,
             method=method,
             dt0=dt0,
+            dtmax=dtmax,
+            adjoint=adjoint,
             freeze_preeq_gradient=freeze_preeq_gradient,
         )
         return self._decode(zs, alpha=alpha)
@@ -1022,6 +1096,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
         throw: bool = True,
     ) -> SimT:
@@ -1039,6 +1115,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             atol=atol,
             method=method,
             dt0=dt0,
+            dtmax=dtmax,
+            adjoint=adjoint,
             throw=throw,
         )
         return self._time_course_result(ts, zs, args, ok, alpha)
@@ -1056,6 +1134,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         atol: float = 1e-6,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
         throw: bool = True,
     ) -> SimT:
@@ -1076,6 +1156,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             atol=atol,
             method=method,
             dt0=dt0,
+            dtmax=dtmax,
+            adjoint=adjoint,
             throw=throw,
         )
         return self._protocol_result(
@@ -1095,6 +1177,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
         steady_state_atol: float | None = None,
         method: Method = diffrax.Tsit5,
         dt0: jax.Array | float | None = None,
+        dtmax: float | None = None,
+        adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT,
         alpha: float | None = None,
         throw: bool = True,
     ) -> SimT:
@@ -1114,6 +1198,8 @@ class Base[SimT: Simulation](eqx.Module, ABC):
             steady_state_atol=steady_state_atol,
             method=method,
             dt0=dt0,
+            dtmax=dtmax,
+            adjoint=adjoint,
             throw=throw,
         )
         return self._steady_state_result(t, z, args, ok, alpha)

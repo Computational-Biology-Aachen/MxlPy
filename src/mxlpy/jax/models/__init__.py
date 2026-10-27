@@ -21,6 +21,7 @@ Conventions shared by every model here:
 from ._aug_node import Anode, FluxAnode
 from ._aug_ude import AugUde, FluxAugUde
 from ._base import (
+    DEFAULT_ADJOINT,
     Base,
     CombineOp,
     FluxBase,
@@ -45,6 +46,7 @@ from ._ode import FluxOde, Ode
 from ._ude import FluxUde, Ude
 
 __all__ = [
+    "DEFAULT_ADJOINT",
     "Anode",
     "AugUde",
     "Base",

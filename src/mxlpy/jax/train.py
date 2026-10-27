@@ -17,7 +17,7 @@ import pandas as pd
 from jaxtyping import PyTree
 from tqdm.auto import trange
 
-from mxlpy.jax.models import JaxModel, Method, Ude
+from mxlpy.jax.models import DEFAULT_ADJOINT, JaxModel, Method, Ude
 
 __all__ = [
     "FreezeFn",
@@ -243,6 +243,12 @@ class IntegrationSettings:
         Diffrax Runge-Kutta solver class (default: Tsit5).
     max_steps : int
         Maximum number of solver steps before aborting.
+    dtmax : float or None
+        Upper bound on the solver step size; ``None`` leaves it unbounded.
+    adjoint : diffrax.AbstractAdjoint
+        How the solve is differentiated (default: diffrax's
+        ``RecursiveCheckpointAdjoint``); see
+        :meth:`~mxlpy.jax.models.Base.integrate`.
     alpha : float or None
         Hard/learned decode mix forwarded to ``integrate*`` for
         :class:`~mxlpy.jax.models.Anode`/:class:`~mxlpy.jax.models.FluxAnode`
@@ -257,6 +263,8 @@ class IntegrationSettings:
     rtol: float = 1e-4
     method: Method = diffrax.Tsit5
     max_steps: int = 8192
+    dtmax: float | None = None
+    adjoint: diffrax.AbstractAdjoint = DEFAULT_ADJOINT
     alpha: float | None = None
 
 
@@ -336,6 +344,8 @@ def grad_loss(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
+        dtmax=ctx.dtmax,
+        adjoint=ctx.adjoint,
         alpha=ctx.alpha,
     )
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)
@@ -368,6 +378,8 @@ def integrate_protocol_states(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
+        dtmax=ctx.dtmax,
+        adjoint=ctx.adjoint,
         alpha=ctx.alpha,
     )
 
@@ -431,6 +443,8 @@ def readout_simulation_fn(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
+        dtmax=ctx.dtmax,
+        adjoint=ctx.adjoint,
         alpha=ctx.alpha,
     )
     ts_flat = jnp.concatenate(ts)
@@ -705,6 +719,8 @@ def grad_loss_split(
         rtol=ctx.rtol,
         atol=ctx.atol,
         method=ctx.method,
+        dtmax=ctx.dtmax,
+        adjoint=ctx.adjoint,
         alpha=ctx.alpha,
     )
     return jnp.mean(((ys - y_mean) / y_scale - (y_pred - y_mean) / y_scale) ** 2)

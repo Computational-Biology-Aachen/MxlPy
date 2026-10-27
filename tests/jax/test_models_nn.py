@@ -19,6 +19,7 @@ import pytest
 
 from mxlpy.jax.ensemble import batch_simulate, unstack_models
 from mxlpy.jax.models import (
+    DEFAULT_ADJOINT,
     Anode,
     AugUde,
     FluxAnode,
@@ -305,6 +306,7 @@ def test_anode_integrate_latent_is_integrate_without_decode() -> None:
     zs, _ = anode._integrate_latent(
         ts, jnp.array([1.0, 2.0]), max_steps=4096, args=jnp.array([]),
         rtol=1e-6, atol=1e-6, method=diffrax.Tsit5, dt0=None,
+        dtmax=None, adjoint=DEFAULT_ADJOINT,
     )  # fmt: skip
     ys = anode.integrate(ts, jnp.array([1.0, 2.0]), max_steps=4096, args=jnp.array([]))
     assert zs.shape[0] == 2
@@ -496,6 +498,7 @@ def test_fluxanode_integrate_latent_is_integrate_without_decode() -> None:
     zs, _ = fanode._integrate_latent(
         ts, jnp.array([1.0, 2.0]), max_steps=4096, args=jnp.array([]),
         rtol=1e-6, atol=1e-6, method=diffrax.Tsit5, dt0=None,
+        dtmax=None, adjoint=DEFAULT_ADJOINT,
     )  # fmt: skip
     ys = fanode.integrate(ts, jnp.array([1.0, 2.0]), max_steps=4096, args=jnp.array([]))
     assert zs.shape[0] == 2
