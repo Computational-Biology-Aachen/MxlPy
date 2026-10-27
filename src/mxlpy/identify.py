@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from functools import partial
 from typing import TYPE_CHECKING, cast
 
@@ -17,6 +18,8 @@ from mxlpy.parallel import parallelise
 
 if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy.runners import DynamicRunner
+    from mxlpy.simulation import Simulation
     from mxlpy.types import Array
 
 __all__ = [
@@ -29,6 +32,7 @@ def _mc_fit_time_course_worker(
     model: KineticModelBuilder,
     data: pd.DataFrame,
     loss_fn: fit.LossFn,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None,
 ) -> float:
     fit_result = fit.time_course(
         model=model,
@@ -36,6 +40,7 @@ def _mc_fit_time_course_worker(
         data=data,
         loss_fn=loss_fn,
         minimizer=fit.LocalScipyMinimizer(),
+        runner=runner,
     )
     match fit_result.value:
         case fit.Fit(_, _, loss):
@@ -51,6 +56,8 @@ def profile_likelihood(
     parameter_values: Array,
     n_random: int = 10,
     loss_fn: fit.LossFn = fit.rmse,
+    *,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> pd.Series:
     """Estimate the profile likelihood of model parameters given data.
 
@@ -68,6 +75,9 @@ def profile_likelihood(
         Number of Monte Carlo samples.
     loss_fn
         Loss function to use for fitting.
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     """
     parameter_distributions = sample(
@@ -78,13 +88,18 @@ def profile_likelihood(
         n=n_random,
     )
 
+    model = deepcopy(model)
     res = {}
     for value in tqdm(parameter_values, desc=parameter_name):
         model.update_parameter(parameter_name, value)
         res[value] = dict(
             parallelise(
                 partial(
-                    _mc_fit_time_course_worker, model=model, data=data, loss_fn=loss_fn
+                    _mc_fit_time_course_worker,
+                    model=model,
+                    data=data,
+                    loss_fn=loss_fn,
+                    runner=runner,
                 ),
                 inputs=list(
                     parameter_distributions.drop(columns=parameter_name).iterrows()

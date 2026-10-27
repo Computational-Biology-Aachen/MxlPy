@@ -5,53 +5,45 @@
 This module provides functions and classes for performing parameter scans on metabolic models.
 It includes functionality for steady-state and time-course simulations, as well as protocol-based simulations.
 
-Classes:
-    TimePoint: Represents a single time point in a simulation.
-    TimeCourse: Represents a time course in a simulation.
+How each model is simulated is configured by a runner, see `mxlpy.runners`.
 
 Functions:
-    parameter_scan_ss: Get steady-state results over supplied parameters.
-    parameter_scan_time_course: Get time course for each supplied parameter.
-    parameter_scan_protocol: Get protocol course for each supplied parameter.
+    steady_state: Get steady-state results over supplied parameters.
+    time_course: Get time course for each supplied parameter.
+    protocol: Get protocol course for each supplied parameter.
+    protocol_time_course: Get protocol time course for each supplied parameter.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Generic, Protocol, cast, overload
+from typing import TYPE_CHECKING, Generic, cast, overload
 
 import numpy as np
 import pandas as pd
 from typing_extensions import TypeVar
 from wadler_lindig import pformat
 
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.parallel import Cache, parallelise
-from mxlpy.simulation import OdeSimulation, Simulation
-from mxlpy.simulator import Simulator
-from mxlpy.types import Result
+from mxlpy.runners import DynamicRunner, SteadyStateRunner, default_runner
+from mxlpy.simulation import Evaluation, OdeSimulation, Simulation
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Hashable, Iterable, Iterator
 
-    from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy.integrators import IntegratorType
     from mxlpy.types import Array
 
 
 __all__ = [
-    "EvaluationScan",
     "ProtocolScan",
-    "ProtocolTimeCourseWorker",
-    "ProtocolWorker",
     "SteadyStateScan",
-    "SteadyStateWorker",
     "TimeCourseScan",
-    "TimeCourseWorker",
     "protocol",
     "protocol_time_course",
     "steady_state",
@@ -59,14 +51,14 @@ __all__ = [
 ]
 
 
-# Defaults to Simulation, so a bare scan result type keeps its meaning
+# Default to Simulation, so a bare scan result type keeps its meaning
 S = TypeVar("S", Simulation, OdeSimulation, default=Simulation)
+SE = TypeVar("SE", Simulation, OdeSimulation, Evaluation, default=Simulation)
+
+type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
 
 
-def _update_parameters_and_initial_conditions[
-    M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
-    T,
-](
+def _update_parameters_and_initial_conditions[M: _Model, T](
     pars: pd.Series,
     fn: Callable[[M], T],
     model: M,
@@ -96,30 +88,37 @@ def _update_parameters_and_initial_conditions[
     return fn(model)
 
 
+def _copy_with_y0[M: _Model](model: M, y0: dict[str, float] | None) -> M:
+    """Copy the model, so routines never mutate the caller's model."""
+    model = deepcopy(model)
+    if y0 is not None:
+        if isinstance(model, SteadyStateModelBuilder):
+            msg = "A SteadyStateModelBuilder has no variables, so y0 doesn't apply"
+            raise TypeError(msg)
+        model.update_variables(y0)
+    return model
+
+
 def _raw_index(to_scan: pd.DataFrame) -> pd.Index | pd.MultiIndex:
     if to_scan.shape[1] == 1:
         return pd.Index(to_scan.iloc[:, 0])
     return pd.MultiIndex.from_frame(to_scan)
 
 
-def _require_fluxes(results: Iterable[Simulation | OdeSimulation]) -> None:
-    """Raise a helpful error instead of an AttributeError for ODE results."""
-    if any(isinstance(i, OdeSimulation) for i in results):
-        msg = "Scans of an OdeModelBuilder have no fluxes and can't be unpacked into (variables, fluxes) - use .variables or .combined instead"
+def _require_fluxes(results: Iterable[Simulation | OdeSimulation | Evaluation]) -> None:
+    """Raise a helpful error instead of an AttributeError for flux-less results."""
+    if any(not isinstance(i, Simulation) for i in results):
+        msg = "Only scans of a KineticModelBuilder have fluxes and can be unpacked into (variables, fluxes) - use .variables or .combined instead"
         raise TypeError(msg)
 
 
-def _unwrap_or_default(
-    res: Result[Simulation] | Result[OdeSimulation] | Result[Exception],
-    model: KineticModelBuilder | OdeModelBuilder,
-    time_points: Array,
-) -> Simulation | OdeSimulation:
-    """Unwrap a simulation result, falling back to NaNs on failure."""
-    if isinstance(val := res.value, Simulation | OdeSimulation):
-        return val
-    if isinstance(model, OdeModelBuilder):
-        return OdeSimulation.default(model=model, time_points=time_points)
-    return Simulation.default(model=model, time_points=time_points)
+def _require_variables(
+    results: Iterable[Simulation | OdeSimulation | Evaluation],
+) -> None:
+    """Raise a helpful error instead of an AttributeError for evaluations."""
+    if any(isinstance(i, Evaluation) for i in results):
+        msg = "Scans of a SteadyStateModelBuilder have no variables - use .combined instead"
+        raise TypeError(msg)
 
 
 ###############################################################################
@@ -127,263 +126,85 @@ def _unwrap_or_default(
 ###############################################################################
 
 
-class SteadyStateWorker(Protocol):
-    """Worker function for steady-state simulations."""
-
-    def __call__(
-        self,
-        model: KineticModelBuilder | OdeModelBuilder,
-        *,
-        tolerance: float = 1e-6,
-        rel_norm: bool,
-        integrator: IntegratorType | None,
-        y0: dict[str, float] | None,
-        oscillation_detector: OscillationDetector | None,
-    ) -> Simulation | OdeSimulation:
-        """Call the worker function."""
-        ...
+def _default_result(
+    model: _Model, time_points: Array
+) -> Simulation | OdeSimulation | Evaluation:
+    """Result filled with NaNs, used if a simulation fails."""
+    if isinstance(model, SteadyStateModelBuilder):
+        return Evaluation.default(model)
+    if isinstance(model, OdeModelBuilder):
+        return OdeSimulation.default(model=model, time_points=time_points)
+    return Simulation.default(model=model, time_points=time_points)
 
 
-class TimeCourseWorker(Protocol):
-    """Worker function for time-course simulations."""
-
-    def __call__(
-        self,
-        model: KineticModelBuilder | OdeModelBuilder,
-        time_points: Array,
-        *,
-        integrator: IntegratorType | None,
-        y0: dict[str, float] | None,
-    ) -> Simulation | OdeSimulation:
-        """Call the worker function."""
-        ...
-
-
-class ProtocolWorker(Protocol):
-    """Worker function for protocol-based simulations."""
-
-    def __call__(
-        self,
-        model: KineticModelBuilder | OdeModelBuilder,
-        protocol: pd.DataFrame,
-        *,
-        integrator: IntegratorType | None,
-        y0: dict[str, float] | None,
-        time_points_per_step: int = 10,
-    ) -> Simulation | OdeSimulation:
-        """Call the worker function."""
-        ...
-
-
-class ProtocolTimeCourseWorker(Protocol):
-    """Worker function for protocol-based simulations."""
-
-    def __call__(
-        self,
-        model: KineticModelBuilder | OdeModelBuilder,
-        protocol: pd.DataFrame,
-        time_points: Array,
-        *,
-        integrator: IntegratorType | None,
-        y0: dict[str, float] | None,
-    ) -> Simulation | OdeSimulation:
-        """Call the worker function."""
-        ...
-
-
-def _steady_state_worker(
-    model: KineticModelBuilder | OdeModelBuilder,
+def _steady_state_worker[M: _Model, R](
+    model: M,
     *,
-    tolerance: float = 1e-6,
-    rel_norm: bool,
-    integrator: IntegratorType | None,
-    y0: dict[str, float] | None,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
-) -> Simulation | OdeSimulation:
-    """Simulate the model to steady state and return concentrations and fluxes.
-
-    Parameters
-    ----------
-    model
-        Model instance to simulate.
-    tolerance
-        Tolerance for the steady-state calculation.
-    y0
-        Initial conditions as a dictionary {species: value}.
-    rel_norm
-        Whether to use relative normalization.
-    integrator
-        Function producing an integrator for the simulation.
-    oscillation_detector
-        Callable for oscillation detection, or ``None`` to disable.
-
-    Returns
-    -------
-    TimePoint
-        Object containing steady-state concentrations and fluxes.
-
-    """
-    try:
-        res = (
-            Simulator(model, integrator=integrator, y0=y0)
-            .simulate_to_steady_state(
-                tolerance=tolerance,
-                rel_norm=rel_norm,
-                oscillation_detector=oscillation_detector,
-            )
-            .get_result()
-        )
-    except ZeroDivisionError:
-        res = Result(Exception())
-
-    return _unwrap_or_default(res, model, np.array([0.0]))
+    runner: SteadyStateRunner[M, R],
+) -> R:
+    return runner.steady_state(model).default(
+        lambda: cast("R", _default_result(model, np.array([0.0])))
+    )
 
 
-def _time_course_worker(
-    model: KineticModelBuilder | OdeModelBuilder,
+def _time_course_worker[M: _Model, R](
+    model: M,
+    *,
     time_points: Array,
-    y0: dict[str, float] | None,
-    integrator: IntegratorType | None,
-) -> Simulation | OdeSimulation:
-    """Simulate the model to steady state and return concentrations and fluxes.
-
-    Parameters
-    ----------
-    model
-        Model instance to simulate.
-    y0
-        Initial conditions as a dictionary {species: value}.
-    time_points
-        Array of time points for the simulation.
-    integrator
-        Integrator function to use for steady state calculation
-
-    Returns
-    -------
-    TimePoint
-        Object containing steady-state concentrations and fluxes.
-
-    """
-    try:
-        res = (
-            Simulator(model, integrator=integrator, y0=y0)
-            .simulate_time_course(time_points=time_points)
-            .get_result()
-        )
-    except ZeroDivisionError:
-        res = Result(Exception())
-
-    return _unwrap_or_default(res, model, time_points)
+    runner: DynamicRunner[M, R],
+) -> R:
+    return runner.time_course(model, time_points).default(
+        lambda: cast("R", _default_result(model, time_points))
+    )
 
 
-def _protocol_worker(
-    model: KineticModelBuilder | OdeModelBuilder,
-    protocol: pd.DataFrame,
+def _protocol_worker[M: _Model, R](
+    model: M,
     *,
-    integrator: IntegratorType | None,
-    y0: dict[str, float] | None,
-    time_points_per_step: int = 10,
-) -> Simulation | OdeSimulation:
-    """Simulate the model over a protocol and return concentrations and fluxes.
-
-    Parameters
-    ----------
-    model
-        Model instance to simulate.
-    y0
-        Initial conditions as a dictionary {species: value}.
-    protocol
-        DataFrame containing the protocol steps.
-    integrator
-        Integrator function to use for steady state calculation
-    time_points_per_step
-        Number of time points per protocol step.
-
-    Returns
-    -------
-    TimeCourse
-        Object containing protocol series concentrations and fluxes.
-
-    """
-    try:
-        res = (
-            Simulator(model, integrator=integrator, y0=y0)
-            .simulate_protocol(
-                protocol=protocol,
-                time_points_per_step=time_points_per_step,
-            )
-            .get_result()
-        )
-    except ZeroDivisionError:
-        res = Result(Exception())
-
+    protocol: pd.DataFrame,
+    time_points_per_step: int,
+    runner: DynamicRunner[M, R],
+) -> R:
     time_points = np.linspace(
         0,
         protocol.index[-1].total_seconds(),
         len(protocol) * time_points_per_step,
     )
-    return _unwrap_or_default(res, model, time_points)
+    return runner.protocol(
+        model, protocol, time_points_per_step=time_points_per_step
+    ).default(lambda: cast("R", _default_result(model, time_points)))
 
 
-def _protocol_time_course_worker(
-    model: KineticModelBuilder | OdeModelBuilder,
+def _protocol_time_course_worker[M: _Model, R](
+    model: M,
+    *,
     protocol: pd.DataFrame,
     time_points: Array,
-    *,
-    integrator: IntegratorType | None,
-    y0: dict[str, float] | None,
-) -> Simulation | OdeSimulation:
-    """Simulate the model over a protocol and return concentrations and fluxes.
-
-    Parameters
-    ----------
-    model
-        Model instance to simulate.
-    y0
-        Initial conditions as a dictionary {species: value}.
-    protocol
-        DataFrame containing the protocol steps.
-    time_points
-        Time points where to return the simulation
-    integrator
-        Integrator function to use for steady state calculation
-
-    Returns
-    -------
-    TimeCourse
-        Object containing protocol series concentrations and fluxes.
-
-    """
-    try:
-        res = (
-            Simulator(model, integrator=integrator, y0=y0)
-            .simulate_protocol_time_course(
-                protocol=protocol,
-                time_points=time_points,
-            )
-            .get_result()
-        )
-    except ZeroDivisionError:
-        res = Result(Exception())
-
-    return _unwrap_or_default(res, model, time_points)
+    runner: DynamicRunner[M, R],
+) -> R:
+    return runner.protocol_time_course(model, protocol, time_points).default(
+        lambda: cast("R", _default_result(model, time_points))
+    )
 
 
 @dataclass(kw_only=True, slots=True)
-class SteadyStateScan(Generic[S]):
+class SteadyStateScan(Generic[SE]):
     """Container for steady states by scanned values."""
 
     to_scan: pd.DataFrame
     raw_index: pd.Index | pd.MultiIndex
-    raw_results: list[S]
+    raw_results: list[SE]
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
 
     @property
-    def variables(self) -> pd.DataFrame:
+    def variables(
+        self: SteadyStateScan[Simulation] | SteadyStateScan[OdeSimulation],
+    ) -> pd.DataFrame:
         """Return steady-state variables by scan."""
+        _require_variables(self.raw_results)
         return pd.DataFrame(
             [i.variables.iloc[-1].T for i in self.raw_results], index=self.raw_index
         )
@@ -428,11 +249,19 @@ class SteadyStateScan(Generic[S]):
         include_readouts: bool = True,
     ) -> pd.DataFrame: ...
 
+    @overload
+    def get_args(
+        self: SteadyStateScan[Evaluation],
+        *,
+        include_parameters: bool = False,
+    ) -> pd.DataFrame: ...
+
     def get_args(self, **kwargs: bool) -> pd.DataFrame:
         """Return args by scan.
 
-        Accepts the `include_*` flags of `Simulation.get_args` or
-        `OdeSimulation.get_args` respectively, but defaults to including readouts.
+        Accepts the `include_*` flags of `Simulation.get_args`,
+        `OdeSimulation.get_args` or `Evaluation.get_args` respectively, but
+        defaults to including readouts.
 
         Returns
         -------
@@ -443,7 +272,8 @@ class SteadyStateScan(Generic[S]):
         return self._get_args(kwargs)
 
     def _get_args(self, kwargs: dict[str, bool]) -> pd.DataFrame:
-        kwargs = {"include_readouts": True} | kwargs
+        if not any(isinstance(i, Evaluation) for i in self.raw_results):
+            kwargs = {"include_readouts": True} | kwargs
         return pd.DataFrame(
             [i.get_args(**kwargs).iloc[-1].T for i in self.raw_results],
             index=self.raw_index,
@@ -454,70 +284,15 @@ class SteadyStateScan(Generic[S]):
         return iter((self.variables, self.fluxes))
 
 
-@dataclass(kw_only=True, slots=True)
-class EvaluationScan:
-    """Container for `SteadyStateModelBuilder` evaluations by scanned values."""
-
-    to_scan: pd.DataFrame
-    raw_index: pd.Index | pd.MultiIndex
-    raw_results: list[pd.Series]
-    parameter_names: list[str]
-
-    def __repr__(self) -> str:
-        """Return default representation."""
-        return pformat(self)
-
-    @property
-    def combined(self) -> pd.DataFrame:
-        """Return evaluated values by scan."""
-        return self.get_args()
-
-    def get_args(self, *, include_parameters: bool = False) -> pd.DataFrame:
-        """Return evaluated values by scan.
-
-        Parameters
-        ----------
-        include_parameters
-            Include model parameters.
-
-        Returns
-        -------
-        pd.DataFrame
-            Evaluated values indexed by scan values.
-
-        """
-        args = pd.DataFrame(self.raw_results, index=self.raw_index)
-        if include_parameters:
-            return args
-        return args.drop(columns=self.parameter_names)
-
-
-def _evaluate_worker(model: SteadyStateModelBuilder) -> pd.Series:
-    """Evaluate the model, returning NaNs on arithmetic or domain errors."""
-    try:
-        return model.evaluate(include_parameters=True)
-    except (ArithmeticError, ValueError):
-        return pd.Series(
-            np.nan,
-            index=model.get_parameter_names()
-            + list(model.get_raw_derived(as_copy=False)),
-            dtype=float,
-        )
-
-
 @overload
 def steady_state(
     model: KineticModelBuilder,
     *,
     to_scan: pd.DataFrame,
-    tolerance: float = 1e-6,
     y0: dict[str, float] | None = None,
     parallel: bool = True,
-    rel_norm: bool = False,
     cache: Cache | None = None,
-    worker: SteadyStateWorker = _steady_state_worker,
-    integrator: IntegratorType | None = None,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> SteadyStateScan[Simulation]: ...
 
 
@@ -526,14 +301,10 @@ def steady_state(
     model: OdeModelBuilder,
     *,
     to_scan: pd.DataFrame,
-    tolerance: float = 1e-6,
     y0: dict[str, float] | None = None,
     parallel: bool = True,
-    rel_norm: bool = False,
     cache: Cache | None = None,
-    worker: SteadyStateWorker = _steady_state_worker,
-    integrator: IntegratorType | None = None,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
+    runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
 ) -> SteadyStateScan[OdeSimulation]: ...
 
 
@@ -544,64 +315,53 @@ def steady_state(
     to_scan: pd.DataFrame,
     parallel: bool = False,
     cache: Cache | None = None,
-) -> EvaluationScan: ...
+    runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
+) -> SteadyStateScan[Evaluation]: ...
 
 
 def steady_state(
-    model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
+    model: _Model,
     *,
     to_scan: pd.DataFrame,
-    tolerance: float = 1e-6,
     y0: dict[str, float] | None = None,
     parallel: bool | None = None,
-    rel_norm: bool = False,
     cache: Cache | None = None,
-    worker: SteadyStateWorker = _steady_state_worker,
-    integrator: IntegratorType | None = None,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
-) -> SteadyStateScan[Simulation] | SteadyStateScan[OdeSimulation] | EvaluationScan:
+    runner: SteadyStateRunner | None = None,
+) -> (
+    SteadyStateScan[Simulation]
+    | SteadyStateScan[OdeSimulation]
+    | SteadyStateScan[Evaluation]
+):
     """Get steady-state results over supplied values.
 
     Parameters
     ----------
     model
-        Model instance to simulate.
+        Model instance to simulate. It is copied, so it isn't changed.
     to_scan
         DataFrame containing parameter or initial values to scan.
-    tolerance
-        Tolerance for the steady-state calculation.
     y0
         Initial conditions as a dictionary {variable: value}.
     parallel
         Whether to execute in parallel. Defaults to True, except for a
         `SteadyStateModelBuilder`, whose cheap evaluations don't make up for
         the process pool's overhead.
-    rel_norm
-        Whether to use relative normalization (default: False).
     cache
         Optional cache to store and retrieve results.
-    worker
-        Worker function to use for the simulation.
-    integrator
-        Integrator function to use for steady state calculation.
-    oscillation_detector
-        Callable for oscillation detection passed to each worker.  Pass
-        :func:`~mxlpy.integrators.utils.no_oscillation_detection` to
-        disable.  Default: :func:`~mxlpy.integrators.utils.detect_oscillations`.
-
-    `SteadyStateModelBuilder` models are evaluated directly, so the
-    simulation specific arguments don't apply to them.
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
 
     Returns
     -------
-    SteadyStateScan | EvaluationScan
+    SteadyStateScan
         Steady-state results for each parameter set.
 
     Examples
     --------
         >>> steady_state(
         >>>     model,
-        >>>     parameters=pd.DataFrame({"k1": np.linspace(1, 2, 3)})
+        >>>     to_scan=pd.DataFrame({"k1": np.linspace(1, 2, 3)})
         >>> ).variables
         idx      x      y
         1.0   0.50   1.00
@@ -610,7 +370,8 @@ def steady_state(
 
         >>> steady_state(
         >>>     model,
-        >>>     parameters=cartesian_product({"k1": [1, 2], "k2": [3, 4]})
+        >>>     to_scan=cartesian_product({"k1": [1, 2], "k2": [3, 4]}),
+        >>>     runner=KineticRunner(tolerance=1e-8),
         >>> ).variables
 
         | idx    |    x |   y |
@@ -622,38 +383,14 @@ def steady_state(
     """
     if parallel is None:
         parallel = not isinstance(model, SteadyStateModelBuilder)
-
-    if isinstance(model, SteadyStateModelBuilder):
-        evaluated = parallelise(
-            partial(
-                _update_parameters_and_initial_conditions,
-                fn=_evaluate_worker,
-                model=model,
-            ),
-            inputs=list(to_scan.iterrows()),
-            cache=cache,
-            parallel=parallel,
-        )
-        return EvaluationScan(
-            to_scan=to_scan,
-            raw_index=_raw_index(to_scan),
-            raw_results=[i[1] for i in evaluated],
-            parameter_names=model.get_parameter_names(),
-        )
-
-    if y0 is not None:
-        model.update_variables(y0)
+    model = _copy_with_y0(model, y0)
 
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                worker,
-                tolerance=tolerance,
-                rel_norm=rel_norm,
-                integrator=integrator,
-                y0=None,
-                oscillation_detector=oscillation_detector,
+                _steady_state_worker,
+                runner=default_runner(model) if runner is None else runner,
             ),
             model=model,
         ),
@@ -664,7 +401,7 @@ def steady_state(
 
     return SteadyStateScan(
         raw_index=_raw_index(to_scan),
-        raw_results=[i[1] for i in res],  # type: ignore[misc]
+        raw_results=[i[1] for i in res],
         to_scan=to_scan,
     )
 
@@ -812,8 +549,7 @@ def time_course(
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     cache: Cache | None = None,
-    integrator: IntegratorType | None = None,
-    worker: TimeCourseWorker = _time_course_worker,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> TimeCourseScan[Simulation]: ...
 
 
@@ -826,8 +562,7 @@ def time_course(
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     cache: Cache | None = None,
-    integrator: IntegratorType | None = None,
-    worker: TimeCourseWorker = _time_course_worker,
+    runner: DynamicRunner[OdeModelBuilder, OdeSimulation] | None = None,
 ) -> TimeCourseScan[OdeSimulation]: ...
 
 
@@ -839,8 +574,7 @@ def time_course(
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     cache: Cache | None = None,
-    integrator: IntegratorType | None = None,
-    worker: TimeCourseWorker = _time_course_worker,
+    runner: DynamicRunner | None = None,
 ) -> TimeCourseScan[Simulation] | TimeCourseScan[OdeSimulation]:
     """Get time course for each supplied parameter.
 
@@ -881,7 +615,7 @@ def time_course(
     Parameters
     ----------
     model
-        Model instance to simulate.
+        Model instance to simulate. It is copied, so it isn't changed.
     to_scan
         DataFrame containing parameter or initial values to scan.
     time_points
@@ -892,10 +626,9 @@ def time_course(
         Optional cache to store and retrieve results.
     parallel
         Whether to execute in parallel (default: True).
-    worker
-        Worker function to use for the simulation.
-    integrator
-        Integrator function to use for steady state calculation
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
 
     Returns
     -------
@@ -904,19 +637,15 @@ def time_course(
 
 
     """
-    # We update the initial conditions separately here, because `to_scan` might also
-    # contain initial conditions.
-    if y0 is not None:
-        model.update_variables(y0)
+    model = _copy_with_y0(model, y0)
 
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                worker,
+                _time_course_worker,
                 time_points=time_points,
-                integrator=integrator,
-                y0=None,  # See comment above
+                runner=default_runner(model) if runner is None else runner,
             ),
             model=model,
         ),
@@ -926,7 +655,7 @@ def time_course(
     )
     return TimeCourseScan(
         to_scan=to_scan,
-        raw_results=dict(res),  # type: ignore[misc]
+        raw_results=dict(res),
     )
 
 
@@ -1077,8 +806,7 @@ def protocol(
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     cache: Cache | None = None,
-    worker: ProtocolWorker = _protocol_worker,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> ProtocolScan[Simulation]: ...
 
 
@@ -1092,8 +820,7 @@ def protocol(
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     cache: Cache | None = None,
-    worker: ProtocolWorker = _protocol_worker,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[OdeModelBuilder, OdeSimulation] | None = None,
 ) -> ProtocolScan[OdeSimulation]: ...
 
 
@@ -1106,8 +833,7 @@ def protocol(
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     cache: Cache | None = None,
-    worker: ProtocolWorker = _protocol_worker,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner | None = None,
 ) -> ProtocolScan[Simulation] | ProtocolScan[OdeSimulation]:
     """Get protocol series for each supplied parameter.
 
@@ -1127,7 +853,7 @@ def protocol(
     Parameters
     ----------
     model
-        Model instance to simulate.
+        Model instance to simulate. It is copied, so it isn't changed.
     to_scan
         DataFrame containing parameter or initial values to scan.
     protocol
@@ -1140,10 +866,9 @@ def protocol(
         Whether to execute in parallel (default: True).
     cache
         Optional cache to store and retrieve results.
-    worker
-        Worker function to use for the simulation.
-    integrator
-        Integrator function to use for steady state calculation
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
 
     Returns
     -------
@@ -1151,20 +876,16 @@ def protocol(
         Protocol series results for each parameter set.
 
     """
-    # We update the initial conditions separately here, because `to_scan` might also
-    # contain initial conditions.
-    if y0 is not None:
-        model.update_variables(y0)
+    model = _copy_with_y0(model, y0)
 
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                worker,
+                _protocol_worker,
                 protocol=protocol,
                 time_points_per_step=time_points_per_step,
-                integrator=integrator,
-                y0=None,
+                runner=default_runner(model) if runner is None else runner,
             ),
             model=model,
         ),
@@ -1175,7 +896,7 @@ def protocol(
     return ProtocolScan(
         to_scan=to_scan,
         protocol=protocol,
-        raw_results=dict(res),  # type: ignore[misc]
+        raw_results=dict(res),
     )
 
 
@@ -1189,8 +910,7 @@ def protocol_time_course(
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     cache: Cache | None = None,
-    worker: ProtocolTimeCourseWorker = _protocol_time_course_worker,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> ProtocolScan[Simulation]: ...
 
 
@@ -1204,8 +924,7 @@ def protocol_time_course(
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     cache: Cache | None = None,
-    worker: ProtocolTimeCourseWorker = _protocol_time_course_worker,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[OdeModelBuilder, OdeSimulation] | None = None,
 ) -> ProtocolScan[OdeSimulation]: ...
 
 
@@ -1218,8 +937,7 @@ def protocol_time_course(
     y0: dict[str, float] | None = None,
     parallel: bool = True,
     cache: Cache | None = None,
-    worker: ProtocolTimeCourseWorker = _protocol_time_course_worker,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner | None = None,
 ) -> ProtocolScan[Simulation] | ProtocolScan[OdeSimulation]:
     """Get protocol series for each supplied parameter.
 
@@ -1239,7 +957,7 @@ def protocol_time_course(
     Parameters
     ----------
     model
-        Model instance to simulate.
+        Model instance to simulate. It is copied, so it isn't changed.
     to_scan
         DataFrame containing parameter or initial values to scan.
     protocol
@@ -1252,10 +970,9 @@ def protocol_time_course(
         Whether to execute in parallel (default: True).
     cache
         Optional cache to store and retrieve results.
-    worker
-        Worker function to use for the simulation.
-    integrator
-        Integrator function to use for steady state calculation
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
 
     Returns
     -------
@@ -1263,20 +980,16 @@ def protocol_time_course(
         Protocol series results for each parameter set.
 
     """
-    # We update the initial conditions separately here, because `to_scan` might also
-    # contain initial conditions.
-    if y0 is not None:
-        model.update_variables(y0)
+    model = _copy_with_y0(model, y0)
 
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                worker,
+                _protocol_time_course_worker,
                 protocol=protocol,
                 time_points=time_points,
-                integrator=integrator,
-                y0=None,
+                runner=default_runner(model) if runner is None else runner,
             ),
             model=model,
         ),
@@ -1287,5 +1000,5 @@ def protocol_time_course(
     return ProtocolScan(
         to_scan=to_scan,
         protocol=protocol,
-        raw_results=dict(res),  # type: ignore[misc]
+        raw_results=dict(res),
     )

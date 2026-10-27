@@ -22,7 +22,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -30,8 +30,8 @@ from wadler_lindig import pformat
 
 from mxlpy.parallel import parallelise
 from mxlpy.plot import _default_fig_ax, _default_fig_axs
-from mxlpy.scan import _steady_state_worker, steady_state
-from mxlpy.simulator import Simulator
+from mxlpy.runners import KineticRunner, SteadyStateRunner
+from mxlpy.scan import _copy_with_y0, _steady_state_worker, steady_state
 from mxlpy.symbolic.symbolic_model import to_symbolic_model
 
 if TYPE_CHECKING:
@@ -41,7 +41,6 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy.integrators import IntegratorType
     from mxlpy.plot import FigAx, FigAxs
     from mxlpy.simulation import Simulation
 
@@ -62,11 +61,9 @@ def _response_coefficient_worker(
     parameter: str,
     *,
     model: KineticModelBuilder,
-    y0: dict[str, float] | None,
     normalized: bool,
-    rel_norm: bool,
     displacement: float = 1e-4,
-    integrator: IntegratorType | None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation],
 ) -> tuple[pd.Series, pd.Series]:
     """Calculate response coefficients for a single parameter.
 
@@ -83,16 +80,13 @@ def _response_coefficient_worker(
         Name of the parameter to analyze
     model
         Metabolic model instance
-    y0
-        Initial conditions as a dictionary {species: value}
     normalized
         Whether to normalize the coefficients
-    rel_norm
-        Whether to use relative normalization
     displacement
         Relative perturbation size (default: 1e-4)
-    integrator
-        Integrator function to use for steady state calculation
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Returns
     -------
@@ -103,30 +97,12 @@ def _response_coefficient_worker(
 
     """
     old = model.get_parameter_values()[parameter]
-    if y0 is not None:
-        model.update_variables(y0)
 
     model.update_parameters({parameter: old * (1 + displacement)})
-    upper = cast(
-        "Simulation",
-        _steady_state_worker(
-            model,
-            rel_norm=rel_norm,
-            integrator=integrator,
-            y0=None,
-        ),
-    )
+    upper = _steady_state_worker(model, runner=runner)
 
     model.update_parameters({parameter: old * (1 - displacement)})
-    lower = cast(
-        "Simulation",
-        _steady_state_worker(
-            model,
-            rel_norm=rel_norm,
-            integrator=integrator,
-            y0=None,
-        ),
-    )
+    lower = _steady_state_worker(model, runner=runner)
 
     conc_resp = (upper.variables.iloc[-1] - lower.variables.iloc[-1]) / (
         2 * displacement * old
@@ -137,15 +113,7 @@ def _response_coefficient_worker(
     # Reset
     model.update_parameters({parameter: old})
     if normalized:
-        norm = cast(
-            "Simulation",
-            _steady_state_worker(
-                model,
-                rel_norm=rel_norm,
-                integrator=integrator,
-                y0=None,
-            ),
-        )
+        norm = _steady_state_worker(model, runner=runner)
         conc_resp *= old / norm.variables.iloc[-1]
         flux_resp *= old / norm.fluxes.iloc[-1]
     return conc_resp, flux_resp
@@ -321,8 +289,7 @@ def response_coefficients(
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
-    rel_norm: bool = False,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> ResponseCoefficients:
     """Calculate response coefficients.
 
@@ -351,10 +318,9 @@ def response_coefficients(
         Whether to parallelize the computation
     max_workers
         Maximum number of workers
-    rel_norm
-        Whether to use relative normalization
-    integrator
-        Integrator function to use for steady state calculation
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Returns
     -------
@@ -368,12 +334,10 @@ def response_coefficients(
     res = parallelise(
         partial(
             _response_coefficient_worker,
-            model=model,
-            y0=variables,
+            model=_copy_with_y0(model, variables),
             normalized=normalized,
             displacement=displacement,
-            rel_norm=rel_norm,
-            integrator=integrator,
+            runner=KineticRunner() if runner is None else runner,
         ),
         inputs=list(zip(to_scan, to_scan, strict=True)),
         cache=None,
@@ -631,7 +595,7 @@ def rate_characteristics(
     max_factor: float = 100.0,
     n_points: int = 256,
     parallel: bool = True,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> RateCharacteristics:
     """Compute supply-demand rate characteristics for a variable.
 
@@ -660,8 +624,9 @@ def rate_characteristics(
         Number of concentrations to scan (log-spaced).
     parallel
         Whether to compute the steady states in parallel.
-    integrator
-        Integrator to use for steady-state calculation.
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Returns
     -------
@@ -679,13 +644,8 @@ def rate_characteristics(
         >>> rc.plot()
 
     """
-    ss = (
-        Simulator(model, integrator=integrator)
-        .simulate_to_steady_state()
-        .get_result()
-        .unwrap_or_err()
-        .get_new_y0()
-    )
+    runner = KineticRunner() if runner is None else runner
+    ss = runner.steady_state(model).unwrap_or_err().get_new_y0()
     ss_conc = ss[variable]
 
     try:
@@ -706,7 +666,7 @@ def rate_characteristics(
         clamped,
         to_scan=pd.DataFrame({variable: concs}),
         parallel=parallel,
-        integrator=integrator,
+        runner=runner,
     )
     fluxes = res.fluxes
 

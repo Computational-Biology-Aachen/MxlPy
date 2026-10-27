@@ -59,6 +59,7 @@ from . import (
     plot,
     qa,
     report,
+    runners,
     sbml,
     scan,
     sensitivity,
@@ -76,6 +77,7 @@ from .linear_label_map import LinearLabelMapper
 from .mc import Cache
 from .minimizers.abstract import AbstractMinimizer, MinimizerProtocol
 from .npe.abstract import AbstractEstimator, EstimatorProtocol
+from .runners import EvaluationRunner, KineticRunner, OdeRunner
 from .serialize import load, save
 from .simulation import Simulation
 from .simulator import Simulator
@@ -124,6 +126,7 @@ __all__ = [
     "Cache",
     "Conflict",
     "DefaultIntegrator",
+    "EvaluationRunner",
     "Derived",
     "Diffrax",
     "EstimatorProtocol",
@@ -131,11 +134,13 @@ __all__ = [
     "InitialAssignment",
     "IntegratorProtocol",
     "KineticModelBuilder",
+    "KineticRunner",
     "LabelMapper",
     "LinearLabelMapper",
     "MinimizerProtocol",
     "Model",
     "OdeModelBuilder",
+    "OdeRunner",
     "OdeSurrogateProtocol",
     "OscillationDetected",
     "Parameter",
@@ -169,6 +174,7 @@ __all__ = [
     "plot",
     "qa",
     "report",
+    "runners",
     "save",
     "sbml",
     "scan",

@@ -15,11 +15,13 @@ from functools import partial
 import numpy as np
 from loky import ProcessPoolExecutor
 
+from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.fit import losses
 from mxlpy.fit.abstract import (
     FitResidual,
     FitSettings,
     JointFit,
+    _pick_runner,
     _Settings,
 )
 from mxlpy.fit.residuals import (
@@ -27,13 +29,14 @@ from mxlpy.fit.residuals import (
     steady_state_residual,
     time_course_residual,
 )
-from mxlpy.integrators import IntegratorType
 from mxlpy.minimizers.abstract import (
     Bounds,
     LossFn,
     MinimizerProtocol,
     OptimisationState,
 )
+from mxlpy.runners import DynamicRunner, SteadyStateRunner
+from mxlpy.simulation import Simulation
 from mxlpy.simulator import _normalise_protocol_index
 from mxlpy.types import Result
 
@@ -68,7 +71,7 @@ def joint_steady_state(
     p0: dict[str, float],
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
@@ -100,8 +103,9 @@ def joint_steady_state(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
     bounds
@@ -128,12 +132,11 @@ def joint_steady_state(
                 model=deepcopy(i.model) if as_deepcopy else i.model,
                 data=i.data,
                 y0=i.y0 if i.y0 is not None else y0,
-                integrator=i.integrator if i.integrator is not None else integrator,
+                runner=_pick_runner(i.runner, runner, i.model),
                 loss_fn=i.loss_fn if i.loss_fn is not None else loss_fn,
                 p_names=[j for j in p0 if j in p_names],
                 v_names=[j for j in p0 if j in v_names],
                 standard_scale=standard_scale,
-                oscillation_detector=i.oscillation_detector,
             )
         )
 
@@ -165,7 +168,7 @@ def joint_time_course(
     p0: dict[str, float],
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
@@ -191,8 +194,9 @@ def joint_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
     bounds
@@ -219,7 +223,7 @@ def joint_time_course(
                 model=deepcopy(i.model) if as_deepcopy else i.model,
                 data=i.data,
                 y0=i.y0 if i.y0 is not None else y0,
-                integrator=i.integrator if i.integrator is not None else integrator,
+                runner=_pick_runner(i.runner, runner, i.model),
                 loss_fn=i.loss_fn if i.loss_fn is not None else loss_fn,
                 p_names=[j for j in p0 if j in p_names],
                 v_names=[j for j in p0 if j in v_names],
@@ -256,7 +260,7 @@ def joint_protocol_time_course(
     p0: dict[str, float],
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
@@ -282,8 +286,9 @@ def joint_protocol_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
     bounds
@@ -310,7 +315,7 @@ def joint_protocol_time_course(
                 model=deepcopy(i.model) if as_deepcopy else i.model,
                 data=i.data,
                 y0=i.y0 if i.y0 is not None else y0,
-                integrator=i.integrator if i.integrator is not None else integrator,
+                runner=_pick_runner(i.runner, runner, i.model),
                 loss_fn=i.loss_fn if i.loss_fn is not None else loss_fn,
                 protocol=_normalise_protocol_index(protocol)
                 if (protocol := i.protocol) is not None

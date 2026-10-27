@@ -11,13 +11,14 @@ import numpy as np
 import pandas as pd
 from wadler_lindig import pformat
 
-__all__ = ["OdeSimulation", "Simulation"]
+__all__ = ["Evaluation", "OdeSimulation", "Simulation"]
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder
     from mxlpy.types import Array, ArrayLike
 
 
@@ -994,3 +995,53 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
             normalise=normalise,
             concatenated=concatenated,
         )
+
+
+@dataclass(kw_only=True, slots=True)
+class Evaluation:
+    """Evaluation results of a `SteadyStateModelBuilder`.
+
+    Mirrors the accessors shared by `Simulation` and `OdeSimulation`, with a
+    single row, as nothing is integrated over time.
+    """
+
+    model: SteadyStateModelBuilder
+    raw_values: pd.Series
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    @classmethod
+    def default(cls, model: SteadyStateModelBuilder) -> Evaluation:
+        """Get result filled with NaNs.
+
+        Parameters
+        ----------
+        model
+            Model to create default results for.
+
+        """
+        names = model.get_parameter_names() + list(model.get_raw_derived(as_copy=False))
+        return Evaluation(
+            model=model,
+            raw_values=pd.Series(np.nan, index=names, dtype=float),
+        )
+
+    def get_args(self, *, include_parameters: bool = False) -> pd.DataFrame:
+        """Get the evaluated values as a single row.
+
+        Parameters
+        ----------
+        include_parameters
+            Whether to include the parameters.
+
+        """
+        names = list(self.model.get_raw_derived(as_copy=False))
+        if include_parameters:
+            names = self.model.get_parameter_names() + names
+        return self.raw_values.loc[names].to_frame().T
+
+    def get_combined(self) -> pd.DataFrame:
+        """Get the derived values as a single row."""
+        return self.get_args()

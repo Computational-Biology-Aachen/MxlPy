@@ -14,6 +14,7 @@ from typing_extensions import TypeVar
 from wadler_lindig import pformat
 
 from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy.runners import default_runner
 
 __all__ = [
     "EnsembleFit",
@@ -27,14 +28,14 @@ __all__ = [
     "MixedSettings",
 ]
 
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 
 if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy._steady_state_builder import SteadyStateModelBuilder
-    from mxlpy.integrators.abstract import IntegratorType
     from mxlpy.minimizers.abstract import LossFn
+    from mxlpy.runners import SteadyStateRunner
+    from mxlpy.simulation import Simulation
 
 LOGGER = logging.getLogger(__name__)
 
@@ -71,10 +72,9 @@ class FitSettings:
     model: KineticModelBuilder
     data: pd.Series | pd.DataFrame
     y0: dict[str, float] | None = None
-    integrator: IntegratorType | None = None
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None
     loss_fn: LossFn | None = None
     protocol: pd.DataFrame | None = None
-    oscillation_detector: OscillationDetector | None = detect_oscillations
 
 
 @dataclass
@@ -85,10 +85,22 @@ class MixedSettings:
     data: pd.Series | pd.DataFrame
     residual_fn: FitResidual
     y0: dict[str, float] | None = None
-    integrator: IntegratorType | None = None
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None
     loss_fn: LossFn | None = None
     protocol: pd.DataFrame | None = None
-    oscillation_detector: OscillationDetector | None = detect_oscillations
+
+
+def _pick_runner(
+    runner: SteadyStateRunner[Any, Any] | None,
+    fallback: SteadyStateRunner[Any, Any] | None,
+    model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
+) -> SteadyStateRunner[Any, Any]:
+    """Pick the per-settings runner, else the fallback, else the default runner."""
+    if runner is not None:
+        return runner
+    if fallback is not None:
+        return fallback
+    return default_runner(model)
 
 
 @dataclass
@@ -98,14 +110,13 @@ class _Settings[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuild
     model: M
     data: pd.Series | pd.DataFrame
     y0: dict[str, float] | None
-    integrator: IntegratorType | None
+    runner: SteadyStateRunner[Any, Any]
     loss_fn: LossFn
     p_names: list[str]
     v_names: list[str]
     standard_scale: bool
     protocol: pd.DataFrame | None = None
     residual_fn: FitResidual | None = None
-    oscillation_detector: OscillationDetector | None = detect_oscillations
 
     @cached_property
     def mean(self) -> pd.Series | float:

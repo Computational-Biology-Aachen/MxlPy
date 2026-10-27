@@ -4,31 +4,48 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
-from mxlpy.simulation import OdeSimulation, Simulation
-from mxlpy.simulator import Simulator
+from mxlpy.runners import DynamicRunner
 from mxlpy.types import cast
 
 if TYPE_CHECKING:
-    from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy.fit.abstract import _Settings
+    from mxlpy.types import Result
 
 __all__ = [
-    "evaluate_residual",
     "protocol_time_course_residual",
     "steady_state_residual",
     "time_course_residual",
 ]
 
 
+def _apply_updates(updates: dict[str, float], settings: _Settings[Any]) -> None:
+    model = settings.model
+    for p in settings.p_names:
+        model.update_parameter(p, updates[p])
+    if isinstance(model, SteadyStateModelBuilder):
+        return
+    if (y0 := settings.y0) is not None:
+        model.update_variables(y0)
+    for p in settings.v_names:
+        model.update_variable(p, updates[p])
+
+
+def _loss(settings: _Settings[Any], res: Result[Any], names: list[str]) -> float:
+    match val := res.value:
+        case Exception():
+            return cast(float, np.inf)
+        case _:
+            return settings.loss(val.get_combined().loc[:, names])
+
+
 def steady_state_residual(
     updates: dict[str, float],
-    settings: _Settings[KineticModelBuilder | OdeModelBuilder],
+    settings: _Settings[Any],
 ) -> float:
     """Calculate residual error between model steady state and experimental data.
 
@@ -45,36 +62,17 @@ def steady_state_residual(
         Residual error, or inf if simulation fails.
 
     """
-    model = settings.model
-    if (y0 := settings.y0) is not None:
-        model.update_variables(y0)
-    for p in settings.p_names:
-        model.update_parameter(p, updates[p])
-    for p in settings.v_names:
-        model.update_variable(p, updates[p])
-
-    res = (
-        Simulator(
-            model,
-            integrator=settings.integrator,
-        )
-        .simulate_to_steady_state(
-            oscillation_detector=settings.oscillation_detector,
-        )
-        .get_result()
+    _apply_updates(updates, settings)
+    return _loss(
+        settings,
+        settings.runner.steady_state(settings.model),
+        cast(list, settings.data.index),
     )
-    match val := res.value:
-        case Simulation() | OdeSimulation():
-            return settings.loss(
-                val.get_combined().loc[:, cast(list, settings.data.index)],
-            )
-        case _:
-            return cast(float, np.inf)
 
 
 def time_course_residual(
     updates: dict[str, float],
-    settings: _Settings[KineticModelBuilder | OdeModelBuilder],
+    settings: _Settings[Any],
 ) -> float:
     """Calculate residual error between model time course and experimental data.
 
@@ -91,35 +89,18 @@ def time_course_residual(
         Residual error, or inf if simulation fails.
 
     """
-    model = settings.model
-    if (y0 := settings.y0) is not None:
-        model.update_variables(y0)
-    for p in settings.p_names:
-        model.update_parameter(p, updates[p])
-    for p in settings.v_names:
-        model.update_variable(p, updates[p])
-
-    res = (
-        Simulator(
-            model,
-            integrator=settings.integrator,
-        )
-        .simulate_time_course(cast(list, settings.data.index))
-        .get_result()
+    _apply_updates(updates, settings)
+    runner = cast(DynamicRunner[Any, Any], settings.runner)
+    return _loss(
+        settings,
+        runner.time_course(settings.model, cast(list, settings.data.index)),
+        cast(list, settings.data.columns),
     )
-
-    match val := res.value:
-        case Simulation() | OdeSimulation():
-            return settings.loss(
-                val.get_combined().loc[:, cast(list, settings.data.columns)],
-            )
-        case _:
-            return cast(float, np.inf)
 
 
 def protocol_time_course_residual(
     updates: dict[str, float],
-    settings: _Settings[KineticModelBuilder | OdeModelBuilder],
+    settings: _Settings[Any],
 ) -> float:
     """Calculate residual error between model protocol time course and experimental data.
 
@@ -136,67 +117,14 @@ def protocol_time_course_residual(
         Residual error, or inf if simulation fails.
 
     """
-    model = settings.model
-    if (y0 := settings.y0) is not None:
-        model.update_variables(y0)
-    for p in settings.p_names:
-        model.update_parameter(p, updates[p])
-    for p in settings.v_names:
-        model.update_variable(p, updates[p])
-
     if (protocol := settings.protocol) is None:
         msg = "protocol_time_course_residual requires a protocol but settings.protocol is None - set settings.protocol to a DataFrame before fitting"
         raise ValueError(msg)
 
-    res = (
-        Simulator(
-            model,
-            integrator=settings.integrator,
-        )
-        .simulate_protocol_time_course(
-            protocol=protocol,
-            time_points=settings.data.index,
-        )
-        .get_result()
+    _apply_updates(updates, settings)
+    runner = cast(DynamicRunner[Any, Any], settings.runner)
+    return _loss(
+        settings,
+        runner.protocol_time_course(settings.model, protocol, settings.data.index),
+        cast(list, settings.data.columns),
     )
-
-    match val := res.value:
-        case Simulation() | OdeSimulation():
-            return settings.loss(
-                val.get_combined().loc[:, cast(list, settings.data.columns)],
-            )
-        case _:
-            return cast(float, np.inf)
-
-
-def evaluate_residual(
-    updates: dict[str, float],
-    settings: _Settings[SteadyStateModelBuilder],
-) -> float:
-    """Calculate residual error between evaluated model and experimental data.
-
-    Parameters
-    ----------
-    updates
-        Parameter updates as {name: value}.
-    settings
-        Internal fit settings containing model, data, and configuration.
-
-    Returns
-    -------
-    float
-        Residual error, or inf if evaluation fails.
-
-    """
-    model = settings.model
-    if not isinstance(model, SteadyStateModelBuilder):
-        msg = f"evaluate_residual requires a SteadyStateModelBuilder, got {type(model).__name__} - use steady_state_residual instead"
-        raise TypeError(msg)
-    for p in settings.p_names:
-        model.update_parameter(p, updates[p])
-
-    try:
-        res = model.evaluate(include_parameters=True)
-    except (ArithmeticError, ValueError):
-        return cast(float, np.inf)
-    return settings.loss(res.loc[cast(list, settings.data.index)])
