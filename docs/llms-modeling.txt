@@ -201,13 +201,17 @@ Support across the library:
 
 | | `Model` | `OdeModelBuilder` | `SteadyStateModelBuilder` |
 |---|---|---|---|
-| `Simulator` | `Simulation` | `OdeSimulation` (no fluxes) | — (use `.evaluate()`) |
-| `scan.steady_state` | `SteadyStateScan` | `SteadyStateScan` (no fluxes) | `EvaluationScan` |
-| `scan.time_course` / `protocol*` | ✓ | ✓ | — |
-| `fit.steady_state` | ✓ | ✓ | ✓ (`fit.evaluate_residual`) |
-| `fit.time_course` / `protocol_time_course` | ✓ | ✓ | — |
-| group / ensemble / joint / carousel fits, `mc`, `mca` | ✓ | — | — |
+| Default runner | `KineticRunner` → `Simulation` | `OdeRunner` → `OdeSimulation` (no fluxes) | `EvaluationRunner` → `Evaluation` (no variables) |
+| `Simulator` | ✓ | ✓ | — (use `.evaluate()`) |
+| `scan.steady_state`, `mc.steady_state`, `mc.scan_steady_state` | ✓ | ✓ | ✓ |
+| `scan.time_course` / `protocol*`, `mc` equivalents | ✓ | ✓ | — |
+| `fit.*steady_state` (single / group / ensemble / joint) | ✓ | ✓ | ✓ |
+| `fit.*time_course` / `*protocol_time_course`, `joint_mixed` | ✓ | ✓ | — |
+| `mca.response_coefficients`, `mc.response_coefficients`, `sensitivity` | ✓ | ✓ | ✓ |
+| flux elasticities, `mca.rate_characteristics`, `steady_state_stability`, carousel fits, `compare` | ✓ | — | — |
 | `save` / `load`, `meta.generate_model_code_mxlweb` | ✓ | ✓ | ✓ |
+
+Results without fluxes (or variables) raise a `TypeError` on `.fluxes` (or `.variables`) and on `(variables, fluxes)` unpacking; use `.combined`. A joint fit may mix builders (`FitSettings` are generic); steady-state models reject a per-model `y0` and time-course fits.
 
 ## Composition (`mxlpy.compose`)
 

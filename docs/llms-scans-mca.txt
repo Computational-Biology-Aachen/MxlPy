@@ -19,7 +19,7 @@ res.variables; res.fluxes; res.combined
 res = scan.steady_state(model, to_scan=cartesian_product({"k1": [1, 2], "k2": [3, 4]}))
 ```
 
-All scans also accept an `OdeModelBuilder`; the results then have no `.fluxes` and don't unpack. `scan.steady_state` additionally accepts a `SteadyStateModelBuilder`, which is evaluated per row (no `integrator` / `y0` / `tolerance`; serial by default, as process-pool overhead outweighs the cheap evaluations) and returns an `EvaluationScan` (`.combined`, `.get_args(include_parameters=...)`); rows whose evaluation raises an arithmetic or domain error (`ValueError`) are `NaN`.
+All scans also accept an `OdeModelBuilder`; the results then have no `.fluxes` and don't unpack. `scan.steady_state` additionally accepts a `SteadyStateModelBuilder`, which is evaluated per row (no `y0`; serial by default, as process-pool overhead outweighs the cheap evaluations) and returns a `SteadyStateScan` of `Evaluation`s (`.combined`, `.get_args(include_parameters=...)`, no `.variables`); rows whose evaluation raises an arithmetic or domain error (`ValueError`) are `NaN`. Configure the simulation with `runner=` (see [simulation](llms-simulation.txt#runners)); routines never mutate the model you pass in.
 
 ```python
 res = scan.steady_state(ss_model, to_scan=pd.DataFrame({"S": np.geomspace(0.1, 100, 21)}))
@@ -82,7 +82,7 @@ plot.heatmap(elas)
 
 ### Response coefficients (at steady state)
 
-Sensitivity of steady-state variables and fluxes to a parameter. Runs in parallel by default. Returns a `ResponseCoefficients` object: `.variables` (concentration RCs), `.fluxes` (flux RCs), `.combined`, unpackable as `(crcs, frcs)`.
+Sensitivity of steady-state outputs to a parameter. Runs in parallel by default. Returns a `ResponseCoefficients` object: `.combined` (outputs × parameters), `.variables` (concentration RCs), `.fluxes` (flux RCs), unpackable as `(crcs, frcs)`. Also works for `OdeModelBuilder` (no `.fluxes`) and `SteadyStateModelBuilder` (only `.combined`, the normalised derivatives of the derived values). Elasticities are flux-based and therefore `Model`-only.
 
 ```python
 crcs, frcs = mca.response_coefficients(model, to_scan=["k1", "k2", "k3"])
