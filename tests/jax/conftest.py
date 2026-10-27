@@ -23,6 +23,12 @@ missing from the baseline only emit a warning. After an intentional change,
 refresh the baseline (and review its diff) with::
 
     MXLPY_UPDATE_RESOURCE_BASELINE=1 uv run pytest tests/jax
+
+Recompiling from scratch in every test would make XLA compilation most of
+the suite's runtime, so compiled programs are also written to a persistent
+cache in ``.jax_cache/`` (CI keeps it between runs). A cache hit still counts
+as a compilation above, so the baseline is unaffected. ``JAX_*`` environment
+variables override these cache settings.
 """
 
 import contextlib
@@ -53,6 +59,17 @@ try:
     _malloc_trim = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6").malloc_trim
 except (OSError, AttributeError):  # not glibc (e.g. macOS)
     _malloc_trim = None
+
+# The suite's ~1000 distinct programs take ~16 MB per JAX version
+_PERSISTENT_CACHE = {
+    "jax_compilation_cache_dir": str(Path(__file__).parents[2] / ".jax_cache"),
+    "jax_persistent_cache_min_compile_time_secs": 0,
+    "jax_persistent_cache_min_entry_size_bytes": 0,
+    "jax_compilation_cache_max_size": 256 * 1024**2,
+}
+for _name, _value in _PERSISTENT_CACHE.items():
+    if _name.upper() not in os.environ:
+        jax.config.update(_name, _value)
 
 
 # --- measurement -------------------------------------------------------------
