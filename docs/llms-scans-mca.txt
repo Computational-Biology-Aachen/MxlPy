@@ -19,6 +19,13 @@ res.variables; res.fluxes; res.combined
 res = scan.steady_state(model, to_scan=cartesian_product({"k1": [1, 2], "k2": [3, 4]}))
 ```
 
+All scans also accept an `OdeModelBuilder`; the results then have no `.fluxes` and don't unpack. `scan.steady_state` additionally accepts a `SteadyStateModelBuilder`, which is evaluated per row (no `integrator` / `y0` / `tolerance`) and returns an `EvaluationScan` (`.combined`, `.get_args(include_parameters=...)`); rows whose evaluation raises an arithmetic error are `NaN`.
+
+```python
+res = scan.steady_state(ss_model, to_scan=pd.DataFrame({"S": np.geomspace(0.1, 100, 21)}))
+res.combined                        # derived values by scanned value
+```
+
 ### Time course and protocol scans
 
 These produce a *distribution* of trajectories; the result carries an `n × time` MultiIndex. `.to_scan` maps the integer index `n` back to its parameter combination; `get_agg_per_time("mean"|"std"|...)` aggregates across runs at each time point.
