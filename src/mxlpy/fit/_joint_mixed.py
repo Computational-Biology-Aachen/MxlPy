@@ -21,6 +21,7 @@ from mxlpy.fit.abstract import (
     FitResidual,
     JointFit,
     MixedSettings,
+    PostprocessFn,
     _joint_settings,
     _Settings,
 )
@@ -65,6 +66,7 @@ def joint_mixed(
     y0: dict[str, float] | None = None,
     runner: SteadyStateRunner[Any, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
@@ -108,6 +110,10 @@ def joint_mixed(
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
     as_deepcopy
@@ -130,6 +136,7 @@ def joint_mixed(
             y0=y0,
             runner=runner,
             loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
             as_deepcopy=as_deepcopy,
             standard_scale=standard_scale,
             needs_dynamics=i.residual_fn is not steady_state_residual,

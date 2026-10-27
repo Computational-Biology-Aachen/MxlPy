@@ -20,6 +20,7 @@ from mxlpy.fit.abstract import (
     FitResidual,
     FitSettings,
     JointFit,
+    PostprocessFn,
     _joint_settings,
     _Settings,
 )
@@ -70,6 +71,7 @@ def joint_steady_state(
     y0: dict[str, float] | None = None,
     runner: SteadyStateRunner[Any, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
@@ -105,6 +107,10 @@ def joint_steady_state(
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
     as_deepcopy
@@ -127,6 +133,7 @@ def joint_steady_state(
             y0=y0,
             runner=runner,
             loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
             as_deepcopy=as_deepcopy,
             standard_scale=standard_scale,
             needs_dynamics=False,
@@ -164,6 +171,7 @@ def joint_time_course(
     y0: dict[str, float] | None = None,
     runner: DynamicRunner[Any, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
@@ -193,6 +201,10 @@ def joint_time_course(
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
     as_deepcopy
@@ -215,6 +227,7 @@ def joint_time_course(
             y0=y0,
             runner=runner,
             loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
             as_deepcopy=as_deepcopy,
             standard_scale=standard_scale,
             needs_dynamics=True,
@@ -253,6 +266,7 @@ def joint_protocol_time_course(
     y0: dict[str, float] | None = None,
     runner: DynamicRunner[Any, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
@@ -282,6 +296,10 @@ def joint_protocol_time_course(
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
     as_deepcopy
@@ -304,6 +322,7 @@ def joint_protocol_time_course(
             y0=y0,
             runner=runner,
             loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
             as_deepcopy=as_deepcopy,
             standard_scale=standard_scale,
             needs_dynamics=True,

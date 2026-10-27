@@ -15,7 +15,7 @@ from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit import losses
-from mxlpy.fit.abstract import Fit, FitResidual, _Settings, _split_p0
+from mxlpy.fit.abstract import Fit, FitResidual, PostprocessFn, _Settings, _split_p0
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
     steady_state_residual,
@@ -78,6 +78,7 @@ def steady_state(
     residual_fn: FitResidual = steady_state_residual,
     runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -95,6 +96,7 @@ def steady_state(
     residual_fn: FitResidual = steady_state_residual,
     runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -111,6 +113,7 @@ def steady_state(
     residual_fn: FitResidual = steady_state_residual,
     runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -127,6 +130,7 @@ def steady_state[M: _Model](
     residual_fn: FitResidual = steady_state_residual,
     runner: SteadyStateRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -157,6 +161,10 @@ def steady_state[M: _Model](
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
     as_deepcopy
@@ -179,6 +187,7 @@ def steady_state[M: _Model](
         residual_fn=residual_fn,
         runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
@@ -195,6 +204,7 @@ def _steady_state[M: _Model](
     residual_fn: FitResidual = steady_state_residual,
     runner: SteadyStateRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -212,6 +222,7 @@ def _steady_state[M: _Model](
             y0=y0,
             runner=default_runner(model) if runner is None else runner,
             loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
             p_names=p_names,
             v_names=v_names,
             standard_scale=standard_scale,
@@ -233,6 +244,7 @@ def time_course[M: KineticModelBuilder | OdeModelBuilder](
     residual_fn: FitResidual = time_course_residual,
     runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -263,6 +275,10 @@ def time_course[M: KineticModelBuilder | OdeModelBuilder](
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
     as_deepcopy
@@ -287,6 +303,7 @@ def time_course[M: KineticModelBuilder | OdeModelBuilder](
             y0=y0,
             runner=default_runner(model) if runner is None else runner,
             loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
             p_names=p_names,
             v_names=v_names,
             standard_scale=standard_scale,
@@ -309,6 +326,7 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     residual_fn: FitResidual = protocol_time_course_residual,
     runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -349,6 +367,10 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
@@ -376,6 +398,7 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
             y0=y0,
             runner=default_runner(model) if runner is None else runner,
             loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
             p_names=p_names,
             v_names=v_names,
             protocol=protocol,
