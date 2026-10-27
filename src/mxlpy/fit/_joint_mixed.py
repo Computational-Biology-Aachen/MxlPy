@@ -7,16 +7,16 @@
 ###############################################################################
 
 
-import multiprocessing
 from collections.abc import Sequence
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import partial
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from loky import ProcessPoolExecutor
 
 from mxlpy.fit import losses
+from mxlpy.fit._joint import _pool
 from mxlpy.fit.abstract import (
     FitResidual,
     JointFit,
@@ -46,8 +46,12 @@ def _execute(inp: tuple[dict[str, float], FitResidual, _Settings]) -> float:
 def _mixed_sum_of_residuals(
     updates: dict[str, float],
     fits: list[_Settings],
-    pool: ProcessPoolExecutor,
+    pool: ProcessPoolExecutor | None,
 ) -> float:
+    if pool is None:
+        return sum(
+            _execute((updates, cast(FitResidual, i.residual_fn), i)) for i in fits
+        )
     futures = [pool.submit(_execute, (updates, i.residual_fn, i)) for i in fits]
     error = 0.0
     for future in futures:
@@ -68,6 +72,7 @@ def joint_mixed(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
@@ -118,6 +123,8 @@ def joint_mixed(
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to evaluate the models in parallel (default: True).
     max_workers
         maximal amount of workers in parallel
     standard_scale
@@ -144,11 +151,7 @@ def joint_mixed(
         for i in to_fit
     ]
 
-    with ProcessPoolExecutor(
-        max_workers=(
-            multiprocessing.cpu_count() if max_workers is None else max_workers
-        )
-    ) as pool:
+    with _pool(parallel=parallel, max_workers=max_workers) as pool:
         min_result = minimizer(
             partial(
                 _mixed_sum_of_residuals,

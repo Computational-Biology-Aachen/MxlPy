@@ -50,6 +50,7 @@ class Options:
     non_zero_known_input_derivatives: list[int] = field(default_factory=lambda: [100])
     non_zero_unknown_input_derivatives: list[int] = field(default_factory=lambda: [100])
     prev_ident_pars: set[sympy.Symbol] = field(default_factory=set)
+    parallel: bool = True
 
 
 @dataclass
@@ -112,6 +113,16 @@ def _calculate_num_rank(inp: tuple[int, list[int]], onx: Matrix) -> tuple[int, i
     return idx, st.generic_rank(onx.col(indices))
 
 
+def _calculate_num_ranks(
+    all_indices: list[tuple[int, list[int]]], onx: Matrix, *, parallel: bool
+) -> list[tuple[int, int]]:
+    fn = partial(_calculate_num_rank, onx=onx)
+    if not parallel:
+        return list(map(fn, all_indices))
+    with ProcessPoolExecutor() as ppe:
+        return list(ppe.map(fn, all_indices))
+
+
 def _elim_and_recalc(
     *,
     model: StrikepyModel,
@@ -141,8 +152,7 @@ def _elim_and_recalc(
             indices = list(range(r))
             indices.pop(len(model.states) + idx)
             all_indices.append((idx, indices))
-    with ProcessPoolExecutor() as ppe:
-        num_ranks = list(ppe.map(partial(_calculate_num_rank, onx=onx), all_indices))
+    num_ranks = _calculate_num_ranks(all_indices, onx, parallel=options.parallel)
     for idx, num_rank in num_ranks:
         if num_rank == res.rank:
             if unidflag:
@@ -159,10 +169,7 @@ def _elim_and_recalc(
                 indices = list(range(r))
                 indices.pop(orig_idx)
                 all_indices.append((orig_idx, indices))
-        with ProcessPoolExecutor() as ppe:
-            num_ranks = list(
-                ppe.map(partial(_calculate_num_rank, onx=onx), all_indices)
-            )
+        num_ranks = _calculate_num_ranks(all_indices, onx, parallel=options.parallel)
         for orig_idx, num_rank in num_ranks:
             if num_rank == res.rank:
                 if unidflag:
@@ -177,8 +184,7 @@ def _elim_and_recalc(
             indices = list(range(r))
             indices.pop(len(model.states) + len(model.pars) + idx)
             all_indices.append((idx, indices))
-    with ProcessPoolExecutor() as ppe:
-        num_ranks = list(ppe.map(partial(_calculate_num_rank, onx=onx), all_indices))
+    num_ranks = _calculate_num_ranks(all_indices, onx, parallel=options.parallel)
     for idx, num_rank in num_ranks:
         if num_rank == res.rank:
             if unidflag:

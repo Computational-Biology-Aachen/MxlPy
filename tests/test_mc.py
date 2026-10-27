@@ -73,6 +73,7 @@ def test_parameter_elasticities() -> None:
         mc_to_scan=get_mc_to_scan(),
         to_scan=["k0"],
         variables={"S": 1.0, "P": 0.5},
+        parallel=False,
     )
     elasticities = pd.DataFrame(
         {
@@ -105,9 +106,7 @@ def test_protocol_time_course() -> None:
 
 def test_response_coefficients() -> None:
     res = mc.response_coefficients(
-        get_simple_model(),
-        mc_to_scan=get_mc_to_scan(),
-        to_scan=["k0"],
+        get_simple_model(), mc_to_scan=get_mc_to_scan(), to_scan=["k0"], parallel=False
     )
     coefs = pd.DataFrame(
         {
@@ -130,6 +129,7 @@ def test_scan_steady_state() -> None:
         get_simple_model(),
         to_scan=get_to_scan(),
         mc_to_scan=get_mc_to_scan(),
+        parallel=False,
     )
     # args
     args = pd.DataFrame(
@@ -169,7 +169,9 @@ def test_scan_steady_state() -> None:
 
 
 def test_steady_state() -> None:
-    res = mc.steady_state(get_simple_model(), mc_to_scan=get_mc_to_scan())
+    res = mc.steady_state(
+        get_simple_model(), mc_to_scan=get_mc_to_scan(), parallel=False
+    )
 
     # Args
     args = pd.DataFrame(
@@ -261,6 +263,7 @@ def test_time_course() -> None:
         get_simple_model(),
         mc_to_scan=get_mc_to_scan(),
         time_points=np.array([1.0], dtype=float),
+        parallel=False,
     )
     # args
     args = pd.DataFrame(
@@ -323,6 +326,7 @@ def test_time_course_over_protocol() -> None:
         mc_to_scan=get_mc_to_scan(),
         protocol=get_protocol(),
         time_points_per_step=1,
+        parallel=False,
     )
     # args
     args = pd.DataFrame(
@@ -384,6 +388,7 @@ def test_variable_elasticities() -> None:
         get_simple_model(),
         mc_to_scan=get_mc_to_scan(),
         variables={"S": 1.0, "P": 0.5},
+        parallel=False,
     )
     elasticities = pd.DataFrame(
         {

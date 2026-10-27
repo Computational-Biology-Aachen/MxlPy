@@ -99,6 +99,7 @@ def steady_state(
     *,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
@@ -111,6 +112,7 @@ def steady_state(
     *,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
@@ -122,6 +124,7 @@ def steady_state(
     model: SteadyStateModelBuilder,
     *,
     mc_to_scan: pd.DataFrame,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
@@ -133,6 +136,7 @@ def steady_state(
     *,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[Any, Any] | None = None,
@@ -151,6 +155,8 @@ def steady_state(
         DataFrame of parameter/initial condition samples for Monte Carlo.
     y0
         Initial conditions as a dictionary {variable: value}.
+    parallel
+        Whether to execute in parallel (default: True).
     max_workers
         Maximum number of parallel workers. None uses all available cores.
     cache
@@ -191,6 +197,7 @@ def steady_state(
             model=model,
         ),
         inputs=list(mc_to_scan.iterrows()),
+        parallel=parallel,
         max_workers=max_workers,
         cache=cache,
     )
@@ -212,6 +219,7 @@ def time_course(
     time_points: Array,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
@@ -225,6 +233,7 @@ def time_course(
     time_points: Array,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[OdeModelBuilder, OdeSimulation] | None = None,
@@ -237,6 +246,7 @@ def time_course(
     time_points: Array,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[Any, Any] | None = None,
@@ -253,6 +263,8 @@ def time_course(
         DataFrame of parameter/initial condition samples for Monte Carlo.
     y0
         Initial conditions as a dictionary {variable: value}.
+    parallel
+        Whether to execute in parallel (default: True).
     max_workers
         Maximum number of parallel workers. None uses all available cores.
     cache
@@ -294,6 +306,7 @@ def time_course(
             model=model,
         ),
         inputs=list(mc_to_scan.iterrows()),
+        parallel=parallel,
         max_workers=max_workers,
         cache=cache,
     )
@@ -312,6 +325,7 @@ def protocol(
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
     time_points_per_step: int = 10,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
@@ -326,6 +340,7 @@ def protocol(
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
     time_points_per_step: int = 10,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[OdeModelBuilder, OdeSimulation] | None = None,
@@ -339,6 +354,7 @@ def protocol(
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
     time_points_per_step: int = 10,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[Any, Any] | None = None,
@@ -357,6 +373,8 @@ def protocol(
         Initial conditions as a dictionary {variable: value}.
     time_points_per_step
         Number of time points per protocol step.
+    parallel
+        Whether to execute in parallel (default: True).
     max_workers
         Maximum number of parallel workers. None uses all available cores.
     cache
@@ -399,6 +417,7 @@ def protocol(
             model=model,
         ),
         inputs=list(mc_to_scan.iterrows()),
+        parallel=parallel,
         max_workers=max_workers,
         cache=cache,
     )
@@ -417,6 +436,7 @@ def protocol_time_course(
     time_points: Array,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
@@ -431,6 +451,7 @@ def protocol_time_course(
     time_points: Array,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[OdeModelBuilder, OdeSimulation] | None = None,
@@ -444,6 +465,7 @@ def protocol_time_course(
     time_points: Array,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[Any, Any] | None = None,
@@ -462,6 +484,8 @@ def protocol_time_course(
         DataFrame of parameter/initial condition samples for Monte Carlo.
     y0
         Initial conditions as a dictionary {variable: value}.
+    parallel
+        Whether to execute in parallel (default: True).
     max_workers
         Maximum number of parallel workers. None uses all available cores.
     cache
@@ -504,6 +528,7 @@ def protocol_time_course(
             model=model,
         ),
         inputs=list(mc_to_scan.iterrows()),
+        parallel=parallel,
         max_workers=max_workers,
         cache=cache,
     )
@@ -557,6 +582,7 @@ def scan_steady_state(
     to_scan: pd.DataFrame,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
@@ -570,6 +596,7 @@ def scan_steady_state(
     to_scan: pd.DataFrame,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
@@ -582,6 +609,7 @@ def scan_steady_state(
     *,
     to_scan: pd.DataFrame,
     mc_to_scan: pd.DataFrame,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
@@ -594,6 +622,7 @@ def scan_steady_state(
     to_scan: pd.DataFrame,
     mc_to_scan: pd.DataFrame,
     y0: dict[str, float] | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[Any, Any] | None = None,
@@ -632,6 +661,8 @@ def scan_steady_state(
         DataFrame containing Monte Carlo parameter sets
     y0
         Initial conditions for the solver
+    parallel
+        Whether to execute in parallel (default: True).
     max_workers
         Maximum number of workers for parallel processing
     cache
@@ -660,6 +691,7 @@ def scan_steady_state(
         ),
         inputs=list(mc_to_scan.iterrows()),
         cache=cache,
+        parallel=parallel,
         max_workers=max_workers,
     )
     combined = cast(
@@ -697,6 +729,7 @@ def variable_elasticities(
     variables: dict[str, float] | None = None,
     time: float = 0,
     cache: Cache | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     normalized: bool = True,
     displacement: float = 1e-4,
@@ -733,6 +766,8 @@ def variable_elasticities(
         Time point for the analysis
     cache
         Cache object for storing results
+    parallel
+        Whether to execute in parallel (default: True).
     max_workers
         Maximum number of workers for parallel processing
     normalized
@@ -762,6 +797,7 @@ def variable_elasticities(
         ),
         inputs=list(mc_to_scan.iterrows()),
         cache=cache,
+        parallel=parallel,
         max_workers=max_workers,
     )
     return cast(pd.DataFrame, pd.concat(dict(res)))
@@ -775,6 +811,7 @@ def parameter_elasticities(
     variables: dict[str, float],
     time: float = 0,
     cache: Cache | None = None,
+    parallel: bool = True,
     max_workers: int | None = None,
     normalized: bool = True,
     displacement: float = 1e-4,
@@ -811,6 +848,8 @@ def parameter_elasticities(
         Time point for the analysis
     cache
         Cache object for storing results
+    parallel
+        Whether to execute in parallel (default: True).
     max_workers
         Maximum number of workers for parallel processing
     normalized
@@ -840,6 +879,7 @@ def parameter_elasticities(
         ),
         inputs=list(mc_to_scan.iterrows()),
         cache=cache,
+        parallel=parallel,
         max_workers=max_workers,
     )
     return cast(pd.DataFrame, pd.concat(dict(res)))
@@ -856,6 +896,7 @@ def response_coefficients(
     normalized: bool = True,
     displacement: float = 1e-4,
     disable_tqdm: bool = False,
+    parallel: bool = True,
     max_workers: int | None = None,
     runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> ResponseCoefficientsByPars[Simulation]: ...
@@ -872,6 +913,7 @@ def response_coefficients(
     normalized: bool = True,
     displacement: float = 1e-4,
     disable_tqdm: bool = False,
+    parallel: bool = True,
     max_workers: int | None = None,
     runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
 ) -> ResponseCoefficientsByPars[OdeSimulation]: ...
@@ -887,6 +929,7 @@ def response_coefficients(
     normalized: bool = True,
     displacement: float = 1e-4,
     disable_tqdm: bool = False,
+    parallel: bool = True,
     max_workers: int | None = None,
     runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
 ) -> ResponseCoefficientsByPars[Evaluation]: ...
@@ -902,6 +945,7 @@ def response_coefficients(
     normalized: bool = True,
     displacement: float = 1e-4,
     disable_tqdm: bool = False,
+    parallel: bool = True,
     max_workers: int | None = None,
     runner: SteadyStateRunner[Any, Any] | None = None,
 ) -> (
@@ -942,6 +986,8 @@ def response_coefficients(
         Displacement for finite difference calculations
     disable_tqdm
         Whether to disable the tqdm progress bar
+    parallel
+        Whether to execute in parallel (default: True).
     max_workers
         Maximum number of workers for parallel processing
     runner
@@ -972,6 +1018,7 @@ def response_coefficients(
         ),
         inputs=list(mc_to_scan.iterrows()),
         cache=cache,
+        parallel=parallel,
         max_workers=max_workers,
     )
 

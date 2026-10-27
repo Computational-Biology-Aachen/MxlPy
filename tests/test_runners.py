@@ -128,7 +128,7 @@ def test_custom_runner_reaches_routines() -> None:
     np.testing.assert_array_equal(res.variables["x"], -1.0)
 
     res = mc.steady_state(
-        kinetic_model(), mc_to_scan=to_scan, max_workers=1, runner=CountingRunner()
+        kinetic_model(), mc_to_scan=to_scan, parallel=False, runner=CountingRunner()
     )
     np.testing.assert_array_equal(res.variables["x"], -1.0)
 

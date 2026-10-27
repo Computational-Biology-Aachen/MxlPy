@@ -80,6 +80,7 @@ def test_group_steady_state_ode_and_steady_state_models() -> None:
         p0=pd.DataFrame({"k": [1.0, 2.0]}),
         data=pd.Series({"x": 4.0}),
         minimizer=fit.LocalScipyMinimizer(),
+        parallel=False,
     )
     assert isinstance(res.get_best_fit().model, OdeModelBuilder)
     assert res.get_best_fit().best_pars["k"] == pytest.approx(0.25, rel=1e-2)
@@ -89,6 +90,7 @@ def test_group_steady_state_ode_and_steady_state_models() -> None:
         p0=pd.DataFrame({"a": [1.0, 2.0]}),
         data=pd.Series({"d": 0.25}),
         minimizer=fit.LocalScipyMinimizer(),
+        parallel=False,
     )
     assert res_ss.get_best_fit().best_pars["a"] == pytest.approx(0.5, rel=1e-3)
 
@@ -109,6 +111,7 @@ def test_group_time_course_ode_model() -> None:
         p0=pd.DataFrame({"k": [1.0, 0.5]}),
         data=data,
         minimizer=fit.LocalScipyMinimizer(),
+        parallel=False,
     )
     assert res.get_best_fit().best_pars["k"] == pytest.approx(0.25, rel=1e-2)
 
@@ -119,6 +122,7 @@ def test_ensemble_steady_state_steady_state_models() -> None:
         p0={"a": 1.0},
         data=pd.Series({"d": 0.25}),
         minimizer=fit.LocalScipyMinimizer(),
+        parallel=False,
     )
     assert res.get_best_fit().loss == pytest.approx(0.0, abs=1e-6)
 
@@ -133,7 +137,29 @@ def test_joint_steady_state_mixed_builders() -> None:
         p0={"k_in": 1.0},
         minimizer=fit.LocalScipyMinimizer(),
         y0={"x": 0.0},  # skipped for the steady-state model
-        max_workers=1,
+        parallel=False,
+    ).unwrap_or_err()
+    assert res.best_pars["k_in"] == pytest.approx(2.0, rel=1e-3)
+
+
+def test_joint_mixed_serial() -> None:
+    res = fit.joint_mixed(
+        [
+            fit.MixedSettings(
+                model=kinetic_model(),
+                data=pd.Series({"x": 4.0}),
+                residual_fn=fit.steady_state_residual,
+                y0={"x": 0.0},
+            ),
+            fit.MixedSettings(
+                model=ss_model(),
+                data=pd.Series({"e": 4.0}),
+                residual_fn=fit.steady_state_residual,
+            ),
+        ],
+        p0={"k_in": 1.0},
+        minimizer=fit.LocalScipyMinimizer(),
+        parallel=False,
     ).unwrap_or_err()
     assert res.best_pars["k_in"] == pytest.approx(2.0, rel=1e-3)
 
@@ -167,12 +193,12 @@ def test_joint_rejects_y0_for_steady_state_model() -> None:
 
 def test_mc_steady_state_per_builder() -> None:
     mc_to_scan = pd.DataFrame({"k": [0.5, 1.0]})
-    res = mc.steady_state(ode_model(), mc_to_scan=mc_to_scan, max_workers=1)
+    res = mc.steady_state(ode_model(), mc_to_scan=mc_to_scan, parallel=False)
     assert all(isinstance(i, OdeSimulation) for i in res.raw_results)
     np.testing.assert_allclose(res.variables["x"], [2.0, 1.0], rtol=1e-4)
 
     res_ss = mc.steady_state(
-        ss_model(), mc_to_scan=pd.DataFrame({"b": [2.0, 4.0]}), max_workers=1
+        ss_model(), mc_to_scan=pd.DataFrame({"b": [2.0, 4.0]}), parallel=False
     )
     assert all(isinstance(i, Evaluation) for i in res_ss.raw_results)
     np.testing.assert_allclose(res_ss.combined["d"], [0.5, 0.25])
@@ -183,7 +209,7 @@ def test_mc_time_course_ode_model() -> None:
         ode_model(),
         time_points=np.linspace(0, 1, 3),
         mc_to_scan=pd.DataFrame({"k": [0.5, 1.0]}),
-        max_workers=1,
+        parallel=False,
     )
     assert res.variables.shape == (6, 1)
 
@@ -193,7 +219,7 @@ def test_mc_scan_steady_state_steady_state_model() -> None:
         ss_model(),
         to_scan=pd.DataFrame({"a": [1.0, 2.0]}),
         mc_to_scan=pd.DataFrame({"b": [2.0, 4.0]}),
-        max_workers=1,
+        parallel=False,
     )
     np.testing.assert_allclose(res.combined["d"], [0.5, 1.0, 0.25, 0.5])
     with pytest.raises(TypeError, match="no variables"):
@@ -205,7 +231,7 @@ def test_mc_scan_steady_state_kinetic_model_keeps_split() -> None:
         kinetic_model(),
         to_scan=pd.DataFrame({"k": [0.5, 1.0]}),
         mc_to_scan=pd.DataFrame({"k_in": [1.0, 2.0]}),
-        max_workers=1,
+        parallel=False,
     )
     assert list(res.variables.columns) == ["x"]
     assert list(res.fluxes.columns) == ["v_in", "v_out"]
@@ -246,7 +272,7 @@ def test_mc_response_coefficients_steady_state_model() -> None:
         ss_model(),
         mc_to_scan=pd.DataFrame({"b": [2.0, 4.0]}),
         to_scan=["a"],
-        max_workers=1,
+        parallel=False,
     )
     np.testing.assert_allclose(res.combined.xs("d", level=-1)["a"], [1.0, 1.0])
 

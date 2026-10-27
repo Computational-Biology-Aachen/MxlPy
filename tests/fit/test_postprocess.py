@@ -154,6 +154,6 @@ def test_joint_time_course_per_settings_postprocess_overrides() -> None:
         p0={"k": 1.0},
         minimizer=fit.LocalScipyMinimizer(),
         postprocess_fn=raise_key_error,
-        max_workers=1,
+        parallel=False,
     ).unwrap_or_err()
     assert res.best_pars["k"] == pytest.approx(0.25, rel=1e-2)
