@@ -18,10 +18,10 @@ fluent builder for mechanistic ODE models, where every mutation returns `Self`, 
 → [ADR 0002 — Fluent builder + wholesale cache invalidation](0002-fluent-builder-and-cache-invalidation.md)
 
 Next to it sit two sibling builders, `OdeModelBuilder` and `SteadyStateModelBuilder`,
-which are scanned and fitted through the same `scan`/`fit` entry points rather than
-builder-specific methods:
+which go through the same `scan`/`fit`/`mc`/`mca` entry points rather than
+builder-specific methods; *how* each model is simulated is configured by a runner:
 
-→ [ADR 0014 — Builder-polymorphic `fit`/`scan`, direct `evaluate()` for steady-state models](0014-builder-polymorphic-fit-and-scan.md)
+→ [ADR 0014 — Builder-polymorphic routines via runners, direct `evaluate()` for steady-state models](0014-builder-polymorphic-fit-and-scan.md)
 
 Two library-wide conventions follow directly from valuing introspectability and
 type-checkable failure modes over convenience:
