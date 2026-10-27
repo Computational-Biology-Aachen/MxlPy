@@ -321,6 +321,10 @@ def _sort_key(kind: str, exponent: int) -> tuple[bool, int, str]:
     return exponent < 0, _KIND_ORDER.get(kind, len(_KIND_ORDER)), kind
 
 
+def _prefix_preference(factor: dict[str, Any]) -> tuple[bool, bool]:
+    return factor["kind"] != "mole", abs(factor["exponent"]) != 1
+
+
 def _power_of_ten(value: sympy.Expr) -> int | None:
     if value <= 0:
         return None
@@ -336,8 +340,10 @@ def unit_to_json(
 
     Prefixes in sympy are plain scale factors (``micro*mol/meter**2`` already
     collapses ``micro`` into ``1/1000000``), so the overall power-of-ten scale is
-    re-attached as a prefix to the first factor (positive exponents first, then
-    registry order) that can carry it exactly; anything else ends up in
+    re-attached as a prefix to a factor that can carry it exactly, preferring the
+    amount (``mmol m^-2``, ``L mmol^-1``, ``J kmol^-1``, as biochemical units are
+    usually written), then factors with exponent +-1 (``m^2 umol^-1`` rather than
+    ``km^2 mol^-1``), each in display order; anything else ends up in
     ``multiplier``.
 
     Parameters
@@ -376,7 +382,7 @@ def unit_to_json(
     if total == 1:
         return {"factors": factors}
     if (n := _power_of_ten(total)) is not None:
-        for factor in factors:
+        for factor in sorted(factors, key=_prefix_preference):
             exponent = factor["exponent"]
             if n % exponent == 0 and (p := _PREFIX_BY_SCALE.get(n // exponent)):
                 factor["prefix"] = p
