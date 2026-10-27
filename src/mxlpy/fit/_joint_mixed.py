@@ -106,7 +106,8 @@ def joint_mixed(
     max_workers
         maximal amount of workers in parallel
     standard_scale
-        Whether to apply standard scale to data and prediction
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
 
     Returns
     -------

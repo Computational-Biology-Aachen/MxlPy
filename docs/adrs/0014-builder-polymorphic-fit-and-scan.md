@@ -65,4 +65,10 @@ across the ~20 `fit` variants as builder support grows.
 - The private scan workers return `Simulation | OdeSimulation`; `KineticModelBuilder`-only
   callers (`mc`, `mca`, `carousel`) `cast` their results to `Simulation`.
 - `Simulator` is generic over the builder; `get_result()` returns `Result[Simulation]` or
-  `Result[OdeSimulation]` depending on it.
+  `Result[OdeSimulation]` depending on it. `Fit`, `Simulator` and the scan containers use
+  `typing_extensions.TypeVar` defaults, so their bare names keep meaning the
+  `KineticModelBuilder` / `Simulation` variants.
+- Overloads only help users running a type checker, so misuse that would otherwise surface
+  as an obscure `AttributeError` is caught at runtime with a `TypeError` naming the right
+  entry point (`Simulator` with a `SteadyStateModelBuilder`, `.fluxes` / unpacking of ODE
+  scans, `evaluate_residual` with an integrable model).

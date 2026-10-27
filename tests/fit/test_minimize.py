@@ -87,3 +87,62 @@ def test_fixed_n_minimizer_with_tol() -> None:
 
 def test_fixed_n_minimizer_accessible_from_fit_module() -> None:
     assert fit.FixedNMinimizer is FixedNMinimizer
+
+
+def residual_infeasible_below(updates: dict[str, float]) -> float:
+    """Minimum at x=1, but the "simulation" fails for x < 0.9."""
+    x = updates["x"]
+    if x < 0.9:
+        return np.inf
+    return (x - 1.0) ** 2
+
+
+def always_inf_residual(updates: dict[str, float]) -> float:  # noqa: ARG001
+    return np.inf
+
+
+@pytest.mark.parametrize(
+    "method", [None, "L-BFGS-B", "TNC", "SLSQP", "Nelder-Mead", "Powell"]
+)
+def test_local_minimizer_single_parameter_with_infeasible_region(
+    method: str | None,
+) -> None:
+    # The first unit-length gradient step from x=1.2 lands in the infeasible region
+    state = fit.LocalScipyMinimizer(method=method)(  # type: ignore[arg-type]
+        residual_infeasible_below,
+        {"x": 1.2},
+        bounds={},
+    ).unwrap_or_err()
+    assert state.parameters["x"] == pytest.approx(1.0, abs=1e-3)
+
+
+def test_local_minimizer_all_infinite_residuals_fail() -> None:
+    res = fit.LocalScipyMinimizer()(always_inf_residual, {"x": 1.0}, bounds={})
+    assert isinstance(res.value, Exception)
+
+
+def test_fixed_n_minimizer_infeasible_region() -> None:
+    state = FixedNMinimizer(n_steps=50)(
+        residual_infeasible_below,
+        {"x": 1.2},
+        bounds={},
+    ).unwrap_or_err()
+    assert state.parameters["x"] == pytest.approx(1.0, abs=1e-3)
+
+
+def test_fixed_n_minimizer_all_infinite_residuals() -> None:
+    state = FixedNMinimizer(n_steps=5)(
+        always_inf_residual,
+        {"x": 1.0},
+        bounds={},
+    ).unwrap_or_err()
+    assert state.residual == np.inf
+
+
+def test_global_minimizer_infeasible_region() -> None:
+    state = fit.GlobalScipyMinimizer(method="basinhopping")(
+        residual_infeasible_below,
+        {"x": 1.2},
+        bounds={},
+    ).unwrap_or_err()
+    assert state.parameters["x"] == pytest.approx(1.0, abs=1e-3)

@@ -715,7 +715,8 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
             return self.raw_args
 
         # The builder's args hold dx/dt under each variable's name, so we
-        # exclude them and use the integrated concentrations instead
+        # exclude them and use the integrated concentrations instead.
+        # Variables are dropped explicitly in case the builder ever returns them.
         for res, p in zip(self.raw_variables, self.raw_parameters, strict=True):
             self.model.update_parameters(p)
             dependent = self.model.get_args_time_course(
@@ -728,6 +729,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
                 include_surrogate_targets=True,
                 include_readouts=True,
             )
+            dependent = dependent.drop(columns=res.columns, errors="ignore")
             self.raw_args.append(pd.concat((res, dependent), axis=1))
         return self.raw_args
 

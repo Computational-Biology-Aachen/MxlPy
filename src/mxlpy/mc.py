@@ -206,7 +206,7 @@ def steady_state(
             if mc_to_scan.shape[1] == 1
             else pd.MultiIndex.from_frame(mc_to_scan)
         ),
-        raw_results=[i[1] for i in res],
+        raw_results=cast("list[Simulation]", [i[1] for i in res]),
         to_scan=mc_to_scan,
     )
 
