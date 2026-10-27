@@ -22,9 +22,9 @@ from mxlpy.fit.residuals import (
     steady_state_residual,
     time_course_residual,
 )
-from mxlpy.integrators import IntegratorType
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
+from mxlpy.runners import DynamicRunner, SteadyStateRunner
+from mxlpy.simulation import Simulation
 from mxlpy.simulator import _normalise_protocol_index
 from mxlpy.types import Result
 
@@ -39,26 +39,24 @@ def _wrap_steady_state(
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = steady_state_residual,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
 ) -> Result[Fit]:
     return steady_state(
         model=model,
         p0=p0,
         data=data,
         y0=y0,
-        integrator=integrator,
+        runner=runner,
         loss_fn=loss_fn,
         minimizer=minimizer,
         residual_fn=residual_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
-        oscillation_detector=oscillation_detector,
     )
 
 
@@ -70,7 +68,7 @@ def _wrap_time_course(
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
@@ -83,7 +81,7 @@ def _wrap_time_course(
         minimizer=minimizer,
         y0=y0,
         residual_fn=residual_fn,
-        integrator=integrator,
+        runner=runner,
         loss_fn=loss_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
@@ -100,7 +98,7 @@ def _wrap_protocol_time_course(
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = protocol_time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
@@ -112,7 +110,7 @@ def _wrap_protocol_time_course(
         data=data,
         protocol=protocol,
         y0=y0,
-        integrator=integrator,
+        runner=runner,
         loss_fn=loss_fn,
         minimizer=minimizer,
         residual_fn=residual_fn,
@@ -135,12 +133,11 @@ def group_steady_state(
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = steady_state_residual,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
 ) -> GroupFit:
     """Fit model parameters to steady-state experimental data.
 
@@ -169,8 +166,9 @@ def group_steady_state(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
     time_points_per_step
@@ -196,13 +194,12 @@ def group_steady_state(
                     model=model,
                     data=data,
                     y0=y0,
-                    integrator=integrator,
+                    runner=runner,
                     loss_fn=loss_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
-                    oscillation_detector=oscillation_detector,
                 ),
                 inputs=list(_iterrows(p0)),
                 timeout=timeout,
@@ -220,7 +217,7 @@ def group_time_course(
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
@@ -255,8 +252,9 @@ def group_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
     time_points_per_step
@@ -282,7 +280,7 @@ def group_time_course(
                     model=model,
                     data=data,
                     y0=y0,
-                    integrator=integrator,
+                    runner=runner,
                     loss_fn=loss_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
@@ -306,7 +304,7 @@ def group_protocol_time_course(
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = protocol_time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
@@ -342,8 +340,9 @@ def group_protocol_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
     time_points_per_step
@@ -371,7 +370,7 @@ def group_protocol_time_course(
                     data=data,
                     protocol=protocol,
                     y0=y0,
-                    integrator=integrator,
+                    runner=runner,
                     loss_fn=loss_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,

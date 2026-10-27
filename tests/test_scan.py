@@ -20,8 +20,9 @@ from mxlpy import (
 )
 from mxlpy import scan as scan_module
 from mxlpy.integrators import DefaultIntegrator
+from mxlpy.runners import KineticRunner
 from mxlpy.scan import (
-    EvaluationScan,
+    SteadyStateScan,
     _steady_state_worker,
     _time_course_worker,
     _update_parameters_and_initial_conditions,
@@ -30,7 +31,7 @@ from mxlpy.scan import (
     steady_state,
     time_course,
 )
-from mxlpy.simulation import Simulation
+from mxlpy.simulation import Evaluation, Simulation
 
 
 @pytest.fixture
@@ -238,9 +239,7 @@ def test_steady_state_scan_with_multiindex(simple_model: KineticModelBuilder) ->
 def test_steady_state_worker(simple_model: KineticModelBuilder) -> None:
     result = _steady_state_worker(
         simple_model,
-        rel_norm=False,
-        integrator=DefaultIntegrator,
-        y0=None,
+        runner=KineticRunner(integrator=DefaultIntegrator),
     )
 
     assert isinstance(result, Simulation)
@@ -313,8 +312,7 @@ def test_time_course_worker(simple_model: KineticModelBuilder) -> None:
     result = _time_course_worker(
         simple_model,
         time_points=time_points,
-        integrator=DefaultIntegrator,
-        y0=None,
+        runner=KineticRunner(integrator=DefaultIntegrator),
     )
 
     assert isinstance(result, Simulation)
@@ -432,7 +430,8 @@ def test_steady_state_steady_state_model() -> None:
         to_scan=pd.DataFrame({"k": [1.0, 0.0, 4.0]}),
         parallel=False,
     )
-    assert isinstance(res, EvaluationScan)
+    assert isinstance(res, SteadyStateScan)
+    assert all(isinstance(i, Evaluation) for i in res.raw_results)
     assert list(res.combined.columns) == ["d"]
     np.testing.assert_array_equal(res.combined["d"], [1.0, np.nan, 0.25])
     assert list(res.get_args(include_parameters=True).columns) == ["k", "d"]
@@ -490,9 +489,9 @@ def test_ode_scan_fluxes_raise_helpful_error() -> None:
     res = steady_state(
         ode_model(), to_scan=pd.DataFrame({"k": [0.5, 1.0]}), parallel=False
     )
-    with pytest.raises(TypeError, match="no fluxes"):
+    with pytest.raises(TypeError, match="have fluxes"):
         _ = res.fluxes  # type: ignore[misc]
-    with pytest.raises(TypeError, match="no fluxes"):
+    with pytest.raises(TypeError, match="have fluxes"):
         _, _ = res  # type: ignore[misc]
 
 

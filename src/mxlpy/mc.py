@@ -18,25 +18,22 @@ Functions:
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 import pandas as pd
 from wadler_lindig import pformat
 
 from mxlpy import mca, scan
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.mca import ResponseCoefficientsByPars
 from mxlpy.parallel import Cache, parallelise
+from mxlpy.runners import DynamicRunner, KineticRunner, SteadyStateRunner
 from mxlpy.scan import (
     ProtocolScan,
-    ProtocolTimeCourseWorker,
-    ProtocolWorker,
     SteadyStateScan,
-    SteadyStateWorker,
     TimeCourseScan,
-    TimeCourseWorker,
     _protocol_time_course_worker,
     _protocol_worker,
     _steady_state_worker,
@@ -45,17 +42,15 @@ from mxlpy.scan import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Hashable, Iterator
+    from collections.abc import Iterator
 
     from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy.integrators import IntegratorType
     from mxlpy.simulation import Simulation
     from mxlpy.types import Array
 
 
 __all__ = [
     "McSteadyStates",
-    "ParameterScanWorker",
     "parameter_elasticities",
     "protocol",
     "protocol_time_course",
@@ -67,61 +62,18 @@ __all__ = [
 ]
 
 
-class ParameterScanWorker(Protocol):
-    """Protocol for the parameter scan worker function."""
-
-    def __call__(
-        self,
-        model: KineticModelBuilder,
-        *,
-        parameters: pd.DataFrame,
-        y0: dict[str, float] | None,
-        rel_norm: bool,
-        integrator: IntegratorType,
-    ) -> SteadyStateScan:
-        """Call the worker function."""
-        ...
-
-
 def _parameter_scan_worker(
     model: KineticModelBuilder,
     *,
     parameters: pd.DataFrame,
-    y0: dict[str, float] | None,
-    rel_norm: bool,
-    integrator: IntegratorType,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation],
 ) -> SteadyStateScan:
-    """Worker function for parallel steady state scanning across parameter sets.
-
-    This function executes a parameter scan for steady state solutions for a
-    given model and parameter combinations. It's designed to be used as a worker
-    in parallel processing.
-
-    Args: model : Model
-        The model object to analyze
-    y0 : dict[str, float] | None
-        Initial conditions for the solver. If None, default initial conditions
-        are used.
-    parameters : pd.DataFrame
-        DataFrame containing parameter combinations to scan over. Each row
-        represents one parameter set.
-    rel_norm : bool
-        Whether to use relative normalization in the steady state calculations
-
-    Returns
-    -------
-        SteadyStates
-        Object containing the steady state solutions for the given parameter
-        combinations
-
-    """
+    """Scan the steady states of one Monte Carlo sample."""
     return scan.steady_state(
         model,
         to_scan=parameters,
         parallel=False,
-        rel_norm=rel_norm,
-        integrator=integrator,
-        y0=y0,
+        runner=runner,
     )
 
 
@@ -132,10 +84,7 @@ def steady_state(
     y0: dict[str, float] | None = None,
     max_workers: int | None = None,
     cache: Cache | None = None,
-    rel_norm: bool = False,
-    worker: SteadyStateWorker = _steady_state_worker,
-    integrator: IntegratorType | None = None,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> SteadyStateScan:
     """Monte-carlo scan of steady states.
 
@@ -151,15 +100,9 @@ def steady_state(
         Maximum number of parallel workers. None uses all available cores.
     cache
         Optional cache to store and retrieve results.
-    rel_norm
-        Whether to use relative normalization.
-    worker
-        Worker function for steady-state simulation.
-    integrator
-        Integrator function to use for simulation.
-    oscillation_detector
-        Callable for oscillation detection.  Default:
-        :func:`~mxlpy.integrators.utils.detect_oscillations`.
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Examples
     --------
@@ -181,18 +124,14 @@ def steady_state(
         Object containing the steady state solutions for the given parameter
 
     """
-    if y0 is not None:
-        model.update_variables(y0)
+    model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                worker,
-                rel_norm=rel_norm,
-                integrator=integrator,
-                y0=None,
-                oscillation_detector=oscillation_detector,
+                _steady_state_worker,
+                runner=KineticRunner() if runner is None else runner,
             ),
             model=model,
         ),
@@ -206,7 +145,7 @@ def steady_state(
             if mc_to_scan.shape[1] == 1
             else pd.MultiIndex.from_frame(mc_to_scan)
         ),
-        raw_results=cast("list[Simulation]", [i[1] for i in res]),
+        raw_results=[i[1] for i in res],
         to_scan=mc_to_scan,
     )
 
@@ -219,8 +158,7 @@ def time_course(
     y0: dict[str, float] | None = None,
     max_workers: int | None = None,
     cache: Cache | None = None,
-    worker: TimeCourseWorker = _time_course_worker,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> TimeCourseScan:
     """MC time course.
 
@@ -238,10 +176,9 @@ def time_course(
         Maximum number of parallel workers. None uses all available cores.
     cache
         Optional cache to store and retrieve results.
-    worker
-        Worker function for time-course simulation.
-    integrator
-        Integrator function to use for simulation.
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Examples
     --------
@@ -263,17 +200,15 @@ def time_course(
         Both dataframes are of shape (#time_points * #mc_to_scan, #variables)
 
     """
-    if y0 is not None:
-        model.update_variables(y0)
+    model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                worker,
+                _time_course_worker,
                 time_points=time_points,
-                integrator=integrator,
-                y0=None,
+                runner=KineticRunner() if runner is None else runner,
             ),
             model=model,
         ),
@@ -284,7 +219,7 @@ def time_course(
 
     return TimeCourseScan(
         to_scan=mc_to_scan,
-        raw_results=cast("dict[Hashable, Simulation]", dict(res)),
+        raw_results=dict(res),
     )
 
 
@@ -297,8 +232,7 @@ def protocol(
     time_points_per_step: int = 10,
     max_workers: int | None = None,
     cache: Cache | None = None,
-    worker: ProtocolWorker = _protocol_worker,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> ProtocolScan:
     """MC time course.
 
@@ -318,10 +252,9 @@ def protocol(
         Maximum number of parallel workers. None uses all available cores.
     cache
         Optional cache to store and retrieve results.
-    worker
-        Worker function for protocol simulation.
-    integrator
-        Integrator function to use for simulation.
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Examples
     --------
@@ -343,18 +276,16 @@ def protocol(
         Both dataframes are of shape (#time_points * #mc_to_scan, #variables)
 
     """
-    if y0 is not None:
-        model.update_variables(y0)
+    model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                worker,
+                _protocol_worker,
                 protocol=protocol,
-                integrator=integrator,
-                y0=None,
                 time_points_per_step=time_points_per_step,
+                runner=KineticRunner() if runner is None else runner,
             ),
             model=model,
         ),
@@ -365,7 +296,7 @@ def protocol(
     return ProtocolScan(
         to_scan=mc_to_scan,
         protocol=protocol,
-        raw_results=cast("dict[Hashable, Simulation]", dict(res)),
+        raw_results=dict(res),
     )
 
 
@@ -378,8 +309,7 @@ def protocol_time_course(
     y0: dict[str, float] | None = None,
     max_workers: int | None = None,
     cache: Cache | None = None,
-    worker: ProtocolTimeCourseWorker = _protocol_time_course_worker,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> ProtocolScan:
     """MC time course.
 
@@ -399,10 +329,9 @@ def protocol_time_course(
         Maximum number of parallel workers. None uses all available cores.
     cache
         Optional cache to store and retrieve results.
-    worker
-        Worker function for protocol time-course simulation.
-    integrator
-        Integrator function to use for simulation.
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Examples
     --------
@@ -424,18 +353,16 @@ def protocol_time_course(
         Both dataframes are of shape (#time_points * #mc_to_scan, #variables)
 
     """
-    if y0 is not None:
-        model.update_variables(y0)
+    model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                worker,
+                _protocol_time_course_worker,
                 protocol=protocol,
                 time_points=time_points,
-                integrator=integrator,
-                y0=None,
+                runner=KineticRunner() if runner is None else runner,
             ),
             model=model,
         ),
@@ -446,7 +373,7 @@ def protocol_time_course(
     return ProtocolScan(
         to_scan=mc_to_scan,
         protocol=protocol,
-        raw_results=cast("dict[Hashable, Simulation]", dict(res)),
+        raw_results=dict(res),
     )
 
 
@@ -481,9 +408,7 @@ def scan_steady_state(
     y0: dict[str, float] | None = None,
     max_workers: int | None = None,
     cache: Cache | None = None,
-    rel_norm: bool = False,
-    worker: ParameterScanWorker = _parameter_scan_worker,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> McSteadyStates:
     """Parameter scan of mc distributed steady states.
 
@@ -519,12 +444,9 @@ def scan_steady_state(
         Maximum number of workers for parallel processing
     cache
         Cache object for storing results
-    rel_norm
-        Whether to use relative normalization in the steady state calculations
-    worker
-        Worker function for parallel steady state scanning across parameter sets
-    integrator
-        Function producing an integrator for the simulation.
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Returns
     -------
@@ -532,18 +454,15 @@ def scan_steady_state(
         Object containing the steady state solutions for the given parameter
 
     """
-    if y0 is not None:
-        model.update_variables(y0)
+    model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                worker,
+                _parameter_scan_worker,
                 parameters=to_scan,
-                rel_norm=rel_norm,
-                integrator=integrator,
-                y0=None,
+                runner=KineticRunner() if runner is None else runner,
             ),
             model=model,
         ),
@@ -623,6 +542,7 @@ def variable_elasticities(
         DataFrame containing the compound elasticities for the given variables
 
     """
+    model = deepcopy(model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
@@ -700,6 +620,7 @@ def parameter_elasticities(
         DataFrame containing the parameter elasticities for the given variables
 
     """
+    model = deepcopy(model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
@@ -731,8 +652,7 @@ def response_coefficients(
     displacement: float = 1e-4,
     disable_tqdm: bool = False,
     max_workers: int | None = None,
-    rel_norm: bool = False,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> ResponseCoefficientsByPars:
     """Calculate response coefficients using Monte Carlo analysis.
 
@@ -769,10 +689,9 @@ def response_coefficients(
         Whether to disable the tqdm progress bar
     max_workers
         Maximum number of workers for parallel processing
-    rel_norm
-        Whether to use relative normalization in the steady state calculations
-    integrator
-        Function producing an integrator for the simulation.
+    runner
+        How each model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Returns
     -------
@@ -780,8 +699,7 @@ def response_coefficients(
         Object containing the response coefficients for the given parameters
 
     """
-    if variables is not None:
-        model.update_variables(variables)
+    model = scan._copy_with_y0(model, variables)  # noqa: SLF001
 
     res = parallelise(
         fn=partial(
@@ -791,10 +709,9 @@ def response_coefficients(
                 to_scan=to_scan,
                 normalized=normalized,
                 displacement=displacement,
-                rel_norm=rel_norm,
                 disable_tqdm=disable_tqdm,
                 parallel=False,
-                integrator=integrator,
+                runner=runner,
             ),
             model=model,
         ),

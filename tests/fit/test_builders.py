@@ -19,6 +19,7 @@ from mxlpy import (
 )
 from mxlpy.fit import losses
 from mxlpy.fit.abstract import _Settings
+from mxlpy.runners import EvaluationRunner, KineticRunner
 
 
 def ode_model() -> OdeModelBuilder:
@@ -125,38 +126,23 @@ def test_protocol_time_course_ode_model() -> None:
     assert res.best_pars["k"] == pytest.approx(0.25, rel=1e-2)
 
 
-def test_evaluate_residual_domain_error_is_inf() -> None:
+def test_steady_state_residual_domain_error_is_inf() -> None:
     model = SteadyStateModelBuilder().add_parameter("a", 1.0)
     model.add_derived("d", fn=log, args=["a"])
     settings = _Settings(
         model=model,
         data=pd.Series({"d": 0.0}),
         y0=None,
-        integrator=None,
+        runner=EvaluationRunner(),
         loss_fn=losses.rmse,
         p_names=["a"],
         v_names=[],
         standard_scale=False,
     )
-    assert fit.evaluate_residual({"a": -1.0}, settings) == np.inf
+    assert fit.steady_state_residual({"a": -1.0}, settings) == np.inf
 
 
-def test_evaluate_residual_rejects_integrable_model() -> None:
-    settings = _Settings(
-        model=ode_model(),
-        data=pd.Series({"x": 1.0}),
-        y0=None,
-        integrator=None,
-        loss_fn=losses.rmse,
-        p_names=["k"],
-        v_names=[],
-        standard_scale=False,
-    )
-    with pytest.raises(TypeError, match="steady_state_residual"):
-        fit.evaluate_residual({"k": 1.0}, settings)  # type: ignore[arg-type]
-
-
-def test_simulating_residual_rejects_steady_state_model() -> None:
+def test_simulating_runner_rejects_steady_state_model() -> None:
     model = (
         SteadyStateModelBuilder()
         .add_parameters({"a": 2.0, "b": 2.0})
@@ -168,5 +154,21 @@ def test_simulating_residual_rejects_steady_state_model() -> None:
             p0={"a": 2.0},
             data=pd.Series({"d": 0.25}),
             minimizer=fit.LocalScipyMinimizer(),
-            residual_fn=fit.steady_state_residual,
+            runner=KineticRunner(),  # type: ignore[arg-type]
+        )
+
+
+def test_y0_rejected_for_steady_state_model() -> None:
+    model = (
+        SteadyStateModelBuilder()
+        .add_parameters({"a": 2.0, "b": 2.0})
+        .add_derived("d", fn=ratio, args=["a", "b"])
+    )
+    with pytest.raises(TypeError, match="y0"):
+        fit.steady_state(  # type: ignore[call-overload]
+            model,
+            p0={"a": 2.0},
+            data=pd.Series({"d": 0.25}),
+            minimizer=fit.LocalScipyMinimizer(),
+            y0={"x": 1.0},
         )

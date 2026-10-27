@@ -12,6 +12,7 @@ from mxlpy.fit import losses
 from mxlpy.fit.abstract import _Settings
 from mxlpy.fit.residuals import steady_state_residual
 from mxlpy.minimizers.abstract import mock_minimizer
+from mxlpy.runners import KineticRunner
 
 
 def simple_model() -> KineticModelBuilder:
@@ -99,8 +100,7 @@ def test_steady_state_residual_nan_data_returns_inf_or_nan() -> None:
         loss_fn=losses.rmse,
         p_names=["k1", "k2"],
         v_names=[],
-        integrator=None,
-        oscillation_detector=None,
+        runner=KineticRunner(oscillation_detector=None),
         standard_scale=False,
     )
     residual = steady_state_residual({"k1": 1.0, "k2": 2.0}, settings)
