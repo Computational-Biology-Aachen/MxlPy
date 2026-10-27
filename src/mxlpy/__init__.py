@@ -44,6 +44,21 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+# Registered before the eager imports below, since some of them import these
+# modules themselves (e.g. databases imports sbml)
+if TYPE_CHECKING:
+    from mxlpy.types import ArrayLike
+
+    from . import nn, npe, sbml, surrogates
+    from .integrators import Diffrax
+else:
+    from lazy_import import lazy_module
+
+    nn = lazy_module("mxlpy.nn")
+    npe = lazy_module("mxlpy.npe")
+    sbml = lazy_module("mxlpy.sbml")
+    surrogates = lazy_module("mxlpy.surrogates")
+
 # dsl imported after fns and model to avoid circular-import ordering issues
 from . import (
     compare,
@@ -60,7 +75,6 @@ from . import (
     qa,
     report,
     runners,
-    sbml,
     scan,
     sensitivity,
     units,
@@ -98,22 +112,20 @@ from .unit_inference import Conflict, UnitInference
 
 with contextlib.suppress(ImportError):
     from .integrators import Assimulo
-with contextlib.suppress(ImportError):
-    from .integrators import Diffrax
-
-if TYPE_CHECKING:
-    from mxlpy.types import ArrayLike
-
-    from . import nn, npe, surrogates
-else:
-    from lazy_import import lazy_module
-
-    nn = lazy_module("mxlpy.nn")
-    npe = lazy_module("mxlpy.npe")
-    surrogates = lazy_module("mxlpy.surrogates")
 
 # Alias for backward compatability
 Model = KineticModelBuilder
+
+
+def __getattr__(name: str) -> object:
+    # Diffrax is resolved lazily, see mxlpy.integrators.__getattr__
+    if name == "Diffrax":
+        from . import integrators  # noqa: PLC0415
+
+        return integrators.Diffrax
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
 
 __all__ = [
     "AbstractEstimator",
