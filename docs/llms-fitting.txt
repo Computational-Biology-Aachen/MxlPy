@@ -26,6 +26,8 @@ fitted = fit.protocol_time_course(
 ).unwrap_or_err()
 ```
 
+The single-model routines also accept an `OdeModelBuilder`, and `fit.steady_state` accepts a `SteadyStateModelBuilder` (no `y0` / `integrator`; its default residual is `fit.evaluate_residual`, which evaluates instead of simulates). `fitted.model` has the same type as the model passed in. Group / ensemble / joint / carousel fits are `Model`-only.
+
 By default fitting applies **standard scaling** to data and predictions (`(x - data.mean()) / data.std()`); pass `standard_scale=False` to opt out.
 
 ### Routine families
