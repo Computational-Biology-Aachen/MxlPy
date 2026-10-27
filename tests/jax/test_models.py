@@ -16,6 +16,7 @@ Focus areas (all regressions that were previously broken):
 import math
 from collections.abc import Callable
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -23,7 +24,7 @@ import numpy as np
 import pytest
 
 from mxlpy import KineticModelBuilder, OdeModelBuilder, meta
-from mxlpy.jax.models import FluxOde, Ode, boundaries_to_ts
+from mxlpy.jax.models import DEFAULT_ADJOINT, FluxOde, Ode, boundaries_to_ts
 
 # ---------------------------------------------------------------------------
 # helper models
@@ -501,8 +502,6 @@ def test_conditional_rate_generates_jnp_select_not_ternary() -> None:
 
 
 def test_conditional_model_from_mxlpy_integrates_under_jit() -> None:
-    import diffrax
-
     ode = Ode.from_mxlpy(_conditional_model())
     ts = jnp.array([0.0, 1.0])
     # would raise TracerBoolConversionError with the old Python-ternary codegen
@@ -528,8 +527,6 @@ def test_single_variable_model_unpacks_scalar_state() -> None:
 
 
 def test_single_variable_model_integrates_with_correct_shape() -> None:
-    import diffrax
-
     ode = Ode.from_mxlpy(_single_variable_model())
     ts = jnp.array([0.0, 1.0])
     # previously produced a (1, 1) rhs and failed to broadcast against y0 (1,)
@@ -597,6 +594,70 @@ def test_ode_integrate_accepts_explicit_dt0() -> None:
     assert bool(jnp.all(jnp.isfinite(ys_explicit)))
     assert float(ys_explicit[-1, 0]) == pytest.approx(float(np.exp(-1.0)), rel=1e-2)
     assert not jnp.array_equal(ys_default, ys_explicit)
+
+
+def test_dtmax_reaches_every_solve() -> None:
+    """A step-size cap far below what the smooth decay needs exhausts a
+    ``max_steps`` budget the uncapped solve comfortably fits in -- on the
+    time-course, protocol and steady-state paths alike."""
+    ode = Ode.from_mxlpy(_single_variable_model())
+    y0 = jnp.array([1.0])
+    ts = jnp.array([0.0, 1.0])
+    proto_ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.zeros((2, 0))
+
+    for dtmax, expected in ((None, True), (1e-3, False)):
+        tc = ode.simulate_time_course(ts, y0, max_steps=64, dtmax=dtmax, throw=False)
+        proto = ode.simulate_protocol_time_course(
+            proto_ts, y0, protocol, max_steps=64, dtmax=dtmax, throw=False
+        )
+        ss = ode.simulate_to_steady_state(
+            y0, max_steps=64, t1=1.0, dtmax=dtmax, throw=False
+        )
+        assert bool(tc.success) is expected
+        assert bool(proto.success) is expected
+        # t1=1 is too short to reach the steady state even uncapped; only
+        # the capped run fails by exhausting max_steps instead.
+        if not expected:
+            assert not bool(ss.success)
+
+
+def test_adjoint_reaches_every_solve() -> None:
+    """BacksolveAdjoint's gradient agrees with the default checkpointed
+    backprop; ForwardMode only supports forward-mode autodiff, so
+    ``jax.grad`` failing under it proves ``adjoint`` reaches diffrax rather
+    than being dropped -- on the time-course and protocol paths alike."""
+    ode = Ode.from_mxlpy(
+        _source_decay_model(), parameters_to_fit=["k"], free_parameters=["a"]
+    )
+    ts = jnp.array([0.0, 0.5, 1.0])
+    proto_ts = [jnp.array([0.5]), jnp.array([1.0])]
+    protocol = jnp.array([[6.0], [6.0]])
+    y0 = jnp.array([0.0])
+
+    def _loss(pars: jax.Array, adjoint: diffrax.AbstractAdjoint) -> jax.Array:
+        m = eqx.tree_at(lambda m: m.pars, ode, pars)
+        return jnp.sum(
+            m.integrate(ts, y0, max_steps=8192, args=jnp.array([6.0]), adjoint=adjoint)
+        )
+
+    def _proto_loss(pars: jax.Array, adjoint: diffrax.AbstractAdjoint) -> jax.Array:
+        m = eqx.tree_at(lambda m: m.pars, ode, pars)
+        return jnp.sum(
+            m.integrate_protocol(
+                proto_ts, y0, protocol, max_steps=8192, adjoint=adjoint
+            )
+        )
+
+    for loss in (_loss, _proto_loss):
+        grad_default = jax.grad(loss)(ode.pars, DEFAULT_ADJOINT)
+        grad_backsolve = jax.grad(loss)(ode.pars, diffrax.BacksolveAdjoint())
+        assert bool(jnp.all(jnp.isfinite(grad_backsolve)))
+        assert np.allclose(
+            np.asarray(grad_default), np.asarray(grad_backsolve), rtol=1e-3
+        )
+        with pytest.raises(ValueError, match="Reverse-mode differentiation"):
+            jax.grad(loss)(ode.pars, diffrax.ForwardMode())
 
 
 def test_ode_integrate_to_steady_state_defaults_args_to_empty_array() -> None:
