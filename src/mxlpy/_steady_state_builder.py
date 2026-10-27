@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Self, cast
 import pandas as pd
 from wadler_lindig import pformat
 
+from mxlpy import _topo
+from mxlpy._ode_builder import ArityMismatchError, _check_function_arity
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
     list_of_symbols,
@@ -65,22 +67,12 @@ class ModelCache:
 
     Attributes
     ----------
-    var_names
-        A list of variable names.
-    parameter_values
-        A dictionary mapping parameter names to their values.
-    derived_parameters
-        A dictionary mapping parameter names to their derived parameter objects.
-    derived_variables
-        A dictionary mapping variable names to their derived variable objects.
-    stoich_by_cpds
-        A dictionary mapping compound names to their stoichiometric coefficients.
-    dyn_stoich_by_cpds
-        A dictionary mapping compound names to their dynamic stoichiometric coefficients.
-    dxdt
-        A pandas Series representing the rate of change of variables.
-    initial_conditions
-        calculated initial conditions
+    order
+        Topological evaluation order of initial assignments and derived values.
+    base_parameter_values
+        A dictionary mapping parameter names to their (non-assigned) values.
+    all_values
+        All parameter, initial assignment and derived values.
 
     """
 
@@ -89,13 +81,8 @@ class ModelCache:
         return pformat(self)
 
     order: list[str]  # mostly for debug purposes
-    var_names: list[str]
-    dyn_order: list[str]
     base_parameter_values: dict[str, float]
-    all_parameter_values: dict[str, float]
-    stoich_by_cpds: dict[str, dict[str, float]]
-    dyn_stoich_by_cpds: dict[str, dict[str, Derived]]
-    initial_conditions: dict[str, float]
+    all_values: dict[str, float]
 
 
 def _normalize_annotations(
@@ -159,7 +146,42 @@ class SteadyStateModelBuilder:
             An instance of ModelCache containing the initialized cache data.
 
         """
-        raise NotImplementedError
+        base_parameter_values: dict[str, float] = {
+            k: val
+            for k, v in self._parameters.items()
+            if not isinstance(val := v.value, InitialAssignment)
+        }
+        initial_assignments: dict[str, InitialAssignment] = {
+            k: init
+            for k, v in self._parameters.items()
+            if isinstance(init := v.value, InitialAssignment)
+        }
+
+        # Sanity checks
+        for name, el in (initial_assignments | self._derived).items():
+            if not _check_function_arity(el.fn, len(el.args)):
+                raise ArityMismatchError(name, el.fn, el.args)
+
+        # Without variables every value is static, so a single pass in
+        # topological order computes the full model output.
+        to_sort = initial_assignments | self._derived
+        order = _topo.sort_dependencies(
+            available=set(base_parameter_values),
+            elements=[
+                _topo.Dependency(name=k, required=set(v.args), provided={k})
+                for k, v in to_sort.items()
+            ],
+        )
+        all_values: dict[str, float] = dict(base_parameter_values)
+        for name in order:
+            to_sort[name].calculate_inpl(name, all_values)  # type: ignore
+
+        self._cache = ModelCache(
+            order=order,
+            base_parameter_values=base_parameter_values,
+            all_values=all_values,
+        )
+        return self._cache
 
     ###########################################################################
     # Ids
@@ -588,9 +610,7 @@ class SteadyStateModelBuilder:
             if (cache := self._cache) is None:
                 cache = self._create_cache()
 
-            return self.update_parameter(
-                name, cache.all_parameter_values[name] * factor
-            )
+            return self.update_parameter(name, cache.all_values[name] * factor)
 
         return self.update_parameter(name, old * factor)
 
@@ -694,7 +714,7 @@ class SteadyStateModelBuilder:
             cache = self._create_cache()
         derived = self._derived
 
-        return {k: v for k, v in derived.items() if k not in cache.all_parameter_values}
+        return {k: v for k, v in derived.items() if k not in cache.all_values}
 
     def get_derived_parameters(self) -> dict[str, Derived]:
         """Returns a dictionary of derived parameters.
@@ -714,7 +734,7 @@ class SteadyStateModelBuilder:
         if (cache := self._cache) is None:
             cache = self._create_cache()
         derived = self._derived
-        return {k: v for k, v in derived.items() if k in cache.all_parameter_values}
+        return {k: v for k, v in derived.items() if k in cache.all_values}
 
     @_invalidate_cache
     def add_derived(
@@ -876,3 +896,33 @@ class SteadyStateModelBuilder:
         self._remove_id(name=name)
         self._derived.pop(name)
         return self
+
+    ##########################################################################
+    # Evaluate
+    ##########################################################################
+
+    def evaluate(self, *, include_parameters: bool = False) -> pd.Series:
+        """Evaluate all derived values for the current parameter values.
+
+        Examples
+        --------
+            >>> model.evaluate()
+                d1    10.0
+                d2    20.0
+
+        Parameters
+        ----------
+        include_parameters
+            Whether to also include the parameter values
+
+        Returns
+        -------
+            A Series of the evaluated values.
+
+        """
+        if (cache := self._cache) is None:
+            cache = self._create_cache()
+        names = list(self._derived)
+        if include_parameters:
+            names = self.get_parameter_names() + names
+        return pd.Series({k: cache.all_values[k] for k in names}, dtype=float)

@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import pandas as pd
 from wadler_lindig import pformat
@@ -30,6 +30,8 @@ from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 
 if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy._ode_builder import OdeModelBuilder
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder
     from mxlpy.integrators.abstract import IntegratorType
     from mxlpy.minimizers.abstract import LossFn
 
@@ -48,7 +50,7 @@ class FitResidual(Protocol):
     def __call__(
         self,
         updates: dict[str, float],
-        settings: _Settings,
+        settings: _Settings[Any],
     ) -> float:
         """Do minimization step."""
         ...
@@ -82,10 +84,10 @@ class MixedSettings:
 
 
 @dataclass
-class _Settings:
+class _Settings[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder]:
     """Non user-facing version of FitSettings."""
 
-    model: KineticModelBuilder
+    model: M
     data: pd.Series | pd.DataFrame
     y0: dict[str, float] | None
     integrator: IntegratorType | None
@@ -129,10 +131,10 @@ class _Settings:
 
 
 @dataclass
-class Fit:
+class Fit[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder]:
     """Result of a fit operation."""
 
-    model: KineticModelBuilder
+    model: M
     best_pars: dict[str, float]
     loss: float
 
