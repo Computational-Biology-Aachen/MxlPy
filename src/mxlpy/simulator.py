@@ -14,15 +14,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self, cast, overload
+from typing import TYPE_CHECKING, Generic, Self, cast, overload
 
 import numpy as np
 import pandas as pd
 from sympy import lambdify
+from typing_extensions import TypeVar
 from wadler_lindig import pformat
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.integrators import DefaultIntegrator, Scipy
 from mxlpy.integrators.abstract import TimeCourse
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
@@ -35,6 +37,13 @@ if TYPE_CHECKING:
     from mxlpy.types import ArrayLike
 
 _LOGGER = logging.getLogger(__name__)
+
+# Defaults to the KineticModelBuilder, so a bare `Simulator` keeps its meaning
+M = TypeVar(
+    "M",
+    bound=KineticModelBuilder | OdeModelBuilder,
+    default=KineticModelBuilder,
+)
 
 __all__ = [
     "Simulator",
@@ -61,7 +70,7 @@ def _normalise_protocol_index(protocol: pd.DataFrame) -> pd.DataFrame:
     slots=True,
     eq=False,
 )
-class Simulator[M: KineticModelBuilder | OdeModelBuilder]:
+class Simulator(Generic[M]):
     """Simulator class for running simulations on a metabolic model.
 
     Attributes
@@ -124,6 +133,9 @@ class Simulator[M: KineticModelBuilder | OdeModelBuilder]:
             If True, performs a test run for better error messages
 
         """
+        if isinstance(model, SteadyStateModelBuilder):
+            msg = "A SteadyStateModelBuilder has nothing to simulate - use model.evaluate(), scan.steady_state or fit.steady_state instead"
+            raise TypeError(msg)
         self.model = model
         self.y0 = model.get_initial_conditions() if y0 is None else y0
 

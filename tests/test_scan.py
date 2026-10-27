@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -12,9 +14,11 @@ from mxlpy import (
     KineticModelBuilder,
     OdeModelBuilder,
     SteadyStateModelBuilder,
+    cartesian_product,
     fns,
     make_protocol,
 )
+from mxlpy import scan as scan_module
 from mxlpy.integrators import DefaultIntegrator
 from mxlpy.scan import (
     EvaluationScan,
@@ -22,6 +26,7 @@ from mxlpy.scan import (
     _time_course_worker,
     _update_parameters_and_initial_conditions,
     protocol,
+    protocol_time_course,
     steady_state,
     time_course,
 )
@@ -431,3 +436,73 @@ def test_steady_state_steady_state_model() -> None:
     assert list(res.combined.columns) == ["d"]
     np.testing.assert_array_equal(res.combined["d"], [1.0, np.nan, 0.25])
     assert list(res.get_args(include_parameters=True).columns) == ["k", "d"]
+
+
+def ratio(a: float, b: float) -> float:
+    return a / b
+
+
+def log(a: float) -> float:
+    return math.log(a)
+
+
+def test_steady_state_steady_state_model_runs_serially_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+    original = scan_module.parallelise
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs["parallel"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(scan_module, "parallelise", spy)
+    model = (
+        SteadyStateModelBuilder()
+        .add_parameters({"a": 1.0, "b": 2.0})
+        .add_derived("d", fn=ratio, args=["a", "b"])
+    )
+    steady_state(model, to_scan=pd.DataFrame({"a": [1.0, 2.0]}))
+    assert calls == [False]
+
+
+def test_steady_state_steady_state_model_domain_error_is_nan() -> None:
+    model = SteadyStateModelBuilder().add_parameter("a", 1.0)
+    model.add_derived("d", fn=log, args=["a"])
+    res = steady_state(model, to_scan=pd.DataFrame({"a": [1.0, -1.0]}))
+    np.testing.assert_array_equal(res.combined["d"], [0.0, np.nan])
+
+
+def test_steady_state_steady_state_model_multiindex() -> None:
+    model = (
+        SteadyStateModelBuilder()
+        .add_parameters({"a": 1.0, "b": 2.0})
+        .add_derived("d", fn=ratio, args=["a", "b"])
+    )
+    res = steady_state(
+        model, to_scan=cartesian_product({"a": [1.0, 2.0], "b": [1.0, 4.0]})
+    )
+    assert res.combined.index.names == ["a", "b"]
+    assert res.combined.loc[(2.0, 4.0), "d"] == 0.5
+
+
+def test_ode_scan_fluxes_raise_helpful_error() -> None:
+    res = steady_state(
+        ode_model(), to_scan=pd.DataFrame({"k": [0.5, 1.0]}), parallel=False
+    )
+    with pytest.raises(TypeError, match="no fluxes"):
+        _ = res.fluxes  # type: ignore[misc]
+    with pytest.raises(TypeError, match="no fluxes"):
+        _, _ = res  # type: ignore[misc]
+
+
+def test_protocol_time_course_ode_model() -> None:
+    res = protocol_time_course(
+        ode_model(),
+        to_scan=pd.DataFrame({"k": [0.5, 1.0]}),
+        protocol=make_protocol([(2, {"k_in": 1.0}), (2, {"k_in": 3.0})]),
+        time_points=np.linspace(0, 4, 11),
+        parallel=False,
+    )
+    assert res.variables.shape == (2 * 11, 2)
+    assert not res.variables.isna().any().any()

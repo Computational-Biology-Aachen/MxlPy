@@ -111,7 +111,8 @@ def joint_steady_state(
     max_workers
         maximal amount of workers in parallel
     standard_scale
-        Whether to apply standard scale to data and prediction
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
 
     Returns
     -------
@@ -201,7 +202,8 @@ def joint_time_course(
     max_workers
         maximal amount of workers in parallel
     standard_scale
-        Whether to apply standard scale to data and prediction
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
 
     Returns
     -------
@@ -291,7 +293,8 @@ def joint_protocol_time_course(
     max_workers
         maximal amount of workers in parallel
     standard_scale
-        Whether to apply standard scale to data and prediction
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
 
     Returns
     -------

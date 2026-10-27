@@ -131,7 +131,8 @@ def steady_state[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuil
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     standard_scale
-        Whether to apply standard scale to data and prediction
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
     oscillation_detector
         Callable for oscillation detection during SS simulation, or ``None``
         to disable.  Default: :func:`~mxlpy.integrators.utils.detect_oscillations`.
@@ -222,7 +223,8 @@ def time_course[M: (KineticModelBuilder, OdeModelBuilder)](
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     standard_scale
-        Whether to apply standard scale to data and prediction
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
 
     Returns
     -------
@@ -317,7 +319,8 @@ def protocol_time_course[M: (KineticModelBuilder, OdeModelBuilder)](
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     standard_scale
-        Whether to apply standard scale to data and prediction
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
 
     Returns
     -------

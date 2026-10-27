@@ -7,9 +7,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Generic, Protocol
 
 import pandas as pd
+from typing_extensions import TypeVar
 from wadler_lindig import pformat
 
 from mxlpy._kinetic_builder import KineticModelBuilder
@@ -38,6 +39,13 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 type InitialGuess = dict[str, float]
+
+# Defaults to the KineticModelBuilder, so a bare `Fit` keeps its meaning
+M = TypeVar(
+    "M",
+    bound="KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder",
+    default="KineticModelBuilder",
+)
 
 
 class FitResidual(Protocol):
@@ -125,13 +133,14 @@ class _Settings[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuild
             Loss value computed by the configured loss function.
 
         """
-        if self.standard_scale:
+        # The standard deviation of fewer than two data points is undefined
+        if self.standard_scale and len(self.data) > 1:
             return self.loss_fn(self.data_scaled, (prediction - self.mean) / self.scale)
         return self.loss_fn(self.data, prediction)
 
 
 @dataclass
-class Fit[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder]:
+class Fit(Generic[M]):
     """Result of a fit operation."""
 
     model: M
