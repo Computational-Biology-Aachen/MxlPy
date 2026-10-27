@@ -8,22 +8,23 @@
 
 
 import multiprocessing
+from collections.abc import Sequence
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from copy import deepcopy
 from functools import partial
+from typing import Any
 
 import numpy as np
 from loky import ProcessPoolExecutor
 
-from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.fit import losses
 from mxlpy.fit.abstract import (
     FitResidual,
     JointFit,
     MixedSettings,
-    _pick_runner,
+    _joint_settings,
     _Settings,
 )
+from mxlpy.fit.residuals import steady_state_residual
 from mxlpy.minimizers.abstract import (
     Bounds,
     LossFn,
@@ -31,7 +32,6 @@ from mxlpy.minimizers.abstract import (
     OptimisationState,
 )
 from mxlpy.runners import SteadyStateRunner
-from mxlpy.simulation import Simulation
 from mxlpy.types import Result
 
 __all__ = ["joint_mixed"]
@@ -58,12 +58,12 @@ def _mixed_sum_of_residuals(
 
 
 def joint_mixed(
-    to_fit: list[MixedSettings],
+    to_fit: Sequence[MixedSettings[Any]],
     *,
     p0: dict[str, float],
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
-    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
+    runner: SteadyStateRunner[Any, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
     bounds: Bounds | None = None,
     max_workers: int | None = None,
@@ -123,24 +123,19 @@ def joint_mixed(
         Result object containing JointFit object
 
     """
-    full_settings = []
-    for i in to_fit:
-        p_names = i.model.get_parameter_names()
-        v_names = i.model.get_variable_names()
-        full_settings.append(
-            _Settings(
-                model=deepcopy(i.model) if as_deepcopy else i.model,
-                data=i.data,
-                y0=i.y0 if i.y0 is not None else y0,
-                runner=_pick_runner(i.runner, runner, i.model),
-                loss_fn=i.loss_fn if i.loss_fn is not None else loss_fn,
-                p_names=[j for j in p0 if j in p_names],
-                v_names=[j for j in p0 if j in v_names],
-                protocol=i.protocol,
-                residual_fn=i.residual_fn,
-                standard_scale=standard_scale,
-            )
+    full_settings = [
+        _joint_settings(
+            i,
+            p0=p0,
+            y0=y0,
+            runner=runner,
+            loss_fn=loss_fn,
+            as_deepcopy=as_deepcopy,
+            standard_scale=standard_scale,
+            needs_dynamics=i.residual_fn is not steady_state_residual,
         )
+        for i in to_fit
+    ]
 
     with ProcessPoolExecutor(
         max_workers=(

@@ -381,6 +381,30 @@ def steady_state(
         | (2, 4) | 0.5  |   2 |
 
     """
+    return _steady_state(
+        model,
+        to_scan=to_scan,
+        y0=y0,
+        parallel=parallel,
+        cache=cache,
+        runner=runner,
+    )
+
+
+def _steady_state(
+    model: _Model,
+    *,
+    to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    parallel: bool | None = None,
+    cache: Cache | None = None,
+    runner: SteadyStateRunner | None = None,
+) -> (
+    SteadyStateScan[Simulation]
+    | SteadyStateScan[OdeSimulation]
+    | SteadyStateScan[Evaluation]
+):
+    """Non-overloaded implementation of `steady_state`, for internal callers."""
     if parallel is None:
         parallel = not isinstance(model, SteadyStateModelBuilder)
     model = _copy_with_y0(model, y0)

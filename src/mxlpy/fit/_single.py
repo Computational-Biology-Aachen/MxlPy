@@ -15,7 +15,7 @@ from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit import losses
-from mxlpy.fit.abstract import Fit, FitResidual, _Settings
+from mxlpy.fit.abstract import Fit, FitResidual, _Settings, _split_p0
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
     steady_state_residual,
@@ -36,20 +36,6 @@ __all__ = ["protocol_time_course", "steady_state", "time_course"]
 
 
 type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
-
-
-def _split_p0(
-    model: _Model,
-    p0: dict[str, float],
-) -> tuple[list[str], list[str]]:
-    """Split initial guesses into parameter and variable names."""
-    p_names = set(model.get_parameter_names())
-    v_names = (
-        set()
-        if isinstance(model, SteadyStateModelBuilder)
-        else set(model.get_variable_names())
-    )
-    return [i for i in p0 if i in p_names], [i for i in p0 if i in v_names]
 
 
 def _check_y0(model: _Model, y0: dict[str, float] | None) -> None:
@@ -184,6 +170,36 @@ def steady_state[M: _Model](
         Result object containing fit object
 
     """
+    return _steady_state(
+        model,
+        p0=p0,
+        data=data,
+        minimizer=minimizer,
+        y0=y0,
+        residual_fn=residual_fn,
+        runner=runner,
+        loss_fn=loss_fn,
+        bounds=bounds,
+        as_deepcopy=as_deepcopy,
+        standard_scale=standard_scale,
+    )
+
+
+def _steady_state[M: _Model](
+    model: M,
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    y0: dict[str, float] | None = None,
+    residual_fn: FitResidual = steady_state_residual,
+    runner: SteadyStateRunner[M, Any] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    standard_scale: bool = True,
+) -> Result[Fit[M]]:
+    """Non-overloaded implementation of `steady_state`, for internal callers."""
     _check_y0(model, y0)
     if as_deepcopy:
         model = deepcopy(model)

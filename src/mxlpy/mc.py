@@ -21,15 +21,27 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Generic, cast, overload
 
 import pandas as pd
+from typing_extensions import TypeVar
 from wadler_lindig import pformat
 
 from mxlpy import mca, scan
-from mxlpy.mca import ResponseCoefficientsByPars
+from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
+from mxlpy.mca import (
+    ResponseCoefficientsByPars,
+    _require_names,
+    _split_outputs,
+)
 from mxlpy.parallel import Cache, parallelise
-from mxlpy.runners import DynamicRunner, KineticRunner, SteadyStateRunner
+from mxlpy.runners import (
+    DynamicRunner,
+    SteadyStateRunner,
+    default_runner,
+)
 from mxlpy.scan import (
     ProtocolScan,
     SteadyStateScan,
@@ -40,14 +52,18 @@ from mxlpy.scan import (
     _time_course_worker,
     _update_parameters_and_initial_conditions,
 )
+from mxlpy.simulation import Evaluation, OdeSimulation, Simulation
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy.simulation import Simulation
     from mxlpy.types import Array
 
+
+type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
+
+# Defaults to Simulation, so bare result types keep their meaning
+SE = TypeVar("SE", Simulation, OdeSimulation, Evaluation, default=Simulation)
 
 __all__ = [
     "McSteadyStates",
@@ -62,14 +78,14 @@ __all__ = [
 ]
 
 
-def _parameter_scan_worker(
-    model: KineticModelBuilder,
+def _parameter_scan_worker[M: _Model](
+    model: M,
     *,
     parameters: pd.DataFrame,
-    runner: SteadyStateRunner[KineticModelBuilder, Simulation],
-) -> SteadyStateScan:
+    runner: SteadyStateRunner[M, Any],
+) -> SteadyStateScan[Any]:
     """Scan the steady states of one Monte Carlo sample."""
-    return scan.steady_state(
+    return scan._steady_state(  # noqa: SLF001
         model,
         to_scan=parameters,
         parallel=False,
@@ -77,6 +93,7 @@ def _parameter_scan_worker(
     )
 
 
+@overload
 def steady_state(
     model: KineticModelBuilder,
     *,
@@ -85,7 +102,45 @@ def steady_state(
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
-) -> SteadyStateScan:
+) -> SteadyStateScan[Simulation]: ...
+
+
+@overload
+def steady_state(
+    model: OdeModelBuilder,
+    *,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
+) -> SteadyStateScan[OdeSimulation]: ...
+
+
+@overload
+def steady_state(
+    model: SteadyStateModelBuilder,
+    *,
+    mc_to_scan: pd.DataFrame,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
+) -> SteadyStateScan[Evaluation]: ...
+
+
+def steady_state(
+    model: _Model,
+    *,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: SteadyStateRunner[Any, Any] | None = None,
+) -> (
+    SteadyStateScan[Simulation]
+    | SteadyStateScan[OdeSimulation]
+    | SteadyStateScan[Evaluation]
+):
     """Monte-carlo scan of steady states.
 
     Parameters
@@ -131,7 +186,7 @@ def steady_state(
             _update_parameters_and_initial_conditions,
             fn=partial(
                 _steady_state_worker,
-                runner=KineticRunner() if runner is None else runner,
+                runner=default_runner(model) if runner is None else runner,
             ),
             model=model,
         ),
@@ -150,6 +205,7 @@ def steady_state(
     )
 
 
+@overload
 def time_course(
     model: KineticModelBuilder,
     *,
@@ -159,7 +215,32 @@ def time_course(
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
-) -> TimeCourseScan:
+) -> TimeCourseScan[Simulation]: ...
+
+
+@overload
+def time_course(
+    model: OdeModelBuilder,
+    *,
+    time_points: Array,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: DynamicRunner[OdeModelBuilder, OdeSimulation] | None = None,
+) -> TimeCourseScan[OdeSimulation]: ...
+
+
+def time_course(
+    model: KineticModelBuilder | OdeModelBuilder,
+    *,
+    time_points: Array,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: DynamicRunner[Any, Any] | None = None,
+) -> TimeCourseScan[Simulation] | TimeCourseScan[OdeSimulation]:
     """MC time course.
 
     Parameters
@@ -208,7 +289,7 @@ def time_course(
             fn=partial(
                 _time_course_worker,
                 time_points=time_points,
-                runner=KineticRunner() if runner is None else runner,
+                runner=default_runner(model) if runner is None else runner,
             ),
             model=model,
         ),
@@ -223,6 +304,7 @@ def time_course(
     )
 
 
+@overload
 def protocol(
     model: KineticModelBuilder,
     *,
@@ -233,7 +315,34 @@ def protocol(
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
-) -> ProtocolScan:
+) -> ProtocolScan[Simulation]: ...
+
+
+@overload
+def protocol(
+    model: OdeModelBuilder,
+    *,
+    protocol: pd.DataFrame,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    time_points_per_step: int = 10,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: DynamicRunner[OdeModelBuilder, OdeSimulation] | None = None,
+) -> ProtocolScan[OdeSimulation]: ...
+
+
+def protocol(
+    model: KineticModelBuilder | OdeModelBuilder,
+    *,
+    protocol: pd.DataFrame,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    time_points_per_step: int = 10,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: DynamicRunner[Any, Any] | None = None,
+) -> ProtocolScan[Simulation] | ProtocolScan[OdeSimulation]:
     """MC time course.
 
     Parameters
@@ -285,7 +394,7 @@ def protocol(
                 _protocol_worker,
                 protocol=protocol,
                 time_points_per_step=time_points_per_step,
-                runner=KineticRunner() if runner is None else runner,
+                runner=default_runner(model) if runner is None else runner,
             ),
             model=model,
         ),
@@ -300,6 +409,7 @@ def protocol(
     )
 
 
+@overload
 def protocol_time_course(
     model: KineticModelBuilder,
     *,
@@ -310,7 +420,34 @@ def protocol_time_course(
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
-) -> ProtocolScan:
+) -> ProtocolScan[Simulation]: ...
+
+
+@overload
+def protocol_time_course(
+    model: OdeModelBuilder,
+    *,
+    protocol: pd.DataFrame,
+    time_points: Array,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: DynamicRunner[OdeModelBuilder, OdeSimulation] | None = None,
+) -> ProtocolScan[OdeSimulation]: ...
+
+
+def protocol_time_course(
+    model: KineticModelBuilder | OdeModelBuilder,
+    *,
+    protocol: pd.DataFrame,
+    time_points: Array,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: DynamicRunner[Any, Any] | None = None,
+) -> ProtocolScan[Simulation] | ProtocolScan[OdeSimulation]:
     """MC time course.
 
     Parameters
@@ -362,7 +499,7 @@ def protocol_time_course(
                 _protocol_time_course_worker,
                 protocol=protocol,
                 time_points=time_points,
-                runner=KineticRunner() if runner is None else runner,
+                runner=default_runner(model) if runner is None else runner,
             ),
             model=model,
         ),
@@ -378,28 +515,42 @@ def protocol_time_course(
 
 
 @dataclass(kw_only=True, slots=True)
-class McSteadyStates:
-    """Container for Monte Carlo steady states."""
+class McSteadyStates(Generic[SE]):
+    """Container for Monte Carlo steady states.
 
-    variables: pd.DataFrame
-    fluxes: pd.DataFrame
+    `combined` holds every model output (columns) by Monte Carlo sample and
+    scanned value (rows). The split into `variables` and `fluxes` only exists
+    for builders having them.
+    """
+
+    combined: pd.DataFrame
     parameters: pd.DataFrame
     mc_to_scan: pd.DataFrame
+    variable_names: list[str] | None = None
+    flux_names: list[str] | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
 
     @property
-    def combined(self) -> pd.DataFrame:
-        """Return the steady states as a DataFrame."""
-        return pd.concat((self.variables, self.fluxes), axis=1)
+    def variables(
+        self: McSteadyStates[Simulation] | McSteadyStates[OdeSimulation],
+    ) -> pd.DataFrame:
+        """Return the steady-state variables."""
+        return self.combined.loc[:, _require_names(self.variable_names, "variables")]
 
-    def __iter__(self) -> Iterator[pd.DataFrame]:
+    @property
+    def fluxes(self: McSteadyStates[Simulation]) -> pd.DataFrame:
+        """Return the steady-state fluxes."""
+        return self.combined.loc[:, _require_names(self.flux_names, "fluxes")]
+
+    def __iter__(self: McSteadyStates[Simulation]) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux steady states."""
         return iter((self.variables, self.fluxes))
 
 
+@overload
 def scan_steady_state(
     model: KineticModelBuilder,
     *,
@@ -409,7 +560,48 @@ def scan_steady_state(
     max_workers: int | None = None,
     cache: Cache | None = None,
     runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
-) -> McSteadyStates:
+) -> McSteadyStates[Simulation]: ...
+
+
+@overload
+def scan_steady_state(
+    model: OdeModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
+) -> McSteadyStates[OdeSimulation]: ...
+
+
+@overload
+def scan_steady_state(
+    model: SteadyStateModelBuilder,
+    *,
+    to_scan: pd.DataFrame,
+    mc_to_scan: pd.DataFrame,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
+) -> McSteadyStates[Evaluation]: ...
+
+
+def scan_steady_state(
+    model: _Model,
+    *,
+    to_scan: pd.DataFrame,
+    mc_to_scan: pd.DataFrame,
+    y0: dict[str, float] | None = None,
+    max_workers: int | None = None,
+    cache: Cache | None = None,
+    runner: SteadyStateRunner[Any, Any] | None = None,
+) -> (
+    McSteadyStates[Simulation]
+    | McSteadyStates[OdeSimulation]
+    | McSteadyStates[Evaluation]
+):
     """Parameter scan of mc distributed steady states.
 
     Examples
@@ -462,7 +654,7 @@ def scan_steady_state(
             fn=partial(
                 _parameter_scan_worker,
                 parameters=to_scan,
-                runner=KineticRunner() if runner is None else runner,
+                runner=default_runner(model) if runner is None else runner,
             ),
             model=model,
         ),
@@ -470,13 +662,25 @@ def scan_steady_state(
         cache=cache,
         max_workers=max_workers,
     )
-    concs = {k: v.variables.T for k, v in res}
-    fluxes = {k: v.fluxes.T for k, v in res}
+    combined = cast(
+        pd.DataFrame,
+        pd.concat(
+            {
+                k: pd.DataFrame(
+                    [i.get_combined().iloc[-1] for i in v.raw_results],
+                    index=v.raw_index,
+                )
+                for k, v in res
+            }
+        ),
+    )
+    variable_names, flux_names = _split_outputs(model, list(combined.columns))
     return McSteadyStates(
-        variables=pd.concat(concs, axis=1).T,
-        fluxes=pd.concat(fluxes, axis=1).T,
+        combined=combined,
         parameters=to_scan,
         mc_to_scan=mc_to_scan,
+        variable_names=variable_names,
+        flux_names=flux_names,
     )
 
 
@@ -641,6 +845,7 @@ def parameter_elasticities(
     return cast(pd.DataFrame, pd.concat(dict(res)))
 
 
+@overload
 def response_coefficients(
     model: KineticModelBuilder,
     *,
@@ -653,7 +858,57 @@ def response_coefficients(
     disable_tqdm: bool = False,
     max_workers: int | None = None,
     runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
-) -> ResponseCoefficientsByPars:
+) -> ResponseCoefficientsByPars[Simulation]: ...
+
+
+@overload
+def response_coefficients(
+    model: OdeModelBuilder,
+    *,
+    mc_to_scan: pd.DataFrame,
+    to_scan: list[str],
+    variables: dict[str, float] | None = None,
+    cache: Cache | None = None,
+    normalized: bool = True,
+    displacement: float = 1e-4,
+    disable_tqdm: bool = False,
+    max_workers: int | None = None,
+    runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
+) -> ResponseCoefficientsByPars[OdeSimulation]: ...
+
+
+@overload
+def response_coefficients(
+    model: SteadyStateModelBuilder,
+    *,
+    mc_to_scan: pd.DataFrame,
+    to_scan: list[str],
+    cache: Cache | None = None,
+    normalized: bool = True,
+    displacement: float = 1e-4,
+    disable_tqdm: bool = False,
+    max_workers: int | None = None,
+    runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
+) -> ResponseCoefficientsByPars[Evaluation]: ...
+
+
+def response_coefficients(
+    model: _Model,
+    *,
+    mc_to_scan: pd.DataFrame,
+    to_scan: list[str],
+    variables: dict[str, float] | None = None,
+    cache: Cache | None = None,
+    normalized: bool = True,
+    displacement: float = 1e-4,
+    disable_tqdm: bool = False,
+    max_workers: int | None = None,
+    runner: SteadyStateRunner[Any, Any] | None = None,
+) -> (
+    ResponseCoefficientsByPars[Simulation]
+    | ResponseCoefficientsByPars[OdeSimulation]
+    | ResponseCoefficientsByPars[Evaluation]
+):
     """Calculate response coefficients using Monte Carlo analysis.
 
     Examples
@@ -705,7 +960,7 @@ def response_coefficients(
         fn=partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
-                mca.response_coefficients,
+                mca._response_coefficients,  # noqa: SLF001
                 to_scan=to_scan,
                 normalized=normalized,
                 displacement=displacement,
@@ -720,8 +975,10 @@ def response_coefficients(
         max_workers=max_workers,
     )
 
+    first = res[0][1]
     return ResponseCoefficientsByPars(
-        variables=cast(pd.DataFrame, pd.concat({k: v.variables for k, v in res})),
-        fluxes=cast(pd.DataFrame, pd.concat({k: v.fluxes for k, v in res})),
+        combined=cast(pd.DataFrame, pd.concat({k: v.combined for k, v in res})),
         parameters=mc_to_scan,
+        variable_names=first.variable_names,
+        flux_names=first.flux_names,
     )
