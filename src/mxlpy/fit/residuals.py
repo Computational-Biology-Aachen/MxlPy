@@ -40,7 +40,10 @@ def _loss(settings: _Settings[Any], res: Result[Any], names: list[str]) -> float
         case Exception():
             return cast(float, np.inf)
         case _:
-            return settings.loss(val.get_combined().loc[:, names])
+            prediction = val.get_combined()
+            if (postprocess := settings.postprocess_fn) is not None:
+                prediction = postprocess(prediction)
+            return settings.loss(prediction.loc[:, names])
 
 
 def steady_state_residual(

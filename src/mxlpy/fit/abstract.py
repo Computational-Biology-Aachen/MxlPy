@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import cached_property
@@ -29,6 +30,7 @@ __all__ = [
     "JointFit",
     "LOGGER",
     "MixedSettings",
+    "PostprocessFn",
 ]
 
 
@@ -41,6 +43,9 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 type InitialGuess = dict[str, float]
+
+# Maps the combined simulation result into the space of the data, applied before the loss
+type PostprocessFn = Callable[[pd.DataFrame], pd.DataFrame]
 
 # Defaults to the KineticModelBuilder, so a bare `Fit` keeps its meaning
 M = TypeVar(
@@ -75,6 +80,7 @@ class FitSettings(Generic[M]):
     y0: dict[str, float] | None = None
     runner: SteadyStateRunner[M, Any] | None = None
     loss_fn: LossFn | None = None
+    postprocess_fn: PostprocessFn | None = None
     protocol: pd.DataFrame | None = None
 
 
@@ -88,6 +94,7 @@ class MixedSettings(Generic[M]):
     y0: dict[str, float] | None = None
     runner: SteadyStateRunner[M, Any] | None = None
     loss_fn: LossFn | None = None
+    postprocess_fn: PostprocessFn | None = None
     protocol: pd.DataFrame | None = None
 
 
@@ -125,6 +132,7 @@ def _joint_settings(
     y0: dict[str, float] | None,
     runner: SteadyStateRunner[Any, Any] | None,
     loss_fn: LossFn,
+    postprocess_fn: PostprocessFn | None,
     as_deepcopy: bool,
     standard_scale: bool,
     needs_dynamics: bool,
@@ -151,6 +159,11 @@ def _joint_settings(
         y0=settings.y0 if settings.y0 is not None else None if is_steady_state else y0,
         runner=_pick_runner(settings.runner, runner, model),
         loss_fn=settings.loss_fn if settings.loss_fn is not None else loss_fn,
+        postprocess_fn=(
+            settings.postprocess_fn
+            if settings.postprocess_fn is not None
+            else postprocess_fn
+        ),
         protocol=(
             _normalise_protocol_index(protocol)
             if (protocol := settings.protocol) is not None
@@ -177,6 +190,7 @@ class _Settings[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuild
     standard_scale: bool
     protocol: pd.DataFrame | None = None
     residual_fn: FitResidual | None = None
+    postprocess_fn: PostprocessFn | None = None
 
     @cached_property
     def mean(self) -> pd.Series | float:

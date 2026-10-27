@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy.fit.abstract import PostprocessFn
     from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
     from mxlpy.simulation import Simulation
     from mxlpy.types import Array, RateFn
@@ -309,6 +310,7 @@ def carousel_steady_state(
     residual_fn: mxlpy.fit.abstract.FitResidual = steady_state_residual,
     runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
@@ -348,6 +350,10 @@ def carousel_steady_state(
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
@@ -371,6 +377,7 @@ def carousel_steady_state(
         residual_fn=residual_fn,
         runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         timeout=timeout,
@@ -387,6 +394,7 @@ def carousel_time_course(
     residual_fn: mxlpy.fit.abstract.FitResidual = time_course_residual,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
@@ -428,6 +436,10 @@ def carousel_time_course(
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
@@ -451,6 +463,7 @@ def carousel_time_course(
         residual_fn=residual_fn,
         runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         timeout=timeout,
@@ -468,6 +481,7 @@ def carousel_protocol_time_course(
     residual_fn: mxlpy.fit.abstract.FitResidual = protocol_time_course_residual,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
@@ -510,6 +524,10 @@ def carousel_protocol_time_course(
         Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
@@ -535,6 +553,7 @@ def carousel_protocol_time_course(
         residual_fn=residual_fn,
         runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         timeout=timeout,

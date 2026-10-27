@@ -81,7 +81,8 @@ fit.joint_mixed(
 
 - Minimizers: `fit.LocalScipyMinimizer(tol=..., method="Nelder-Mead"|"L-BFGS-B"|...)` (default `method=None`: Nelder-Mead for a single parameter, L-BFGS-B otherwise), `fit.GlobalScipyMinimizer(bounds=fit.Bounds(lower={...}, upper={...}))` (basin hopping / dual annealing).
 - Loss functions (pass `loss_fn=`): `fit.rmse`, `fit.mae`, `fit.mean_squared`, `fit.mean_absolute_percentage`, `fit.mean_squared_logarithmic`, `fit.cosine_similarity`, or any `(pred, data) -> float`.
-- The call tree is `minimizer → residual_fn → (runner, loss_fn)`; override any of `minimizer`, `loss_fn`, `runner` (e.g. `runner=KineticRunner(integrator=partial(Scipy, rtol=1e-6, atol=1e-6))`).
+- The call tree is `minimizer → residual_fn → (runner, postprocess_fn, loss_fn)`; override any of `minimizer`, `loss_fn`, `runner` (e.g. `runner=KineticRunner(integrator=partial(Scipy, rtol=1e-6, atol=1e-6))`).
+- `postprocess_fn=` (every fit routine, and per model on `FitSettings`/`MixedSettings`): a `(pd.DataFrame) -> pd.DataFrame` applied to the combined simulation result at the data's time points before the loss, for quantities derived from the whole time course (e.g. NPQ normalised by the first pulse: `lambda df: ((df["Fm"].iloc[0] - df["Fm"]) / df["Fm"]).to_frame("NPQ")`). Its output must contain the data columns; exceptions it raises propagate.
 - `LocalScipyMinimizer()` defaults to Nelder-Mead for a single parameter and L-BFGS-B otherwise. Failed simulations (infinite residuals) are replaced by a finite penalty, so gradient-based methods back off instead of stalling.
 
 ## Fuzzy fitting (`mxlpy.fuzzy`)
