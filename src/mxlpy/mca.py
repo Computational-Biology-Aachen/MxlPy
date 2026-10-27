@@ -22,7 +22,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.integrators import IntegratorType
     from mxlpy.plot import FigAx, FigAxs
+    from mxlpy.simulation import Simulation
 
 __all__ = [
     "RateCharacteristics",
@@ -106,19 +107,25 @@ def _response_coefficient_worker(
         model.update_variables(y0)
 
     model.update_parameters({parameter: old * (1 + displacement)})
-    upper = _steady_state_worker(
-        model,
-        rel_norm=rel_norm,
-        integrator=integrator,
-        y0=None,
+    upper = cast(
+        "Simulation",
+        _steady_state_worker(
+            model,
+            rel_norm=rel_norm,
+            integrator=integrator,
+            y0=None,
+        ),
     )
 
     model.update_parameters({parameter: old * (1 - displacement)})
-    lower = _steady_state_worker(
-        model,
-        rel_norm=rel_norm,
-        integrator=integrator,
-        y0=None,
+    lower = cast(
+        "Simulation",
+        _steady_state_worker(
+            model,
+            rel_norm=rel_norm,
+            integrator=integrator,
+            y0=None,
+        ),
     )
 
     conc_resp = (upper.variables.iloc[-1] - lower.variables.iloc[-1]) / (
@@ -130,11 +137,14 @@ def _response_coefficient_worker(
     # Reset
     model.update_parameters({parameter: old})
     if normalized:
-        norm = _steady_state_worker(
-            model,
-            rel_norm=rel_norm,
-            integrator=integrator,
-            y0=None,
+        norm = cast(
+            "Simulation",
+            _steady_state_worker(
+                model,
+                rel_norm=rel_norm,
+                integrator=integrator,
+                y0=None,
+            ),
         )
         conc_resp *= old / norm.variables.iloc[-1]
         flux_resp *= old / norm.fluxes.iloc[-1]

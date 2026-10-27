@@ -45,10 +45,11 @@ from mxlpy.scan import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Hashable, Iterator
 
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.integrators import IntegratorType
+    from mxlpy.simulation import Simulation
     from mxlpy.types import Array
 
 
@@ -283,7 +284,7 @@ def time_course(
 
     return TimeCourseScan(
         to_scan=mc_to_scan,
-        raw_results=dict(res),
+        raw_results=cast("dict[Hashable, Simulation]", dict(res)),
     )
 
 
@@ -364,7 +365,7 @@ def protocol(
     return ProtocolScan(
         to_scan=mc_to_scan,
         protocol=protocol,
-        raw_results=dict(res),
+        raw_results=cast("dict[Hashable, Simulation]", dict(res)),
     )
 
 
@@ -445,7 +446,7 @@ def protocol_time_course(
     return ProtocolScan(
         to_scan=mc_to_scan,
         protocol=protocol,
-        raw_results=dict(res),
+        raw_results=cast("dict[Hashable, Simulation]", dict(res)),
     )
 
 
