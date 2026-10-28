@@ -135,6 +135,10 @@
   "compiles": 10,
   "peak_mb": 25
  },
+ "tests/jax/test_models.py::test_adjoint_reaches_every_solve": {
+  "compiles": 30,
+  "peak_mb": 241
+ },
  "tests/jax/test_models.py::test_boundaries_to_ts_converts_flat_array_to_per_step_singletons": {
   "compiles": 3,
   "peak_mb": 2
@@ -154,6 +158,10 @@
  "tests/jax/test_models.py::test_conditional_rate_generates_jnp_select_not_ternary": {
   "compiles": 0,
   "peak_mb": 0
+ },
+ "tests/jax/test_models.py::test_dtmax_reaches_every_solve": {
+  "compiles": 25,
+  "peak_mb": 128
  },
  "tests/jax/test_models.py::test_fluxode_call_appends_pars_after_free_args": {
   "compiles": 8,
