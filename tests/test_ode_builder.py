@@ -19,17 +19,16 @@ pre-evaluation snapshot instead.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import pytest
 
-from mxlpy import OdeModelBuilder, Simulator
+from mxlpy import OdeModelBuilder, Simulator, SteadyStateModelBuilder
+from mxlpy.simulation import OdeSimulation
 from mxlpy.surrogates.abstract_ode import AbstractOdeSurrogate
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 @dataclass(kw_only=True)
@@ -97,11 +96,7 @@ def test_full_simulation_matches_analytic_exponential_decay() -> None:
         .add_parameter("k", 0.5)
         .add_diff_eq("x", fn=lambda x, k: -k * x, args=["x", "k"], initial_value=2.0)
     )
-    # Simulator's type hint is still KineticModelBuilder-only (widening it
-    # pulls in other KineticModelBuilder-only code paths inside Simulator
-    # itself — to_symbolic_model, get_dependent — that's real, separate
-    # scope, not touched here); this works correctly at runtime already.
-    result = Simulator(model).simulate(10.0).get_result().unwrap_or_err()  # type: ignore[arg-type]
+    result = Simulator(model).simulate(10.0).get_result().unwrap_or_err()
     df = result.get_variables(
         include_derived_variables=False,
         include_readouts=False,
@@ -337,3 +332,84 @@ def test_rename_updates_surrogate_name_output_name_and_target_references() -> No
     # compose, this isn't double-counting a single mechanism.
     (dxdt,) = model(0.0, [1.0])
     assert dxdt == pytest.approx((-1.0 + 1.0) + 1.0)
+
+
+def production_decay_model() -> OdeModelBuilder:
+    """dx/dt = k_in - k * x, with steady state x = k_in / k."""
+    return (
+        OdeModelBuilder()
+        .add_parameter("k_in", 1.0)
+        .add_parameter("k", 0.5)
+        .add_diff_eq(
+            "x",
+            fn=lambda k_in, x, k: k_in - k * x,
+            args=["k_in", "x", "k"],
+            initial_value=0.0,
+        )
+        .add_derived("d", fn=lambda x: 2 * x, args=["x"])
+    )
+
+
+def test_update_variable() -> None:
+    model = production_decay_model().update_variable("x", 3.0)
+    assert model.get_initial_conditions() == {"x": 3.0}
+
+
+def test_update_variables() -> None:
+    model = production_decay_model().update_variables({"x": 4.0})
+    assert model.get_initial_conditions() == {"x": 4.0}
+
+
+def test_update_variable_unknown_name_raises() -> None:
+    with pytest.raises(KeyError):
+        production_decay_model().update_variable("y", 1.0)
+
+
+def test_simulation_variables_are_concentrations() -> None:
+    model = production_decay_model()
+    result = Simulator(model).simulate(10.0).get_result().unwrap_or_err()
+    assert isinstance(result, OdeSimulation)
+
+    variables = result.get_combined()
+    assert list(variables.columns) == ["x", "d"]
+    np.testing.assert_allclose(variables["d"], 2 * variables["x"])
+
+    rhs = result.get_right_hand_side()
+    np.testing.assert_allclose(rhs["x"], 1.0 - 0.5 * variables["x"])
+
+
+def test_simulate_to_steady_state() -> None:
+    result = (
+        Simulator(production_decay_model())
+        .simulate_to_steady_state()
+        .get_result()
+        .unwrap_or_err()
+    )
+    assert result.get_new_y0()["x"] == pytest.approx(2.0, rel=1e-4)
+
+
+def test_simulator_rejects_steady_state_model() -> None:
+    with pytest.raises(TypeError, match="evaluate"):
+        Simulator(SteadyStateModelBuilder().add_parameter("a", 1.0))  # type: ignore[arg-type]
+
+
+def test_use_jacobian_warns_for_ode_model(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.WARNING):
+        Simulator(production_decay_model(), use_jacobian=True)
+    assert "Jacobians are only supported" in caplog.text
+
+
+def test_simulation_args_robust_to_builder_returning_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = OdeModelBuilder.get_args_time_course
+
+    def with_variables(
+        self: OdeModelBuilder, variables: pd.DataFrame, **kwargs: bool
+    ) -> pd.DataFrame:
+        return pd.concat((variables, original(self, variables, **kwargs)), axis=1)
+
+    monkeypatch.setattr(OdeModelBuilder, "get_args_time_course", with_variables)
+    model = production_decay_model()
+    result = Simulator(model).simulate(1.0).get_result().unwrap_or_err()
+    assert list(result.get_combined().columns) == ["x", "d"]

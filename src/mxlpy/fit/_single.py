@@ -7,32 +7,67 @@
 
 from copy import deepcopy
 from functools import partial
+from typing import Any, overload
 
 import pandas as pd
 
 from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit import losses
-from mxlpy.fit.abstract import Fit, FitResidual, _Settings
+from mxlpy.fit.abstract import Fit, FitResidual, PostprocessFn, _Settings, _split_p0
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
     steady_state_residual,
     time_course_residual,
 )
-from mxlpy.integrators import IntegratorType
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.minimizers.abstract import (
     Bounds,
     LossFn,
     MinimizerProtocol,
     OptimisationState,
 )
-from mxlpy.minimizers.abstract import Residual as MinimizerResidual
+from mxlpy.runners import DynamicRunner, SteadyStateRunner, default_runner
+from mxlpy.simulation import Evaluation, OdeSimulation, Simulation
 from mxlpy.simulator import _normalise_protocol_index
 from mxlpy.types import Result
 
 __all__ = ["protocol_time_course", "steady_state", "time_course"]
 
 
+type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
+
+
+def _check_y0(model: _Model, y0: dict[str, float] | None) -> None:
+    if y0 is not None and isinstance(model, SteadyStateModelBuilder):
+        msg = "A SteadyStateModelBuilder has no variables, so y0 doesn't apply"
+        raise TypeError(msg)
+
+
+def _minimize[M: _Model](
+    settings: _Settings[M],
+    *,
+    p0: dict[str, float],
+    minimizer: MinimizerProtocol,
+    residual_fn: FitResidual,
+    bounds: Bounds | None,
+) -> Result[Fit[M]]:
+    match minimizer(
+        partial(residual_fn, settings=settings), p0, {} if bounds is None else bounds
+    ).value:
+        case OptimisationState(parameters, residual):
+            return Result(
+                Fit(
+                    model=settings.model,
+                    best_pars=parameters,
+                    loss=residual,
+                )
+            )
+        case _ as e:
+            return Result(e)
+
+
+@overload
 def steady_state(
     model: KineticModelBuilder,
     *,
@@ -41,13 +76,65 @@ def steady_state(
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = steady_state_residual,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
-) -> Result[Fit]:
+) -> Result[Fit[KineticModelBuilder]]: ...
+
+
+@overload
+def steady_state(
+    model: OdeModelBuilder,
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    y0: dict[str, float] | None = None,
+    residual_fn: FitResidual = steady_state_residual,
+    runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    standard_scale: bool = True,
+) -> Result[Fit[OdeModelBuilder]]: ...
+
+
+@overload
+def steady_state(
+    model: SteadyStateModelBuilder,
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    residual_fn: FitResidual = steady_state_residual,
+    runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    standard_scale: bool = True,
+) -> Result[Fit[SteadyStateModelBuilder]]: ...
+
+
+def steady_state[M: _Model](
+    model: M,
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    y0: dict[str, float] | None = None,
+    residual_fn: FitResidual = steady_state_residual,
+    runner: SteadyStateRunner[M, Any] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    standard_scale: bool = True,
+) -> Result[Fit[M]]:
     """Fit model parameters to steady-state experimental data.
 
     Examples
@@ -69,72 +156,99 @@ def steady_state(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     standard_scale
-        Whether to apply standard scale to data and prediction
-    oscillation_detector
-        Callable for oscillation detection during SS simulation, or ``None``
-        to disable.  Default: :func:`~mxlpy.integrators.utils.detect_oscillations`.
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
 
     Returns
     -------
         Result object containing fit object
 
     """
+    return _steady_state(
+        model,
+        p0=p0,
+        data=data,
+        minimizer=minimizer,
+        y0=y0,
+        residual_fn=residual_fn,
+        runner=runner,
+        loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
+        bounds=bounds,
+        as_deepcopy=as_deepcopy,
+        standard_scale=standard_scale,
+    )
+
+
+def _steady_state[M: _Model](
+    model: M,
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    y0: dict[str, float] | None = None,
+    residual_fn: FitResidual = steady_state_residual,
+    runner: SteadyStateRunner[M, Any] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    standard_scale: bool = True,
+) -> Result[Fit[M]]:
+    """Non-overloaded implementation of `steady_state`, for internal callers."""
+    _check_y0(model, y0)
     if as_deepcopy:
         model = deepcopy(model)
+    p_names, v_names = _split_p0(model, p0)
 
-    p_names = model.get_parameter_names()
-    v_names = model.get_variable_names()
-
-    fn: MinimizerResidual = partial(
-        residual_fn,
-        settings=_Settings(
+    return _minimize(
+        _Settings(
             model=model,
             data=data,
             y0=y0,
-            integrator=integrator,
+            runner=default_runner(model) if runner is None else runner,
             loss_fn=loss_fn,
-            p_names=[i for i in p0 if i in p_names],
-            v_names=[i for i in p0 if i in v_names],
+            postprocess_fn=postprocess_fn,
+            p_names=p_names,
+            v_names=v_names,
             standard_scale=standard_scale,
-            oscillation_detector=oscillation_detector,
         ),
+        p0=p0,
+        minimizer=minimizer,
+        residual_fn=residual_fn,
+        bounds=bounds,
     )
-    match minimizer(fn, p0, {} if bounds is None else bounds).value:
-        case OptimisationState(parameters, residual):
-            return Result(
-                Fit(
-                    model=model,
-                    best_pars=parameters,
-                    loss=residual,
-                )
-            )
-        case _ as e:
-            return Result(e)
 
 
-def time_course(
-    model: KineticModelBuilder,
+def time_course[M: KineticModelBuilder | OdeModelBuilder](
+    model: M,
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-) -> Result[Fit]:
+) -> Result[Fit[M]]:
     """Fit model parameters to time course of experimental data.
 
     Examples
@@ -156,16 +270,22 @@ def time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     standard_scale
-        Whether to apply standard scale to data and prediction
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
 
     Returns
     -------
@@ -174,38 +294,29 @@ def time_course(
     """
     if as_deepcopy:
         model = deepcopy(model)
-    p_names = model.get_parameter_names()
-    v_names = model.get_variable_names()
+    p_names, v_names = _split_p0(model, p0)
 
-    fn: MinimizerResidual = partial(
-        residual_fn,
-        settings=_Settings(
+    return _minimize(
+        _Settings(
             model=model,
             data=data,
             y0=y0,
-            integrator=integrator,
+            runner=default_runner(model) if runner is None else runner,
             loss_fn=loss_fn,
-            p_names=[i for i in p0 if i in p_names],
-            v_names=[i for i in p0 if i in v_names],
+            postprocess_fn=postprocess_fn,
+            p_names=p_names,
+            v_names=v_names,
             standard_scale=standard_scale,
         ),
+        p0=p0,
+        minimizer=minimizer,
+        residual_fn=residual_fn,
+        bounds=bounds,
     )
 
-    match minimizer(fn, p0, {} if bounds is None else bounds).value:
-        case OptimisationState(parameters, residual):
-            return Result(
-                Fit(
-                    model=model,
-                    best_pars=parameters,
-                    loss=residual,
-                )
-            )
-        case _ as e:
-            return Result(e)
 
-
-def protocol_time_course(
-    model: KineticModelBuilder,
+def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
+    model: M,
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
@@ -213,12 +324,13 @@ def protocol_time_course(
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = protocol_time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-) -> Result[Fit]:
+) -> Result[Fit[M]]:
     """Fit model parameters to time course of experimental data.
 
     Time points of protocol time course are taken from the data.
@@ -250,10 +362,15 @@ def protocol_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
@@ -261,7 +378,8 @@ def protocol_time_course(
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     standard_scale
-        Whether to apply standard scale to data and prediction
+        Whether to apply standard scale to data and prediction. Skipped for
+        fewer than two data points.
 
     Returns
     -------
@@ -270,33 +388,24 @@ def protocol_time_course(
     """
     if as_deepcopy:
         model = deepcopy(model)
-    p_names = model.get_parameter_names()
-    v_names = model.get_variable_names()
+    p_names, v_names = _split_p0(model, p0)
     protocol = _normalise_protocol_index(protocol)
 
-    fn: MinimizerResidual = partial(
-        residual_fn,
-        settings=_Settings(
+    return _minimize(
+        _Settings(
             model=model,
             data=data,
             y0=y0,
-            integrator=integrator,
+            runner=default_runner(model) if runner is None else runner,
             loss_fn=loss_fn,
-            p_names=[i for i in p0 if i in p_names],
-            v_names=[i for i in p0 if i in v_names],
+            postprocess_fn=postprocess_fn,
+            p_names=p_names,
+            v_names=v_names,
             protocol=protocol,
             standard_scale=standard_scale,
         ),
+        p0=p0,
+        minimizer=minimizer,
+        residual_fn=residual_fn,
+        bounds=bounds,
     )
-
-    match minimizer(fn, p0, {} if bounds is None else bounds).value:
-        case OptimisationState(parameters, residual):
-            return Result(
-                Fit(
-                    model=model,
-                    best_pars=parameters,
-                    loss=residual,
-                )
-            )
-        case _ as e:
-            return Result(e)

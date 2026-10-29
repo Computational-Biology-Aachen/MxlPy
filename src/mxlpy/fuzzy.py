@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import multiprocessing
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import partial
 from math import ceil
@@ -16,8 +17,8 @@ import pandas as pd
 from loky import ProcessPoolExecutor
 from tqdm import tqdm, trange
 
+from mxlpy.runners import DynamicRunner, KineticRunner
 from mxlpy.simulation import Simulation
-from mxlpy.simulator import Simulator
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -101,14 +102,10 @@ def _thompson_worker(
     inp: tuple[dict[str, int], dict[str, float]],
     model: KineticModelBuilder,
     data: pd.DataFrame,
+    runner: DynamicRunner[KineticModelBuilder, Simulation],
 ) -> tuple[dict[str, int], pd.DataFrame | None]:
     idxs, parameters = inp
-    res = (
-        Simulator(model)
-        .update_parameters(parameters)
-        .simulate_time_course(data.index)
-        .get_result()
-    )
+    res = runner.time_course(model.update_parameters(parameters), data.index)
     match val := res.value:
         case Simulation():
             return idxs, val.get_variables()
@@ -127,6 +124,7 @@ def thompson_sampling(
     disable_tqdm: bool = False,
     timeout: float | None = None,
     parallel: bool = True,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> ThompsonState:
     """Perform thompson sampling.
 
@@ -150,10 +148,18 @@ def thompson_sampling(
         Maximum time in seconds per worker. If None, no timeout.
     parallel
         Whether to execute in parallel.
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     """
     max_workers = multiprocessing.cpu_count() if max_workers is None else max_workers
-    worker = partial(_thompson_worker, model=model, data=data)
+    worker = partial(
+        _thompson_worker,
+        model=deepcopy(model),
+        data=data,
+        runner=KineticRunner() if runner is None else runner,
+    )
 
     if not parallel:
         for _ in trange(n):

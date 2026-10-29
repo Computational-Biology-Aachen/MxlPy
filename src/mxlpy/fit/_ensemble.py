@@ -6,24 +6,29 @@
 ###############################################################################
 
 
+from collections.abc import Sequence
 from functools import partial
+from typing import Any, overload
 
 import pandas as pd
 
-from mxlpy import parallel
 from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit import losses
-from mxlpy.fit._single import protocol_time_course, steady_state, time_course
-from mxlpy.fit.abstract import EnsembleFit, FitResidual
+from mxlpy.fit._single import _steady_state, protocol_time_course, time_course
+from mxlpy.fit.abstract import EnsembleFit, FitResidual, PostprocessFn
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
     steady_state_residual,
     time_course_residual,
 )
-from mxlpy.integrators import IntegratorType
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
+from mxlpy.parallel import parallelise
+from mxlpy.runners import DynamicRunner, SteadyStateRunner
 from mxlpy.simulator import _normalise_protocol_index
+
+type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
 
 __all__ = [
     "ensemble_protocol_time_course",
@@ -32,21 +37,59 @@ __all__ = [
 ]
 
 
-def ensemble_steady_state(
-    ensemble: list[KineticModelBuilder],
+@overload
+def ensemble_steady_state[M: (KineticModelBuilder, OdeModelBuilder)](
+    ensemble: Sequence[M],
     *,
     p0: dict[str, float],
     data: pd.Series,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = steady_state_residual,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
-) -> EnsembleFit:
+) -> EnsembleFit[M]: ...
+
+
+@overload
+def ensemble_steady_state(
+    ensemble: Sequence[SteadyStateModelBuilder],
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    residual_fn: FitResidual = steady_state_residual,
+    runner: SteadyStateRunner[SteadyStateModelBuilder, Any] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    parallel: bool = True,
+    timeout: float | None = None,
+) -> EnsembleFit[SteadyStateModelBuilder]: ...
+
+
+def ensemble_steady_state[M: _Model](
+    ensemble: Sequence[M],
+    *,
+    p0: dict[str, float],
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    y0: dict[str, float] | None = None,
+    residual_fn: FitResidual = steady_state_residual,
+    runner: SteadyStateRunner[M, Any] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    parallel: bool = True,
+    timeout: float | None = None,
+) -> EnsembleFit[M]:
     """Fit model ensemble parameters to steady-state experimental data.
 
     Examples
@@ -77,16 +120,23 @@ def ensemble_steady_state(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -98,21 +148,22 @@ def ensemble_steady_state(
     return EnsembleFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
-                    steady_state,
+                    _steady_state,
                     p0=p0,
                     data=data,
                     y0=y0,
-                    integrator=integrator,
+                    runner=runner,
                     loss_fn=loss_fn,
+                    postprocess_fn=postprocess_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
-                    oscillation_detector=oscillation_detector,
                 ),
                 inputs=list(enumerate(ensemble)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
@@ -120,20 +171,22 @@ def ensemble_steady_state(
     )
 
 
-def ensemble_time_course(
-    ensemble: list[KineticModelBuilder],
+def ensemble_time_course[M: KineticModelBuilder | OdeModelBuilder](
+    ensemble: Sequence[M],
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
-) -> EnsembleFit:
+) -> EnsembleFit[M]:
     """Fit model parameters to time course of experimental data over a carousel.
 
     Time points are taken from the data.
@@ -166,16 +219,23 @@ def ensemble_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -187,20 +247,22 @@ def ensemble_time_course(
     return EnsembleFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     time_course,
                     p0=p0,
                     data=data,
                     y0=y0,
-                    integrator=integrator,
+                    runner=runner,
                     loss_fn=loss_fn,
+                    postprocess_fn=postprocess_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
@@ -208,8 +270,8 @@ def ensemble_time_course(
     )
 
 
-def ensemble_protocol_time_course(
-    ensemble: list[KineticModelBuilder],
+def ensemble_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
+    ensemble: Sequence[M],
     *,
     p0: dict[str, float],
     data: pd.DataFrame,
@@ -217,12 +279,14 @@ def ensemble_protocol_time_course(
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = protocol_time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
-) -> EnsembleFit:
+) -> EnsembleFit[M]:
     """Fit model parameters to time course of experimental data over a protocol.
 
     Time points of protocol time course are taken from the data.
@@ -256,16 +320,23 @@ def ensemble_protocol_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -278,21 +349,23 @@ def ensemble_protocol_time_course(
     return EnsembleFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     protocol_time_course,
                     p0=p0,
                     data=data,
                     protocol=protocol,
                     y0=y0,
-                    integrator=integrator,
+                    runner=runner,
                     loss_fn=loss_fn,
+                    postprocess_fn=postprocess_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)

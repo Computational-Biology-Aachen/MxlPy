@@ -7,20 +7,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+import numpy as np
 from scipy.optimize import minimize
 
-from mxlpy.types import Array, Result
+from mxlpy.types import Result
 
+from ._scipy import _FiniteResidual
 from .abstract import AbstractMinimizer, Bounds, OptimisationState, Residual
 
 __all__ = ["FixedNMinimizer"]
-
-
-def _pack_updates(
-    par_values: Array,
-    par_names: list[str],
-) -> dict[str, float]:
-    return dict(zip(par_names, par_values, strict=True))
 
 
 @dataclass(kw_only=True, slots=True)
@@ -80,13 +75,14 @@ class FixedNMinimizer(AbstractMinimizer):
         -------
         Result[OptimisationState]
             Always succeeds - returns the parameter state after ``n_steps``
-            iterations together with the residual at that point.
+            iterations together with the residual at that point (``inf`` if
+            no finite residual was found).
 
         """
-        par_names = list(p0.keys())
+        res_fn = _FiniteResidual(residual_fn, list(p0))
 
         res = minimize(
-            lambda par_values: residual_fn(_pack_updates(par_values, par_names)),
+            res_fn,
             x0=list(p0.values()),
             bounds=[bounds.get(name, (1e-6, 1e6)) for name in p0],
             method=self.method,
@@ -96,6 +92,6 @@ class FixedNMinimizer(AbstractMinimizer):
         return Result(
             OptimisationState(
                 parameters=dict(zip(p0, res.x, strict=True)),
-                residual=float(res.fun),
+                residual=np.inf if res_fn.is_penalty(res.fun) else float(res.fun),
             )
         )

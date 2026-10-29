@@ -22,16 +22,21 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, overload
 
 import numpy as np
 import pandas as pd
+from typing_extensions import TypeVar
 from wadler_lindig import pformat
 
+from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.parallel import parallelise
 from mxlpy.plot import _default_fig_ax, _default_fig_axs
-from mxlpy.scan import _steady_state_worker, steady_state
-from mxlpy.simulator import Simulator
+from mxlpy.runners import KineticRunner, SteadyStateRunner, default_runner
+from mxlpy.scan import _copy_with_y0, _steady_state_worker, steady_state
+from mxlpy.simulation import Evaluation, OdeSimulation, Simulation
 from mxlpy.symbolic.symbolic_model import to_symbolic_model
 
 if TYPE_CHECKING:
@@ -40,9 +45,12 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from numpy.typing import NDArray
 
-    from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy.integrators import IntegratorType
     from mxlpy.plot import FigAx, FigAxs
+
+type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
+
+# Defaults to Simulation, so bare result types keep their meaning
+SE = TypeVar("SE", Simulation, OdeSimulation, Evaluation, default=Simulation)
 
 __all__ = [
     "RateCharacteristics",
@@ -57,16 +65,14 @@ __all__ = [
 ]
 
 
-def _response_coefficient_worker(
+def _response_coefficient_worker[M: _Model](
     parameter: str,
     *,
-    model: KineticModelBuilder,
-    y0: dict[str, float] | None,
+    model: M,
     normalized: bool,
-    rel_norm: bool,
     displacement: float = 1e-4,
-    integrator: IntegratorType | None,
-) -> tuple[pd.Series, pd.Series]:
+    runner: SteadyStateRunner[M, Any],
+) -> pd.Series:
     """Calculate response coefficients for a single parameter.
 
     Internal helper function that computes concentration and flux response
@@ -82,16 +88,13 @@ def _response_coefficient_worker(
         Name of the parameter to analyze
     model
         Metabolic model instance
-    y0
-        Initial conditions as a dictionary {species: value}
     normalized
         Whether to normalize the coefficients
-    rel_norm
-        Whether to use relative normalization
     displacement
         Relative perturbation size (default: 1e-4)
-    integrator
-        Integrator function to use for steady state calculation
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Returns
     -------
@@ -102,43 +105,56 @@ def _response_coefficient_worker(
 
     """
     old = model.get_parameter_values()[parameter]
-    if y0 is not None:
-        model.update_variables(y0)
 
     model.update_parameters({parameter: old * (1 + displacement)})
-    upper = _steady_state_worker(
-        model,
-        rel_norm=rel_norm,
-        integrator=integrator,
-        y0=None,
-    )
+    upper = _steady_state_worker(model, runner=runner).get_combined().iloc[-1]
 
     model.update_parameters({parameter: old * (1 - displacement)})
-    lower = _steady_state_worker(
-        model,
-        rel_norm=rel_norm,
-        integrator=integrator,
-        y0=None,
-    )
+    lower = _steady_state_worker(model, runner=runner).get_combined().iloc[-1]
 
-    conc_resp = (upper.variables.iloc[-1] - lower.variables.iloc[-1]) / (
-        2 * displacement * old
-    )  # pyright: ignore[reportOperatorIssue]
-    flux_resp = (upper.fluxes.iloc[-1] - lower.fluxes.iloc[-1]) / (
-        2 * displacement * old
-    )  # pyright: ignore[reportOperatorIssue]
+    resp = (upper - lower) / (2 * displacement * old)
     # Reset
     model.update_parameters({parameter: old})
     if normalized:
-        norm = _steady_state_worker(
-            model,
-            rel_norm=rel_norm,
-            integrator=integrator,
-            y0=None,
+        norm = _steady_state_worker(model, runner=runner).get_combined().iloc[-1]
+        resp *= old / norm
+    return resp
+
+
+def _split_outputs(
+    model: _Model, names: list[str]
+) -> tuple[list[str] | None, list[str] | None]:
+    """Split output names into variables and fluxes, if the builder has them."""
+    if isinstance(model, SteadyStateModelBuilder):
+        return None, None
+    if isinstance(model, OdeModelBuilder):
+        return names, None
+    fluxes = set(
+        model.get_arg_names(
+            include_time=False,
+            include_variables=False,
+            include_parameters=False,
+            include_derived_parameters=False,
+            include_derived_variables=False,
+            include_reactions=True,
+            include_surrogate_variables=False,
+            include_surrogate_fluxes=True,
+            include_readouts=False,
         )
-        conc_resp *= old / norm.variables.iloc[-1]
-        flux_resp *= old / norm.fluxes.iloc[-1]
-    return conc_resp, flux_resp
+    )
+    return [i for i in names if i not in fluxes], [i for i in names if i in fluxes]
+
+
+def _select_rows(df: pd.DataFrame, names: list[str]) -> pd.DataFrame:
+    """Select rows by the last index level, which holds the output names."""
+    return df.loc[df.index.get_level_values(-1).isin(names)]
+
+
+def _require_names(names: list[str] | None, kind: str) -> list[str]:
+    if names is None:
+        msg = f"These results have no {kind} - use .combined instead"
+        raise TypeError(msg)
+    return names
 
 
 ###############################################################################
@@ -276,22 +292,37 @@ def parameter_elasticities(
 
 
 @dataclass(kw_only=True, slots=True)
-class ResponseCoefficients:
-    """Container for response coefficients."""
+class ResponseCoefficients(Generic[SE]):
+    """Container for response coefficients.
 
-    variables: pd.DataFrame
-    fluxes: pd.DataFrame
+    `combined` holds the response of every model output (rows) to every
+    scanned parameter (columns). The split into `variables` and `fluxes`
+    only exists for builders having them.
+    """
+
+    combined: pd.DataFrame
+    variable_names: list[str] | None = None
+    flux_names: list[str] | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
 
     @property
-    def combined(self) -> pd.DataFrame:
-        """Return the response coefficients as a DataFrame."""
-        return pd.concat((self.variables, self.fluxes), axis=1)
+    def variables(
+        self: ResponseCoefficients[Simulation] | ResponseCoefficients[OdeSimulation],
+    ) -> pd.DataFrame:
+        """Return the response coefficients of the variables."""
+        return _select_rows(
+            self.combined, _require_names(self.variable_names, "variables")
+        )
 
-    def __iter__(self) -> Iterator[pd.DataFrame]:
+    @property
+    def fluxes(self: ResponseCoefficients[Simulation]) -> pd.DataFrame:
+        """Return the response coefficients of the fluxes."""
+        return _select_rows(self.combined, _require_names(self.flux_names, "fluxes"))
+
+    def __iter__(self: ResponseCoefficients[Simulation]) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux response coefficients."""
         return iter((self.variables, self.fluxes))
 
@@ -301,6 +332,7 @@ class ResponseCoefficients:
 # ###############################################################################
 
 
+@overload
 def response_coefficients(
     model: KineticModelBuilder,
     *,
@@ -311,9 +343,55 @@ def response_coefficients(
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
-    rel_norm: bool = False,
-    integrator: IntegratorType | None = None,
-) -> ResponseCoefficients:
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
+) -> ResponseCoefficients[Simulation]: ...
+
+
+@overload
+def response_coefficients(
+    model: OdeModelBuilder,
+    *,
+    to_scan: list[str] | None = None,
+    variables: dict[str, float] | None = None,
+    normalized: bool = True,
+    displacement: float = 1e-4,
+    disable_tqdm: bool = False,
+    parallel: bool = True,
+    max_workers: int | None = None,
+    runner: SteadyStateRunner[OdeModelBuilder, OdeSimulation] | None = None,
+) -> ResponseCoefficients[OdeSimulation]: ...
+
+
+@overload
+def response_coefficients(
+    model: SteadyStateModelBuilder,
+    *,
+    to_scan: list[str] | None = None,
+    normalized: bool = True,
+    displacement: float = 1e-4,
+    disable_tqdm: bool = False,
+    parallel: bool = True,
+    max_workers: int | None = None,
+    runner: SteadyStateRunner[SteadyStateModelBuilder, Evaluation] | None = None,
+) -> ResponseCoefficients[Evaluation]: ...
+
+
+def response_coefficients(
+    model: _Model,
+    *,
+    to_scan: list[str] | None = None,
+    variables: dict[str, float] | None = None,
+    normalized: bool = True,
+    displacement: float = 1e-4,
+    disable_tqdm: bool = False,
+    parallel: bool = True,
+    max_workers: int | None = None,
+    runner: SteadyStateRunner[Any, Any] | None = None,
+) -> (
+    ResponseCoefficients[Simulation]
+    | ResponseCoefficients[OdeSimulation]
+    | ResponseCoefficients[Evaluation]
+):
     """Calculate response coefficients.
 
     Examples
@@ -341,10 +419,9 @@ def response_coefficients(
         Whether to parallelize the computation
     max_workers
         Maximum number of workers
-    rel_norm
-        Whether to use relative normalization
-    integrator
-        Integrator function to use for steady state calculation
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Returns
     -------
@@ -353,17 +430,45 @@ def response_coefficients(
         - Concentration response coefficients
 
     """
+    return _response_coefficients(
+        model,
+        to_scan=to_scan,
+        variables=variables,
+        normalized=normalized,
+        displacement=displacement,
+        disable_tqdm=disable_tqdm,
+        parallel=parallel,
+        max_workers=max_workers,
+        runner=runner,
+    )
+
+
+def _response_coefficients(
+    model: _Model,
+    *,
+    to_scan: list[str] | None = None,
+    variables: dict[str, float] | None = None,
+    normalized: bool = True,
+    displacement: float = 1e-4,
+    disable_tqdm: bool = False,
+    parallel: bool = True,
+    max_workers: int | None = None,
+    runner: SteadyStateRunner[Any, Any] | None = None,
+) -> (
+    ResponseCoefficients[Simulation]
+    | ResponseCoefficients[OdeSimulation]
+    | ResponseCoefficients[Evaluation]
+):
+    """Non-overloaded implementation of `response_coefficients`, for internal callers."""
     to_scan = model.get_parameter_names() if to_scan is None else to_scan
 
     res = parallelise(
         partial(
             _response_coefficient_worker,
-            model=model,
-            y0=variables,
+            model=_copy_with_y0(model, variables),
             normalized=normalized,
             displacement=displacement,
-            rel_norm=rel_norm,
-            integrator=integrator,
+            runner=default_runner(model) if runner is None else runner,
         ),
         inputs=list(zip(to_scan, to_scan, strict=True)),
         cache=None,
@@ -371,30 +476,51 @@ def response_coefficients(
         parallel=parallel,
         max_workers=max_workers,
     )
+    combined = pd.DataFrame(dict(res))
+    variable_names, flux_names = _split_outputs(model, list(combined.index))
     return ResponseCoefficients(
-        variables=pd.DataFrame({k: v[0] for k, v in res}),
-        fluxes=pd.DataFrame({k: v[1] for k, v in res}),
+        combined=combined,
+        variable_names=variable_names,
+        flux_names=flux_names,
     )
 
 
 @dataclass(kw_only=True, slots=True)
-class ResponseCoefficientsByPars:
-    """Container for response coefficients by parameter."""
+class ResponseCoefficientsByPars(Generic[SE]):
+    """Container for response coefficients.
 
-    variables: pd.DataFrame
-    fluxes: pd.DataFrame
+    `combined` holds the response of every model output (rows) to every
+    scanned parameter (columns). The split into `variables` and `fluxes`
+    only exists for builders having them.
+    """
+
+    combined: pd.DataFrame
     parameters: pd.DataFrame
+    variable_names: list[str] | None = None
+    flux_names: list[str] | None = None
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
 
     @property
-    def combined(self) -> pd.DataFrame:
-        """Return the response coefficients as a DataFrame."""
-        return pd.concat((self.variables, self.fluxes), axis=1)
+    def variables(
+        self: ResponseCoefficientsByPars[Simulation]
+        | ResponseCoefficientsByPars[OdeSimulation],
+    ) -> pd.DataFrame:
+        """Return the response coefficients of the variables."""
+        return _select_rows(
+            self.combined, _require_names(self.variable_names, "variables")
+        )
 
-    def __iter__(self) -> Iterator[pd.DataFrame]:
+    @property
+    def fluxes(self: ResponseCoefficientsByPars[Simulation]) -> pd.DataFrame:
+        """Return the response coefficients of the fluxes."""
+        return _select_rows(self.combined, _require_names(self.flux_names, "fluxes"))
+
+    def __iter__(
+        self: ResponseCoefficientsByPars[Simulation],
+    ) -> Iterator[pd.DataFrame]:
         """Iterate over the concentration and flux response coefficients."""
         return iter((self.variables, self.fluxes))
 
@@ -621,7 +747,7 @@ def rate_characteristics(
     max_factor: float = 100.0,
     n_points: int = 256,
     parallel: bool = True,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
 ) -> RateCharacteristics:
     """Compute supply-demand rate characteristics for a variable.
 
@@ -650,8 +776,9 @@ def rate_characteristics(
         Number of concentrations to scan (log-spaced).
     parallel
         Whether to compute the steady states in parallel.
-    integrator
-        Integrator to use for steady-state calculation.
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to `KineticRunner()`.
 
     Returns
     -------
@@ -669,13 +796,8 @@ def rate_characteristics(
         >>> rc.plot()
 
     """
-    ss = (
-        Simulator(model, integrator=integrator)
-        .simulate_to_steady_state()
-        .get_result()
-        .unwrap_or_err()
-        .get_new_y0()
-    )
+    runner = KineticRunner() if runner is None else runner
+    ss = runner.steady_state(model).unwrap_or_err().get_new_y0()
     ss_conc = ss[variable]
 
     try:
@@ -696,7 +818,7 @@ def rate_characteristics(
         clamped,
         to_scan=pd.DataFrame({variable: concs}),
         parallel=parallel,
-        integrator=integrator,
+        runner=runner,
     )
     fluxes = res.fluxes
 

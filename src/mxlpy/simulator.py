@@ -14,26 +14,36 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Generic, Self, cast, overload
 
 import numpy as np
 import pandas as pd
 from sympy import lambdify
+from typing_extensions import TypeVar
 from wadler_lindig import pformat
 
+from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.integrators import DefaultIntegrator, Scipy
 from mxlpy.integrators.abstract import TimeCourse
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
-from mxlpy.simulation import Simulation
+from mxlpy.simulation import OdeSimulation, Simulation
 from mxlpy.symbolic import to_symbolic_model
 from mxlpy.types import IntegrationFailure, OscillationDetected, Result
 
 if TYPE_CHECKING:
-    from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.integrators import IntegratorProtocol, IntegratorType
     from mxlpy.types import ArrayLike
 
 _LOGGER = logging.getLogger(__name__)
+
+# Defaults to the KineticModelBuilder, so a bare `Simulator` keeps its meaning
+M = TypeVar(
+    "M",
+    bound=KineticModelBuilder | OdeModelBuilder,
+    default=KineticModelBuilder,
+)
 
 __all__ = [
     "Simulator",
@@ -60,7 +70,7 @@ def _normalise_protocol_index(protocol: pd.DataFrame) -> pd.DataFrame:
     slots=True,
     eq=False,
 )
-class Simulator:
+class Simulator(Generic[M]):
     """Simulator class for running simulations on a metabolic model.
 
     Attributes
@@ -80,7 +90,7 @@ class Simulator:
 
     """
 
-    model: KineticModelBuilder
+    model: M
     y0: dict[str, float]
     integrator: IntegratorProtocol
     variables: list[pd.DataFrame] | None
@@ -99,7 +109,7 @@ class Simulator:
 
     def __init__(
         self,
-        model: KineticModelBuilder,
+        model: M,
         y0: dict[str, float] | None = None,
         integrator: IntegratorType | None = None,
         *,
@@ -123,6 +133,9 @@ class Simulator:
             If True, performs a test run for better error messages
 
         """
+        if isinstance(model, SteadyStateModelBuilder):
+            msg = "A SteadyStateModelBuilder has nothing to simulate - use model.evaluate(), scan.steady_state or fit.steady_state instead"
+            raise TypeError(msg)
         self.model = model
         self.y0 = model.get_initial_conditions() if y0 is None else y0
 
@@ -162,9 +175,10 @@ class Simulator:
             raise NotImplementedError(msg)
 
         jac_fn = None
-        if self.use_jacobian:
+        model = self.model
+        if self.use_jacobian and isinstance(model, KineticModelBuilder):
             try:
-                _jac = to_symbolic_model(self.model).jacobian()
+                _jac = to_symbolic_model(model).jacobian()
                 _jac_fn = lambdify(
                     (
                         "time",
@@ -181,6 +195,8 @@ class Simulator:
 
             except Exception as e:  # noqa: BLE001
                 _LOGGER.warning(str(e), stacklevel=2)
+        elif self.use_jacobian:
+            _LOGGER.warning("Jacobians are only supported for KineticModelBuilder")
 
         # update_variable(s)/clear_results() rebuild the integrator (new y0)
         # without being a "reset" - fired_names must survive them, since it's
@@ -198,8 +214,11 @@ class Simulator:
             jac_fn,
         )
 
-        if events and isinstance(self.integrator, Scipy):
-            model = self.model
+        if (
+            events
+            and isinstance(self.integrator, Scipy)
+            and isinstance(model, KineticModelBuilder)
+        ):
 
             def _update_param(name: str, value: float) -> None:
                 model.update_parameter(name, value)
@@ -671,7 +690,16 @@ class Simulator:
         self._handle_simulation_results(result, skipfirst=False)
         return self
 
-    def get_result(self) -> Result[Simulation]:
+    @overload
+    def get_result(self: Simulator[KineticModelBuilder]) -> Result[Simulation]: ...
+
+    @overload
+    def get_result(self: Simulator[OdeModelBuilder]) -> Result[OdeSimulation]: ...
+
+    @overload
+    def get_result(self) -> Result[Simulation] | Result[OdeSimulation]: ...
+
+    def get_result(self) -> Result[Simulation] | Result[OdeSimulation]:
         """Get result of the simulation.
 
         Examples
@@ -697,9 +725,17 @@ class Simulator:
             return Result(IntegrationFailure())
         if (parameters := self.simulation_parameters) is None:
             return Result(IntegrationFailure())
+        if isinstance(model := self.model, OdeModelBuilder):
+            return Result(
+                OdeSimulation(
+                    model=model,
+                    raw_variables=variables,
+                    raw_parameters=parameters,
+                )
+            )
         return Result(
             Simulation(
-                model=self.model,
+                model=model,
                 raw_variables=variables,
                 raw_parameters=parameters,
             )

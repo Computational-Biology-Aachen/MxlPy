@@ -2,22 +2,36 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from mxlpy import KineticModelBuilder, fns, make_protocol
+from mxlpy import (
+    KineticModelBuilder,
+    OdeModelBuilder,
+    SteadyStateModelBuilder,
+    cartesian_product,
+    fns,
+    make_protocol,
+)
+from mxlpy import scan as scan_module
 from mxlpy.integrators import DefaultIntegrator
+from mxlpy.runners import KineticRunner
 from mxlpy.scan import (
+    SteadyStateScan,
     _steady_state_worker,
     _time_course_worker,
     _update_parameters_and_initial_conditions,
     protocol,
+    protocol_time_course,
     steady_state,
     time_course,
 )
+from mxlpy.simulation import Evaluation, Simulation
 
 
 @pytest.fixture
@@ -225,11 +239,10 @@ def test_steady_state_scan_with_multiindex(simple_model: KineticModelBuilder) ->
 def test_steady_state_worker(simple_model: KineticModelBuilder) -> None:
     result = _steady_state_worker(
         simple_model,
-        rel_norm=False,
-        integrator=DefaultIntegrator,
-        y0=None,
+        runner=KineticRunner(integrator=DefaultIntegrator),
     )
 
+    assert isinstance(result, Simulation)
     # The model should reach steady state with S=0, P=0
     assert not np.isnan(result.variables["S"].iloc[-1])
     assert not np.isnan(result.variables["P"].iloc[-1])
@@ -299,10 +312,10 @@ def test_time_course_worker(simple_model: KineticModelBuilder) -> None:
     result = _time_course_worker(
         simple_model,
         time_points=time_points,
-        integrator=DefaultIntegrator,
-        y0=None,
+        runner=KineticRunner(integrator=DefaultIntegrator),
     )
 
+    assert isinstance(result, Simulation)
     assert result.variables.shape == (3, 2)
     assert result.fluxes.shape == (3, 2)
     assert not np.isnan(result.variables.values).any()
@@ -366,3 +379,129 @@ def test_update_parameters_and(simple_model: KineticModelBuilder) -> None:
     result = _update_parameters_and_initial_conditions(params, get_params, simple_model)
     assert result["k1"] == 2.0
     assert result["k2"] == 2.0  # Unchanged
+
+
+def ode_model() -> OdeModelBuilder:
+    """dx/dt = k_in - k * x, with steady state x = k_in / k."""
+    return (
+        OdeModelBuilder()
+        .add_parameter("k_in", 1.0)
+        .add_parameter("k", 0.5)
+        .add_diff_eq(
+            "x",
+            fn=lambda k_in, x, k: k_in - k * x,
+            args=["k_in", "x", "k"],
+            initial_value=0.0,
+        )
+        .add_derived("d", fn=lambda x: 2 * x, args=["x"])
+    )
+
+
+def test_steady_state_ode_model() -> None:
+    res = steady_state(
+        ode_model(),
+        to_scan=pd.DataFrame({"k": [0.5, 1.0, 2.0]}),
+        parallel=False,
+    )
+    np.testing.assert_allclose(res.variables["x"], [2.0, 1.0, 0.5], rtol=1e-4)
+    np.testing.assert_allclose(res.combined["d"], [4.0, 2.0, 1.0], rtol=1e-4)
+    assert "k" in res.get_args(include_parameters=True).columns
+
+
+def test_time_course_ode_model_initial_conditions() -> None:
+    res = time_course(
+        ode_model(),
+        to_scan=pd.DataFrame({"x": [0.0, 5.0]}),
+        time_points=np.linspace(0, 1, 3),
+        parallel=False,
+    )
+    assert res.variables.loc[(0, 0.0), "x"] == 0.0
+    assert res.variables.loc[(1, 0.0), "x"] == pytest.approx(5.0)
+
+
+def test_steady_state_steady_state_model() -> None:
+    model = (
+        SteadyStateModelBuilder()
+        .add_parameter("k", 2.0)
+        .add_derived("d", fn=lambda k: 1 / k, args=["k"])
+    )
+    res = steady_state(
+        model,
+        to_scan=pd.DataFrame({"k": [1.0, 0.0, 4.0]}),
+        parallel=False,
+    )
+    assert isinstance(res, SteadyStateScan)
+    assert all(isinstance(i, Evaluation) for i in res.raw_results)
+    assert list(res.combined.columns) == ["d"]
+    np.testing.assert_array_equal(res.combined["d"], [1.0, np.nan, 0.25])
+    assert list(res.get_args(include_parameters=True).columns) == ["k", "d"]
+
+
+def ratio(a: float, b: float) -> float:
+    return a / b
+
+
+def log(a: float) -> float:
+    return math.log(a)
+
+
+def test_steady_state_steady_state_model_runs_serially_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+    original = scan_module.parallelise
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs["parallel"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(scan_module, "parallelise", spy)
+    model = (
+        SteadyStateModelBuilder()
+        .add_parameters({"a": 1.0, "b": 2.0})
+        .add_derived("d", fn=ratio, args=["a", "b"])
+    )
+    steady_state(model, to_scan=pd.DataFrame({"a": [1.0, 2.0]}))
+    assert calls == [False]
+
+
+def test_steady_state_steady_state_model_domain_error_is_nan() -> None:
+    model = SteadyStateModelBuilder().add_parameter("a", 1.0)
+    model.add_derived("d", fn=log, args=["a"])
+    res = steady_state(model, to_scan=pd.DataFrame({"a": [1.0, -1.0]}))
+    np.testing.assert_array_equal(res.combined["d"], [0.0, np.nan])
+
+
+def test_steady_state_steady_state_model_multiindex() -> None:
+    model = (
+        SteadyStateModelBuilder()
+        .add_parameters({"a": 1.0, "b": 2.0})
+        .add_derived("d", fn=ratio, args=["a", "b"])
+    )
+    res = steady_state(
+        model, to_scan=cartesian_product({"a": [1.0, 2.0], "b": [1.0, 4.0]})
+    )
+    assert res.combined.index.names == ["a", "b"]
+    assert res.combined.loc[(2.0, 4.0), "d"] == 0.5
+
+
+def test_ode_scan_fluxes_raise_helpful_error() -> None:
+    res = steady_state(
+        ode_model(), to_scan=pd.DataFrame({"k": [0.5, 1.0]}), parallel=False
+    )
+    with pytest.raises(TypeError, match="have fluxes"):
+        _ = res.fluxes  # type: ignore[misc]
+    with pytest.raises(TypeError, match="have fluxes"):
+        _, _ = res  # type: ignore[misc]
+
+
+def test_protocol_time_course_ode_model() -> None:
+    res = protocol_time_course(
+        ode_model(),
+        to_scan=pd.DataFrame({"k": [0.5, 1.0]}),
+        protocol=make_protocol([(2, {"k_in": 1.0}), (2, {"k_in": 3.0})]),
+        time_points=np.linspace(0, 4, 11),
+        parallel=False,
+    )
+    assert res.variables.shape == (2 * 11, 2)
+    assert not res.variables.isna().any().any()

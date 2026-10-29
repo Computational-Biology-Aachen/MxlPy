@@ -80,6 +80,8 @@ res.get_consumers("S")           # reactions that consume S; pass scaled=True to
 res.get_new_y0()                 # final state as a y0 dict (e.g. to seed another run)
 ```
 
+Simulating an `OdeModelBuilder` yields an `OdeSimulation` instead. It has the same `variables`, `get_variables`, `get_args`, `get_combined` (= variables, incl. derived & readouts), `get_right_hand_side` and `get_new_y0`, but no fluxes, producers or consumers, and doesn't unpack. A `SteadyStateModelBuilder` isn't simulated at all — call `model.evaluate()`.
+
 ## Error handling
 
 Simulations return a `Result[Simulation]`. Three ways to handle it:
@@ -129,3 +131,29 @@ if isinstance(sim.integrator, Scipy):
 from diffrax import Tsit5
 sim = Simulator(model, integrator=partial(Diffrax, solver=Tsit5()))
 ```
+
+## Runners
+
+Routines (`scan`, `fit`, `mc`, `mca`, `carousel`, `identify`, `fuzzy`) don't take a `Simulator` or integrator arguments, but a **runner** describing how each model is simulated. Runners hold the integrator and the steady-state search settings; the routine copies the model, so it never mutates yours. Runners return a `Result`, and each routine decides what a failure means (NaN rows for scans, an infinite residual for fits).
+
+```python
+from functools import partial
+from mxlpy import KineticRunner, OdeRunner, EvaluationRunner, Scipy, scan
+from mxlpy.runners import default_runner
+
+runner = KineticRunner(
+    integrator=partial(Scipy, rtol=1e-8, atol=1e-8),
+    tolerance=1e-8,             # steady-state tolerance
+    rel_norm=False,
+    oscillation_detector=None,  # disable oscillation detection
+)
+scan.steady_state(model, to_scan=df, runner=runner)
+default_runner(model)           # KineticRunner() / OdeRunner() / EvaluationRunner() by builder
+
+# Custom behaviour: subclass and override one method; applies to every routine
+class MyRunner(KineticRunner):
+    def steady_state(self, model):
+        return KineticRunner.steady_state(self, model)
+```
+
+Runner methods: `steady_state(model)`; integrating runners (`DynamicRunner`) also `time_course(model, time_points)`, `protocol(model, protocol, *, time_points_per_step=10)`, `protocol_time_course(model, protocol, time_points)`. `EvaluationRunner` only has `steady_state`.

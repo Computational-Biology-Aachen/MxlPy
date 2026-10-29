@@ -8,74 +8,78 @@
 
 from collections.abc import Iterable
 from functools import partial
-from typing import cast
+from typing import Any, cast, overload
 
 import pandas as pd
 
-from mxlpy import parallel
 from mxlpy._kinetic_builder import KineticModelBuilder
+from mxlpy._ode_builder import OdeModelBuilder
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit import losses
-from mxlpy.fit._single import protocol_time_course, steady_state, time_course
-from mxlpy.fit.abstract import Fit, FitResidual, GroupFit
+from mxlpy.fit._single import _steady_state, protocol_time_course, time_course
+from mxlpy.fit.abstract import Fit, FitResidual, GroupFit, PostprocessFn
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
     steady_state_residual,
     time_course_residual,
 )
-from mxlpy.integrators import IntegratorType
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
+from mxlpy.parallel import parallelise
+from mxlpy.runners import DynamicRunner, SteadyStateRunner
 from mxlpy.simulator import _normalise_protocol_index
 from mxlpy.types import Result
+
+type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
 
 __all__ = ["group_protocol_time_course", "group_steady_state", "group_time_course"]
 
 
-def _wrap_steady_state(
+def _wrap_steady_state[M: _Model](
     p0: dict[str, float],
     *,
-    model: KineticModelBuilder,
+    model: M,
     data: pd.Series,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = steady_state_residual,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
-) -> Result[Fit]:
-    return steady_state(
+) -> Result[Fit[M]]:
+    return _steady_state(
         model=model,
         p0=p0,
         data=data,
         y0=y0,
-        integrator=integrator,
+        runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         minimizer=minimizer,
         residual_fn=residual_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
-        oscillation_detector=oscillation_detector,
     )
 
 
-def _wrap_time_course(
+def _wrap_time_course[M: KineticModelBuilder | OdeModelBuilder](
     p0: dict[str, float],
     *,
-    model: KineticModelBuilder,
+    model: M,
     data: pd.DataFrame,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-) -> Result[Fit]:
+) -> Result[Fit[M]]:
     return time_course(
         model=model,
         p0=p0,
@@ -83,37 +87,40 @@ def _wrap_time_course(
         minimizer=minimizer,
         y0=y0,
         residual_fn=residual_fn,
-        integrator=integrator,
+        runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
     )
 
 
-def _wrap_protocol_time_course(
+def _wrap_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     p0: dict[str, float],
     *,
-    model: KineticModelBuilder,
+    model: M,
     data: pd.DataFrame,
     protocol: pd.DataFrame,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = protocol_time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-) -> Result[Fit]:
+) -> Result[Fit[M]]:
     return protocol_time_course(
         model=model,
         p0=p0,
         data=data,
         protocol=protocol,
         y0=y0,
-        integrator=integrator,
+        runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         minimizer=minimizer,
         residual_fn=residual_fn,
         bounds=bounds,
@@ -127,21 +134,59 @@ def _iterrows(df: pd.DataFrame) -> Iterable[tuple[str, dict[str, float]]]:
         yield cast(str, name), cast(dict, val.to_dict())
 
 
-def group_steady_state(
-    model: KineticModelBuilder,
+@overload
+def group_steady_state[M: (KineticModelBuilder, OdeModelBuilder)](
+    model: M,
     *,
     p0: pd.DataFrame,
     data: pd.Series,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = steady_state_residual,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
-    oscillation_detector: OscillationDetector | None = detect_oscillations,
-) -> GroupFit:
+) -> GroupFit[M]: ...
+
+
+@overload
+def group_steady_state(
+    model: SteadyStateModelBuilder,
+    *,
+    p0: pd.DataFrame,
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    residual_fn: FitResidual = steady_state_residual,
+    runner: SteadyStateRunner[SteadyStateModelBuilder, Any] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    parallel: bool = True,
+    timeout: float | None = None,
+) -> GroupFit[SteadyStateModelBuilder]: ...
+
+
+def group_steady_state[M: _Model](
+    model: M,
+    *,
+    p0: pd.DataFrame,
+    data: pd.Series,
+    minimizer: MinimizerProtocol,
+    y0: dict[str, float] | None = None,
+    residual_fn: FitResidual = steady_state_residual,
+    runner: SteadyStateRunner[M, Any] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
+    bounds: Bounds | None = None,
+    as_deepcopy: bool = True,
+    parallel: bool = True,
+    timeout: float | None = None,
+) -> GroupFit[M]:
     """Fit model parameters to steady-state experimental data.
 
     Examples
@@ -169,16 +214,23 @@ def group_steady_state(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -190,21 +242,22 @@ def group_steady_state(
     return GroupFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     _wrap_steady_state,
                     model=model,
                     data=data,
                     y0=y0,
-                    integrator=integrator,
+                    runner=runner,
                     loss_fn=loss_fn,
+                    postprocess_fn=postprocess_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
-                    oscillation_detector=oscillation_detector,
                 ),
                 inputs=list(_iterrows(p0)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
@@ -212,20 +265,22 @@ def group_steady_state(
     )
 
 
-def group_time_course(
-    model: KineticModelBuilder,
+def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
+    model: M,
     *,
     p0: pd.DataFrame,
     data: pd.DataFrame,
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
-) -> GroupFit:
+) -> GroupFit[M]:
     """Fit model parameters to time course of experimental data over a carousel.
 
     Time points are taken from the data.
@@ -255,16 +310,23 @@ def group_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -276,20 +338,22 @@ def group_time_course(
     return GroupFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     _wrap_time_course,
                     model=model,
                     data=data,
                     y0=y0,
-                    integrator=integrator,
+                    runner=runner,
                     loss_fn=loss_fn,
+                    postprocess_fn=postprocess_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(_iterrows(p0)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)
@@ -297,8 +361,8 @@ def group_time_course(
     )
 
 
-def group_protocol_time_course(
-    model: KineticModelBuilder,
+def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
+    model: M,
     *,
     p0: pd.DataFrame,
     data: pd.DataFrame,
@@ -306,12 +370,14 @@ def group_protocol_time_course(
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
     residual_fn: FitResidual = protocol_time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[M, Any] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
+    parallel: bool = True,
     timeout: float | None = None,
-) -> GroupFit:
+) -> GroupFit[M]:
     """Fit model parameters to time course of experimental data over a protocol.
 
     Time points of protocol time course are taken from the data.
@@ -342,16 +408,23 @@ def group_protocol_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
+    parallel
+        Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
 
@@ -364,21 +437,23 @@ def group_protocol_time_course(
     return GroupFit(
         [
             fit
-            for i in parallel.parallelise(
+            for i in parallelise(
                 partial(
                     _wrap_protocol_time_course,
                     model=model,
                     data=data,
                     protocol=protocol,
                     y0=y0,
-                    integrator=integrator,
+                    runner=runner,
                     loss_fn=loss_fn,
+                    postprocess_fn=postprocess_fn,
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(_iterrows(p0)),
+                parallel=parallel,
                 timeout=timeout,
             )
             if not isinstance(fit := i[1].value, Exception)

@@ -165,6 +165,54 @@ model.make_variable_static("ATP", value=2.0)  # remove a variable from the ODE, 
 model.make_parameter_dynamic("k_enz", initial_value=1.0, stoichiometries={"v_synthesis": 1})  # promote to variable
 ```
 
+## Other model builders
+
+`Model` is an alias of `KineticModelBuilder`. Two sibling builders share its fluent parameter / derived API but describe the right hand side differently:
+
+- `OdeModelBuilder` — one differential equation per variable via `add_diff_eq(name, fn=..., args=[...], initial_value=...)`. No reactions, fluxes or stoichiometries. Simulated with the same `Simulator`, which then returns an `OdeSimulation`.
+- `SteadyStateModelBuilder` — only parameters (incl. `InitialAssignment`s) and derived quantities, no variables. Never simulated: `.evaluate(include_parameters=False)` returns all derived values as a `pd.Series`.
+
+```python
+from mxlpy import OdeModelBuilder, SteadyStateModelBuilder
+
+def logistic(x: float, r: float, capacity: float) -> float:
+    return r * x * (1 - x / capacity)
+
+ode = (
+    OdeModelBuilder()
+    .add_parameters({"r": 1.0, "capacity": 10.0})
+    .add_diff_eq("x", fn=logistic, args=["x", "r", "capacity"], initial_value=0.5)
+)
+ode.get_right_hand_side({"x": 5.0})   # dx/dt
+ode.update_variable("x", 2.0)         # change initial condition
+
+def michaelis_menten(s: float, vmax: float, km: float) -> float:
+    return vmax * s / (km + s)
+
+ss = (
+    SteadyStateModelBuilder()
+    .add_parameters({"vmax": 5.0, "km": 2.0, "S": 1.0})
+    .add_derived("v", fn=michaelis_menten, args=["S", "vmax", "km"])
+)
+ss.evaluate()                         # pd.Series({"v": 1.67})
+```
+
+Support across the library:
+
+| | `Model` | `OdeModelBuilder` | `SteadyStateModelBuilder` |
+|---|---|---|---|
+| Default runner | `KineticRunner` → `Simulation` | `OdeRunner` → `OdeSimulation` (no fluxes) | `EvaluationRunner` → `Evaluation` (no variables) |
+| `Simulator` | ✓ | ✓ | — (use `.evaluate()`) |
+| `scan.steady_state`, `mc.steady_state`, `mc.scan_steady_state` | ✓ | ✓ | ✓ |
+| `scan.time_course` / `protocol*`, `mc` equivalents | ✓ | ✓ | — |
+| `fit.*steady_state` (single / group / ensemble / joint) | ✓ | ✓ | ✓ |
+| `fit.*time_course` / `*protocol_time_course`, `joint_mixed` | ✓ | ✓ | — |
+| `mca.response_coefficients`, `mc.response_coefficients`, `sensitivity` | ✓ | ✓ | ✓ |
+| flux elasticities, `mca.rate_characteristics`, `steady_state_stability`, carousel fits, `compare` | ✓ | — | — |
+| `save` / `load`, `meta.generate_model_code_mxlweb` | ✓ | ✓ | ✓ |
+
+Results without fluxes (or variables) raise a `TypeError` on `.fluxes` (or `.variables`) and on `(variables, fluxes)` unpacking; use `.combined`. A joint fit may mix builders (`FitSettings` are generic); steady-state models reject a per-model `y0` and time-course fits.
+
 ## Composition (`mxlpy.compose`)
 
 Merge two or more independently-built models into one new model. Components are matched **by name** across the whole namespace; the inputs are never mutated.

@@ -21,14 +21,14 @@ from mxlpy.fit.residuals import (
     steady_state_residual,
     time_course_residual,
 )
-from mxlpy.integrators import IntegratorType
+from mxlpy.runners import DynamicRunner, KineticRunner, SteadyStateRunner
 from mxlpy.simulator import _normalise_protocol_index
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from mxlpy import KineticModelBuilder
-    from mxlpy.integrators import IntegratorType
+    from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy.fit.abstract import PostprocessFn
     from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
     from mxlpy.simulation import Simulation
     from mxlpy.types import Array, RateFn
@@ -133,7 +133,7 @@ class Carousel:
         time_points: Array,
         *,
         y0: dict[str, float] | None = None,
-        integrator: IntegratorType | None = None,
+        runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
         timeout: float | None = None,
     ) -> CarouselTimeCourse:
         """Simulate the carousel of models over a time course.
@@ -144,8 +144,9 @@ class Carousel:
             Array of time points to simulate.
         y0
             Initial values for variables. If None, uses model defaults.
-        integrator
-            Integrator to use. If None, uses the default integrator.
+        runner
+            How each variant is simulated, see `mxlpy.runners`.
+            Defaults to `KineticRunner()`.
         timeout
             Timeout in seconds for each parallel worker.
 
@@ -156,10 +157,9 @@ class Carousel:
                 partial(
                     scan._time_course_worker,  # noqa: SLF001
                     time_points=time_points,
-                    integrator=integrator,
-                    y0=y0,
+                    runner=KineticRunner() if runner is None else runner,
                 ),
-                list(enumerate(self.variants)),
+                list(enumerate(scan._copy_with_y0(i, y0) for i in self.variants)),  # noqa: SLF001
                 timeout=timeout,
             )
         ]
@@ -174,7 +174,7 @@ class Carousel:
         protocol: pd.DataFrame,
         *,
         y0: dict[str, float] | None = None,
-        integrator: IntegratorType | None = None,
+        runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
         timeout: float | None = None,
     ) -> CarouselTimeCourse:
         """Simulate the carousel of models over a protocol time course.
@@ -185,8 +185,9 @@ class Carousel:
             DataFrame defining the protocol steps.
         y0
             Initial values for variables. If None, uses model defaults.
-        integrator
-            Integrator to use. If None, uses the default integrator.
+        runner
+            How each variant is simulated, see `mxlpy.runners`.
+            Defaults to `KineticRunner()`.
         timeout
             Timeout in seconds for each parallel worker.
 
@@ -197,10 +198,10 @@ class Carousel:
                 partial(
                     scan._protocol_worker,  # noqa: SLF001
                     protocol=protocol,
-                    integrator=integrator,
-                    y0=y0,
+                    time_points_per_step=10,
+                    runner=KineticRunner() if runner is None else runner,
                 ),
-                list(enumerate(self.variants)),
+                list(enumerate(scan._copy_with_y0(i, y0) for i in self.variants)),  # noqa: SLF001
                 timeout=timeout,
             )
         ]
@@ -216,7 +217,7 @@ class Carousel:
         time_points: Array,
         *,
         y0: dict[str, float] | None = None,
-        integrator: IntegratorType | None = None,
+        runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
         timeout: float | None = None,
     ) -> CarouselTimeCourse:
         """Simulate the carousel of models over a protocol time course.
@@ -229,8 +230,9 @@ class Carousel:
             Array of time points to simulate within each protocol step.
         y0
             Initial values for variables. If None, uses model defaults.
-        integrator
-            Integrator to use. If None, uses the default integrator.
+        runner
+            How each variant is simulated, see `mxlpy.runners`.
+            Defaults to `KineticRunner()`.
         timeout
             Timeout in seconds for each parallel worker.
 
@@ -241,11 +243,10 @@ class Carousel:
                 partial(
                     scan._protocol_time_course_worker,  # noqa: SLF001
                     protocol=protocol,
-                    integrator=integrator,
                     time_points=time_points,
-                    y0=y0,
+                    runner=KineticRunner() if runner is None else runner,
                 ),
-                list(enumerate(self.variants)),
+                list(enumerate(scan._copy_with_y0(i, y0) for i in self.variants)),  # noqa: SLF001
                 timeout=timeout,
             )
         ]
@@ -259,8 +260,7 @@ class Carousel:
         self,
         *,
         y0: dict[str, float] | None = None,
-        integrator: IntegratorType | None = None,
-        rel_norm: bool = False,
+        runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
         timeout: float | None = None,
     ) -> CarouselSteadyState:
         """Simulate the carousel of models to steady state.
@@ -269,10 +269,9 @@ class Carousel:
         ----------
         y0
             Initial values for variables. If None, uses model defaults.
-        integrator
-            Integrator to use. If None, uses the default integrator.
-        rel_norm
-            Whether to use relative norm for steady-state convergence.
+        runner
+            How each variant is simulated, see `mxlpy.runners`.
+            Defaults to `KineticRunner()`.
         timeout
             Timeout in seconds for each parallel worker.
 
@@ -282,11 +281,9 @@ class Carousel:
             for i in parallel.parallelise(
                 partial(
                     scan._steady_state_worker,  # noqa: SLF001
-                    integrator=integrator,
-                    rel_norm=rel_norm,
-                    y0=y0,
+                    runner=KineticRunner() if runner is None else runner,
                 ),
-                list(enumerate(self.variants)),
+                list(enumerate(scan._copy_with_y0(i, y0) for i in self.variants)),  # noqa: SLF001
                 timeout=timeout,
             )
         ]
@@ -311,8 +308,9 @@ def carousel_steady_state(
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: mxlpy.fit.abstract.FitResidual = steady_state_residual,
-    integrator: IntegratorType | None = None,
+    runner: SteadyStateRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
@@ -347,10 +345,15 @@ def carousel_steady_state(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
@@ -372,8 +375,9 @@ def carousel_steady_state(
         minimizer=minimizer,
         y0=y0,
         residual_fn=residual_fn,
-        integrator=integrator,
+        runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         timeout=timeout,
@@ -388,8 +392,9 @@ def carousel_time_course(
     minimizer: MinimizerProtocol,
     y0: dict[str, float] | None = None,
     residual_fn: mxlpy.fit.abstract.FitResidual = time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
@@ -426,10 +431,15 @@ def carousel_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
@@ -451,8 +461,9 @@ def carousel_time_course(
         minimizer=minimizer,
         y0=y0,
         residual_fn=residual_fn,
-        integrator=integrator,
+        runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         timeout=timeout,
@@ -468,8 +479,9 @@ def carousel_protocol_time_course(
     protocol: pd.DataFrame,
     y0: dict[str, float] | None = None,
     residual_fn: mxlpy.fit.abstract.FitResidual = protocol_time_course_residual,
-    integrator: IntegratorType | None = None,
+    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
     loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
@@ -507,10 +519,15 @@ def carousel_protocol_time_course(
         Function to minimize fitting error
     residual_fn
         Function to calculate fitting error
-    integrator
-        ODE integrator class
+    runner
+        How the model is simulated, see `mxlpy.runners`.
+        Defaults to the default runner of the model builder.
     loss_fn
         Loss function to use for residual calculation
+    postprocess_fn
+        Function applied to the combined simulation result before the loss is
+        calculated, e.g. to compute quantities derived from the whole time
+        series. Its output has to contain the data columns.
     time_points_per_step
         Number of time points per step in the protocol
     bounds
@@ -534,8 +551,9 @@ def carousel_protocol_time_course(
         protocol=protocol,
         y0=y0,
         residual_fn=residual_fn,
-        integrator=integrator,
+        runner=runner,
         loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         timeout=timeout,
