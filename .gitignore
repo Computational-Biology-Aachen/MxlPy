@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.jax_cache/
 
 # C extensions
 *.so
@@ -47,7 +48,6 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
-.jax_cache/
 .ruff_cache/
 
 # Translations

@@ -1,0 +1,18 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=77", "wheel"]
+
+[project]
+description = "Compiled ODE solver for MxlPy's Native integrator"
+license = "MIT"
+name = "mxlpy-native"
+requires-python = ">=3.12"
+version = "0.1.0"
+
+[tool.cibuildwheel]
+build = "cp312-*"
+skip = ["*-musllinux_*", "*-win32", "*-manylinux_i686"]
+test-command = "python -c \"import mxlpy_native; assert mxlpy_native.library_path().exists()\""
+
+[tool.setuptools.packages.find]
+where = ["src"]

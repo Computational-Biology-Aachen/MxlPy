@@ -29,6 +29,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from .int_diffrax import Diffrax
+    from .int_native import Native
 
 
 def __getattr__(name: str) -> object:
@@ -41,6 +42,13 @@ def __getattr__(name: str) -> object:
             msg = f"module {__name__!r} has no attribute {name!r}"
             raise AttributeError(msg) from e
         return Diffrax
+    # Native needs llvmlite or wasmtime, so it stays unavailable without them
+    if name == "Native":
+        try:
+            from .int_native import Native  # noqa: PLC0415
+        except ImportError as e:
+            raise AttributeError(str(e)) from e
+        return Native
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
 
@@ -51,6 +59,7 @@ __all__ = [
     "Diffrax",
     "IntegratorProtocol",
     "IntegratorType",
+    "Native",
     "OscillationDetector",
     "Scipy",
     "detect_oscillations",

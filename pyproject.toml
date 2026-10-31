@@ -85,6 +85,8 @@ version = "0.64.0"
 [project.optional-dependencies]
 jax = ["diffrax>=0.7.0", "equinox>=0.13", "optax>=0.2.5", "sympy2jax>=0.0.7"]
 keras = ["keras>=3.9.2"]
+native = ["llvmlite>=0.45", "mxlpy-native>=0.1.0"]
+native-wasm = ["wasmtime>=30"]
 sr = ["pysr>=1.5.9"]
 tensorflow = ["tensorflow>=2.19.0"]
 torch = ["torch>=2.5.1"]
@@ -209,6 +211,7 @@ url = "https://download.pytorch.org/whl/cpu"
 
 [tool.uv.sources]
 mxlpy = { workspace = true }
+mxlpy-native = { path = "native", editable = true }
 # Plain PyPI torch on Linux resolves to the CUDA build, which unconditionally
 # depends on triton — triton's native module segfaults on GitHub Actions'
 # GPU-less runners the instant torch.optim.Optimizer.__init__ lazily imports
