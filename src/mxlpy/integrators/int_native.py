@@ -12,17 +12,21 @@ from __future__ import annotations
 import atexit
 import importlib
 import importlib.util
+import logging
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import numpy as np
+import pandas as pd
 
 from mxlpy.integrators._native.lower import (
     NativeLoweringError,
     fingerprint,
     lower,
+    lower_outputs,
 )
 from mxlpy.integrators.abstract import AbstractIntegrator, TimeCourse
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
@@ -33,7 +37,7 @@ if TYPE_CHECKING:
 
     from mxlpy.types import Array, Rhs
 
-__all__ = ["Native", "NativeLoweringError"]
+__all__ = ["Native", "NativeLoweringError", "args_time_course"]
 
 _REQUIRES = {"llvm": ("llvmlite", "mxlpy_native"), "wasm": ("wasmtime",)}
 _EXTRA = {"llvm": "mxlpy[native]", "wasm": "mxlpy[native-wasm]"}
@@ -46,6 +50,7 @@ if not _AVAILABLE:
     msg = 'Native needs an optional backend: pip install "mxlpy[native]" or "mxlpy[native-wasm]"'
     raise ImportError(msg)
 
+_LOGGER = logging.getLogger(__name__)
 _CACHE_SIZE = 32
 _CHECK_RTOL = 1e-8
 _CHECK_STATES = 3
@@ -70,6 +75,8 @@ class _Compiled(Protocol):
         nmax: int,
         reuse_jacobian: bool,
     ) -> tuple[int, Array]: ...
+
+    def eval_rows(self, t: Array, y: Array, pars: Array, n_out: int) -> Array: ...
 
 
 def _parameters(model: Any, names: list[str]) -> Array:
@@ -122,6 +129,88 @@ def _compile(
         return _CACHE[key]
 
 
+def _check_outputs(
+    compiled: _Compiled,
+    model: Any,
+    par_names: list[str],
+    variables: pd.DataFrame,
+    python: Callable[[pd.DataFrame], pd.DataFrame],
+) -> None:
+    """Compare compiled outputs with the Python path, at perturbed states."""
+    rng = np.random.default_rng(0)
+    values = variables.to_numpy(dtype=float)[:1]
+    scale = np.where(values > 0, values, 1.0)
+    states = scale * rng.uniform(0.5, 1.5, (_CHECK_STATES, values.shape[1]))
+    index = np.asarray(variables.index[:1], dtype=float)[0] + np.arange(
+        _CHECK_STATES, dtype=float
+    )
+    expected = python(pd.DataFrame(states, index=index, columns=variables.columns))
+    got = compiled.eval_rows(
+        index, states, _parameters(model, par_names), expected.shape[1]
+    )
+    want = expected.to_numpy(dtype=float)
+    finite = want[np.isfinite(want)]
+    atol = _CHECK_RTOL * (np.abs(finite).max() if finite.size else 1.0) + 1e-12
+    close = np.isclose(got, want, rtol=_CHECK_RTOL, atol=atol, equal_nan=True).all(
+        axis=0
+    )
+    if not close.all():
+        msg = f"Compiled outputs disagree with the model for {list(expected.columns[~close])}"
+        raise NativeLoweringError(msg)
+
+
+def _compile_outputs(
+    model: Any,
+    backend: str,
+    variables: pd.DataFrame,
+    python: Callable[[pd.DataFrame], pd.DataFrame],
+) -> tuple[_Compiled, list[str], list[str]] | None:
+    """Compile every reportable value of a model, or return None if that's not possible."""
+    key = ("outputs", backend, fingerprint(model))
+    if key in _CACHE:
+        _CACHE.move_to_end(key)
+        return _CACHE[key]  # type: ignore[return-value]
+    entry = None
+    try:
+        names = [str(c) for c in python(variables.iloc[:1]).columns]
+        low = lower_outputs(model, names)
+        module = importlib.import_module(f"mxlpy.integrators._native.{backend}_backend")
+        compiled = module.compile_model(low)
+        _check_outputs(compiled, model, low.par_names, variables, python)
+        entry = (compiled, names, low.par_names)
+    except (NativeLoweringError, ArithmeticError, ValueError) as e:
+        _LOGGER.debug("Native falls back to Python for simulation outputs: %s", e)
+    _CACHE[key] = entry  # type: ignore[assignment]
+    while len(_CACHE) > _CACHE_SIZE:
+        _CACHE.popitem(last=False)
+    return entry
+
+
+def args_time_course(
+    model: Any,
+    variables: pd.DataFrame,
+    python: Callable[[pd.DataFrame], pd.DataFrame],
+    *,
+    backend: str,
+) -> pd.DataFrame | None:
+    """Compute a simulation's reportable values in compiled code.
+
+    `python` is the regular computation. It defines the columns and validates the
+    compiled code once per model. Returns None if the model has to use it instead.
+    """
+    with _LOCK:
+        if (entry := _compile_outputs(model, backend, variables, python)) is None:
+            return None
+        compiled, names, par_names = entry
+        values = compiled.eval_rows(
+            np.asarray(variables.index, dtype=float),
+            variables.to_numpy(dtype=float),
+            _parameters(model, par_names),
+            len(names),
+        )
+    return pd.DataFrame(values, index=variables.index, columns=names)
+
+
 @dataclass
 class Native(AbstractIntegrator):
     """Radau integrator running compiled model code outside Python.
@@ -170,6 +259,11 @@ class Native(AbstractIntegrator):
             msg = f'The {self.backend} backend is not installed: pip install "{_EXTRA.get(self.backend, "mxlpy[native]")}"'
             raise ImportError(msg)
         _compile(self.rhs, self.backend, self.t0, np.asarray(self.y0, dtype=float))
+
+    @property
+    def args_fn(self) -> Callable:
+        """Compiled replacement for the Python computation of simulation outputs."""
+        return partial(args_time_course, backend=self.backend)
 
     def reset(self) -> None:
         """Reset the integrator."""

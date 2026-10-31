@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../native/c"
 MATH=(exp log sin cos tan asin acos atan sinh cosh tanh asinh acosh atanh pow)
-EXPORTS='"_mxn_set_model","_mxn_radau","_malloc","_free"'
+EXPORTS='"_mxn_set_model","_mxn_radau","_mxn_eval_rows","_malloc","_free"'
 for f in "${MATH[@]}"; do EXPORTS+=",\"_mxn_$f\""; done
 emcc -O2 -w -DMXN_WASM -I. mxn_radau.c radau5.c dc_decsol.c decsol.c libf2c_stubs.c \
   -o ../../src/mxlpy/integrators/_native/assets/radau.wasm \
