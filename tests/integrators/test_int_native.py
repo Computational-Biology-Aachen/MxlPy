@@ -11,10 +11,11 @@ from functools import partial
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import mxlpy
-from mxlpy import Model, Scipy, Simulator, scan
+from mxlpy import Model, OdeModelBuilder, Scipy, Simulator, scan
 from mxlpy.fns import constant, mass_action_1s, mass_action_2s
 from mxlpy.runners import KineticRunner
 from mxlpy.types import IntegrationFailure, NoSteadyState, Result
@@ -177,13 +178,12 @@ def test_parameter_update_applies_without_recompiling(backend: Any) -> None:
 
     model = chain()
     sim = Simulator(model, integrator=_native(backend))
-    cached = len(int_native._CACHE)
-    compiled = next(reversed(int_native._CACHE.values()))
+    key = (backend, int_native.fingerprint(model))
+    compiled = int_native._CACHE[key]
     sim.update_parameter("out", 0.9)
     _, got = _values(sim.simulate(20))
 
-    assert len(int_native._CACHE) == cached
-    assert next(reversed(int_native._CACHE.values())) is compiled
+    assert int_native._CACHE[(backend, int_native.fingerprint(model))] is compiled
     changed = chain().update_parameter("out", 0.9)
     _, expected = _values(Simulator(changed, integrator=_tight_scipy()).simulate(20))
     assert got[-1] == pytest.approx(expected[-1], rel=1e-5)
@@ -193,12 +193,12 @@ def test_parameter_update_applies_without_recompiling(backend: Any) -> None:
 def test_structure_change_recompiles(backend: Any) -> None:
     model = chain()
     integrator = mxlpy.Native(model, (5.0, 0.0), backend=backend)
-    before = integrator.integrate(t_end=5).unwrap_or_err().values
+    before = integrator.integrate(t_end=5).unwrap_or_err().values  # noqa: PD011
     model.add_reaction(
         "extra", mass_action_1s, stoichiometry={"p": -1}, args=["p", "feed"]
     )
     integrator.reset()
-    after = integrator.integrate(t_end=5).unwrap_or_err().values
+    after = integrator.integrate(t_end=5).unwrap_or_err().values  # noqa: PD011
     assert np.asarray(after)[-1, 1] < np.asarray(before)[-1, 1]
 
 
@@ -309,11 +309,11 @@ def test_pickles_for_workers(backend: Any) -> None:
     import dill  # noqa: PLC0415
 
     integrator = mxlpy.Native(lotka(), (2.0, 1.0), backend=backend)
-    expected = integrator.integrate(t_end=1).unwrap_or_err().values
+    expected = integrator.integrate(t_end=1).unwrap_or_err().values  # noqa: PD011
     restored = dill.loads(
         dill.dumps(mxlpy.Native(lotka(), (2.0, 1.0), backend=backend))
     )
-    got = restored.integrate(t_end=1).unwrap_or_err().values
+    got = restored.integrate(t_end=1).unwrap_or_err().values  # noqa: PD011
     assert np.asarray(got) == pytest.approx(np.asarray(expected))
 
 
@@ -361,3 +361,110 @@ except AttributeError as e:
     assert "BLOCKED" in res.stdout
     assert "mxlpy[native]" in res.stdout
     assert "mxlpy[native-wasm]" in res.stdout
+
+
+def _ratio(a: float, b: float) -> float:
+    return a / b
+
+
+def with_outputs() -> Model:
+    """Has every kind of output a simulation can report."""
+    return (
+        chain()
+        .add_parameter("scale", 2.0)
+        .add_derived("doubled", mass_action_1s, args=["feed", "scale"])
+        .add_derived("s_times_p", mass_action_2s, args=["s", "p", "scale"])
+        .add_readout("ratio", _ratio, args=["s", "out"])
+    )
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_compiled_outputs_match_python(backend: Any) -> None:
+    from mxlpy.integrators import int_native  # noqa: PLC0415
+
+    model = with_outputs()
+    res = (
+        Simulator(model, integrator=_native(backend))
+        .simulate(10)
+        .get_result()
+        .unwrap_or_err()
+    )
+    assert res.args_fn is not None
+    got = res._compute_args()[0]
+    python = res._python_args(res.raw_variables[0])
+    assert list(got.columns) == list(python.columns)
+    assert got.index.to_numpy() == pytest.approx(python.index.to_numpy())
+    assert got.to_numpy() == pytest.approx(python.to_numpy(), rel=1e-10, abs=1e-12)
+    key = ("outputs", backend, int_native.fingerprint(model))
+    assert int_native._CACHE[key] is not None
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_outputs_are_selectable_after_simulation(backend: Any) -> None:
+    res = (
+        Simulator(with_outputs(), integrator=_native(backend))
+        .simulate(10)
+        .get_result()
+        .unwrap_or_err()
+    )
+    assert {"s", "p", "s_clip", "s_times_p", "ratio"} <= set(res.variables.columns)
+    assert list(res.fluxes.columns) == ["in", "conv", "loss"]
+    plain = res.get_variables(
+        include_derived_variables=False,
+        include_surrogate_variables=False,
+        include_readouts=False,
+    )
+    assert list(plain.columns) == ["s", "p"]
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_outputs_use_each_segments_parameters(backend: Any) -> None:
+    sim = Simulator(with_outputs(), integrator=_native(backend)).simulate(5)
+    sim.update_parameter("scale", 3.0).simulate(10)
+    res = sim.get_result().unwrap_or_err()
+    got = pd.concat(res._compute_args())
+    assert set(got["doubled"].round(6)) == {0.4, 0.6}
+    python = []
+    for v, p in zip(res.raw_variables, res.raw_parameters, strict=True):
+        res.model.update_parameters(p)
+        python.append(res._python_args(v))
+    assert got.to_numpy() == pytest.approx(
+        pd.concat(python).to_numpy(), rel=1e-10, abs=1e-12
+    )
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_uncompilable_readout_falls_back_to_python(backend: Any) -> None:
+    def opaque(x: float) -> float:
+        return float(np.mean([x, x**2]))
+
+    model = chain().add_readout("opaque", opaque, args=["s"])
+    res = (
+        Simulator(model, integrator=_native(backend))
+        .simulate(5)
+        .get_result()
+        .unwrap_or_err()
+    )
+    expected = [float(np.mean([s, s**2])) for s in res.raw_variables[0]["s"]]
+    assert res.variables["opaque"].to_numpy() == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_ode_models_with_the_same_names_do_not_share_code(backend: Any) -> None:
+    def grow(x: float) -> float:
+        return x
+
+    def shrink(x: float) -> float:
+        return -x
+
+    results = []
+    for fn in (grow, shrink):
+        model = OdeModelBuilder().add_diff_eq("x", 1.0, fn, args=["x"])
+        results.append(
+            Simulator(model, integrator=_native(backend))
+            .simulate(1)
+            .get_result()
+            .unwrap_or_err()
+        )
+    assert results[0].variables["x"].iloc[-1] == pytest.approx(np.e, rel=1e-5)
+    assert results[1].variables["x"].iloc[-1] == pytest.approx(1 / np.e, rel=1e-5)

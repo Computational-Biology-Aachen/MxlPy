@@ -185,6 +185,23 @@ class _Compiled:
         rt.free(py, pp, pd)
         return out
 
+    def eval_rows(
+        self, t: np.ndarray, y: np.ndarray, pars: np.ndarray, n_out: int
+    ) -> np.ndarray:
+        rt = self._rt
+        rows, n = np.shape(y)
+        pt, py = (
+            self._write(np.asarray(t, dtype=float)),
+            self._write(np.asarray(y, dtype=float).ravel()),
+        )
+        pp, po = self._write(pars), rt.malloc(rows * n_out)
+        rt.solver["mxn_eval_rows"](
+            rt.store, self._index, n, n_out, rows, pt, py, po, pp
+        )
+        out = rt.view(po, rows * n_out).reshape(rows, n_out).copy()
+        rt.free(pt, py, pp, po)
+        return out
+
     def solve(
         self,
         y0: np.ndarray,

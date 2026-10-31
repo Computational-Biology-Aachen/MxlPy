@@ -123,6 +123,10 @@ def _solver() -> ct.CDLL:
     lib = ct.CDLL(str(mxlpy_native.library_path()))
     lib.mxn_set_model.argtypes = [ct.c_void_p]
     lib.mxn_set_model.restype = None
+    lib.mxn_eval_rows.restype = None
+    lib.mxn_eval_rows.argtypes = [
+        ct.c_void_p, ct.c_int, ct.c_int, ct.c_int, _DP, _DP, _DP, _DP,
+    ]  # fmt: skip
     lib.mxn_radau.restype = ct.c_int
     lib.mxn_radau.argtypes = [
         ct.c_int, _DP, _DP, ct.c_double, ct.c_double, ct.c_int, ct.c_int, ct.c_int, _DP, _DP,
@@ -158,6 +162,17 @@ class _Compiled:
             pars.ctypes.data_as(_DP),
         )
         return dydt
+
+    def eval_rows(
+        self, t: np.ndarray, y: np.ndarray, pars: np.ndarray, n_out: int
+    ) -> np.ndarray:
+        t, y = np.array(t, dtype=float), np.array(y, dtype=float, order="C")
+        out = np.empty((len(t), n_out))
+        self._lib.mxn_eval_rows(
+            self._ptr, y.shape[1], n_out, len(t), t.ctypes.data_as(_DP), y.ctypes.data_as(_DP),
+            out.ctypes.data_as(_DP), pars.ctypes.data_as(_DP),
+        )  # fmt: skip
+        return out
 
     def solve(
         self,
