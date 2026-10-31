@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from mxlpy.types import ArrayLike
 
     from . import nn, npe, sbml, surrogates
-    from .integrators import Diffrax
+    from .integrators import Diffrax, Native
 else:
     from lazy_import import lazy_module
 
@@ -118,11 +118,11 @@ Model = KineticModelBuilder
 
 
 def __getattr__(name: str) -> object:
-    # Diffrax is resolved lazily, see mxlpy.integrators.__getattr__
-    if name == "Diffrax":
+    # Resolved lazily, see mxlpy.integrators.__getattr__
+    if name in {"Diffrax", "Native"}:
         from . import integrators  # noqa: PLC0415
 
-        return integrators.Diffrax
+        return getattr(integrators, name)
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)
 
@@ -151,6 +151,7 @@ __all__ = [
     "LinearLabelMapper",
     "MinimizerProtocol",
     "Model",
+    "Native",
     "OdeModelBuilder",
     "OdeRunner",
     "OdeSurrogateProtocol",

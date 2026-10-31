@@ -19,9 +19,12 @@ HEAVY_MODULES = (
     "jax",
     "keras",
     "libsbml",
+    "llvmlite",
+    "mxlpy_native",
     "seaborn",
     "tensorflow",
     "torch",
+    "wasmtime",
 )
 
 

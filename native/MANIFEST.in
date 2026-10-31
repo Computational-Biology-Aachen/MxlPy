@@ -1,0 +1,1 @@
+include c/*.c c/*.h c/*.md c/*.txt
