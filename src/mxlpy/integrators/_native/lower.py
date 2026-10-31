@@ -8,6 +8,7 @@ collide with a libm function or a backend's own argument.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -16,7 +17,7 @@ import sympy
 if TYPE_CHECKING:
     from collections.abc import Hashable
 
-__all__ = ["Lowered", "NativeLoweringError", "fingerprint", "lower"]
+__all__ = ["Lowered", "NativeLoweringError", "fingerprint", "lower", "lower_outputs"]
 
 
 class NativeLoweringError(ValueError):
@@ -59,8 +60,12 @@ def lower(model: Any) -> Lowered:
     _check_lowerable(model)
     var_names = list(model.get_variable_names())
     par_names = list(model.get_parameter_names())
+    # Readouts don't affect the derivatives, so one that can't be lowered mustn't block this.
+    without_readouts = copy.copy(model)
+    without_readouts._readouts = {}  # noqa: SLF001
+    without_readouts._cache = None  # noqa: SLF001
     try:
-        nsm = _normalized_symbolic_model(model, par_names, None, {})
+        nsm = _normalized_symbolic_model(without_readouts, par_names, None, {})
     except Exception as e:
         msg = f"Native can't lower this model to symbolic form: {e!r}"
         raise NativeLoweringError(msg) from e
@@ -77,6 +82,43 @@ def lower(model: Any) -> Lowered:
             (rename[sympy.Symbol(a)].name, e.xreplace(rename)) for a, e in body
         ],
         dydt=[sympy.sympify(nsm.diff_eqs[v]).xreplace(rename) for v in var_names],
+    )
+
+
+def lower_outputs(model: Any, names: list[str]) -> Lowered:
+    """Lower everything a simulation can report, with `names` as the outputs.
+
+    Results can be selected freely after a simulation, so all of them are computed,
+    unlike the right-hand side, which only needs what the derivatives depend on.
+    """
+    from mxlpy.meta._via_sym_repr import _normalized_symbolic_model  # noqa: PLC0415
+
+    _check_lowerable(model)
+    var_names = list(model.get_variable_names())
+    par_names = list(model.get_parameter_names())
+    try:
+        nsm = _normalized_symbolic_model(model, par_names, None, {})
+    except Exception as e:
+        msg = f"Native can't lower this model to symbolic form: {e!r}"
+        raise NativeLoweringError(msg) from e
+    rename: dict[sympy.Symbol, sympy.Symbol] = {sympy.Symbol("time"): sympy.Symbol("t")}
+    rename |= {sympy.Symbol(v): sympy.Symbol(f"y{i}") for i, v in enumerate(var_names)}
+    rename |= {sympy.Symbol(p): sympy.Symbol(f"p{i}") for i, p in enumerate(par_names)}
+    rename |= {
+        sympy.Symbol(a): sympy.Symbol(f"a{i}") for i, (a, _) in enumerate(nsm.extended)
+    }
+    missing = [n for n in names if sympy.Symbol(n) not in rename]
+    if missing:
+        msg = f"Native has no symbolic form for: {missing}"
+        raise NativeLoweringError(msg)
+    return Lowered(
+        n=len(var_names),
+        par_names=par_names,
+        assignments=[
+            (rename[sympy.Symbol(a)].name, sympy.sympify(e).xreplace(rename))
+            for a, e in nsm.extended
+        ],
+        dydt=[rename[sympy.Symbol(n)] for n in names],
     )
 
 
@@ -116,5 +158,7 @@ def fingerprint(model: Any) -> Hashable:
         tuple(model.get_parameter_names()),
         tuple((k, _component(v)) for k, v in getattr(model, "_derived", {}).items()),
         tuple((k, _component(v)) for k, v in getattr(model, "_reactions", {}).items()),
+        tuple((k, _component(v)) for k, v in getattr(model, "_diff_eqs", {}).items()),
         tuple((k, _Identity(v)) for k, v in getattr(model, "_surrogates", {}).items()),
+        tuple((k, _component(v)) for k, v in getattr(model, "_readouts", {}).items()),
     )

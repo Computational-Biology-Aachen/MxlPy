@@ -100,6 +100,15 @@ MXN_API int mxn_radau(int n, double *y, double *pars, double rtol, double atol, 
     return (int)idid;
 }
 
+/* Evaluates fn once per row of y, writing n_out values per row into out. */
+MXN_API void mxn_eval_rows(intptr_t fn, int n, int n_out, int rows, const double *t, double *y, double *out,
+                           double *pars) {
+    ModelFn f = (ModelFn)fn;
+    for (int r = 0; r < rows; r++) {
+        f(n, t[r], y + (size_t)r * (size_t)n, out + (size_t)r * (size_t)n_out, pars);
+    }
+}
+
 #ifdef MXN_WASM
 /* Model math stays inside wasm, rather than calling back into Python. */
 #define F1(name) double mxn_##name(double x) { return name(x); }

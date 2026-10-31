@@ -14,7 +14,7 @@ from wadler_lindig import pformat
 __all__ = ["Evaluation", "OdeSimulation", "Simulation"]
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
@@ -64,6 +64,20 @@ class _BaseSimulation[M: (KineticModelBuilder, OdeModelBuilder)]:
     raw_variables: list[pd.DataFrame]
     raw_parameters: list[dict[str, float]]
     raw_args: list[pd.DataFrame] = field(default_factory=list)
+    # A faster way to compute outputs, offered by the integrator if it has one
+    args_fn: Callable | None = field(default=None, repr=False)
+
+    def _args_for(
+        self,
+        variables: pd.DataFrame,
+        python: Callable[[pd.DataFrame], pd.DataFrame],
+    ) -> pd.DataFrame:
+        if (
+            self.args_fn is not None
+            and (args := self.args_fn(self.model, variables, python)) is not None
+        ):
+            return args
+        return python(variables)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -145,6 +159,19 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
             include_surrogates=True,
         )
 
+    def _python_args(self, variables: pd.DataFrame) -> pd.DataFrame:
+        return self.model.get_args_time_course(
+            variables=variables,
+            include_variables=True,
+            include_parameters=True,
+            include_derived_parameters=True,
+            include_derived_variables=True,
+            include_reactions=True,
+            include_surrogate_variables=True,
+            include_surrogate_fluxes=True,
+            include_readouts=True,
+        )
+
     def _compute_args(self) -> list[pd.DataFrame]:
         # Already computed
         if len(self.raw_args) > 0:
@@ -153,19 +180,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         # Compute new otherwise
         for res, p in zip(self.raw_variables, self.raw_parameters, strict=True):
             self.model.update_parameters(p)
-            self.raw_args.append(
-                self.model.get_args_time_course(
-                    variables=res,
-                    include_variables=True,
-                    include_parameters=True,
-                    include_derived_parameters=True,
-                    include_derived_variables=True,
-                    include_reactions=True,
-                    include_surrogate_variables=True,
-                    include_surrogate_fluxes=True,
-                    include_readouts=True,
-                )
-            )
+            self.raw_args.append(self._args_for(res, self._python_args))
         return self.raw_args
 
     def _select_data(
@@ -710,6 +725,20 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
             normalise=None,
         )
 
+    def _python_args(self, variables: pd.DataFrame) -> pd.DataFrame:
+        dependent = self.model.get_args_time_course(
+            variables=variables,
+            include_parameters=True,
+            include_derived_parameters=True,
+            include_derived_variables=True,
+            include_diff_eqs=False,
+            include_surrogate_variables=True,
+            include_surrogate_targets=True,
+            include_readouts=True,
+        )
+        dependent = dependent.drop(columns=variables.columns, errors="ignore")
+        return pd.concat((variables, dependent), axis=1)
+
     def _compute_args(self) -> list[pd.DataFrame]:
         # Already computed
         if len(self.raw_args) > 0:
@@ -720,18 +749,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
         # Variables are dropped explicitly in case the builder ever returns them.
         for res, p in zip(self.raw_variables, self.raw_parameters, strict=True):
             self.model.update_parameters(p)
-            dependent = self.model.get_args_time_course(
-                variables=res,
-                include_parameters=True,
-                include_derived_parameters=True,
-                include_derived_variables=True,
-                include_diff_eqs=False,
-                include_surrogate_variables=True,
-                include_surrogate_targets=True,
-                include_readouts=True,
-            )
-            dependent = dependent.drop(columns=res.columns, errors="ignore")
-            self.raw_args.append(pd.concat((res, dependent), axis=1))
+            self.raw_args.append(self._args_for(res, self._python_args))
         return self.raw_args
 
     def _select_data(

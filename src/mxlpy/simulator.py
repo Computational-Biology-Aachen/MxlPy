@@ -725,12 +725,14 @@ class Simulator(Generic[M]):
             return Result(IntegrationFailure())
         if (parameters := self.simulation_parameters) is None:
             return Result(IntegrationFailure())
+        args_fn = getattr(self.integrator, "args_fn", None)
         if isinstance(model := self.model, OdeModelBuilder):
             return Result(
                 OdeSimulation(
                     model=model,
                     raw_variables=variables,
                     raw_parameters=parameters,
+                    args_fn=args_fn,
                 )
             )
         return Result(
@@ -738,5 +740,6 @@ class Simulator(Generic[M]):
                 model=model,
                 raw_variables=variables,
                 raw_parameters=parameters,
+                args_fn=args_fn,
             )
         )
