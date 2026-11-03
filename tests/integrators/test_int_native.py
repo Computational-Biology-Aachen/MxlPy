@@ -38,6 +38,8 @@ BACKENDS = [
     ),
 ]
 
+METHODS = ["Radau", "LSODA"]
+
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("wasmtime") is None
     and importlib.util.find_spec("llvmlite") is None,
@@ -118,17 +120,19 @@ def _values(sim: Simulator) -> tuple[np.ndarray, np.ndarray]:
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("method", METHODS)
 @pytest.mark.parametrize(
     ("factory", "t_end"),
     [(lotka, 20), (chain, 50), (robertson, 100), (driven, 10)],
 )
-def test_matches_scipy(backend: Any, factory, t_end: float) -> None:  # noqa: ANN001
+def test_matches_scipy(backend: Any, method: str, factory, t_end: float) -> None:  # noqa: ANN001
     _, expected = _values(
         Simulator(factory(), integrator=_tight_scipy()).simulate(t_end)
     )
     time, got = _values(
         Simulator(
-            factory(), integrator=_native(backend, rtol=1e-10, atol=1e-10)
+            factory(),
+            integrator=_native(backend, method=method, rtol=1e-10, atol=1e-10),
         ).simulate(t_end)
     )
     assert time[-1] == pytest.approx(t_end)
@@ -136,9 +140,12 @@ def test_matches_scipy(backend: Any, factory, t_end: float) -> None:  # noqa: AN
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_requested_time_points_are_returned_exactly(backend: Any) -> None:
+@pytest.mark.parametrize("method", METHODS)
+def test_requested_time_points_are_returned_exactly(backend: Any, method: str) -> None:
     points = np.array([0.0, 0.1, 0.25, 3.0, 7.5, 20.0])
-    sim = Simulator(lotka(), integrator=_native(backend, rtol=1e-10, atol=1e-10))
+    sim = Simulator(
+        lotka(), integrator=_native(backend, method=method, rtol=1e-10, atol=1e-10)
+    )
     time, got = _values(sim.simulate_time_course(points))
     _, expected = _values(
         Simulator(lotka(), integrator=_tight_scipy()).simulate_time_course(points)
@@ -148,15 +155,13 @@ def test_requested_time_points_are_returned_exactly(backend: Any) -> None:
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_continues_across_calls(backend: Any) -> None:
-    sim = Simulator(lotka(), integrator=_native(backend, rtol=1e-10, atol=1e-10))
+@pytest.mark.parametrize("method", METHODS)
+def test_continues_across_calls(backend: Any, method: str) -> None:
+    integrator = _native(backend, method=method, rtol=1e-10, atol=1e-10)
+    sim = Simulator(lotka(), integrator=integrator)
     sim.simulate(5).simulate(10)
     time, got = _values(sim)
-    _, expected = _values(
-        Simulator(
-            lotka(), integrator=_native(backend, rtol=1e-10, atol=1e-10)
-        ).simulate(10)
-    )
+    _, expected = _values(Simulator(lotka(), integrator=integrator).simulate(10))
     assert time[-1] == pytest.approx(10)
     assert got[-1] == pytest.approx(expected[-1], rel=1e-6)
 
@@ -261,6 +266,38 @@ def test_reuse_jacobian_stays_correct(backend: Any) -> None:
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("factory", [lotka, chain])
+def test_lsoda_matches_scipy_lsoda(backend: Any, factory) -> None:  # noqa: ANN001
+    """Both run SciPy's C LSODA, so they agree far below the solver tolerance."""
+    _, expected = _values(
+        Simulator(
+            factory(), integrator=partial(Scipy, method="LSODA", rtol=1e-8, atol=1e-8)
+        ).simulate(20)
+    )
+    _, got = _values(
+        Simulator(
+            factory(),
+            integrator=_native(backend, method="LSODA", rtol=1e-8, atol=1e-8),
+        ).simulate(20)
+    )
+    assert got == pytest.approx(expected, rel=1e-6, abs=1e-8)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_reuse_jacobian_needs_radau(backend: Any) -> None:
+    with pytest.raises(ValueError, match="reuse_jacobian only applies to Radau"):
+        mxlpy.Native(
+            lotka(), (2.0, 1.0), backend=backend, method="LSODA", reuse_jacobian=True
+        )
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_unknown_method_raises(backend: Any) -> None:
+    with pytest.raises(ValueError, match="Radau and LSODA"):
+        mxlpy.Native(lotka(), (2.0, 1.0), backend=backend, method="BDF")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
 def test_non_lowerable_model_raises_clear_error(backend: Any) -> None:
     from mxlpy.integrators.int_native import NativeLoweringError  # noqa: PLC0415
 
@@ -285,7 +322,8 @@ def test_plain_callable_raises_clear_error(backend: Any) -> None:
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_blow_up_is_not_reported_as_success(backend: Any) -> None:
+@pytest.mark.parametrize("method", METHODS)
+def test_blow_up_is_not_reported_as_success(backend: Any, method: str) -> None:
     """y' = y^2 reaches infinity at t = 1, so the solver must fail rather than return it."""
     model = (
         Model()
@@ -293,7 +331,9 @@ def test_blow_up_is_not_reported_as_success(backend: Any) -> None:
         .add_parameter("k", 1.0)
         .add_reaction("r", mass_action_2s, stoichiometry={"x": 1}, args=["x", "x", "k"])
     )
-    res = mxlpy.Native(model, (1.0,), backend=backend).integrate(t_end=2)
+    res = mxlpy.Native(model, (1.0,), backend=backend, method=method).integrate(
+        t_end=2
+    )
     assert isinstance(res.value, IntegrationFailure)
 
 

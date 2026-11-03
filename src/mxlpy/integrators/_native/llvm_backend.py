@@ -131,6 +131,10 @@ def _solver() -> ct.CDLL:
     lib.mxn_radau.argtypes = [
         ct.c_int, _DP, _DP, ct.c_double, ct.c_double, ct.c_int, ct.c_int, ct.c_int, _DP, _DP,
     ]  # fmt: skip
+    lib.mxn_lsoda.restype = ct.c_int
+    lib.mxn_lsoda.argtypes = [
+        ct.c_int, _DP, _DP, ct.c_double, ct.c_double, ct.c_int, ct.c_int, _DP, _DP,
+    ]  # fmt: skip
     return lib
 
 
@@ -183,15 +187,18 @@ class _Compiled:
         rtol: float,
         atol: float,
         nmax: int,
+        method: str,
         reuse_jacobian: bool,
     ) -> tuple[int, np.ndarray]:
         y = np.array(y0, dtype=float)
         out = np.empty((len(t_out), len(y)))
+        head = (len(y), y.ctypes.data_as(_DP), pars.ctypes.data_as(_DP), rtol, atol, nmax)
+        tail = (len(t_out), t_out.ctypes.data_as(_DP), out.ctypes.data_as(_DP))
         self._lib.mxn_set_model(self._ptr)
-        idid = self._lib.mxn_radau(
-            len(y), y.ctypes.data_as(_DP), pars.ctypes.data_as(_DP), rtol, atol, nmax,
-            int(reuse_jacobian), len(t_out), t_out.ctypes.data_as(_DP), out.ctypes.data_as(_DP),
-        )  # fmt: skip
+        if method == "LSODA":
+            idid = self._lib.mxn_lsoda(*head, *tail)
+        else:
+            idid = self._lib.mxn_radau(*head, int(reuse_jacobian), *tail)
         return int(idid), out
 
 

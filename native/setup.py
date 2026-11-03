@@ -6,16 +6,17 @@ import sys
 
 from setuptools import Extension, setup
 
-sources = ["mxn_radau.c", "radau5.c", "dc_decsol.c", "decsol.c", "libf2c_stubs.c"]
+vendored = ["radau5.c", "dc_decsol.c", "decsol.c", "libf2c_stubs.c", "lsoda.c", "mxs_lapack.c"]
 setup(
     ext_modules=[
         Extension(
-            "mxlpy_native._radau",
-            sources=[f"c/{s}" for s in sources],
-            include_dirs=["c"],
+            "mxlpy_native._solvers",
+            sources=["c/mxn_solvers.c", *(f"c/vendor/{s}" for s in vendored)],
+            include_dirs=["c/vendor"],
             py_limited_api=True,
             define_macros=[("Py_LIMITED_API", "0x030C0000")],
-            extra_compile_args=[]
+            # lsoda.c needs C11 (restrict, compound literals), which MSVC only enables on request.
+            extra_compile_args=["/std:c11"]
             if sys.platform == "win32"
             else ["-std=gnu17", "-w", "-O2"],
             libraries=[] if sys.platform == "win32" else ["m"],
