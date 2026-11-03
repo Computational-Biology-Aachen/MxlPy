@@ -1,1 +1,1 @@
-include c/*.c c/*.h c/*.md c/*.txt
+include c/*.c c/vendor/*.c c/vendor/*.h c/vendor/*.txt c/vendor/VENDORED

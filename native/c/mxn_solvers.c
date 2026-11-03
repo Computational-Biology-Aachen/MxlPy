@@ -1,7 +1,9 @@
-/* RADAU5 for MxlPy's Native integrator, returning values at requested time points.
- * The same source builds the native wheel and radau.wasm. Solver state is global,
- * so only one solve can run at a time in a process. */
+/* RADAU5 and LSODA for MxlPy's Native integrator, returning values at requested time
+ * points. The same source builds the native wheel and solvers.wasm. The solvers
+ * themselves are vendored from mxl-solvers (see vendor/VENDORED). RADAU5 and this
+ * file keep global state, so only one solve can run at a time in a process. */
 #include "f2c.h"
+#include "lsoda.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -23,6 +25,7 @@ extern double radau5_jac_growth;
 
 typedef void (*ModelFn)(int, double, double *, double *, double *);
 static ModelFn g_model;
+static double *g_pars; /* LSODA's right-hand side takes no parameter array. */
 static const double *g_t_out;
 static double *g_y_out;
 static int g_n_out, g_next;
@@ -100,6 +103,50 @@ MXN_API int mxn_radau(int n, double *y, double *pars, double rtol, double atol, 
     return (int)idid;
 }
 
+static void lsoda_fcn(int *n, double *t, double *y, double *dydt) { g_model(*n, *t, y, dydt, g_pars); }
+
+/* Same contract as mxn_radau, with LSODA (SciPy's C translation) and its internal
+ * finite-difference Jacobian. nmax caps the total number of steps. Returns 2 on
+ * success, or LSODA's negative ISTATE: -1 too many steps, -2 too much accuracy
+ * requested, -3 bad input, -4 repeated error test failures, -5 repeated convergence
+ * failures, -6 an error weight became zero. Returns -9 if allocation fails or the
+ * result isn't finite. */
+MXN_API int mxn_lsoda(int n, double *y, double *pars, double rtol, double atol, int nmax, int n_out,
+                      const double *t_out, double *y_out) {
+    /* Work array sizes as in SciPy's odepack: Adams up to order 12, BDF up to 5. */
+    const int lrn = 20 + n * 13 + 3 * n, lrs = 20 + n * 6 + 3 * n + n * n + 2;
+    const int lrw = lrn > lrs ? lrn : lrs, liw = 20 + n;
+    double *rwork = calloc((size_t)lrw, sizeof(double));
+    int *iwork = calloc((size_t)liw, sizeof(int));
+    if (!rwork || !iwork) {
+        free(rwork);
+        free(iwork);
+        return -9;
+    }
+    int itask = 1, istate = 1, iopt = 1;
+    iwork[5] = nmax; /* IWORK(6): steps allowed per output point */
+    lsoda_common_struct_t S = {0};
+    double t = t_out[0];
+    g_pars = pars;
+    memcpy(y_out, y, (size_t)n * sizeof(double));
+    for (int k = 1; k < n_out && istate > 0; k++) {
+        double tout = t_out[k];
+        if (tout != t_out[k - 1]) {
+            lsoda(lsoda_fcn, n, y, &t, &tout, 1, &rtol, &atol, &itask, &istate, &iopt, rwork, lrw, iwork, liw, NULL,
+                  2, &S);
+            if (istate > 0 && iwork[10] > nmax) istate = -1; /* IWORK(11): steps so far */
+        }
+        memcpy(y_out + (size_t)k * (size_t)n, y, (size_t)n * sizeof(double));
+    }
+    free(rwork);
+    free(iwork);
+    if (istate < 0) return istate;
+    for (int i = 0; i < n; i++) {
+        if (!isfinite(y[i])) return -9;
+    }
+    return 2;
+}
+
 /* Evaluates fn once per row of y, writing n_out values per row into out. */
 MXN_API void mxn_eval_rows(intptr_t fn, int n, int n_out, int rows, const double *t, double *y, double *out,
                            double *pars) {
@@ -118,5 +165,5 @@ double mxn_pow(double a, double b) { return pow(a, b); }
 #else
 /* Loaded with ctypes, but setuptools builds it as an extension and Windows linkers
  * insist on this symbol. It's never imported. */
-MXN_API void PyInit__radau(void) {}
+MXN_API void PyInit__solvers(void) {}
 #endif
