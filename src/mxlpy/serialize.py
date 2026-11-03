@@ -31,7 +31,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
 import numpy as np
-import scipy.special  # bound as `scipy`, used by generated rate fns
+import pandas as pd
+import scipy.integrate  # bound as `scipy`, used by generated rate fns
+import scipy.special
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
@@ -68,6 +70,7 @@ __all__ = [
     "mxl_json_weights_files",
     "ode_model_from_dict",
     "ode_model_to_dict",
+    "mxl_json_data_file",
     "ode_mxl_json_weights_files",
     "save",
     "steady_state_model_from_dict",
@@ -75,6 +78,8 @@ __all__ = [
 ]
 
 SPEC_VERSION = "1.1"
+# Written instead of SPEC_VERSION by a model with data (`data_ref`).
+DATA_SPEC_VERSION = "1.2"
 # The schema is maintained in the shared, language-agnostic `mxl-schemas` repo
 # so it can be consumed by both mxlpy and mxlweb. It is intentionally not
 # vendored into this package. The URL is pinned to the major spec version, so a
@@ -233,11 +238,45 @@ def mxl_json_weights_files(
     return weights_files
 
 
+def mxl_json_data_file(
+    model: KineticModelBuilder | OdeModelBuilder,
+) -> dict[str, Any] | None:
+    """The model's data sidecar (mxl-schemas `model-data.schema.json`), or None without data.
+
+    Raises
+    ------
+    SerializationError
+        If a data set isn't 1-D (a `pd.Series`).
+
+    """
+    out: dict[str, Any] = {}
+    for name, values in model.get_raw_data().items():
+        if not isinstance(values, pd.Series):
+            msg = (
+                f"data {name!r} is a {type(values).__name__}; only 1-D data "
+                "(a pd.Series) can be saved, split a table into one series per column"
+            )
+            raise SerializationError(msg)
+        out[name] = {"values": [float(x) for x in values.to_numpy()]}
+    return out or None
+
+
+def _envelope(
+    model: KineticModelBuilder | OdeModelBuilder,
+    data_ref: str,
+) -> dict[str, Any]:
+    """`spec_version` and, for a model with data, `data_ref`."""
+    if not model.get_raw_data():
+        return {"spec_version": SPEC_VERSION}
+    return {"spec_version": DATA_SPEC_VERSION, "data_ref": data_ref}
+
+
 def model_to_dict(
     model: KineticModelBuilder,
     *,
     model_id: str,
     description: str = "",
+    data_ref: str = "model.data.json",
 ) -> dict[str, Any]:
     """Convert a model into its ``.mxl.json`` dict representation.
 
@@ -350,7 +389,7 @@ def model_to_dict(
 
     return {
         "$schema": SCHEMA_URL,
-        "spec_version": SPEC_VERSION,
+        **_envelope(model, data_ref),
         "kind": "kinetic",
         "model_id": model_id,
         "description": description,
@@ -424,6 +463,7 @@ def ode_model_to_dict(
     *,
     model_id: str,
     description: str = "",
+    data_ref: str = "model.data.json",
 ) -> dict[str, Any]:
     """Convert an `OdeModelBuilder` model into its ``.mxl.json`` dict representation.
 
@@ -525,7 +565,7 @@ def ode_model_to_dict(
 
     return {
         "$schema": ODE_SCHEMA_URL,
-        "spec_version": SPEC_VERSION,
+        **_envelope(model, data_ref),
         "kind": "ode",
         "model_id": model_id,
         "description": description,
@@ -636,7 +676,8 @@ def save(
     Every trained, exportable NN block's weights are written alongside the
     main file as `<block>.weights.json`, in the same directory `path`
     itself lands in (`nn_blocks[id].weights_ref` names it as a path
-    relative to the main file, per mxl-schemas).
+    relative to the main file, per mxl-schemas). A model's data, likewise,
+    as `<model_id>.data.json` (`data_ref`, mxl-schemas ADR 0014).
 
     Parameters
     ----------
@@ -660,20 +701,30 @@ def save(
     path = Path(path)
     if model_id is None:
         model_id = path.name.removesuffix(".json").removesuffix(".mxl")
+    data_ref = f"{model_id}.data.json"
+    data_file = None
     if isinstance(model, OdeModelBuilder):
-        data = ode_model_to_dict(model, model_id=model_id, description=description)
+        data = ode_model_to_dict(
+            model, model_id=model_id, description=description, data_ref=data_ref
+        )
         weights_files = ode_mxl_json_weights_files(model)
+        data_file = mxl_json_data_file(model)
     elif isinstance(model, SteadyStateModelBuilder):
         data = steady_state_model_to_dict(
             model, model_id=model_id, description=description
         )
         weights_files = {}
     else:
-        data = model_to_dict(model, model_id=model_id, description=description)
+        data = model_to_dict(
+            model, model_id=model_id, description=description, data_ref=data_ref
+        )
         weights_files = mxl_json_weights_files(model)
+        data_file = mxl_json_data_file(model)
     path.write_text(json.dumps(data, indent=2) + "\n")
     for weights_ref, weights in weights_files.items():
         (path.parent / weights_ref).write_text(json.dumps(weights, indent=2) + "\n")
+    if data_file is not None:
+        (path.parent / data_ref).write_text(json.dumps(data_file, indent=2) + "\n")
 
 
 ###############################################################################
@@ -879,10 +930,26 @@ def _ode_surrogate_from_mxl_json(
         raise SerializationError(msg) from exc
 
 
+def _add_data(
+    model: KineticModelBuilder | OdeModelBuilder,
+    data: Mapping[str, Any],
+    data_file: Mapping[str, Any] | None,
+) -> None:
+    """Attach the data sets of `data_file`, the sidecar `data["data_ref"]` names."""
+    if (data_ref := data.get("data_ref")) is None:
+        return
+    if data_file is None:
+        msg = f"no data file supplied for data_ref {data_ref!r}"
+        raise SerializationError(msg)
+    for name, entry in data_file.items():
+        model.add_data(name, pd.Series(entry["values"], dtype=float))
+
+
 def ode_model_from_dict(
     data: Mapping[str, Any],
     *,
     weights_by_ref: Mapping[str, Mapping[str, list[Any]]] | None = None,
+    data_file: Mapping[str, Any] | None = None,
 ) -> OdeModelBuilder:
     """Reconstruct an `OdeModelBuilder` model from its ``.mxl.json`` dict representation.
 
@@ -913,6 +980,7 @@ def ode_model_from_dict(
     spec = data["model"]
     customs = spec.get("units", {})
     model = OdeModelBuilder()
+    _add_data(model, data, data_file)
 
     for name, par in spec["parameters"].items():
         model.add_parameter(
@@ -1012,6 +1080,7 @@ def model_from_dict(
     data: Mapping[str, Any],
     *,
     weights_by_ref: Mapping[str, Mapping[str, list[Any]]] | None = None,
+    data_file: Mapping[str, Any] | None = None,
 ) -> KineticModelBuilder:
     """Reconstruct a model from its ``.mxl.json`` dict representation.
 
@@ -1043,6 +1112,7 @@ def model_from_dict(
     spec = data["model"]
     customs = spec.get("units", {})
     model = KineticModelBuilder()
+    _add_data(model, data, data_file)
 
     for name, par in spec["parameters"].items():
         model.add_parameter(
@@ -1146,8 +1216,21 @@ def load(
                 f"(from weights_ref {weights_ref!r}) does not exist"
             )
             raise SerializationError(msg) from exc
+    data_file = None
+    if (data_ref := data.get("data_ref")) is not None:
+        data_path = path.parent / data_ref
+        try:
+            data_file = json.loads(data_path.read_text())
+        except FileNotFoundError as exc:
+            msg = (
+                f"data file {str(data_path)!r} (from data_ref {data_ref!r}) "
+                "does not exist"
+            )
+            raise SerializationError(msg) from exc
     if data.get("kind") == "ode":
-        return ode_model_from_dict(data, weights_by_ref=weights_by_ref)
+        return ode_model_from_dict(
+            data, weights_by_ref=weights_by_ref, data_file=data_file
+        )
     if data.get("kind") == "steady-state":
         return steady_state_model_from_dict(data)
-    return model_from_dict(data, weights_by_ref=weights_by_ref)
+    return model_from_dict(data, weights_by_ref=weights_by_ref, data_file=data_file)

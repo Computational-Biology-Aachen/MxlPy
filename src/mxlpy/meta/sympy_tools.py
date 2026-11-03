@@ -14,6 +14,7 @@ from sympy.printing.numpy import (
 )
 
 from mxlpy.meta import _mathml as mml
+from mxlpy.meta.array_fns import ARRAY_NODE_TYPES
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.types import Derived
 
@@ -459,6 +460,14 @@ def sympy_to_inline_mxlweb(
             child = cast(sympy.Expr, expr.args[0])
             return f"new {ts_name}({sympy_to_inline_mxlweb(child, used, subs)})"
 
+    # Array nodes (reductions / indexing), operands in `children`
+    if (ts_name := ARRAY_NODE_TYPES.get(type(expr))) is not None:
+        used.add(ts_name)
+        children = ", ".join(
+            sympy_to_inline_mxlweb(cast(sympy.Expr, a), used, subs) for a in expr.args
+        )
+        return f"new {ts_name}([{children}])"
+
     # N-ary functions
     if isinstance(expr, sympy.Max):
         used.add("Max")
@@ -520,6 +529,10 @@ _NODE_TO_UNARY_SYMPY: dict[str, Callable[..., sympy.Expr]] = {
 # sympy relational/logical type -> MathML n-ary node class
 _RELATIONAL_NODE_MAP: dict[type, Callable[[list[mml.Base]], mml.Base]] = {
     sympy_type: getattr(mml, name) for sympy_type, name in _RELATIONAL_MAP
+}
+# MathML array node class name -> sympy stand-in
+_NODE_TO_ARRAY_SYMPY: dict[str, Callable[..., sympy.Expr]] = {
+    name: sympy_type for sympy_type, name in ARRAY_NODE_TYPES.items()
 }
 _NODE_TO_RELATIONAL_SYMPY: dict[str, Callable[..., sympy.Expr]] = {
     name: sympy_type for sympy_type, name in _RELATIONAL_MAP
@@ -585,6 +598,12 @@ def sympy_to_mathml(expr: sympy.Expr) -> mml.Base:
         if isinstance(expr, sympy_type):
             child = sympy_to_mathml(cast(sympy.Expr, expr.args[0]))
             return node_cls(child)
+
+    # Array nodes (reductions / indexing), operands in `children`
+    if (node_name := ARRAY_NODE_TYPES.get(type(expr))) is not None:
+        return getattr(mml, node_name)(
+            [sympy_to_mathml(cast(sympy.Expr, a)) for a in expr.args]
+        )
 
     # N-ary min/max
     if isinstance(expr, sympy.Max):
@@ -680,6 +699,12 @@ def mathml_to_sympy(node: mml.Base) -> sympy.Expr:
         return cast(sympy.Expr, sympy.E)
     if isinstance(node, mml.Bool):
         return cast(sympy.Expr, sympy.true if node.value else sympy.false)
+
+    if (array_fn := _NODE_TO_ARRAY_SYMPY.get(type(node).__name__)) is not None:
+        return cast(
+            sympy.Expr,
+            array_fn(*(mathml_to_sympy(c) for c in node.children)),  # type: ignore[attr-defined]
+        )
 
     if isinstance(node, mml.Add):
         return sympy.Add(*(mathml_to_sympy(c) for c in node.children))

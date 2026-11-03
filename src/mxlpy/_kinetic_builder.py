@@ -2742,6 +2742,17 @@ class KineticModelBuilder:
         self._data[name] = data
         return self
 
+    def get_raw_data(self) -> dict[str, pd.Series | pd.DataFrame]:
+        """Get a copy of the data sets attached to the model.
+
+        Returns
+        -------
+        dict[str, pd.Series | pd.DataFrame]
+            Dictionary mapping data set names to their data.
+
+        """
+        return dict(self._data)
+
     def update_data(self, name: str, data: pd.Series | pd.DataFrame) -> Self:
         """Update named data set.
 

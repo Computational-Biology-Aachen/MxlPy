@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
+import pandas as pd
 import sympy
 from wadler_lindig import pformat
 
@@ -1556,6 +1557,7 @@ def generate_model_code_mxlweb(
     custom_fns: dict[str, sympy.Expr | list[sympy.Expr]] | None = None,
     sliders: dict[str, dict[str, str]] | None = None,
     docstring: str | None = None,
+    data_path: str = "./model.data.json",
 ) -> str:
     """Generate TypeScript source for the mxlweb browser simulator.
 
@@ -1577,6 +1579,9 @@ def generate_model_code_mxlweb(
     sliders
         Optional mapping of parameter names to slider config dicts with
         ``min``, ``max``, and ``step`` keys.
+    data_path
+        Import path of the data sidecar (see `generate_model_data_mxlweb`),
+        relative to the generated file. Only imported if the model has data.
 
     Returns
     -------
@@ -1835,7 +1840,8 @@ def generate_model_code_mxlweb(
                 )
         return "\n".join(out)
 
-    lines = []
+    data = _model_data(model)
+    lines = [f'      .addData("{name_map[k]}", data["{name_map[k]}"])' for k in data]
     lines.extend(_gen_par(k, v, used, subs) for k, v in sr.parameters.items())
     lines.extend(_gen_var(k, v, used, subs) for k, v in sr.variables.items())
     lines.extend(_gen_der(k, v, used, subs) for k, v in sr.derived.items())
@@ -1865,9 +1871,54 @@ def generate_model_code_mxlweb(
         [
             f'import {{ {core_import} }} from "@computational-biology-aachen/mxlweb-core";',
             f'import {{ {mathml_import_str} }} from "@computational-biology-aachen/mxlweb-core/mathml";',
+            *([f'import data from "{data_path}";'] if data else []),
             f"\n{docstring}" if docstring else "",
             model_builder_str,
         ]
+    )
+
+
+def _model_data(
+    model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
+) -> dict[str, pd.Series]:
+    """The model's data sets, each checked to be a 1-D numeric series (mxl-schemas ADR 0014)."""
+    data = getattr(model, "get_raw_data", dict)()
+    for k, v in data.items():
+        if not isinstance(v, pd.Series):
+            msg = (
+                f"data {k!r} is a {type(v).__name__}; only 1-D data (a pd.Series) "
+                "can be exported, split a table into one series per column"
+            )
+            raise TypeError(msg)
+    return data
+
+
+def generate_model_data_mxlweb(
+    model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
+) -> str | None:
+    """Generate the data sidecar `generate_model_code_mxlweb`'s source imports.
+
+    One entry per data set, keyed by its canonical identifier, in the
+    mxl-schemas `model-data.schema.json` layout (`{"<id>": {"values": [...]}}`).
+
+    Returns
+    -------
+    str | None
+        The sidecar's JSON, or None if the model has no data.
+
+    """
+    if not (data := _model_data(model)):
+        return None
+    name_map = canonical_identifier_map(model.ids)
+    return (
+        json.dumps(
+            {
+                name_map[k]: {"values": [float(x) for x in v.to_numpy()]}
+                for k, v in data.items()
+            },
+            indent=2,
+        )
+        + "\n"
     )
 
 

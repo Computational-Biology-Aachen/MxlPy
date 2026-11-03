@@ -22,6 +22,8 @@ import numpy as np
 import sympy
 from wadler_lindig import pformat
 
+from mxlpy.meta.array_fns import ARRAY_FNS, array_fn_from_call
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -857,6 +859,11 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
             return None
         model_args.append(expr)
     _LOGGER.debug("Fn args: %s", model_args)
+    model_kwargs: dict[str, sympy.Expr] = {}
+    for kw in node.keywords:
+        if kw.arg is None or (expr := _handle_expr(kw.value, ctx)) is None:
+            return None
+        model_kwargs[kw.arg] = expr
 
     match node.func:
         case ast.Name(id):
@@ -897,6 +904,13 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
             raise NotImplementedError(msg)
 
     if py_fn is None:
+        return None
+
+    if py_fn in ARRAY_FNS:
+        return array_fn_from_call(py_fn, model_args, model_kwargs)
+
+    if model_kwargs:
+        # Keyword arguments are only understood for the array functions above.
         return None
 
     if (fn := KNOWN_FNS.get(py_fn)) is not None:
