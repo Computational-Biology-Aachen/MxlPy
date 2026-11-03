@@ -1,6 +1,6 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
-"""Model -> WASM, solved by the radau.wasm shipped with MxlPy, all run by wasmtime."""
+"""Model -> WASM, solved by the solvers.wasm shipped with MxlPy, all run by wasmtime."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 __all__ = ["compile_model"]
 
-_ASSET = Path(__file__).parent / "assets" / "radau.wasm"
+_ASSET = Path(__file__).parent / "assets" / "solvers.wasm"
 _BINARY = {"add": "f64.add", "mul": "f64.mul", "div": "f64.div"}
 _DOUBLE = 8
 
@@ -211,6 +211,7 @@ class _Compiled:
         rtol: float,
         atol: float,
         nmax: int,
+        method: str,
         reuse_jacobian: bool,
     ) -> tuple[int, np.ndarray]:
         rt, n, n_out = self._rt, len(y0), len(t_out)
@@ -221,10 +222,12 @@ class _Compiled:
         )
         po = rt.malloc(n * n_out)
         rt.solver["mxn_set_model"](rt.store, self._index)
+        head, tail = (rt.store, n, py, pp, rtol, atol, nmax), (n_out, pt, po)
         try:
-            idid = rt.solver["mxn_radau"](
-                rt.store, n, py, pp, rtol, atol, nmax, int(reuse_jacobian), n_out, pt, po,
-            )  # fmt: skip
+            if method == "LSODA":
+                idid = rt.solver["mxn_lsoda"](*head, *tail)
+            else:
+                idid = rt.solver["mxn_radau"](*head, int(reuse_jacobian), *tail)
         except wt.Trap:
             idid = -5
         out = rt.view(po, n * n_out).reshape(n_out, n).copy()

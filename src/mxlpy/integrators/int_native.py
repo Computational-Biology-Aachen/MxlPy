@@ -73,6 +73,7 @@ class _Compiled(Protocol):
         rtol: float,
         atol: float,
         nmax: int,
+        method: str,
         reuse_jacobian: bool,
     ) -> tuple[int, Array]: ...
 
@@ -213,7 +214,7 @@ def args_time_course(
 
 @dataclass
 class Native(AbstractIntegrator):
-    """Radau integrator running compiled model code outside Python.
+    """Integrator running compiled model code and a C solver outside Python.
 
     Attributes
     ----------
@@ -231,8 +232,11 @@ class Native(AbstractIntegrator):
         Initial time point.
     backend
         `llvm`, `wasm`, or `auto` to take the fastest one installed.
+    method
+        `Radau` (RADAU5, for stiff models) or `LSODA`, which switches between Adams
+        and BDF methods as stiffness changes. LSODA is SciPy's own C code.
     reuse_jacobian
-        Reuse Jacobians for longer. Faster on larger stiff models, but less accurate
+        Radau only. Reuse Jacobians for longer. Faster on larger stiff models, but less accurate
         on some small ones, and too rough for fits that use finite differences.
     nmax
         Maximal number of solver steps.
@@ -246,6 +250,7 @@ class Native(AbstractIntegrator):
     rtol: float = 1e-8
     t0: float = 0.0
     backend: Literal["auto", "llvm", "wasm"] = "auto"
+    method: Literal["Radau", "LSODA"] = "Radau"
     reuse_jacobian: bool = False
     nmax: int = 2_000_000
     _y0_orig: tuple[float, ...] = field(default_factory=tuple)
@@ -253,6 +258,12 @@ class Native(AbstractIntegrator):
     def __post_init__(self) -> None:
         """Pick a backend and compile, so an unsupported model fails right away."""
         self._y0_orig = self.y0
+        if self.method not in ("Radau", "LSODA"):
+            msg = f"Native supports the methods Radau and LSODA, not {self.method!r}"
+            raise ValueError(msg)
+        if self.reuse_jacobian and self.method != "Radau":
+            msg = "reuse_jacobian only applies to Radau"
+            raise ValueError(msg)
         if self.backend == "auto":
             self.backend = _AVAILABLE[0]  # type: ignore[assignment]
         elif self.backend not in _AVAILABLE:
@@ -283,6 +294,7 @@ class Native(AbstractIntegrator):
                 rtol=self.rtol,
                 atol=self.atol,
                 nmax=self.nmax,
+                method=self.method,
                 reuse_jacobian=self.reuse_jacobian,
             )
         return None if idid <= 0 else (t_out, values)
