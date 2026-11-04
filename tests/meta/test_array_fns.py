@@ -137,3 +137,13 @@ def test_save_load_round_trip(tmp_path: Path) -> None:
     actual = loaded.get_args()
     for name in ("absorbed", "v"):
         assert actual[name] == pytest.approx(expected[name], rel=1e-12)
+
+
+def test_mxlweb_codegen_data_tex_name() -> None:
+    model = _spectral_model().add_data("light_spectrum", pd.Series(np.ones(11)))
+    code = generate_model_code_mxlweb(model)
+    # A plain id needs no TeX name; an escaped one is spelled out.
+    assert '.addData("wavelength", data["wavelength"])' in code
+    assert '.addData("light_spectrum", {' in code
+    assert 'values: data["light_spectrum"].values,' in code
+    assert "texName: 'light\\\\_spectrum'," in code

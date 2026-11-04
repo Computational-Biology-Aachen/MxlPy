@@ -1840,8 +1840,20 @@ def generate_model_code_mxlweb(
                 )
         return "\n".join(out)
 
+    def _gen_data(k: str) -> str:
+        name = name_map[k]
+        tex_name = tex_names.get(k, valid_tex_identifier(k))
+        if tex_name == name:
+            return f'      .addData("{name}", data["{name}"])'
+        return (
+            f'      .addData("{name}", {{\n'
+            f'        values: data["{name}"].values,\n'
+            f"        texName: {tex_name!r},\n"
+            f"      }})"
+        )
+
     data = _model_data(model)
-    lines = [f'      .addData("{name_map[k]}", data["{name_map[k]}"])' for k in data]
+    lines = [_gen_data(k) for k in data]
     lines.extend(_gen_par(k, v, used, subs) for k, v in sr.parameters.items())
     lines.extend(_gen_var(k, v, used, subs) for k, v in sr.variables.items())
     lines.extend(_gen_der(k, v, used, subs) for k, v in sr.derived.items())
