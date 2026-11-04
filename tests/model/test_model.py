@@ -1539,3 +1539,39 @@ def test_rename_preserves_dynamics() -> None:
     res_renamed = Simulator(renamed).simulate(10).get_result().unwrap_or_err()
     res_reference = Simulator(reference).simulate(10).get_result().unwrap_or_err()
     pd.testing.assert_frame_equal(res_renamed.variables, res_reference.variables)
+
+
+def _data_total(d: pd.Series) -> float:
+    return float(d.sum())
+
+
+@pytest.mark.parametrize("change", ["update", "remove_add"])
+def test_data_change_invalidates_cache(change: str) -> None:
+    model = (
+        KineticModelBuilder()
+        .add_variable("v1", 1.0)
+        .add_data("d", pd.Series([1.0, 2.0]))
+        .add_derived("total", fn=_data_total, args=["d"])
+    )
+    assert model.get_args()["total"] == 3.0  # builds the cache
+
+    new = pd.Series([10.0, 20.0])
+    if change == "update":
+        model.update_data("d", new)
+    else:
+        model.remove_derived("total").remove_data("d").add_data("d", new)
+        model.add_derived("total", fn=_data_total, args=["d"])
+    assert model.get_args()["total"] == 30.0
+
+
+def test_data_only_derived_is_static() -> None:
+    # Data is constant over a run: no need to recompute it at every RHS call.
+    model = (
+        KineticModelBuilder()
+        .add_variable("v1", 1.0)
+        .add_data("d", pd.Series([1.0, 2.0]))
+        .add_derived("total", fn=_data_total, args=["d"])
+    )
+    cache = model._create_cache()
+    assert "total" not in cache.dyn_order
+    assert cache.all_parameter_values["total"] == 3.0

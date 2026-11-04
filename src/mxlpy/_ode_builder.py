@@ -368,7 +368,9 @@ class OdeModelBuilder:
 
         """
         parameter_names = set(self._parameters)
-        all_parameter_names = set(parameter_names)  # later include static derived
+        # Data is constant over a run, so whatever only reads data and
+        # parameters is static. Later this also includes static derived.
+        all_parameter_names = parameter_names | set(self._data)
 
         base_parameter_values: dict[str, float] = {
             k: val
@@ -1979,6 +1981,7 @@ class OdeModelBuilder:
     # Datasets
     ##########################################################################
 
+    @_invalidate_cache
     def add_data(self, name: str, data: pd.Series | pd.DataFrame) -> Self:
         """Add named data set to model.
 
@@ -2010,6 +2013,7 @@ class OdeModelBuilder:
         """
         return dict(self._data)
 
+    @_invalidate_cache
     def update_data(self, name: str, data: pd.Series | pd.DataFrame) -> Self:
         """Update named data set.
 
@@ -2029,6 +2033,7 @@ class OdeModelBuilder:
         self._data[name] = data
         return self
 
+    @_invalidate_cache
     def remove_data(self, name: str) -> Self:
         """Remove data set from model.
 

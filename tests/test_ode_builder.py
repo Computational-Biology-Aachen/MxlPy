@@ -20,16 +20,13 @@ pre-evaluation snapshot instead.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from mxlpy import OdeModelBuilder, Simulator
 from mxlpy.surrogates.abstract_ode import AbstractOdeSurrogate
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 @dataclass(kw_only=True)
@@ -337,3 +334,31 @@ def test_rename_updates_surrogate_name_output_name_and_target_references() -> No
     # compose, this isn't double-counting a single mechanism.
     (dxdt,) = model(0.0, [1.0])
     assert dxdt == pytest.approx((-1.0 + 1.0) + 1.0)
+
+
+def _data_total(d: pd.Series) -> float:
+    return float(d.sum())
+
+
+def test_update_data_invalidates_cache() -> None:
+    model = (
+        OdeModelBuilder()
+        .add_data("d", pd.Series([1.0, 2.0]))
+        .add_derived("total", fn=_data_total, args=["d"])
+        .add_diff_eq("x", fn=lambda total: -total, args=["total"], initial_value=1.0)
+    )
+    assert model(0.0, [1.0]) == (-3.0,)  # builds the cache
+    model.update_data("d", pd.Series([10.0, 20.0]))
+    assert model(0.0, [1.0]) == (-30.0,)
+
+
+def test_data_only_derived_is_static() -> None:
+    model = (
+        OdeModelBuilder()
+        .add_data("d", pd.Series([1.0, 2.0]))
+        .add_derived("total", fn=_data_total, args=["d"])
+        .add_diff_eq("x", fn=lambda total: -total, args=["total"], initial_value=1.0)
+    )
+    cache = model._create_cache()
+    assert "total" not in cache.dyn_order
+    assert cache.all_parameter_values["total"] == 3.0
