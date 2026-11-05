@@ -85,7 +85,13 @@ version = "0.66.0"
 [project.optional-dependencies]
 jax = ["diffrax>=0.7.0", "equinox>=0.13", "optax>=0.2.5", "sympy2jax>=0.0.7"]
 keras = ["keras>=3.9.2"]
-native = ["llvmlite>=0.45", "mxlpy-native>=0.2.0"]
+# mxlpy-native (with llvmlite) only has wheels where llvmlite does; everywhere
+# else `native` gets the WASM backend, which runs the same solvers. Keep in sync
+# with _LLVM_PLATFORMS in src/mxlpy/integrators/_native/backends.py.
+native = [
+    "mxlpy-native>=0.3.0; (sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')) or (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'win32' and (platform_machine == 'AMD64' or platform_machine == 'ARM64'))",
+    "wasmtime>=30; (sys_platform != 'linux' or (platform_machine != 'x86_64' and platform_machine != 'aarch64')) and (sys_platform != 'darwin' or platform_machine != 'arm64') and (sys_platform != 'win32' or (platform_machine != 'AMD64' and platform_machine != 'ARM64'))",
+]
 native-wasm = ["wasmtime>=30"]
 sr = ["pysr>=1.5.9"]
 tensorflow = ["tensorflow>=2.19.0"]
@@ -211,7 +217,9 @@ url = "https://download.pytorch.org/whl/cpu"
 
 [tool.uv.sources]
 mxlpy = { workspace = true }
-mxlpy-native = { path = "native", editable = true }
+# Until mxlpy-native 0.3.0 is on PyPI; then drop this (and allow it past
+# exclude-newer, or wait 3 days after the release).
+mxlpy-native = { git = "https://github.com/Computational-Biology-Aachen/mxlpy-native", rev = "0dfa131" }
 # Plain PyPI torch on Linux resolves to the CUDA build, which unconditionally
 # depends on triton — triton's native module segfaults on GitHub Actions'
 # GPU-less runners the instant torch.optim.Optimizer.__init__ lazily imports

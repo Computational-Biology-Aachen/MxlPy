@@ -120,7 +120,7 @@ def _initialise() -> None:
 
 @lru_cache(maxsize=1)
 def _solver() -> ct.CDLL:
-    lib = ct.CDLL(str(mxlpy_native.library_path()))
+    lib = mxlpy_native.load()
     lib.mxn_set_model.argtypes = [ct.c_void_p]
     lib.mxn_set_model.restype = None
     lib.mxn_eval_rows.restype = None
