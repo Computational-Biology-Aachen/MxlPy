@@ -19,7 +19,7 @@ from mxlpy.integrators._native.codegen import ExprEmitter
 if TYPE_CHECKING:
     from mxlpy.integrators._native.lower import Lowered
 
-__all__ = ["compile_model"]
+__all__ = ["abi_version", "compile_model"]
 
 _ASSET = Path(__file__).parent / "assets" / "solvers.wasm"
 _BINARY = {"add": "f64.add", "mul": "f64.mul", "div": "f64.div"}
@@ -125,6 +125,8 @@ class _Runtime:
     def __init__(self) -> None:
         self.engine = wt.Engine()
         self.store = wt.Store(self.engine)
+        if not _ASSET.exists():
+            raise FileNotFoundError(_ASSET)
         module = wt.Module.from_file(self.engine, str(_ASSET))
         imports: list[Any] = [_stub(self.store, i) for i in module.imports]
         # wasmtime types exports as a union of everything a module can export
@@ -153,6 +155,15 @@ def _runtime() -> _Runtime:
 
 # wasmtime objects can't be freed once the interpreter has started shutting down.
 atexit.register(_runtime.cache_clear)
+
+
+def abi_version() -> int:
+    """Return the solver ABI solvers.wasm was built with, 0 if it predates versioning."""
+    solver = _runtime().solver
+    try:
+        return int(solver["mxn_abi_version"](_runtime().store))
+    except KeyError:
+        return 0
 
 
 class _Compiled:

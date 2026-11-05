@@ -3,15 +3,17 @@
 """Native integrator: compiles a lowerable model and solves it outside Python.
 
 This is far faster than the Python integrators, but only works for models that can be
-represented symbolically. Install with `mxlpy[native]` (llvmlite and a compiled solver)
-or `mxlpy[native-wasm]` (wasmtime only, more portable but slower).
+represented symbolically. Install with `mxlpy[native]` (llvmlite and the compiled
+solvers from mxlpy-native, where wheels exist, otherwise the WASM backend) or
+`mxlpy[native-wasm]` (wasmtime only, works everywhere but slower). If a backend is
+installed but broken, the error says how to fix it; `python -m mxlpy_native` diagnoses
+the llvm backend.
 """
 
 from __future__ import annotations
 
 import atexit
 import importlib
-import importlib.util
 import logging
 import threading
 from collections import OrderedDict
@@ -22,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 import numpy as np
 import pandas as pd
 
+from mxlpy.integrators._native.backends import installed, problem
 from mxlpy.integrators._native.lower import (
     NativeLoweringError,
     fingerprint,
@@ -39,15 +42,12 @@ if TYPE_CHECKING:
 
 __all__ = ["Native", "NativeLoweringError", "args_time_course"]
 
-_REQUIRES = {"llvm": ("llvmlite", "mxlpy_native"), "wasm": ("wasmtime",)}
-_EXTRA = {"llvm": "mxlpy[native]", "wasm": "mxlpy[native-wasm]"}
-_AVAILABLE = tuple(
-    backend
-    for backend, modules in _REQUIRES.items()
-    if all(importlib.util.find_spec(m) is not None for m in modules)
-)
+_AVAILABLE = installed()
 if not _AVAILABLE:
-    msg = 'Native needs an optional backend: pip install "mxlpy[native]" or "mxlpy[native-wasm]"'
+    msg = (
+        'Native needs an optional backend: pip install "mxlpy[native]" (fastest), or '
+        '"mxlpy[native-wasm]" (no compiled dependencies, works everywhere)'
+    )
     raise ImportError(msg)
 
 _LOGGER = logging.getLogger(__name__)
@@ -110,6 +110,25 @@ def _check_rhs(
         if not close.all():
             msg = f"Compiled model disagrees with the model at variables {np.flatnonzero(~close).tolist()}"
             raise NativeLoweringError(msg)
+
+
+def _pick_backend() -> str:
+    """Return the fastest working backend, warning about installed ones that are broken."""
+    broken = {}
+    for backend in _AVAILABLE:
+        if (reason := problem(backend)) is None:
+            for skipped, why in broken.items():
+                _LOGGER.warning(
+                    "Native uses %s, not the broken %s backend: %s",
+                    backend,
+                    skipped,
+                    why,
+                )
+            return backend
+        broken[backend] = reason
+    details = "\n".join(f"  {b}: {why}" for b, why in broken.items())
+    msg = f"None of Native's installed backends can be used:\n{details}"
+    raise ImportError(msg)
 
 
 def _compile(
@@ -264,10 +283,13 @@ class Native(AbstractIntegrator):
         if self.reuse_jacobian and self.method != "Radau":
             msg = "reuse_jacobian only applies to Radau"
             raise ValueError(msg)
+        if self.backend not in ("auto", "llvm", "wasm"):
+            msg = f"Native's backend must be 'auto', 'llvm' or 'wasm', not {self.backend!r}"
+            raise ValueError(msg)
         if self.backend == "auto":
-            self.backend = _AVAILABLE[0]  # type: ignore[assignment]
-        elif self.backend not in _AVAILABLE:
-            msg = f'The {self.backend} backend is not installed: pip install "{_EXTRA.get(self.backend, "mxlpy[native]")}"'
+            self.backend = _pick_backend()  # type: ignore[assignment]
+        elif (reason := problem(self.backend)) is not None:
+            msg = f"Native's {self.backend} backend can't be used: {reason}"
             raise ImportError(msg)
         _compile(self.rhs, self.backend, self.t0, np.asarray(self.y0, dtype=float))
 
