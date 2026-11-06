@@ -31,7 +31,7 @@ Each file is a self-contained reference for one topic area:
 ## Installation
 
 ```bash
-uv sync --all-extras --all-groups   # PyPI; uses the Scipy integrator
+uv sync --all-extras --all-groups   # PyPI; uses the Sundials (CVODE) integrator
 pixi install --frozen                # conda-forge; adds the Assimulo integrator
 ```
 

@@ -94,6 +94,11 @@ native = [
 ]
 native-wasm = ["wasmtime>=30"]
 sr = ["pysr>=1.5.9"]
+# sundials4py ships wheels only (no sdist), and none for linux-aarch64,
+# win-arm64 or pyodide. Keep this marker in sync with its PyPI wheel tags.
+sundials = [
+    "sundials4py>=7.9.0; (sys_platform == 'linux' and platform_machine == 'x86_64') or sys_platform == 'darwin' or (sys_platform == 'win32' and (platform_machine == 'AMD64' or platform_machine == 'x86'))",
+]
 tensorflow = ["tensorflow>=2.19.0"]
 torch = ["torch>=2.5.1"]
 

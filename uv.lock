@@ -2455,6 +2455,9 @@ native-wasm = [
 sr = [
     { name = "pysr" },
 ]
+sundials = [
+    { name = "sundials4py", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32') or (platform_machine == 'x86' and sys_platform == 'win32') or sys_platform == 'darwin'" },
+]
 tensorflow = [
     { name = "tensorflow" },
 ]
@@ -2510,6 +2513,7 @@ requires-dist = [
     { name = "salib", specifier = ">=1.5.1" },
     { name = "scipy", specifier = ">=1.14.1" },
     { name = "seaborn", specifier = ">=0.13.2" },
+    { name = "sundials4py", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'sundials') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'sundials') or (platform_machine == 'x86' and sys_platform == 'win32' and extra == 'sundials') or (sys_platform == 'darwin' and extra == 'sundials')", specifier = ">=7.9.0" },
     { name = "symbtools", specifier = ">=0.4.0" },
     { name = "sympy", specifier = ">=1.13.1" },
     { name = "sympy2jax", marker = "extra == 'jax'", specifier = ">=0.0.7" },
@@ -2524,7 +2528,7 @@ requires-dist = [
     { name = "wasmtime", marker = "(platform_machine != 'AMD64' and platform_machine != 'ARM64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and extra == 'native') or (platform_machine == 'AMD64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'ARM64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'aarch64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'x86_64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'AMD64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'ARM64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'aarch64' and sys_platform == 'win32' and extra == 'native') or (platform_machine == 'arm64' and sys_platform == 'win32' and extra == 'native') or (platform_machine == 'x86_64' and sys_platform == 'win32' and extra == 'native') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'native')", specifier = ">=30" },
     { name = "wasmtime", marker = "extra == 'native-wasm'", specifier = ">=30" },
 ]
-provides-extras = ["jax", "keras", "native", "native-wasm", "sr", "tensorflow", "torch"]
+provides-extras = ["jax", "keras", "native", "native-wasm", "sr", "sundials", "tensorflow", "torch"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2569,6 +2573,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0c/c0/ee95b28f029c73f8d49d8f52edaed02a1d4a9acb8b69355737fdb1faa191/namex-0.1.0.tar.gz", hash = "sha256:117f03ccd302cc48e3f5c58a296838f6b89c83455ab8683a1e85f2a430aa4306", size = 6649, upload-time = "2025-05-26T23:17:38.918Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b2/bc/465daf1de06409cdd4532082806770ee0d8d7df434da79c76564d0f69741/namex-0.1.0-py3-none-any.whl", hash = "sha256:e2012a474502f1e2251267062aae3114611f07df4224b6e06334c57b0f2ce87c", size = 5905, upload-time = "2025-05-26T23:17:37.695Z" },
+]
+
+[[package]]
+name = "nanobind"
+version = "2.15.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/08/cef3343279d2bde0baa57aadaacf7196ee336f12449c50c27f799c45b3f7/nanobind-2.15.0.tar.gz", hash = "sha256:3eace37a3b8cdadd531fcc6145263985b29821467161d34ff722b0644cf445b5", size = 1060056, upload-time = "2026-08-15T19:01:04.369Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d8/72/16a606cbea58be568475f450ece121b3fd62cffb390fd0f8eb8b410904f5/nanobind-2.15.0-py3-none-any.whl", hash = "sha256:91dae9305c6242cf63ab11a5c41594e234e7a22fd9fcc2c5c4ba80724abc1787", size = 271648, upload-time = "2026-08-15T19:01:02.477Z" },
 ]
 
 [[package]]
@@ -4084,6 +4097,35 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/28/e3/55dcc2cfbc3ca9c29519eb6884dd1415ecb53b0e934862d3559ddcb7e20b/stack_data-0.6.3.tar.gz", hash = "sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9", size = 44707, upload-time = "2023-09-30T13:58:05.479Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl", hash = "sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695", size = 24521, upload-time = "2023-09-30T13:58:03.53Z" },
+]
+
+[[package]]
+name = "sundials4py"
+version = "7.9.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nanobind" },
+    { name = "numpy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/d8/a9bcc88a17a12c6f86293a5aa376e5fc05bb0067a3a8089783593b630a82/sundials4py-7.9.0-cp312-abi3-macosx_10_15_x86_64.whl", hash = "sha256:1c4e258b09d549b91be6a3f67c0221a2fa86c68dec1f31c8300d317e2fa2294a", size = 4676072, upload-time = "2026-09-04T19:05:01.374Z" },
+    { url = "https://files.pythonhosted.org/packages/92/06/de2d3a79bd01c85ff3f44d8a0d90c6c2bcfad6d25772c7f0591e90ea954a/sundials4py-7.9.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:e691f15425fddc5580481afbf6c3b2a77616903a95b4b93fc8b5a7c1815af2d1", size = 4519837, upload-time = "2026-09-04T19:05:08.894Z" },
+    { url = "https://files.pythonhosted.org/packages/70/ac/60d33638dde7d22aa80e62199db5e555727f2fd0115b1729901d5064dae9/sundials4py-7.9.0-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:695cb4f356b451c65175ce67dff41240e79bc50d93a996896f5010c51bfa3a0d", size = 15307573, upload-time = "2026-09-04T19:05:17.537Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/8a/9f8f399961ebc86a4cb29b094bc95d726947bed3847ff45ec06ed2b7fa6e/sundials4py-7.9.0-cp312-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:fd85953e97053acbcf0652a9ee29fd5ea39bfe07b11b20639763b29e95972cee", size = 15458363, upload-time = "2026-09-04T19:05:26.622Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/76/3025ddf76ae8d7c17d255c92d0c23c579560837bfb83f1cbddfe5c0ab512/sundials4py-7.9.0-cp312-abi3-win32.whl", hash = "sha256:ea33568ff95f779b170f2bcf536addcdce0efa252acb1e4e4605208c693422eb", size = 4809259, upload-time = "2026-09-04T19:05:29.271Z" },
+    { url = "https://files.pythonhosted.org/packages/80/99/964dfcc3894bac534b7c50fe340cfdef71e2f9554bc7429146ba7b4f1a48/sundials4py-7.9.0-cp312-abi3-win_amd64.whl", hash = "sha256:e92f0191f38a3656a3c9b3064b090c8a1673e902e7686c934eb687cd9673b068", size = 5349564, upload-time = "2026-09-04T19:05:31.469Z" },
+    { url = "https://files.pythonhosted.org/packages/78/93/c0ef688054d75181d8d001e8ced9228391e41ab77a0f03304ad73901485e/sundials4py-7.9.0-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:e1ff9a1a2a31d8d0c9decc8d4fae0153129f44ff300fe9e972db4809d22856d2", size = 4679422, upload-time = "2026-09-04T19:05:33.544Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/b7/66405770a66708fc8d671047949c5ebad13072b0405b367016e5ad4801e8/sundials4py-7.9.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:ef2497ee3a5af3371280b6f2fa5a558ad3ad5aac77079f2f2b66a3da0fbf6137", size = 4524204, upload-time = "2026-09-04T19:05:40.497Z" },
+    { url = "https://files.pythonhosted.org/packages/38/73/b5ba4959e5bf77e241364319f17651fb8d622900e78a85652af265e393da/sundials4py-7.9.0-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7ad387a18ff33d62ed7a55d3507557fee8a433f32ab251e58553db02744c149c", size = 15562480, upload-time = "2026-09-04T19:05:49.671Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/50/c2b2bcd2697632fcf89af4254bbc3b855cb04fc92353c7b2851878a7ef20/sundials4py-7.9.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:0a81d6a521e9aaddc2b2e00e7eea817b98eddf28d0aa938bcb1a28232e076847", size = 15713770, upload-time = "2026-09-04T19:05:58.751Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/3d/de99b07a99a62d7b3c96c7e849bac31aa33ab9ceb8341c8633ce52986628/sundials4py-7.9.0-cp314-cp314t-win32.whl", hash = "sha256:22936d6b2ffbeca50477091334ac95cab3590157f8b2e5876b1dc28acf453db3", size = 4897177, upload-time = "2026-09-04T19:06:01.847Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/32/c4b345886e1708bbebc0c8a3ae72c6ef5a5ac903072dcabdadf80f82ab60/sundials4py-7.9.0-cp314-cp314t-win_amd64.whl", hash = "sha256:0a0017d9e4493e454befa89600eb7d37bd023cc42780fd3d76cbee83110d9faf", size = 5481124, upload-time = "2026-09-04T19:06:04.319Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/41/74d5fa82292e8b0f4885e434a5115311377c15187d54f32b23b2af4e32aa/sundials4py-7.9.0-cp315-cp315t-macosx_10_15_x86_64.whl", hash = "sha256:52b05c992dc217a3677dcf96660ca4ead8ba99ccd77bfac29e4a4d4e8bab33b5", size = 4679495, upload-time = "2026-09-04T19:06:06.555Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/ae/614f4bbeda9a701748543ae2c66cc5f12ddac89ff3729b11ef4bedf530c9/sundials4py-7.9.0-cp315-cp315t-macosx_11_0_arm64.whl", hash = "sha256:6b98dd30a0a7e63139dada3255a2f9356dcdb87fb9f9dcc41ecaa3dff7214a7c", size = 4524172, upload-time = "2026-09-04T19:06:13.645Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/e8/58e4fd803bba638d2b2212f4743fca5d5d45d45525f64c18a8a1fb040506/sundials4py-7.9.0-cp315-cp315t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0db7c65364621f004eb158c291560808bc2ab6b76c4cea5bd34b8efdc1d16702", size = 15568608, upload-time = "2026-09-04T19:06:23.249Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/c2/b40e7821905f404a93d11e1ed2db7fc239ebb0c664e73c612818104c699e/sundials4py-7.9.0-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:2015562662403cf5556aa8482c096f0e315fc65bfac24f3ecf4d3c1b3d41d2e4", size = 15718164, upload-time = "2026-09-04T19:06:32.307Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/ec/1b12e947adcd51f9b2b775dc1bdd2adec90ac0f230d15a2f8b5d2b598e10/sundials4py-7.9.0-cp315-cp315t-win32.whl", hash = "sha256:d634a0504d6d30271cc0ed550ea80b2fe0a3056b1fd0d78c26c467f0802ac03e", size = 4897224, upload-time = "2026-09-04T19:06:35.468Z" },
+    { url = "https://files.pythonhosted.org/packages/34/4d/7ea1ead328a5a205cddf7c1159fda31b9dcdcbf504c49ab28212357c2b6f/sundials4py-7.9.0-cp315-cp315t-win_amd64.whl", hash = "sha256:e4f490d1e29c780b090daf1c9c862c9ebded2c991e3de752175aaa99507e02a3", size = 5481052, upload-time = "2026-09-04T19:06:37.875Z" },
 ]
 
 [[package]]

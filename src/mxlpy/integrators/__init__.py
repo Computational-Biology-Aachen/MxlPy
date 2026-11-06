@@ -3,11 +3,13 @@
 """Integrator Package.
 
 This package provides integrators for solving ordinary differential equations (ODEs).
-It includes support for both Assimulo and Scipy integrators, with Assimulo being the default if available.
+The default integrator is the first one available of Assimulo (conda only),
+Sundials (`mxlpy[sundials]`) and Scipy. Both Assimulo and Sundials run CVODE.
 """
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from .abstract import IntegratorProtocol, IntegratorType
@@ -19,13 +21,17 @@ from .utils import (
     no_oscillation_detection,
 )
 
-# Assimulo is optional dependency
-try:
+DefaultIntegrator: type = Scipy
+
+# Assimulo and sundials4py are optional dependencies
+with contextlib.suppress(ImportError):
+    from .int_sundials import Sundials
+
+    DefaultIntegrator = Sundials
+with contextlib.suppress(ImportError):
     from .int_assimulo import Assimulo
 
     DefaultIntegrator = Assimulo
-except ImportError:
-    DefaultIntegrator = Scipy
 
 if TYPE_CHECKING:
     from .int_diffrax import Diffrax
@@ -62,6 +68,7 @@ __all__ = [
     "Native",
     "OscillationDetector",
     "Scipy",
+    "Sundials",
     "detect_oscillations",
     "detect_oscillations_scipy",
     "no_oscillation_detection",
