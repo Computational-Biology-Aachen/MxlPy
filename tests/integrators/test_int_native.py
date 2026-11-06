@@ -38,7 +38,7 @@ BACKENDS = [
     ),
 ]
 
-METHODS = ["Radau", "LSODA"]
+METHODS = ["Radau", "LSODA", "CVODE_BDF", "CVODE_Adams"]
 
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("wasmtime") is None
@@ -284,6 +284,30 @@ def test_lsoda_matches_scipy_lsoda(backend: Any, factory) -> None:  # noqa: ANN0
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("factory", [lotka, robertson])
+@pytest.mark.skipif(
+    importlib.util.find_spec("assimulo") is None, reason="assimulo not installed"
+)
+def test_cvode_matches_assimulo_cvode(backend: Any, factory) -> None:  # noqa: ANN001
+    """Both run SUNDIALS' CVODE with BDF, so they agree well below the solver tolerance."""
+    from mxlpy import Assimulo  # noqa: PLC0415
+
+    points = np.linspace(0, 20, 41)
+    _, expected = _values(
+        Simulator(
+            factory(), integrator=partial(Assimulo, rtol=1e-8, atol=1e-8)
+        ).simulate_time_course(points)
+    )
+    _, got = _values(
+        Simulator(
+            factory(),
+            integrator=_native(backend, method="CVODE_BDF", rtol=1e-8, atol=1e-8),
+        ).simulate_time_course(points)
+    )
+    assert got == pytest.approx(expected, rel=1e-5, abs=1e-8)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
 def test_reuse_jacobian_needs_radau(backend: Any) -> None:
     with pytest.raises(ValueError, match="reuse_jacobian only applies to Radau"):
         mxlpy.Native(
@@ -293,7 +317,7 @@ def test_reuse_jacobian_needs_radau(backend: Any) -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_unknown_method_raises(backend: Any) -> None:
-    with pytest.raises(ValueError, match="Radau and LSODA"):
+    with pytest.raises(ValueError, match="Radau, LSODA, CVODE_BDF, CVODE_Adams"):
         mxlpy.Native(lotka(), (2.0, 1.0), backend=backend, method="BDF")  # type: ignore[arg-type]
 
 

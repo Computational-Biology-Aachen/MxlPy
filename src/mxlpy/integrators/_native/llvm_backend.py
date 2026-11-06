@@ -135,6 +135,10 @@ def _solver() -> ct.CDLL:
     lib.mxn_lsoda.argtypes = [
         ct.c_int, _DP, _DP, ct.c_double, ct.c_double, ct.c_int, ct.c_int, _DP, _DP,
     ]  # fmt: skip
+    lib.mxn_cvode.restype = ct.c_int
+    lib.mxn_cvode.argtypes = [
+        ct.c_int, _DP, _DP, ct.c_double, ct.c_double, ct.c_int, ct.c_int, ct.c_int, _DP, _DP,
+    ]  # fmt: skip
     return lib
 
 
@@ -197,6 +201,8 @@ class _Compiled:
         self._lib.mxn_set_model(self._ptr)
         if method == "LSODA":
             idid = self._lib.mxn_lsoda(*head, *tail)
+        elif method.startswith("CVODE"):
+            idid = self._lib.mxn_cvode(*head, int(method == "CVODE_Adams"), *tail)
         else:
             idid = self._lib.mxn_radau(*head, int(reuse_jacobian), *tail)
         return int(idid), out

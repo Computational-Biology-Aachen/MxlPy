@@ -237,6 +237,9 @@ class _Compiled:
         try:
             if method == "LSODA":
                 idid = rt.solver["mxn_lsoda"](*head, *tail)
+            elif method.startswith("CVODE"):
+                adams = int(method == "CVODE_Adams")
+                idid = rt.solver["mxn_cvode"](*head, adams, *tail)
             else:
                 idid = rt.solver["mxn_radau"](*head, int(reuse_jacobian), *tail)
         except wt.Trap:

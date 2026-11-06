@@ -19,7 +19,7 @@ __all__ = ["EXTRA", "NATIVE_ABI", "installed", "problem"]
 
 # The solver ABI this MxlPy calls: MXN_ABI_VERSION in mxlpy-native's c/mxn_solvers.c,
 # which solvers.wasm is built from too.
-NATIVE_ABI = 1
+NATIVE_ABI = 2
 
 EXTRA = {"llvm": "mxlpy[native]", "wasm": "mxlpy[native-wasm]"}
 _MODULES = {"llvm": "mxlpy_native", "wasm": "wasmtime"}

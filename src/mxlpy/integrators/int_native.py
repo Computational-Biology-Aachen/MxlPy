@@ -19,7 +19,7 @@ import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import partial
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, get_args
 
 import numpy as np
 import pandas as pd
@@ -49,6 +49,9 @@ if not _AVAILABLE:
         '"mxlpy[native-wasm]" (no compiled dependencies, works everywhere)'
     )
     raise ImportError(msg)
+
+Method = Literal["Radau", "LSODA", "CVODE_BDF", "CVODE_Adams"]
+METHODS: tuple[str, ...] = get_args(Method)
 
 _LOGGER = logging.getLogger(__name__)
 _CACHE_SIZE = 32
@@ -252,8 +255,10 @@ class Native(AbstractIntegrator):
     backend
         `llvm`, `wasm`, or `auto` to take the fastest one installed.
     method
-        `Radau` (RADAU5, for stiff models) or `LSODA`, which switches between Adams
-        and BDF methods as stiffness changes. LSODA is SciPy's own C code.
+        `Radau` (RADAU5, for stiff models), `LSODA`, which switches between Adams
+        and BDF methods as stiffness changes (SciPy's own C code), or SUNDIALS' CVODE
+        with BDF (`CVODE_BDF`, stiff) or Adams-Moulton (`CVODE_Adams`, non-stiff)
+        methods, the solver Assimulo's `CVode` runs too.
     reuse_jacobian
         Radau only. Reuse Jacobians for longer. Faster on larger stiff models, but less accurate
         on some small ones, and too rough for fits that use finite differences.
@@ -269,7 +274,7 @@ class Native(AbstractIntegrator):
     rtol: float = 1e-8
     t0: float = 0.0
     backend: Literal["auto", "llvm", "wasm"] = "auto"
-    method: Literal["Radau", "LSODA"] = "Radau"
+    method: Method = "Radau"
     reuse_jacobian: bool = False
     nmax: int = 2_000_000
     _y0_orig: tuple[float, ...] = field(default_factory=tuple)
@@ -277,8 +282,10 @@ class Native(AbstractIntegrator):
     def __post_init__(self) -> None:
         """Pick a backend and compile, so an unsupported model fails right away."""
         self._y0_orig = self.y0
-        if self.method not in ("Radau", "LSODA"):
-            msg = f"Native supports the methods Radau and LSODA, not {self.method!r}"
+        if self.method not in METHODS:
+            msg = (
+                f"Native supports the methods {', '.join(METHODS)}, not {self.method!r}"
+            )
             raise ValueError(msg)
         if self.reuse_jacobian and self.method != "Radau":
             msg = "reuse_jacobian only applies to Radau"
