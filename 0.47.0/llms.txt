@@ -1,0 +1,276 @@
+# MxlPy
+
+> MxlPy is a Python package for **mechanistic learning** - combining mechanistic modeling (ODEs) with machine learning to deliver explainable, data-informed solutions for systems biology. Models encode real biology; ML augments understanding without replacing it.
+
+## Docs
+
+- [overview](https://computational-biology-aachen.github.io/MxlPy/latest/index.html)
+- [quick start](https://computational-biology-aachen.github.io/MxlPy/latest/basics.html)
+- [mechanistic learning](https://computational-biology-aachen.github.io/MxlPy/latest/mxl.html)
+- [examples](https://computational-biology-aachen.github.io/MxlPy/latest/examples.html)
+
+## Extended reference
+
+- [analysis (fitting, scanning, MCA, Monte Carlo)](llms-analysis.txt)
+- [visualization](llms-visualization.txt)
+- [advanced (SBML, symbolic, surrogates, comparison)](llms-advanced.txt)
+
+## Core concepts
+
+The `Model` API is a **fluent builder** - every `add_*` / `remove_*` / `update_*` method returns `Self` so calls chain. Rate functions are **pure named functions** from `mxlpy.fns` (never lambdas). Error-returning functions return `Result[T]`; call `.unwrap_or_err()` to extract the value or raise the exception.
+
+## Model construction
+
+> Minimal linear chain: constant inflow, mass-action outflow
+
+```python
+from mxlpy import Model
+from mxlpy.fns import constant, mass_action_1s
+
+def get_model() -> Model:
+    return (
+        Model()
+        .add_variables({"x": 1.0})
+        .add_parameters({"k1": 1.0, "k_out": 1.0})
+        .add_reaction("v_in", constant, stoichiometry={"x": 1}, args=["k1"])
+        .add_reaction("v_out", mass_action_1s, stoichiometry={"x": -1}, args=["k_out", "x"])
+    )
+```
+
+> Two-variable linear chain
+
+```python
+from mxlpy import Model
+from mxlpy.fns import constant, mass_action_1s
+
+def get_model() -> Model:
+    return (
+        Model()
+        .add_variables({"x": 1.0, "y": 1.0})
+        .add_parameters({"k1": 1.0, "k2": 2.0, "k3": 1.0})
+        .add_reaction("v1", constant, stoichiometry={"x": 1}, args=["k1"])
+        .add_reaction("v2", mass_action_1s, stoichiometry={"x": -1, "y": 1}, args=["k2", "x"])
+        .add_reaction("v3", mass_action_1s, stoichiometry={"y": -1}, args=["k3", "y"])
+    )
+```
+
+> Moiety conservation: `x2 = x_total - x1` (derived variable)
+
+```python
+from mxlpy import Model
+from mxlpy import fns
+
+model = (
+    Model()
+    .add_variables({"x1": 1.0})
+    .add_parameters({"x_total": 2.0})
+    .add_derived("x2", fns.moiety_1s, args=["x1", "x_total"])
+)
+```
+
+> Michaelis-Menten enzyme kinetics model
+
+```python
+from mxlpy import Model
+from mxlpy.fns import constant, michaelis_menten_1s
+
+model = (
+    Model()
+    .add_variables({"s": 1.0, "p": 0.0})
+    .add_parameters({"k1": 1.0, "vmax": 2.0, "km": 0.5})
+    .add_reaction("v_in", constant, stoichiometry={"s": 1}, args=["k1"])
+    .add_reaction("v_enzyme", michaelis_menten_1s, stoichiometry={"s": -1, "p": 1}, args=["s", "vmax", "km"])
+)
+```
+
+> Reversible reaction with mass action kinetics
+
+```python
+from mxlpy.fns import mass_action_1s_1p
+
+model.add_reaction(
+    "v_rev",
+    mass_action_1s_1p,
+    stoichiometry={"a": -1, "b": 1},
+    args=["a", "b", "kf", "kr"],
+)
+```
+
+> Add/update/remove model components at runtime
+
+```python
+model.update_parameter("k1", 2.0)
+model.update_parameters({"k1": 2.0, "k2": 0.5})
+model.scale_parameter("vmax", 1.5)          # multiply by factor
+model.update_variable("x", 0.5)            # change initial condition
+model.remove_reaction("v_out")
+model.remove_parameter("k_unused")
+```
+
+## Available rate functions (`mxlpy.fns`)
+
+| Function | Formula | Args |
+|---|---|---|
+| `constant(x)` | x | value |
+| `mass_action_1s(s1, k)` | k·s1 | substrate, rate constant |
+| `mass_action_1s_1p(s1, p1, kf, kr)` | kf·s1 − kr·p1 | substrate, product, kf, kr |
+| `mass_action_2s(s1, s2, k)` | k·s1·s2 | s1, s2, rate constant |
+| `mass_action_2s_1p(s1, s2, p1, kf, kr)` | kf·s1·s2 − kr·p1 | s1, s2, p1, kf, kr |
+| `michaelis_menten_1s(s1, vmax, km1)` | vmax·s1/(km1+s1) | substrate, vmax, km |
+| `michaelis_menten_2s(s1, s2, vmax, km1, km2)` | ping-pong 2-substrate | s1, s2, vmax, km1, km2 |
+| `michaelis_menten_3s(s1, s2, s3, vmax, km1, km2, km3)` | ping-pong 3-substrate | s1, s2, s3, vmax, km1, km2, km3 |
+| `diffusion_1s_1p(inside, outside, k)` | k·(outside−inside) | inside, outside, k |
+| `moiety_1s(x, x_total)` | x_total − x | species, total |
+| `moiety_2s(x1, x2, x_total)` | x_total − x1 − x2 | x1, x2, total |
+
+Custom rate functions must be **pure named functions** accepting `float` args and returning `float`:
+
+```python
+def hill(s: float, vmax: float, km: float, n: float) -> float:
+    """Hill equation."""
+    return vmax * s**n / (km**n + s**n)
+
+model.add_reaction("v_hill", hill, stoichiometry={"s": -1}, args=["s", "vmax", "km", "n"])
+```
+
+## Simulation
+
+All simulation calls are on `Simulator`, which is also a fluent builder. Results are `Result[Simulation]`.
+
+> Time-course simulation
+
+```python
+from mxlpy import Simulator, plot
+
+sim = Simulator(model).simulate(t_end=100)
+variables, fluxes = sim.get_result().unwrap_or_err()
+
+fig, ax = plot.one_axes()
+plot.lines(variables, ax=ax)
+ax.set(xlabel="time / a.u.", ylabel="concentration / a.u.")
+plot.show()
+```
+
+> Simulate to specific time points
+
+```python
+import numpy as np
+
+time_points = np.linspace(0, 100, 500)
+variables, fluxes = (
+    Simulator(model)
+    .simulate_time_course(time_points)
+    .get_result()
+    .unwrap_or_err()
+)
+```
+
+> Steady-state simulation
+
+```python
+variables, fluxes = (
+    Simulator(model)
+    .simulate_to_steady_state()
+    .get_result()
+    .unwrap_or_err()
+)
+
+fig, ax = plot.one_axes()
+plot.bars(variables, ax=ax)
+plot.show()
+```
+
+> Steady-state with custom initial conditions
+
+```python
+y0 = {"x": 0.1, "y": 2.0}
+variables, fluxes = (
+    Simulator(model, y0=y0)
+    .simulate_to_steady_state()
+    .get_result()
+    .unwrap_or_err()
+)
+```
+
+> Protocol simulation (piecewise parameter changes)
+
+```python
+from mxlpy import Simulator, plot, make_protocol
+
+protocol = make_protocol([
+    (10, {"k1": 1.0}),   # t=0..10:  k1=1
+    (10, {"k1": 3.0}),   # t=10..20: k1=3
+    (10, {"k1": 1.0}),   # t=20..30: k1=1
+])
+
+variables, fluxes = (
+    Simulator(model)
+    .simulate_protocol(protocol)
+    .get_result()
+    .unwrap_or_err()
+)
+
+fig, ax = plot.one_axes()
+plot.lines(variables, ax=ax)
+plot.shade_protocol(protocol["k1"], ax=ax, alpha=0.15)
+ax.set(xlabel="time / a.u.", ylabel="concentration / a.u.")
+plot.show()
+```
+
+> Update parameters between simulations (Simulator is stateful)
+
+```python
+sim = Simulator(model)
+
+# First run
+vars1, _ = sim.simulate(t_end=50).get_result().unwrap_or_err()
+
+# Change parameters, run again
+vars2, _ = (
+    sim
+    .update_parameter("k1", 2.0)
+    .simulate(t_end=50)
+    .get_result()
+    .unwrap_or_err()
+)
+```
+
+## Error handling
+
+Functions that can fail return `Result[T]`. Unwrap or provide a default:
+
+```python
+result = Simulator(model).simulate_to_steady_state().get_result()
+
+# Option 1: raise on failure
+variables, fluxes = result.unwrap_or_err()
+
+# Option 2: return None on failure
+outcome = result.default(lambda: None)
+if outcome is None:
+    print("Simulation failed")
+else:
+    variables, fluxes = outcome
+```
+
+> Handle oscillation detection during steady-state search
+
+```python
+from mxlpy import OscillationDetected
+
+result = Simulator(model).simulate_to_steady_state().get_result()
+variables, fluxes = result.unwrap_or_err()
+# Raises OscillationDetected(oscillating_species, period) if oscillations found
+# Raises NoSteadyState if convergence failed
+```
+
+## Integrators
+
+```python
+from mxlpy import Simulator, Scipy, Assimulo, Diffrax
+
+# Use a specific integrator
+sim = Simulator(model, integrator=Scipy)
+sim = Simulator(model, integrator=Assimulo)   # requires assimulo (conda-forge)
+sim = Simulator(model, integrator=Diffrax)    # requires jax + diffrax
+```

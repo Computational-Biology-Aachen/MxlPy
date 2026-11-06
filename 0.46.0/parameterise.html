@@ -1,0 +1,2503 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://computational-biology-aachen.github.io/mxlpy/0.46.0/parameterise.html">
+      
+      
+        <link rel="prev" href="comparisons.html">
+      
+      
+        <link rel="next" href="stability.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Model parameterisation - mxlpy docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="stylesheets/extra.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#model-parameterisation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="mxlpy docs" class="md-header__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mxlpy docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Model parameterisation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="mxlpy docs" class="md-nav__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mxlpy docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ODE features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="basics.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scans.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scans
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mca.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fuzzy_fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzy fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="monte-carlo.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monte Carlo methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="label-models.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Label models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="comparisons.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparing models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="parameterise.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model parameterisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="stability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stability analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parameter_identifiability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Identifiability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="symbolic.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Symbolic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="integrators.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrator configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="compartmentalisation.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartmentalisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mechanistic learning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Mechanistic learning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-ude.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UDEs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-surrogates.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Surrogates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-npe.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neural Posterior Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="carousel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reaction carousel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="metaprogramming.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metaprogramming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="examples.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="report.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reporting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tips
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tips
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tips.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    General
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parallel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel execution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="citing.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How to cite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<script>
+(function (global, factory) {
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global = global || self, global.ClipboardCopyElement = factory());
+  }(this, function () { 'use strict';
+
+    function createNode(text) {
+      const node = document.createElement('pre');
+      node.style.width = '1px';
+      node.style.height = '1px';
+      node.style.position = 'fixed';
+      node.style.top = '5px';
+      node.textContent = text;
+      return node;
+    }
+
+    function copyNode(node) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(node.textContent);
+      }
+
+      const selection = getSelection();
+
+      if (selection == null) {
+        return Promise.reject(new Error());
+      }
+
+      selection.removeAllRanges();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      selection.addRange(range);
+      document.execCommand('copy');
+      selection.removeAllRanges();
+      return Promise.resolve();
+    }
+    function copyText(text) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(text);
+      }
+
+      const body = document.body;
+
+      if (!body) {
+        return Promise.reject(new Error());
+      }
+
+      const node = createNode(text);
+      body.appendChild(node);
+      copyNode(node);
+      body.removeChild(node);
+      return Promise.resolve();
+    }
+
+    function copy(button) {
+      const id = button.getAttribute('for');
+      const text = button.getAttribute('value');
+
+      function trigger() {
+        button.dispatchEvent(new CustomEvent('clipboard-copy', {
+          bubbles: true
+        }));
+      }
+
+      if (text) {
+        copyText(text).then(trigger);
+      } else if (id) {
+        const root = 'getRootNode' in Element.prototype ? button.getRootNode() : button.ownerDocument;
+        if (!(root instanceof Document || 'ShadowRoot' in window && root instanceof ShadowRoot)) return;
+        const node = root.getElementById(id);
+        if (node) copyTarget(node).then(trigger);
+      }
+    }
+
+    function copyTarget(content) {
+      if (content instanceof HTMLInputElement || content instanceof HTMLTextAreaElement) {
+        return copyText(content.value);
+      } else if (content instanceof HTMLAnchorElement && content.hasAttribute('href')) {
+        return copyText(content.href);
+      } else {
+        return copyNode(content);
+      }
+    }
+
+    function clicked(event) {
+      const button = event.currentTarget;
+
+      if (button instanceof HTMLElement) {
+        copy(button);
+      }
+    }
+
+    function keydown(event) {
+      if (event.key === ' ' || event.key === 'Enter') {
+        const button = event.currentTarget;
+
+        if (button instanceof HTMLElement) {
+          event.preventDefault();
+          copy(button);
+        }
+      }
+    }
+
+    function focused(event) {
+      event.currentTarget.addEventListener('keydown', keydown);
+    }
+
+    function blurred(event) {
+      event.currentTarget.removeEventListener('keydown', keydown);
+    }
+
+    class ClipboardCopyElement extends HTMLElement {
+      constructor() {
+        super();
+        this.addEventListener('click', clicked);
+        this.addEventListener('focus', focused);
+        this.addEventListener('blur', blurred);
+      }
+
+      connectedCallback() {
+        if (!this.hasAttribute('tabindex')) {
+          this.setAttribute('tabindex', '0');
+        }
+
+        if (!this.hasAttribute('role')) {
+          this.setAttribute('role', 'button');
+        }
+      }
+
+      get value() {
+        return this.getAttribute('value') || '';
+      }
+
+      set value(text) {
+        this.setAttribute('value', text);
+      }
+
+    }
+
+    if (!window.customElements.get('clipboard-copy')) {
+      window.ClipboardCopyElement = ClipboardCopyElement;
+      window.customElements.define('clipboard-copy', ClipboardCopyElement);
+    }
+
+    return ClipboardCopyElement;
+
+  }));
+</script>
+<script>
+      document.addEventListener('clipboard-copy', function(event) {
+        const notice = event.target.querySelector('.notice')
+        notice.hidden = false
+        setTimeout(function() {
+          notice.hidden = true
+        }, 1000)
+      })
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
+<style type="text/css">
+    pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }
+.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }
+.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */
+.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */
+.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */
+.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */
+.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */
+.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */
+.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */
+.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */
+.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */
+.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */
+.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */
+.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */
+.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */
+.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */
+.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */
+.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */
+.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */
+.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */
+.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */
+.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */
+.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */
+.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */
+.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */
+.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */
+.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */
+.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */
+.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */
+.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */
+.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */
+.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */
+.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */
+.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */
+.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */
+.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */
+.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */
+.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */
+.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */
+.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */
+.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */
+.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */
+.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */
+  </style>
+<link rel="stylesheet" href="assets/jupyter-1071bb498bd2.css">
+<style type="text/css">
+.jupyter-wrapper{--jp-shadow-base-lightness: 0;--jp-shadow-umbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .2 );--jp-shadow-penumbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .14 );--jp-shadow-ambient-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .12 );--jp-elevation-z0: none;--jp-elevation-z1: 0px 2px 1px -1px var(--jp-shadow-umbra-color), 0px 1px 1px 0px var(--jp-shadow-penumbra-color), 0px 1px 3px 0px var(--jp-shadow-ambient-color);--jp-elevation-z2: 0px 3px 1px -2px var(--jp-shadow-umbra-color), 0px 2px 2px 0px var(--jp-shadow-penumbra-color), 0px 1px 5px 0px var(--jp-shadow-ambient-color);--jp-elevation-z4: 0px 2px 4px -1px var(--jp-shadow-umbra-color), 0px 4px 5px 0px var(--jp-shadow-penumbra-color), 0px 1px 10px 0px var(--jp-shadow-ambient-color);--jp-elevation-z6: 0px 3px 5px -1px var(--jp-shadow-umbra-color), 0px 6px 10px 0px var(--jp-shadow-penumbra-color), 0px 1px 18px 0px var(--jp-shadow-ambient-color);--jp-elevation-z8: 0px 5px 5px -3px var(--jp-shadow-umbra-color), 0px 8px 10px 1px var(--jp-shadow-penumbra-color), 0px 3px 14px 2px var(--jp-shadow-ambient-color);--jp-elevation-z12: 0px 7px 8px -4px var(--jp-shadow-umbra-color), 0px 12px 17px 2px var(--jp-shadow-penumbra-color), 0px 5px 22px 4px var(--jp-shadow-ambient-color);--jp-elevation-z16: 0px 8px 10px -5px var(--jp-shadow-umbra-color), 0px 16px 24px 2px var(--jp-shadow-penumbra-color), 0px 6px 30px 5px var(--jp-shadow-ambient-color);--jp-elevation-z20: 0px 10px 13px -6px var(--jp-shadow-umbra-color), 0px 20px 31px 3px var(--jp-shadow-penumbra-color), 0px 8px 38px 7px var(--jp-shadow-ambient-color);--jp-elevation-z24: 0px 11px 15px -7px var(--jp-shadow-umbra-color), 0px 24px 38px 3px var(--jp-shadow-penumbra-color), 0px 9px 46px 8px var(--jp-shadow-ambient-color);--jp-border-width: 1px;--jp-border-color0: var(--md-grey-400);--jp-border-color1: var(--md-grey-400);--jp-border-color2: var(--md-grey-300);--jp-border-color3: var(--md-grey-200);--jp-inverse-border-color: var(--md-grey-600);--jp-border-radius: 2px;--jp-ui-font-scale-factor: 1.2;--jp-ui-font-size0: .83333em;--jp-ui-font-size1: 13px;--jp-ui-font-size2: 1.2em;--jp-ui-font-size3: 1.44em;--jp-ui-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-ui-font-color0: rgba(0, 0, 0, 1);--jp-ui-font-color1: rgba(0, 0, 0, .87);--jp-ui-font-color2: rgba(0, 0, 0, .54);--jp-ui-font-color3: rgba(0, 0, 0, .38);--jp-ui-inverse-font-color0: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color1: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color2: rgba(255, 255, 255, .7);--jp-ui-inverse-font-color3: rgba(255, 255, 255, .5);--jp-content-line-height: 1.6;--jp-content-font-scale-factor: 1.2;--jp-content-font-size0: .83333em;--jp-content-font-size1: 14px;--jp-content-font-size2: 1.2em;--jp-content-font-size3: 1.44em;--jp-content-font-size4: 1.728em;--jp-content-font-size5: 2.0736em;--jp-content-presentation-font-size1: 17px;--jp-content-heading-line-height: 1;--jp-content-heading-margin-top: 1.2em;--jp-content-heading-margin-bottom: .8em;--jp-content-heading-font-weight: 500;--jp-content-font-color0: rgba(0, 0, 0, 1);--jp-content-font-color1: rgba(0, 0, 0, .87);--jp-content-font-color2: rgba(0, 0, 0, .54);--jp-content-font-color3: rgba(0, 0, 0, .38);--jp-content-link-color: var(--md-blue-700);--jp-content-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-code-font-size: 13px;--jp-code-line-height: 1.3077;--jp-code-padding: 5px;--jp-code-font-family-default: Menlo, Consolas, "DejaVu Sans Mono", monospace;--jp-code-font-family: var(--jp-code-font-family-default);--jp-code-presentation-font-size: 16px;--jp-code-cursor-width0: 1.4px;--jp-code-cursor-width1: 2px;--jp-code-cursor-width2: 4px;--jp-layout-color0: white;--jp-layout-color1: white;--jp-layout-color2: var(--md-grey-200);--jp-layout-color3: var(--md-grey-400);--jp-layout-color4: var(--md-grey-600);--jp-inverse-layout-color0: #111111;--jp-inverse-layout-color1: var(--md-grey-900);--jp-inverse-layout-color2: var(--md-grey-800);--jp-inverse-layout-color3: var(--md-grey-700);--jp-inverse-layout-color4: var(--md-grey-600);--jp-brand-color0: var(--md-blue-900);--jp-brand-color1: var(--md-blue-700);--jp-brand-color2: var(--md-blue-300);--jp-brand-color3: var(--md-blue-100);--jp-brand-color4: var(--md-blue-50);--jp-accent-color0: var(--md-green-900);--jp-accent-color1: var(--md-green-700);--jp-accent-color2: var(--md-green-300);--jp-accent-color3: var(--md-green-100);--jp-warn-color0: var(--md-orange-900);--jp-warn-color1: var(--md-orange-700);--jp-warn-color2: var(--md-orange-300);--jp-warn-color3: var(--md-orange-100);--jp-error-color0: var(--md-red-900);--jp-error-color1: var(--md-red-700);--jp-error-color2: var(--md-red-300);--jp-error-color3: var(--md-red-100);--jp-success-color0: var(--md-green-900);--jp-success-color1: var(--md-green-700);--jp-success-color2: var(--md-green-300);--jp-success-color3: var(--md-green-100);--jp-info-color0: var(--md-cyan-900);--jp-info-color1: var(--md-cyan-700);--jp-info-color2: var(--md-cyan-300);--jp-info-color3: var(--md-cyan-100);--jp-cell-padding: 5px;--jp-cell-collapser-width: 8px;--jp-cell-collapser-min-height: 20px;--jp-cell-collapser-not-active-hover-opacity: .6;--jp-cell-editor-background: var(--md-grey-100);--jp-cell-editor-border-color: var(--md-grey-300);--jp-cell-editor-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-cell-editor-active-background: var(--jp-layout-color0);--jp-cell-editor-active-border-color: var(--jp-brand-color1);--jp-cell-prompt-width: 64px;--jp-cell-prompt-font-family: var(--jp-code-font-family-default);--jp-cell-prompt-letter-spacing: 0px;--jp-cell-prompt-opacity: 1;--jp-cell-prompt-not-active-opacity: .5;--jp-cell-prompt-not-active-font-color: var(--md-grey-700);--jp-cell-inprompt-font-color: #307fc1;--jp-cell-outprompt-font-color: #bf5b3d;--jp-notebook-padding: 10px;--jp-notebook-select-background: var(--jp-layout-color1);--jp-notebook-multiselected-color: var(--md-blue-50);--jp-notebook-scroll-padding: calc( 100% - var(--jp-code-font-size) * var(--jp-code-line-height) - var(--jp-code-padding) - var(--jp-cell-padding) - 1px );--jp-rendermime-error-background: #fdd;--jp-rendermime-table-row-background: var(--md-grey-100);--jp-rendermime-table-row-hover-background: var(--md-light-blue-50);--jp-dialog-background: rgba(0, 0, 0, .25);--jp-console-padding: 10px;--jp-toolbar-border-color: var(--jp-border-color1);--jp-toolbar-micro-height: 8px;--jp-toolbar-background: var(--jp-layout-color1);--jp-toolbar-box-shadow: 0px 0px 2px 0px rgba(0, 0, 0, .24);--jp-toolbar-header-margin: 4px 4px 0px 4px;--jp-toolbar-active-background: var(--md-grey-300);--jp-statusbar-height: 24px;--jp-input-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-input-active-background: var(--jp-layout-color1);--jp-input-hover-background: var(--jp-layout-color1);--jp-input-background: var(--md-grey-100);--jp-input-border-color: var(--jp-inverse-border-color);--jp-input-active-border-color: var(--jp-brand-color1);--jp-input-active-box-shadow-color: rgba(19, 124, 189, .3);--jp-editor-selected-background: #d9d9d9;--jp-editor-selected-focused-background: #d7d4f0;--jp-editor-cursor-color: var(--jp-ui-font-color0);--jp-mirror-editor-keyword-color: #008000;--jp-mirror-editor-atom-color: #88f;--jp-mirror-editor-number-color: #080;--jp-mirror-editor-def-color: #00f;--jp-mirror-editor-variable-color: var(--md-grey-900);--jp-mirror-editor-variable-2-color: #05a;--jp-mirror-editor-variable-3-color: #085;--jp-mirror-editor-punctuation-color: #05a;--jp-mirror-editor-property-color: #05a;--jp-mirror-editor-operator-color: #aa22ff;--jp-mirror-editor-comment-color: #408080;--jp-mirror-editor-string-color: #ba2121;--jp-mirror-editor-string-2-color: #708;--jp-mirror-editor-meta-color: #aa22ff;--jp-mirror-editor-qualifier-color: #555;--jp-mirror-editor-builtin-color: #008000;--jp-mirror-editor-bracket-color: #997;--jp-mirror-editor-tag-color: #170;--jp-mirror-editor-attribute-color: #00c;--jp-mirror-editor-header-color: blue;--jp-mirror-editor-quote-color: #090;--jp-mirror-editor-link-color: #00c;--jp-mirror-editor-error-color: #f00;--jp-mirror-editor-hr-color: #999;--jp-collaborator-color1: #ffad8e;--jp-collaborator-color2: #dac83d;--jp-collaborator-color3: #72dd76;--jp-collaborator-color4: #00e4d0;--jp-collaborator-color5: #45d4ff;--jp-collaborator-color6: #e2b1ff;--jp-collaborator-color7: #ff9de6;--jp-vega-background: white;--jp-sidebar-min-width: 250px;--jp-search-toggle-off-opacity: .5;--jp-search-toggle-hover-opacity: .8;--jp-search-toggle-on-opacity: 1;--jp-search-selected-match-background-color: rgb(245, 200, 0);--jp-search-selected-match-color: black;--jp-search-unselected-match-background-color: var( --jp-inverse-layout-color0 );--jp-search-unselected-match-color: var(--jp-ui-inverse-font-color0);--jp-icon-contrast-color0: var(--md-purple-600);--jp-icon-contrast-color1: var(--md-green-600);--jp-icon-contrast-color2: var(--md-pink-600);--jp-icon-contrast-color3: var(--md-blue-600);--jp-jupyter-icon-color: #f37626;--jp-notebook-icon-color: #f37626;--jp-json-icon-color: var(--md-orange-700);--jp-console-icon-background-color: var(--md-blue-700);--jp-console-icon-color: white;--jp-terminal-icon-background-color: var(--md-grey-800);--jp-terminal-icon-color: var(--md-grey-200);--jp-text-editor-icon-color: var(--md-grey-700);--jp-inspector-icon-color: var(--md-grey-700);--jp-switch-color: var(--md-grey-400);--jp-switch-true-position-color: var(--md-orange-900)}
+</style>
+<!-- Load mathjax -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS_CHTML-full,Safe"> </script>
+<!-- MathJax configuration -->
+<script type="text/x-mathjax-config">
+    init_mathjax = function() {
+        if (window.MathJax) {
+        // MathJax loaded
+            MathJax.Hub.Config({
+                TeX: {
+                    equationNumbers: {
+                    autoNumber: "AMS",
+                    useLabelIds: true
+                    }
+                },
+                tex2jax: {
+                    inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+                    displayMath: [ ['$$','$$'], ["\\[","\\]"] ],
+                    processEscapes: true,
+                    processEnvironments: true
+                },
+                displayAlign: 'center',
+                messageStyle: 'none',
+                CommonHTML: {
+                    linebreaks: {
+                    automatic: true
+                    }
+                }
+            });
+
+            MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
+        }
+    }
+    init_mathjax();
+    </script>
+<!-- End of mathjax configuration --><script type="module">
+  document.addEventListener("DOMContentLoaded", async () => {
+    const diagrams = document.querySelectorAll(".jp-Mermaid > pre.mermaid");
+    // do not load mermaidjs if not needed
+    if (!diagrams.length) {
+      return;
+    }
+    const mermaid = (await import("https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.10.0/mermaid.esm.min.mjs")).default;
+    const elkUrl = "https://cdnjs.cloudflare.com/ajax/libs/mermaid-layout-elk/0.1.9/mermaid-layout-elk.esm.min.mjs";
+    if(elkUrl) {
+      const elkLayouts = (await import(elkUrl)).default;
+      mermaid.registerLayoutLoaders(elkLayouts);
+    }
+    const parser = new DOMParser();
+
+    mermaid.initialize({
+      maxTextSize: 100000,
+      maxEdges: 100000,
+      startOnLoad: false,
+      fontFamily: window
+        .getComputedStyle(document.body)
+        .getPropertyValue("--jp-ui-font-family"),
+      theme: document.querySelector("body[data-jp-theme-light='true']")
+        ? "default"
+        : "dark",
+    });
+
+    let _nextMermaidId = 0;
+
+    function makeMermaidImage(svg) {
+      const img = document.createElement("img");
+      const doc = parser.parseFromString(svg, "image/svg+xml");
+      const svgEl = doc.querySelector("svg");
+      const { maxWidth } = svgEl?.style || {};
+      const firstTitle = doc.querySelector("title");
+      const firstDesc = doc.querySelector("desc");
+
+      img.setAttribute("src", `data:image/svg+xml,${encodeURIComponent(svg)}`);
+      if (maxWidth) {
+        img.width = parseInt(maxWidth);
+      }
+      if (firstTitle) {
+        img.setAttribute("alt", firstTitle.textContent);
+      }
+      if (firstDesc) {
+        const caption = document.createElement("figcaption");
+        caption.className = "sr-only";
+        caption.textContent = firstDesc.textContent;
+        return [img, caption];
+      }
+      return [img];
+    }
+
+    async function makeMermaidError(text) {
+      let errorMessage = "";
+      try {
+        await mermaid.parse(text);
+      } catch (err) {
+        errorMessage = `${err}`;
+      }
+
+      const result = document.createElement("details");
+      result.className = 'jp-RenderedMermaid-Details';
+      const summary = document.createElement("summary");
+      summary.className = 'jp-RenderedMermaid-Summary';
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.innerText = text;
+      pre.appendChild(code);
+      summary.appendChild(pre);
+      result.appendChild(summary);
+
+      const warning = document.createElement("pre");
+      warning.innerText = errorMessage;
+      result.appendChild(warning);
+      return [result];
+    }
+
+    async function renderOneMarmaid(src) {
+      const id = `jp-mermaid-${_nextMermaidId++}`;
+      const parent = src.parentNode;
+      let raw = src.textContent.trim();
+      const el = document.createElement("div");
+      el.style.visibility = "hidden";
+      document.body.appendChild(el);
+      let results = null;
+      let output = null;
+      try {
+        let { svg } = await mermaid.render(id, raw, el);
+        svg = cleanMermaidSvg(svg);
+        results = makeMermaidImage(svg);
+        output = document.createElement("figure");
+        results.map(output.appendChild, output);
+      } catch (err) {
+        parent.classList.add("jp-mod-warning");
+        results = await makeMermaidError(raw);
+        output = results[0];
+      } finally {
+        el.remove();
+      }
+      parent.classList.add("jp-RenderedMermaid");
+      parent.appendChild(output);
+    }
+
+
+    /**
+     * Post-process to ensure mermaid diagrams contain only valid SVG and XHTML.
+     */
+    function cleanMermaidSvg(svg) {
+      svg = svg.replace(RE_VOID_ELEMENT, replaceVoidElement);
+      return `${SVG_XML_HEADER}${svg}`;
+    }
+
+
+    /**
+     * A regular expression for all void elements, which may include attributes and
+     * a slash.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Glossary/Void_element
+     *
+     * Of these, only `<br>` is generated by Mermaid in place of `\n`,
+     * but _any_ "malformed" tag will break the SVG rendering entirely.
+     */
+    const RE_VOID_ELEMENT =
+      /<\s*(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\s*([^>]*?)\s*>/gi;
+
+    /**
+     * Ensure a void element is closed with a slash, preserving any attributes.
+     */
+    function replaceVoidElement(match, tag, rest) {
+      rest = rest.trim();
+      if (!rest.endsWith('/')) {
+        rest = `${rest} /`;
+      }
+      return `<${tag} ${rest}>`;
+    }
+
+
+  /**
+   * Named HTML entities with their decimal equivalent codes.
+   *
+   * @see https://www.w3.org/TR/WD-html40-970708/sgml/entities.html
+   * */
+  const HTML_ENTITIES = `<!ENTITY Aacute "&#193;">
+<!ENTITY aacute "&#225;">
+<!ENTITY Acirc "&#194;">
+<!ENTITY acirc "&#226;">
+<!ENTITY acute "&#180;">
+<!ENTITY AElig "&#198;">
+<!ENTITY aelig "&#230;">
+<!ENTITY Agrave "&#192;">
+<!ENTITY agrave "&#224;">
+<!ENTITY alefsym "&#8501;">
+<!ENTITY Alpha "&#913;">
+<!ENTITY alpha "&#945;">
+<!ENTITY amp "&#38;">
+<!ENTITY and "&#8869;">
+<!ENTITY ang "&#8736;">
+<!ENTITY Aring "&#197;">
+<!ENTITY aring "&#229;">
+<!ENTITY asymp "&#8776;">
+<!ENTITY Atilde "&#195;">
+<!ENTITY atilde "&#227;">
+<!ENTITY Auml "&#196;">
+<!ENTITY auml "&#228;">
+<!ENTITY bdquo "&#8222;">
+<!ENTITY Beta "&#914;">
+<!ENTITY beta "&#946;">
+<!ENTITY brvbar "&#166;">
+<!ENTITY bull "&#8226;">
+<!ENTITY cap "&#8745;">
+<!ENTITY Ccedil "&#199;">
+<!ENTITY ccedil "&#231;">
+<!ENTITY cedil "&#184;">
+<!ENTITY cent "&#162;">
+<!ENTITY Chi "&#935;">
+<!ENTITY chi "&#967;">
+<!ENTITY circ "&#710;">
+<!ENTITY clubs "&#9827;">
+<!ENTITY cong "&#8773;">
+<!ENTITY copy "&#169;">
+<!ENTITY crarr "&#8629;">
+<!ENTITY cup "&#8746;">
+<!ENTITY curren "&#164;">
+<!ENTITY dagger "&#8224;">
+<!ENTITY Dagger "&#8225;">
+<!ENTITY darr "&#8595;">
+<!ENTITY dArr "&#8659;">
+<!ENTITY deg "&#176;">
+<!ENTITY Delta "&#916;">
+<!ENTITY delta "&#948;">
+<!ENTITY diams "&#9830;">
+<!ENTITY divide "&#247;">
+<!ENTITY Eacute "&#201;">
+<!ENTITY eacute "&#233;">
+<!ENTITY Ecirc "&#202;">
+<!ENTITY ecirc "&#234;">
+<!ENTITY Egrave "&#200;">
+<!ENTITY egrave "&#232;">
+<!ENTITY empty "&#8709;">
+<!ENTITY emsp "&#8195;">
+<!ENTITY ensp "&#8194;">
+<!ENTITY epsilon "&#949;">
+<!ENTITY Epsilon "&#917;">
+<!ENTITY equiv "&#8801;">
+<!ENTITY Eta "&#919;">
+<!ENTITY eta "&#951;">
+<!ENTITY ETH "&#208;">
+<!ENTITY eth "&#240;">
+<!ENTITY Euml "&#203;">
+<!ENTITY euml "&#235;">
+<!ENTITY exist "&#8707;">
+<!ENTITY fnof "&#402;">
+<!ENTITY forall "&#8704;">
+<!ENTITY frac12 "&#189;">
+<!ENTITY frac14 "&#188;">
+<!ENTITY frac34 "&#190;">
+<!ENTITY frasl "&#8260;">
+<!ENTITY Gamma "&#915;">
+<!ENTITY gamma "&#947;">
+<!ENTITY ge "&#8805;">
+<!ENTITY gt "&#62;">
+<!ENTITY harr "&#8596;">
+<!ENTITY hArr "&#8660;">
+<!ENTITY hearts "&#9829;">
+<!ENTITY hellip "&#8230;">
+<!ENTITY Iacute "&#205;">
+<!ENTITY iacute "&#237;">
+<!ENTITY Icirc "&#206;">
+<!ENTITY icirc "&#238;">
+<!ENTITY iexcl "&#161;">
+<!ENTITY Igrave "&#204;">
+<!ENTITY igrave "&#236;">
+<!ENTITY image "&#8465;">
+<!ENTITY infin "&#8734;">
+<!ENTITY int "&#8747;">
+<!ENTITY Iota "&#921;">
+<!ENTITY iota "&#953;">
+<!ENTITY iquest "&#191;">
+<!ENTITY isin "&#8712;">
+<!ENTITY Iuml "&#207;">
+<!ENTITY iuml "&#239;">
+<!ENTITY Kappa "&#922;">
+<!ENTITY kappa "&#954;">
+<!ENTITY Lambda "&#923;">
+<!ENTITY lambda "&#955;">
+<!ENTITY lang "&#9001;">
+<!ENTITY laquo "&#171;">
+<!ENTITY larr "&#8592;">
+<!ENTITY lArr "&#8656;">
+<!ENTITY lceil "&#8968;">
+<!ENTITY ldquo "&#8220;">
+<!ENTITY le "&#8804;">
+<!ENTITY lfloor "&#8970;">
+<!ENTITY lowast "&#8727;">
+<!ENTITY loz "&#9674;">
+<!ENTITY lrm "&#8206;">
+<!ENTITY lsaquo "&#8249;">
+<!ENTITY lsquo "&#8216;">
+<!ENTITY lt "&#60;">
+<!ENTITY macr "&#175;">
+<!ENTITY mdash "&#8212;">
+<!ENTITY micro "&#181;">
+<!ENTITY middot "&#183;">
+<!ENTITY minus "&#8722;">
+<!ENTITY Mu "&#924;">
+<!ENTITY mu "&#956;">
+<!ENTITY nabla "&#8711;">
+<!ENTITY nbsp "&#160;">
+<!ENTITY ndash "&#8211;">
+<!ENTITY ne "&#8800;">
+<!ENTITY ni "&#8715;">
+<!ENTITY not "&#172;">
+<!ENTITY notin "&#8713;">
+<!ENTITY nsub "&#8836;">
+<!ENTITY Ntilde "&#209;">
+<!ENTITY ntilde "&#241;">
+<!ENTITY Nu "&#925;">
+<!ENTITY nu "&#957;">
+<!ENTITY Oacute "&#211;">
+<!ENTITY oacute "&#243;">
+<!ENTITY Ocirc "&#212;">
+<!ENTITY ocirc "&#244;">
+<!ENTITY OElig "&#338;">
+<!ENTITY oelig "&#339;">
+<!ENTITY Ograve "&#210;">
+<!ENTITY ograve "&#242;">
+<!ENTITY oline "&#8254;">
+<!ENTITY Omega "&#937;">
+<!ENTITY omega "&#969;">
+<!ENTITY Omicron "&#927;">
+<!ENTITY omicron "&#959;">
+<!ENTITY oplus "&#8853;">
+<!ENTITY or "&#8870;">
+<!ENTITY ordf "&#170;">
+<!ENTITY ordm "&#186;">
+<!ENTITY Oslash "&#216;">
+<!ENTITY oslash "&#248;">
+<!ENTITY Otilde "&#213;">
+<!ENTITY otilde "&#245;">
+<!ENTITY otimes "&#8855;">
+<!ENTITY Ouml "&#214;">
+<!ENTITY ouml "&#246;">
+<!ENTITY para "&#182;">
+<!ENTITY part "&#8706;">
+<!ENTITY permil "&#8240;">
+<!ENTITY perp "&#8869;">
+<!ENTITY Phi "&#934;">
+<!ENTITY phi "&#966;">
+<!ENTITY Pi "&#928;">
+<!ENTITY pi "&#960;">
+<!ENTITY piv "&#982;">
+<!ENTITY plusmn "&#177;">
+<!ENTITY pound "&#163;">
+<!ENTITY prime "&#8242;">
+<!ENTITY Prime "&#8243;">
+<!ENTITY prod "&#8719;">
+<!ENTITY prop "&#8733;">
+<!ENTITY Psi "&#936;">
+<!ENTITY psi "&#968;">
+<!ENTITY quot "&#34;">
+<!ENTITY radic "&#8730;">
+<!ENTITY rang "&#9002;">
+<!ENTITY raquo "&#187;">
+<!ENTITY rarr "&#8594;">
+<!ENTITY rArr "&#8658;">
+<!ENTITY rceil "&#8969;">
+<!ENTITY rdquo "&#8221;">
+<!ENTITY real "&#8476;">
+<!ENTITY reg "&#174;">
+<!ENTITY rfloor "&#8971;">
+<!ENTITY Rho "&#929;">
+<!ENTITY rho "&#961;">
+<!ENTITY rlm "&#8207;">
+<!ENTITY rsaquo "&#8250;">
+<!ENTITY rsquo "&#8217;">
+<!ENTITY sbquo "&#8218;">
+<!ENTITY Scaron "&#352;">
+<!ENTITY scaron "&#353;">
+<!ENTITY sdot "&#8901;">
+<!ENTITY sect "&#167;">
+<!ENTITY shy "&#173;">
+<!ENTITY Sigma "&#931;">
+<!ENTITY sigma "&#963;">
+<!ENTITY sigmaf "&#962;">
+<!ENTITY sim "&#8764;">
+<!ENTITY spades "&#9824;">
+<!ENTITY sub "&#8834;">
+<!ENTITY sube "&#8838;">
+<!ENTITY sum "&#8721;">
+<!ENTITY sup "&#8835;">
+<!ENTITY sup1 "&#185;">
+<!ENTITY sup2 "&#178;">
+<!ENTITY sup3 "&#179;">
+<!ENTITY supe "&#8839;">
+<!ENTITY szlig "&#223;">
+<!ENTITY Tau "&#932;">
+<!ENTITY tau "&#964;">
+<!ENTITY there4 "&#8756;">
+<!ENTITY Theta "&#920;">
+<!ENTITY theta "&#952;">
+<!ENTITY thetasym "&#977;">
+<!ENTITY thinsp "&#8201;">
+<!ENTITY THORN "&#222;">
+<!ENTITY thorn "&#254;">
+<!ENTITY tilde "&#732;">
+<!ENTITY times "&#215;">
+<!ENTITY trade "&#8482;">
+<!ENTITY Uacute "&#218;">
+<!ENTITY uacute "&#250;">
+<!ENTITY uarr "&#8593;">
+<!ENTITY uArr "&#8657;">
+<!ENTITY Ucirc "&#219;">
+<!ENTITY ucirc "&#251;">
+<!ENTITY Ugrave "&#217;">
+<!ENTITY ugrave "&#249;">
+<!ENTITY uml "&#168;">
+<!ENTITY upsih "&#978;">
+<!ENTITY Upsilon "&#933;">
+<!ENTITY upsilon "&#965;">
+<!ENTITY Uuml "&#220;">
+<!ENTITY uuml "&#252;">
+<!ENTITY weierp "&#8472;">
+<!ENTITY Xi "&#926;">
+<!ENTITY xi "&#958;">
+<!ENTITY Yacute "&#221;">
+<!ENTITY yacute "&#253;">
+<!ENTITY yen "&#165;">
+<!ENTITY Yuml "&#376;">
+<!ENTITY yuml "&#255;">
+<!ENTITY Zeta "&#918;">
+<!ENTITY zeta "&#950;">
+<!ENTITY zwj "&#8205;">
+<!ENTITY zwnj "&#8204;">`.replace(/\n/g, ' ');
+
+  /**
+   * A reasonably strict xml declaration.
+   */
+  const XML_DECL = '<?xml version="1.0" standalone="no"?>';
+
+  /**
+   * The beginning of the XML doctype declaration.
+   */
+  const DOCTYPE_START = `<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [`;
+
+  /**
+   * The end of the XML docype declaration.
+   */
+  const DOCTYPE_END = ']>';
+
+  /**
+   * A full header for an SVG XML document.
+   */
+  const SVG_XML_HEADER = `${XML_DECL}
+    ${DOCTYPE_START}${HTML_ENTITIES}${DOCTYPE_END}`;
+
+    void Promise.all([...diagrams].map(renderOneMarmaid));
+  });
+</script>
+<style>
+  .jp-Mermaid:not(.jp-RenderedMermaid) {
+    display: none;
+  }
+
+  .jp-RenderedMermaid {
+    overflow: auto;
+    display: flex;
+  }
+
+  .jp-RenderedMermaid.jp-mod-warning {
+    width: auto;
+    padding: 0.5em;
+    margin-top: 0.5em;
+    border: var(--jp-border-width) solid var(--jp-warn-color2);
+    border-radius: var(--jp-border-radius);
+    color: var(--jp-ui-font-color1);
+    font-size: var(--jp-ui-font-size1);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .jp-RenderedMermaid figure {
+    margin: 0;
+    overflow: auto;
+    max-width: 100%;
+  }
+
+  .jp-RenderedMermaid img {
+    max-width: 100%;
+  }
+
+  .jp-RenderedMermaid-Details > pre {
+    margin-top: 1em;
+  }
+
+  .jp-RenderedMermaid-Summary {
+    color: var(--jp-warn-color2);
+  }
+
+  .jp-RenderedMermaid:not(.jp-mod-warning) pre {
+    display: none;
+  }
+
+  .jp-RenderedMermaid-Summary > pre {
+    display: inline-block;
+    white-space: normal;
+  }
+</style>
+<!-- End of mermaid configuration --><div class="jupyter-wrapper">
+<div class="jp-Notebook" data-jp-theme-light="true" data-jp-theme-name="JupyterLab Light">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [1]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-1">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">fns</span><span class="p">,</span> <span class="n">mc</span><span class="p">,</span> <span class="n">plot</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.distributions</span><span class="w"> </span><span class="kn">import</span> <span class="n">GaussianKde</span><span class="p">,</span> <span class="n">sample</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.parameterise</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_km_and_kcat_from_brenda</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-1">from pathlib import Path
+
+import matplotlib.pyplot as plt
+
+from mxlpy import Model, fns, mc, plot
+from mxlpy.distributions import GaussianKde, sample
+from mxlpy.parameterise import get_km_and_kcat_from_brenda</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h1 id="model-parameterisation">Model parameterisation<a class="anchor-link" href="#model-parameterisation">¶</a></h1><p>Obtaining experimentally measured parameters can be challenging.</p>
+<p>Using the <a href="https://www.brenda-enzymes.org/">Brenda enzymes database</a> we can obtain  distributions of enzymatic parameters for a wide range of organisms.</p>
+<p>We can do that with the <code>mxlpy.parameterise</code> module.</p>
+<p>These distributions can then in turn be used with our <a href="monte-carlo.ipynb">Monte-Carlo methods</a> to capture the <strong>range of possible behaviour</strong> your model can exhibit.</p>
+<div>
+<img alt="No description has been provided for this image" src="assets/time-course.png" style="vertical-align:middle; max-height: 175px; max-width: 20%;"/>
+<span style="padding: 0 1rem; font-size: 2rem">+</span>
+<img alt="No description has been provided for this image" src="assets/parameter-distribution.png" style="vertical-align:middle; max-height: 175px; max-width: 20%"/>
+<span style="padding: 0 1rem; font-size: 2rem">=</span>
+<img alt="No description has been provided for this image" src="assets/mc-time-course.png" style="vertical-align:middle; max-height: 175px; max-width: 20%"/>
+</div>
+<p>In order to obtain the parameters for a given <a href="https://en.wikipedia.org/wiki/Enzyme_Commission_number">Enzyme commision number</a> (ec) we will <a href="https://www.brenda-enzymes.org/download.php">manually download the database</a>.<br/>
+You have to do this manually due to the brenda licensing terms.</p>
+<blockquote>
+<p>Note: we have created a small copy of just the rubisco data here to keep the documentation running.<br/>
+Adjust your <code>brenda_path</code> accordingly</p>
+</blockquote>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [2]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-2">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">kms</span><span class="p">,</span> <span class="n">kcats</span> <span class="o">=</span> <span class="n">get_km_and_kcat_from_brenda</span><span class="p">(</span>
+    <span class="n">ec</span><span class="o">=</span><span class="s2">"4.1.1.39"</span><span class="p">,</span>
+    <span class="n">brenda_path</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="s2">"assets"</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"brenda_rubisco_only.json"</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Found: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">kms</span><span class="p">)</span><span class="si">}</span><span class="s2"> michaelis constants"</span><span class="p">)</span>
+<span class="n">kms</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-2">kms, kcats = get_km_and_kcat_from_brenda(
+    ec="4.1.1.39",
+    brenda_path=Path("assets") / "brenda_rubisco_only.json",
+)
+
+print(f"Found: {len(kms)} michaelis constants")
+kms.head()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>Found: 668 michaelis constants
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[2]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>value</th>
+<th>substrate</th>
+<th>organism</th>
+<th>uniprot</th>
+<th>sequence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>0</th>
+<td>0.0290</td>
+<td>CO2</td>
+<td>Amphicarpaea bracteata</td>
+<td>A0A1C3HPM0</td>
+<td>MSPQTETKASVGFKAGVKDYKLTYYTPDYETKDTDILAAFRVTPQP...</td>
+</tr>
+<tr>
+<th>5</th>
+<td>0.0510</td>
+<td>CO2</td>
+<td>Archaeoglobus fulgidus</td>
+<td>O28635</td>
+<td>MAEFEIYREYVDKSYEPQKDDIVAVFRITPAEGFTIEDAAGAVAAE...</td>
+</tr>
+<tr>
+<th>7</th>
+<td>0.0279</td>
+<td>CO2</td>
+<td>Hordeum murinum</td>
+<td>A0A1C3HPQ4</td>
+<td>MSPQTETKAGVGFKAGVKDYKLTYYTPEYETKDTDILAAFRVSPQP...</td>
+</tr>
+<tr>
+<th>8</th>
+<td>0.0279</td>
+<td>CO2</td>
+<td>Hordeum brachyantherum</td>
+<td>A0A1C3HPQ0</td>
+<td>MSPQTETKAGVGFQAGVKDYKLTYYTPEYETKDTDILAAFRVSPQP...</td>
+</tr>
+<tr>
+<th>9</th>
+<td>0.0195</td>
+<td>CO2</td>
+<td>Glycine canescens</td>
+<td>A0A1C3HPP9</td>
+<td>MSPQTETKASVGFKAGVKDYKLTYYTPDYETKDTDILAAFRVTPQP...</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>As you can see above, this provides you with parameter values for different organisms and substrates.<br/>
+Thus, we first filter by the specific substrate we are interested in.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [3]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-3">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="c1"># Filter out a specific substrate</span>
+<span class="n">kms</span> <span class="o">=</span> <span class="n">kms</span><span class="p">[</span><span class="n">kms</span><span class="p">[</span><span class="s2">"substrate"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"CO2"</span><span class="p">]</span>
+<span class="n">kcats</span> <span class="o">=</span> <span class="n">kcats</span><span class="p">[</span><span class="n">kcats</span><span class="p">[</span><span class="s2">"substrate"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"CO2"</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Filtered to </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">kms</span><span class="p">)</span><span class="si">}</span><span class="s2"> michaelis constants"</span><span class="p">)</span>
+<span class="n">kms</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-3"># Filter out a specific substrate
+kms = kms[kms["substrate"] == "CO2"]
+kcats = kcats[kcats["substrate"] == "CO2"]
+
+print(f"Filtered to {len(kms)} michaelis constants")
+kms.head()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>Filtered to 443 michaelis constants
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[3]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>value</th>
+<th>substrate</th>
+<th>organism</th>
+<th>uniprot</th>
+<th>sequence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>0</th>
+<td>0.0290</td>
+<td>CO2</td>
+<td>Amphicarpaea bracteata</td>
+<td>A0A1C3HPM0</td>
+<td>MSPQTETKASVGFKAGVKDYKLTYYTPDYETKDTDILAAFRVTPQP...</td>
+</tr>
+<tr>
+<th>5</th>
+<td>0.0510</td>
+<td>CO2</td>
+<td>Archaeoglobus fulgidus</td>
+<td>O28635</td>
+<td>MAEFEIYREYVDKSYEPQKDDIVAVFRITPAEGFTIEDAAGAVAAE...</td>
+</tr>
+<tr>
+<th>7</th>
+<td>0.0279</td>
+<td>CO2</td>
+<td>Hordeum murinum</td>
+<td>A0A1C3HPQ4</td>
+<td>MSPQTETKAGVGFKAGVKDYKLTYYTPEYETKDTDILAAFRVSPQP...</td>
+</tr>
+<tr>
+<th>8</th>
+<td>0.0279</td>
+<td>CO2</td>
+<td>Hordeum brachyantherum</td>
+<td>A0A1C3HPQ0</td>
+<td>MSPQTETKAGVGFQAGVKDYKLTYYTPEYETKDTDILAAFRVSPQP...</td>
+</tr>
+<tr>
+<th>9</th>
+<td>0.0195</td>
+<td>CO2</td>
+<td>Glycine canescens</td>
+<td>A0A1C3HPP9</td>
+<td>MSPQTETKASVGFKAGVKDYKLTYYTPDYETKDTDILAAFRVTPQP...</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>Since these are sufficiently many values, we can create a Gaussian Kernel Density estimate of them.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [4]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-4">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">km_dist</span> <span class="o">=</span> <span class="n">GaussianKde</span><span class="o">.</span><span class="n">from_data</span><span class="p">(</span><span class="n">kms</span><span class="p">[</span><span class="s2">"value"</span><span class="p">])</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">km_dist</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+    <span class="n">xmin</span><span class="o">=</span><span class="n">kms</span><span class="p">[</span><span class="s2">"value"</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">*</span> <span class="mf">0.8</span><span class="p">,</span>
+    <span class="n">xmax</span><span class="o">=</span><span class="n">kms</span><span class="p">[</span><span class="s2">"value"</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">*</span> <span class="mf">1.2</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="sa">f</span><span class="s2">"rubisco km for CO2, n=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">kms</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-4">km_dist = GaussianKde.from_data(kms["value"])
+fig, ax = km_dist.plot(
+    xmin=kms["value"].min() * 0.8,
+    xmax=kms["value"].max() * 1.2,
+)
+ax.set(title=f"rubisco km for CO2, n={len(kms)}")
+plt.show()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedImage jp-OutputArea-output" tabindex="0">
+<img alt="No description has been provided for this image" class="" src="data:image/webp;base64,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"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>This kernel density estimate we can now use exactly like other distribution in our <code>Monte-Carlo</code> routines (see the Monte Carlo notebook for more information).</p>
+<p>Here, we create a small toy model and then use the distribution obtained from the experimental data to calculate the steady-state distribution of the model concentration.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [5]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-5">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Model</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">add_parameters</span><span class="p">({</span><span class="s2">"k_out"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"km"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
+    <span class="o">.</span><span class="n">add_variable</span><span class="p">(</span><span class="s2">"PGA"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="o">.</span><span class="n">add_reaction</span><span class="p">(</span>
+        <span class="s2">"rubisco"</span><span class="p">,</span>
+        <span class="n">fns</span><span class="o">.</span><span class="n">constant</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"km"</span><span class="p">],</span>
+        <span class="n">stoichiometry</span><span class="o">=</span><span class="p">{</span><span class="s2">"PGA"</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span>
+    <span class="p">)</span>
+    <span class="o">.</span><span class="n">add_reaction</span><span class="p">(</span>
+        <span class="s2">"outflux"</span><span class="p">,</span>
+        <span class="n">fns</span><span class="o">.</span><span class="n">mass_action_1s</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"PGA"</span><span class="p">,</span> <span class="s2">"k_out"</span><span class="p">],</span>
+        <span class="n">stoichiometry</span><span class="o">=</span><span class="p">{</span><span class="s2">"PGA"</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">},</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+
+<span class="n">ss</span> <span class="o">=</span> <span class="n">mc</span><span class="o">.</span><span class="n">steady_state</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">mc_to_scan</span><span class="o">=</span><span class="n">sample</span><span class="p">({</span><span class="s2">"km"</span><span class="p">:</span> <span class="n">km_dist</span><span class="p">},</span> <span class="n">n</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">ylabel</span><span class="o">=</span><span class="s2">"Steady-state concentration"</span><span class="p">)</span>
+<span class="n">plot</span><span class="o">.</span><span class="n">violins</span><span class="p">(</span><span class="n">ss</span><span class="o">.</span><span class="n">variables</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-5">model = (
+    Model()
+    .add_parameters({"k_out": 1.0, "km": 1.0})
+    .add_variable("PGA", 0)
+    .add_reaction(
+        "rubisco",
+        fns.constant,
+        args=["km"],
+        stoichiometry={"PGA": 2},
+    )
+    .add_reaction(
+        "outflux",
+        fns.mass_action_1s,
+        args=["PGA", "k_out"],
+        stoichiometry={"PGA": -1},
+    )
+)
+
+ss = mc.steady_state(model, mc_to_scan=sample({"km": km_dist}, n=10))
+
+fig, ax = plt.subplots(figsize=(4, 3))
+ax.set(ylabel="Steady-state concentration")
+plot.violins(ss.variables, ax=ax)
+plt.show()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  0%|          | 0/10 [00:00&lt;?, ?it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 10%|█         | 1/10 [00:05&lt;00:47,  5.30s/it]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 40%|████      | 4/10 [00:05&lt;00:06,  1.03s/it]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>100%|██████████| 10/10 [00:05&lt;00:00,  1.84it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedImage jp-OutputArea-output" tabindex="0">
+<img alt="No description has been provided for this image" class="" src="data:image/webp;base64,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"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<div style="color: #ffffff; background-color: #04AA6D; padding: 3rem 1rem 3rem 1rem; box-sizing: border-box">
+<h2>First finish line</h2>
+    With that you now know most of what you will need from a day-to-day basis about parameter scans in mxlpy.
+    <br/>
+<br/>
+    Congratulations!
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+</div>
+</div>
+</div>
+</div>
+</div> <!-- jp-Notebook -->
+</div> <!-- jupyter-wrapper -->
+
+        <style>
+        ['pre { line-height: 125%; }\ntd.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\nspan.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\ntd.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\nspan.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\n.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }\n.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }\n.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */\n.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */\n.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */\n.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */\n.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */\n.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */\n.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */\n.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */\n.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */\n.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */\n.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */\n.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */\n.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */\n.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */\n.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */\n.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */\n.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */\n.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */\n.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */\n.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */\n.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */\n.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */\n.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */\n.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */\n.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */\n.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */\n.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */\n.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */\n.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */\n.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */\n.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */\n.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */\n.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */\n.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */\n.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */\n.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */\n.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */\n.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */\n.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */\n.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */\n.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */']
+        </style>
+        
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["content.code.copy", "content.code.annotate", "search.suggest", "search.highlight", "search.share", "navigation.instant", "navigation.instant.prefetch"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
