@@ -3,6 +3,14 @@ site_url: https://computational-biology-aachen.github.io/mxlpy/
 site_dir: dist
 repo_url: https://github.com/Computational-Biology-Aachen/MxlPy
 use_directory_urls: false
+# Unused here (README links logo-diagram.png from GitHub), so don't copy them
+# into every docs version.
+exclude_docs: |
+  assets/logo.png
+  assets/logo-text.png
+  assets/cbb-unlabeled.drawio.png
+hooks:
+  - scripts/mkdocs_shrink_html.py
 
 nav:
   - About: index.md
