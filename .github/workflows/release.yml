@@ -50,13 +50,15 @@ jobs:
       - run: uv run python -c "import toml;print('VERSION={}'.format(toml.load(open('pyproject.toml'))['project']['version']))" >> $GITHUB_ENV
       - run: uv run mike deploy --update-aliases --push ${{ env.VERSION }} latest
       - run: uv run mike set-default --push latest
-      # Every version is a full ~30 MB copy of the docs. Published Pages sites
-      # may be no larger than 1 GB and deployments time out after 10 minutes;
-      # 59 versions (1.46 GB) broke the 0.66.0 deploy. Keep the newest ones.
-      # Old versions stay in gh-pages' history (and gh-pages-backup-2026-11-06).
+      # Every version is a full copy of the docs (~12 MB since
+      # scripts/mkdocs_shrink_html.py, ~31 MB before). Published Pages sites may
+      # be no larger than 1 GB and deployments time out after 10 minutes;
+      # 59 unshrunk versions (1.46 GB) broke the 0.66.0 deploy. 30 versions are
+      # ~320 MB. Old versions stay in gh-pages' history (and
+      # gh-pages-backup-2026-11-06).
       - name: Keep only the newest docs versions
         env:
-          KEEP_DOCS_VERSIONS: 15
+          KEEP_DOCS_VERSIONS: 30
         run: |
           old=$(uv run mike list --json | uv run python scripts/old_docs_versions.py "$KEEP_DOCS_VERSIONS")
           if [ -n "$old" ]; then
