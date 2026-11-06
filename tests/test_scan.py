@@ -13,6 +13,7 @@ import pytest
 from mxlpy import (
     KineticModelBuilder,
     OdeModelBuilder,
+    Scipy,
     SteadyStateModelBuilder,
     cartesian_product,
     fns,
@@ -118,7 +119,12 @@ def test_steady_state_scan_nan_in_to_scan_raises(
     """
     to_scan = pd.DataFrame({"k1": [1.0, float("nan"), 3.0]})
     with pytest.raises(ValueError):
-        steady_state(simple_model, to_scan=to_scan, parallel=False)
+        steady_state(
+            simple_model,
+            to_scan=to_scan,
+            parallel=False,
+            runner=KineticRunner(integrator=Scipy),
+        )
 
 
 def test_update_parameters_and_initial_conditions_variable_vs_parameter(

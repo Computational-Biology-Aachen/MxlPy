@@ -42,7 +42,14 @@ pip install mxlpy[sr]
 pip install mxlpy[torch, tensorflow, keras, jax, sr]
 ```
 
-If you want access to the sundials solver suite via the [assimulo](https://jmodelica.org/assimulo/) package, we recommend setting up a virtual environment via [pixi](https://pixi.sh/) or [mamba / conda](https://mamba.readthedocs.io/en/latest/) using the [conda-forge](https://conda-forge.org/) channel.
+For the CVODE solver from the [SUNDIALS](https://computing.llnl.gov/projects/sundials) suite, install the `sundials` extra, which uses the official [sundials4py](https://pypi.org/project/sundials4py/) bindings.
+It has wheels for Linux x86_64, macOS and Windows x64; on other platforms (e.g. Linux aarch64) the extra installs nothing and mxlpy falls back to the Scipy integrator.
+
+```shell
+pip install mxlpy[sundials]
+```
+
+Alternatively, if you want access to the sundials solver suite via the [assimulo](https://jmodelica.org/assimulo/) package, we recommend setting up a virtual environment via [pixi](https://pixi.sh/) or [mamba / conda](https://mamba.readthedocs.io/en/latest/) using the [conda-forge](https://conda-forge.org/) channel.
 
 ```bash
 pixi init

@@ -112,11 +112,11 @@ from mxlpy import OscillationDetected
 
 ## Integrator configuration
 
-Pass an integrator class (or a `partial` with settings) via `integrator=`. Default is **Assimulo** if installed (conda-forge / pixi), otherwise **Scipy** (PyPI / uv). Because settings differ per integrator, check the type before tuning. `Diffrax` requires jax + diffrax.
+Pass an integrator class (or a `partial` with settings) via `integrator=`. Default is the first available of **Assimulo** (conda-forge / pixi), **Sundials** (`mxlpy[sundials]`, CVODE via sundials4py, same defaults as Assimulo) and **Scipy**. Because settings differ per integrator, check the type before tuning. `Diffrax` requires jax + diffrax.
 
 ```python
 from functools import partial
-from mxlpy import Simulator, Scipy, Diffrax   # Assimulo also importable when present
+from mxlpy import Simulator, Scipy, Diffrax   # Assimulo / Sundials also importable when present
 
 # Choose and configure at construction
 sim = Simulator(model, integrator=Scipy)

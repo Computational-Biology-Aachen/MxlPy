@@ -112,6 +112,8 @@ from .unit_inference import Conflict, UnitInference
 
 with contextlib.suppress(ImportError):
     from .integrators import Assimulo
+with contextlib.suppress(ImportError):
+    from .integrators import Sundials
 
 # Alias for backward compatability
 Model = KineticModelBuilder
@@ -162,6 +164,7 @@ __all__ = [
     "Simulator",
     "Slider",
     "SteadyStateModelBuilder",
+    "Sundials",
     "SurrogateProtocol",
     "SymbolicModel",
     "UnitInference",
