@@ -24,6 +24,9 @@ resolution-markers = [
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P3D"
 
+[options.exclude-newer-package]
+mxlpy-native = false
+
 [[package]]
 name = "absl-py"
 version = "2.5.1"
@@ -2493,7 +2496,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.9.2" },
     { name = "mike", specifier = ">=2.1.3" },
     { name = "more-itertools", specifier = ">=10.5.0" },
-    { name = "mxlpy-native", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'native') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'native')", git = "https://github.com/Computational-Biology-Aachen/mxlpy-native?rev=0dfa131" },
+    { name = "mxlpy-native", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'native') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'native')", specifier = ">=0.3.0" },
     { name = "networkx", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=2.1.2" },
     { name = "optax", marker = "extra == 'jax'", specifier = ">=0.2.5" },
@@ -2546,9 +2549,17 @@ dev = [
 [[package]]
 name = "mxlpy-native"
 version = "0.3.0"
-source = { git = "https://github.com/Computational-Biology-Aachen/mxlpy-native?rev=0dfa131#0dfa131b59cf4646748555a791104dde207a3e12" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llvmlite" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a1/d1/a868e50123c9fe7a7be51f90fddd9c27579697f8fcaec309c185a00f5081/mxlpy_native-0.3.0.tar.gz", hash = "sha256:584f00a82b2c7b29374c29ac57473e69aa850d3173f735224f25f8e18dd28c82", size = 64793, upload-time = "2026-11-06T08:47:34.503Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d3/9a/0b9cbcbd03c4ff6c61fb0ef2090399ef4b8df25b8fb23260aa8c2c7ce6b9/mxlpy_native-0.3.0-cp312-abi3-macosx_12_0_arm64.whl", hash = "sha256:d24b67c073b18d24247adbe46976cb0c1cbc1f66fedfabb42595df546e93f060", size = 98059, upload-time = "2026-11-06T08:47:27.65Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/68/2ec33ec8a85295d56c6e41da3585a01fdf4d4cea2e26fc9214d72bcee329/mxlpy_native-0.3.0-cp312-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:898ce38f1c7b27a80b0382e72233671d90d4855107bd1f3ff87f1363a8324e14", size = 167926, upload-time = "2026-11-06T08:47:29.026Z" },
+    { url = "https://files.pythonhosted.org/packages/46/21/f8e1252653b9a3bad947e0277b76f7d12b45c1cde1d6b7f870d36f47f6fb/mxlpy_native-0.3.0-cp312-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:747d080ded5870a6b785808afed6cedf00652a9aa392982dd7413295ef1008f4", size = 177179, upload-time = "2026-11-06T08:47:30.51Z" },
+    { url = "https://files.pythonhosted.org/packages/55/35/a712a459d0163935bfd51bdcbec1f7f36b7377827f3fd3061334b48bd269/mxlpy_native-0.3.0-cp312-abi3-win_amd64.whl", hash = "sha256:3883870c7ea873f5d0a3866430f16d6ee808a348e3492379febfab15b4de43ff", size = 54629, upload-time = "2026-11-06T08:47:31.9Z" },
+    { url = "https://files.pythonhosted.org/packages/96/84/a32671e161f8ba29d35c9a8d25eeff78d11ec661727b190104f240084346/mxlpy_native-0.3.0-cp312-abi3-win_arm64.whl", hash = "sha256:7a70935a79279ee6a4f5341a666b1e1b73fee52f9898b384fb1142c7cf9210cf", size = 48968, upload-time = "2026-11-06T08:47:33.164Z" },
 ]
 
 [[package]]

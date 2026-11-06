@@ -209,6 +209,8 @@ trailing_comma_inline_array = true
 [tool.uv]
 package = true
 exclude-newer = "3 days"
+# Our own packages: no need to wait out the cooldown after releasing them.
+exclude-newer-package = { mxlpy-native = false }
 
 [[tool.uv.index]]
 explicit = true
@@ -217,9 +219,6 @@ url = "https://download.pytorch.org/whl/cpu"
 
 [tool.uv.sources]
 mxlpy = { workspace = true }
-# Until mxlpy-native 0.3.0 is on PyPI; then drop this (and allow it past
-# exclude-newer, or wait 3 days after the release).
-mxlpy-native = { git = "https://github.com/Computational-Biology-Aachen/mxlpy-native", rev = "0dfa131" }
 # Plain PyPI torch on Linux resolves to the CUDA build, which unconditionally
 # depends on triton — triton's native module segfaults on GitHub Actions'
 # GPU-less runners the instant torch.optim.Optimizer.__init__ lazily imports
