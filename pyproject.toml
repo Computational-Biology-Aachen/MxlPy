@@ -184,6 +184,7 @@ select = ["ALL"]
     "D",    # all of documentation
     "T201", # print statements
 ]
+"scripts/*" = ["INP001"]  # standalone scripts, not a package
 "tests/*" = [
     "D",       # all of documentation
     "PD901",   # "df" name
