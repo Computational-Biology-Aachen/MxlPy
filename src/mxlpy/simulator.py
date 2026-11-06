@@ -190,7 +190,7 @@ class Simulator(Generic[M]):
                 jac_fn = lambda t, x: _jac_fn(  # noqa: E731
                     t,
                     x,
-                    self.model._parameters.values(),  # noqa: SLF001
+                    list(self.model.get_parameter_values().values()),
                 )
 
             except Exception as e:  # noqa: BLE001
