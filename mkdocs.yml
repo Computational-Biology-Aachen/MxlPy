@@ -1,5 +1,5 @@
 site_name: mxlpy docs
-site_url: https://computational-biology-aachen.github.io/mxlpy/
+site_url: https://cpbl.rwth-aachen.de/MxlPy/
 site_dir: dist
 repo_url: https://github.com/Computational-Biology-Aachen/MxlPy
 use_directory_urls: false

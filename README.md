@@ -7,7 +7,7 @@
 # MxlPy
 
 [docs-badge]: https://img.shields.io/badge/docs-main-green.svg?style=flat-square
-[docs]: https://computational-biology-aachen.github.io/MxlPy/latest/index.html
+[docs]: https://cpbl.rwth-aachen.de/MxlPy/latest/index.html
 
 [![pypi](https://img.shields.io/pypi/v/mxlpy.svg)](https://pypi.python.org/pypi/mxlpy)
 [![docs][docs-badge]][docs]
