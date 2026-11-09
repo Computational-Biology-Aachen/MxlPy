@@ -1,0 +1,118 @@
+# MxlPy — Visualization & reporting
+
+[← back to index](llms.txt)
+
+## Plotting (`mxlpy.plot`)
+
+Plot helpers consume `pandas` objects (the natural output of simulations, scans, MCA, MC). Every plotting function **returns `(fig, ax)`** and accepts an existing `ax=` — so figure management stays explicit. Rename series by renaming DataFrame columns; style via `plot.context` rather than per-function arguments.
+
+```python
+from mxlpy import plot
+
+fig, ax = plot.one_axes(figsize=(6, 3))     # single axes
+fig, (ax1, ax2) = plot.two_axes(figsize=(7, 3))
+fig, axs = plot.grid_layout(n_plots=6, n_cols=3)  # auto-arranged grid
+plot.show()
+```
+
+### Lines (time courses, scans)
+
+```python
+fig, ax = plot.lines(variables)             # creates its own axes …
+plot.lines(variables[["x", "y"]], ax=ax)    # … or draws onto a given one
+plot.lines_grouped(result, groupby="k1", ax=ax)   # explicit grouping
+plot.line_autogrouped(result, ax=ax)              # auto-detect MultiIndex grouping
+plot.line_mean_std(mc_result, groupby="time", ax=ax)        # mean ± std band
+plot.lines_mean_std_from_2d_idx(scan_result.variables, ax=ax)  # band from an n×time scan/MC result
+```
+
+### Bars (steady states)
+
+```python
+plot.bars(variables, ax=ax)
+plot.bars_grouped(result, groupby="k1", ax=ax)
+fig, axs = plot.bars_autogrouped(result)
+```
+
+### Heatmaps (MCA, 2-D scans)
+
+```python
+plot.heatmap(rc.variables, ax=ax)                       # e.g. response coefficients / elasticities
+plot.heatmap_from_2d_idx(scan_result.variables, variable="x")  # one variable over a 2-parameter scan
+fig, axs = plot.heatmaps_from_2d_idx(scan_result.variables)    # all variables at once
+```
+
+### Violins (distributions / Monte Carlo)
+
+```python
+plot.violins(mc_result.variables, ax=ax)
+plot.violins_from_2d_idx(mc_result.variables, n_cols=4)
+```
+
+### Phase planes & networks
+
+```python
+# Quiver vector field over two variables (+ overlay trajectories yourself on the returned ax)
+fig, ax = plot.trajectories_2d(model, x1=("s1", np.linspace(0, 2, 20)), x2=("s2", np.linspace(0, 2, 20)))
+# Phase-plane curve from a simulation result
+plot.trajectories_2d(variables[["x", "y"]], ax=ax)
+
+# Reaction network as a directed graph (variables = circles, reactions = squares,
+# solid = stoichiometric edge, dashed = modifier). Uses networkx.
+plot.network(model, layout="kamada_kawai", ax=ax, node_size=1000)
+
+# Isotopomer label distributions
+plot.relative_label_distribution(mapper, labels, n_cols=3)
+```
+
+### Protocol shading & formatting
+
+```python
+plot.shade_protocol(protocol["k1"], ax=ax, alpha=0.15)  # shade when a protocol parameter was active
+plot.add_grid(ax)
+plot.rotate_xlabels(ax, angle=45)
+plot.reset_prop_cycle(ax)        # restart the colour cycle (e.g. to overlay data over a model)
+```
+
+### Styling with `plot.context`
+
+A wrapper around `matplotlib.rc_context`, so any matplotlib styling works and new matplotlib features are immediately available.
+
+```python
+from cycler import cycler
+
+with plot.context(colors=["r", "g", "b"], linewidth=2):
+    fig, ax = plot.lines(data)
+
+# Full control via rc= (matplotlib rcParam names)
+with plot.context(rc={"axes.prop_cycle": cycler(color=["r", "b"]) * cycler(linestyle=["-", "--"])}):
+    plot.lines(data, ax=plot.one_axes()[1])
+```
+
+## Model comparison reports (`mxlpy.report`)
+
+`report.markdown(m1, m2, *, m1_name=..., m2_name=..., analyses=[...])` builds a colour-coded report comparing two models — both structure and numerical differences in derived values and the right-hand side. Colours: <span style="color:green">green</span> = new, <span style="color:orange">orange</span> = changed, <span style="color:red">red</span> = removed. The result displays inline in a notebook and has `.write(path)`.
+
+```python
+from mxlpy import report
+from pathlib import Path
+
+rep = report.markdown(model_old, model_new, m1_name="SIR", m2_name="SIRD")
+rep.write(Path("report.md"))
+```
+
+Extend with custom analyses. Each analysis is `(m1, m2, img_dir: Path) -> (markdown: str, image_path: Path)`; it runs for both models and is embedded into the report:
+
+```python
+def analyse_concentrations(m1, m2, img_dir):
+    r_old = Simulator(m1).simulate(100).get_result().unwrap_or_err()
+    r_new = Simulator(m2).simulate(100).get_result().unwrap_or_err()
+    fig = plot_difference(r_old.variables, r_new.variables)
+    path = img_dir / "concentration.png"
+    fig.savefig(path, dpi=300)
+    return "## Concentration comparison", path
+
+report.markdown(model_old, model_new, analyses=[analyse_concentrations])
+```
+
+If a model function can't be parsed, the report inserts a red warning in place of that value and continues — the rest of the report stays usable.
