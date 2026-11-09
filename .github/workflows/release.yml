@@ -64,6 +64,20 @@ jobs:
           if [ -n "$old" ]; then
             uv run mike delete --push -m "Delete docs older than the newest $KEEP_DOCS_VERSIONS versions" $old
           fi
+      # llmstxt.org agents look for llms.txt at the site root, but mike only
+      # publishes it per version (latest/llms.txt). Copy the llms*.txt set to
+      # the gh-pages root as well; they only link to each other, so relative
+      # links keep working.
+      - name: Publish llms.txt at the docs root
+        run: |
+          git worktree add "$RUNNER_TEMP/gh-pages" gh-pages
+          cp docs/llms*.txt "$RUNNER_TEMP/gh-pages/"
+          cd "$RUNNER_TEMP/gh-pages"
+          git add llms*.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish llms.txt for ${{ env.VERSION }} at the docs root"
+            git push origin gh-pages
+          fi
 
   build-release:
     runs-on: ubuntu-latest
