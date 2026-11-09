@@ -8,7 +8,7 @@
       
       
       
-        <link rel="canonical" href="https://computational-biology-aachen.github.io/mxlpy/0.67.0/metaprogramming.html">
+        <link rel="canonical" href="https://cpbl.rwth-aachen.de/MxlPy/0.67.0/metaprogramming.html">
       
       
         <link rel="prev" href="carousel.html">
@@ -2227,7 +2227,7 @@ print(codegen.inits)</div>
 <span class="ansi-green-fg">      3</span> print(codegen.derived, end=<span class="ansi-yellow-fg">"\n\n"</span>)
 <span class="ansi-green-fg">      4</span> print(codegen.inits)
 
-<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/work/MxlPy/MxlPy/src/mxlpy/meta/_via_sym_repr.py:1994</span>, in <span class="ansi-cyan-fg">generate_model_code_py</span><span class="ansi-blue-fg">(model, free_parameters, derived_to_calculate, custom_fns, typed)</span>
+<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/git/0-admin/pkg-py/MxlPy/src/mxlpy/meta/_via_sym_repr.py:1994</span>, in <span class="ansi-cyan-fg">generate_model_code_py</span><span class="ansi-blue-fg">(model, free_parameters, derived_to_calculate, custom_fns, typed)</span>
 <span class="ansi-green-fg">   1991</span> <span class="ansi-bold" style="color: rgb(0,135,0)">def</span><span style="color: rgb(188,188,188)"> </span><span class="ansi-blue-fg">return_template</span>(element: <span style="color: rgb(0,135,0)">str</span>) -&gt; <span style="color: rgb(0,135,0)">str</span>:
 <span class="ansi-green-fg">   1992</span>     <span class="ansi-bold" style="color: rgb(0,135,0)">return</span> <span class="ansi-yellow-fg">f</span><span class="ansi-yellow-fg">"</span><span class="ansi-yellow-fg">    return </span><span class="ansi-bold" style="color: rgb(175,95,135)">{</span>element<span style="color: rgb(188,188,188)"> </span><span class="ansi-bold" style="color: rgb(175,0,255)">or</span><span style="color: rgb(188,188,188)"> </span><span class="ansi-yellow-fg">'</span><span class="ansi-yellow-fg">()</span><span class="ansi-yellow-fg">'</span><span class="ansi-bold" style="color: rgb(175,95,135)">}</span><span class="ansi-yellow-fg">"</span>
 <span class="ansi-green-fg">-&gt; </span><span class="ansi-green-fg">1994</span> <span class="ansi-bold" style="color: rgb(0,135,0)">return</span> <span class="ansi-black-fg ansi-yellow-bg">_generate_model_code</span><span class="ansi-black-fg ansi-yellow-bg">(</span>
@@ -2253,7 +2253,7 @@ print(codegen.inits)</div>
 <span class="ansi-green-fg">   2014</span> <span class="ansi-black-fg ansi-yellow-bg">    </span><span class="ansi-black-fg ansi-yellow-bg">float_type</span><span class="ansi-black-fg ansi-yellow-bg">=</span><span class="ansi-black-fg ansi-yellow-bg">"</span><span class="ansi-black-fg ansi-yellow-bg">float</span><span class="ansi-black-fg ansi-yellow-bg">"</span><span class="ansi-black-fg ansi-yellow-bg">,</span>
 <span class="ansi-green-fg">   2015</span> <span class="ansi-black-fg ansi-yellow-bg">)</span>
 
-<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/work/MxlPy/MxlPy/src/mxlpy/meta/_via_sym_repr.py:1440</span>, in <span class="ansi-cyan-fg">_generate_model_code</span><span class="ansi-blue-fg">(model, free_parameters, derived_to_calculate, fn_template, assignment_template, expr_template, variable_unpacking, return_formatter, tuple_formatter, list_formatter, imports, name_map, custom_fns, unpacked_args, arr_type, float_type, ret_type_inits, ret_type_rest)</span>
+<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/git/0-admin/pkg-py/MxlPy/src/mxlpy/meta/_via_sym_repr.py:1440</span>, in <span class="ansi-cyan-fg">_generate_model_code</span><span class="ansi-blue-fg">(model, free_parameters, derived_to_calculate, fn_template, assignment_template, expr_template, variable_unpacking, return_formatter, tuple_formatter, list_formatter, imports, name_map, custom_fns, unpacked_args, arr_type, float_type, ret_type_inits, ret_type_rest)</span>
 <span class="ansi-green-fg">   1418</span> diff_eq_src = <span class="ansi-yellow-fg">"</span><span class="ansi-bold" style="color: rgb(175,95,0)">\n</span><span class="ansi-yellow-fg">"</span>.join(
 <span class="ansi-green-fg">   1419</span>     [
 <span class="ansi-green-fg">   1420</span>         assignment_template(
@@ -2276,7 +2276,7 @@ print(codegen.inits)</div>
 <span class="ansi-green-fg">   1451</span>     [name_map[i] <span class="ansi-bold" style="color: rgb(0,135,0)">for</span> i <span class="ansi-bold" style="color: rgb(175,0,255)">in</span> free_parameters], target=<span class="ansi-yellow-fg">"</span><span class="ansi-yellow-fg">args</span><span class="ansi-yellow-fg">"</span>
 <span class="ansi-green-fg">   1452</span> )
 
-<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/work/MxlPy/MxlPy/src/mxlpy/meta/_via_sym_repr.py:1443</span>, in <span class="ansi-cyan-fg">&lt;genexpr&gt;</span><span class="ansi-blue-fg">(.0)</span>
+<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/git/0-admin/pkg-py/MxlPy/src/mxlpy/meta/_via_sym_repr.py:1443</span>, in <span class="ansi-cyan-fg">&lt;genexpr&gt;</span><span class="ansi-blue-fg">(.0)</span>
 <span class="ansi-green-fg">   1418</span> diff_eq_src = <span class="ansi-yellow-fg">"</span><span class="ansi-bold" style="color: rgb(175,95,0)">\n</span><span class="ansi-yellow-fg">"</span>.join(
 <span class="ansi-green-fg">   1419</span>     [
 <span class="ansi-green-fg">   1420</span>         assignment_template(
@@ -2538,12 +2538,12 @@ print(codegen.derived, end="\n\n")</div>
 <span class="ansi-green-fg">      6</span>     ).as_default(),
 <span class="ansi-green-fg">      7</span>     sep=<span class="ansi-yellow-fg">"\n\n"</span>,
 
-<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/work/MxlPy/MxlPy/src/mxlpy/_kinetic_builder.py:214</span>, in <span class="ansi-cyan-fg">_invalidate_cache.&lt;locals&gt;.wrapper</span><span class="ansi-blue-fg">(*args, **kwargs)</span>
+<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/git/0-admin/pkg-py/MxlPy/src/mxlpy/_kinetic_builder.py:214</span>, in <span class="ansi-cyan-fg">_invalidate_cache.&lt;locals&gt;.wrapper</span><span class="ansi-blue-fg">(*args, **kwargs)</span>
 <span class="ansi-green-fg">    212</span> <span style="color: rgb(0,135,0)">self</span> = cast(KineticModelBuilder, args[<span class="ansi-green-fg">0</span>])
 <span class="ansi-green-fg">    213</span> <span style="color: rgb(0,135,0)">self</span>._cache = <span class="ansi-bold" style="color: rgb(0,135,0)">None</span>
 <span class="ansi-green-fg">--&gt; </span><span class="ansi-green-fg">214</span> <span class="ansi-bold" style="color: rgb(0,135,0)">return</span> <span class="ansi-black-fg ansi-yellow-bg">method</span><span class="ansi-black-fg ansi-yellow-bg">(</span><span class="ansi-black-fg ansi-yellow-bg">*</span><span class="ansi-black-fg ansi-yellow-bg">args</span><span class="ansi-black-fg ansi-yellow-bg">,</span><span class="ansi-black-fg ansi-yellow-bg"> </span><span class="ansi-black-fg ansi-yellow-bg">*</span><span class="ansi-black-fg ansi-yellow-bg">*</span><span class="ansi-black-fg ansi-yellow-bg">kwargs</span><span class="ansi-black-fg ansi-yellow-bg">)</span>
 
-<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/work/MxlPy/MxlPy/src/mxlpy/_kinetic_builder.py:878</span>, in <span class="ansi-cyan-fg">KineticModelBuilder.update_parameter</span><span class="ansi-blue-fg">(self, name, value, unit, source, annotations, display_name, tex_name, slider)</span>
+<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/git/0-admin/pkg-py/MxlPy/src/mxlpy/_kinetic_builder.py:878</span>, in <span class="ansi-cyan-fg">KineticModelBuilder.update_parameter</span><span class="ansi-blue-fg">(self, name, value, unit, source, annotations, display_name, tex_name, slider)</span>
 <span class="ansi-green-fg">    876</span> <span class="ansi-bold" style="color: rgb(0,135,0)">if</span> name <span class="ansi-bold" style="color: rgb(175,0,255)">not</span> <span class="ansi-bold" style="color: rgb(175,0,255)">in</span> <span style="color: rgb(0,135,0)">self</span>._parameters:
 <span class="ansi-green-fg">    877</span>     msg = <span class="ansi-yellow-fg">f</span><span class="ansi-yellow-fg">"</span><span class="ansi-yellow-fg">Parameter </span><span class="ansi-bold" style="color: rgb(175,95,135)">{</span>name<span class="ansi-bold" style="color: rgb(175,95,135)">!r}</span><span class="ansi-yellow-fg"> not found. Available parameters: </span><span class="ansi-bold" style="color: rgb(175,95,135)">{</span><span style="color: rgb(0,135,0)">sorted</span>(<span style="color: rgb(0,135,0)">self</span>._parameters)<span class="ansi-bold" style="color: rgb(175,95,135)">}</span><span class="ansi-yellow-fg">"</span>
 <span class="ansi-green-fg">--&gt; </span><span class="ansi-green-fg">878</span>     <span class="ansi-bold" style="color: rgb(0,135,0)">raise</span> <span class="ansi-bold" style="color: rgb(215,95,95)">KeyError</span>(msg)
@@ -2615,12 +2615,12 @@ print(codegen.derived, end="\n\n")</div>
 <span class="ansi-green-fg">      6</span>     ).as_default(),
 <span class="ansi-green-fg">      7</span>     sep=<span class="ansi-yellow-fg">"\n\n"</span>,
 
-<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/work/MxlPy/MxlPy/src/mxlpy/_kinetic_builder.py:214</span>, in <span class="ansi-cyan-fg">_invalidate_cache.&lt;locals&gt;.wrapper</span><span class="ansi-blue-fg">(*args, **kwargs)</span>
+<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/git/0-admin/pkg-py/MxlPy/src/mxlpy/_kinetic_builder.py:214</span>, in <span class="ansi-cyan-fg">_invalidate_cache.&lt;locals&gt;.wrapper</span><span class="ansi-blue-fg">(*args, **kwargs)</span>
 <span class="ansi-green-fg">    212</span> <span style="color: rgb(0,135,0)">self</span> = cast(KineticModelBuilder, args[<span class="ansi-green-fg">0</span>])
 <span class="ansi-green-fg">    213</span> <span style="color: rgb(0,135,0)">self</span>._cache = <span class="ansi-bold" style="color: rgb(0,135,0)">None</span>
 <span class="ansi-green-fg">--&gt; </span><span class="ansi-green-fg">214</span> <span class="ansi-bold" style="color: rgb(0,135,0)">return</span> <span class="ansi-black-fg ansi-yellow-bg">method</span><span class="ansi-black-fg ansi-yellow-bg">(</span><span class="ansi-black-fg ansi-yellow-bg">*</span><span class="ansi-black-fg ansi-yellow-bg">args</span><span class="ansi-black-fg ansi-yellow-bg">,</span><span class="ansi-black-fg ansi-yellow-bg"> </span><span class="ansi-black-fg ansi-yellow-bg">*</span><span class="ansi-black-fg ansi-yellow-bg">*</span><span class="ansi-black-fg ansi-yellow-bg">kwargs</span><span class="ansi-black-fg ansi-yellow-bg">)</span>
 
-<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/work/MxlPy/MxlPy/src/mxlpy/_kinetic_builder.py:878</span>, in <span class="ansi-cyan-fg">KineticModelBuilder.update_parameter</span><span class="ansi-blue-fg">(self, name, value, unit, source, annotations, display_name, tex_name, slider)</span>
+<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/git/0-admin/pkg-py/MxlPy/src/mxlpy/_kinetic_builder.py:878</span>, in <span class="ansi-cyan-fg">KineticModelBuilder.update_parameter</span><span class="ansi-blue-fg">(self, name, value, unit, source, annotations, display_name, tex_name, slider)</span>
 <span class="ansi-green-fg">    876</span> <span class="ansi-bold" style="color: rgb(0,135,0)">if</span> name <span class="ansi-bold" style="color: rgb(175,0,255)">not</span> <span class="ansi-bold" style="color: rgb(175,0,255)">in</span> <span style="color: rgb(0,135,0)">self</span>._parameters:
 <span class="ansi-green-fg">    877</span>     msg = <span class="ansi-yellow-fg">f</span><span class="ansi-yellow-fg">"</span><span class="ansi-yellow-fg">Parameter </span><span class="ansi-bold" style="color: rgb(175,95,135)">{</span>name<span class="ansi-bold" style="color: rgb(175,95,135)">!r}</span><span class="ansi-yellow-fg"> not found. Available parameters: </span><span class="ansi-bold" style="color: rgb(175,95,135)">{</span><span style="color: rgb(0,135,0)">sorted</span>(<span style="color: rgb(0,135,0)">self</span>._parameters)<span class="ansi-bold" style="color: rgb(175,95,135)">}</span><span class="ansi-yellow-fg">"</span>
 <span class="ansi-green-fg">--&gt; </span><span class="ansi-green-fg">878</span>     <span class="ansi-bold" style="color: rgb(0,135,0)">raise</span> <span class="ansi-bold" style="color: rgb(215,95,95)">KeyError</span>(msg)
@@ -2806,12 +2806,12 @@ print(codegen.derived, end="\n\n")</div>
 <span class="ansi-green-fg">      7</span>     )
 <span class="ansi-green-fg">      8</span> )
 
-<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/work/MxlPy/MxlPy/src/mxlpy/_kinetic_builder.py:214</span>, in <span class="ansi-cyan-fg">_invalidate_cache.&lt;locals&gt;.wrapper</span><span class="ansi-blue-fg">(*args, **kwargs)</span>
+<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/git/0-admin/pkg-py/MxlPy/src/mxlpy/_kinetic_builder.py:214</span>, in <span class="ansi-cyan-fg">_invalidate_cache.&lt;locals&gt;.wrapper</span><span class="ansi-blue-fg">(*args, **kwargs)</span>
 <span class="ansi-green-fg">    212</span> <span style="color: rgb(0,135,0)">self</span> = cast(KineticModelBuilder, args[<span class="ansi-green-fg">0</span>])
 <span class="ansi-green-fg">    213</span> <span style="color: rgb(0,135,0)">self</span>._cache = <span class="ansi-bold" style="color: rgb(0,135,0)">None</span>
 <span class="ansi-green-fg">--&gt; </span><span class="ansi-green-fg">214</span> <span class="ansi-bold" style="color: rgb(0,135,0)">return</span> <span class="ansi-black-fg ansi-yellow-bg">method</span><span class="ansi-black-fg ansi-yellow-bg">(</span><span class="ansi-black-fg ansi-yellow-bg">*</span><span class="ansi-black-fg ansi-yellow-bg">args</span><span class="ansi-black-fg ansi-yellow-bg">,</span><span class="ansi-black-fg ansi-yellow-bg"> </span><span class="ansi-black-fg ansi-yellow-bg">*</span><span class="ansi-black-fg ansi-yellow-bg">*</span><span class="ansi-black-fg ansi-yellow-bg">kwargs</span><span class="ansi-black-fg ansi-yellow-bg">)</span>
 
-<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/work/MxlPy/MxlPy/src/mxlpy/_kinetic_builder.py:878</span>, in <span class="ansi-cyan-fg">KineticModelBuilder.update_parameter</span><span class="ansi-blue-fg">(self, name, value, unit, source, annotations, display_name, tex_name, slider)</span>
+<span class="ansi-cyan-fg">File </span><span class="ansi-green-fg">~/git/0-admin/pkg-py/MxlPy/src/mxlpy/_kinetic_builder.py:878</span>, in <span class="ansi-cyan-fg">KineticModelBuilder.update_parameter</span><span class="ansi-blue-fg">(self, name, value, unit, source, annotations, display_name, tex_name, slider)</span>
 <span class="ansi-green-fg">    876</span> <span class="ansi-bold" style="color: rgb(0,135,0)">if</span> name <span class="ansi-bold" style="color: rgb(175,0,255)">not</span> <span class="ansi-bold" style="color: rgb(175,0,255)">in</span> <span style="color: rgb(0,135,0)">self</span>._parameters:
 <span class="ansi-green-fg">    877</span>     msg = <span class="ansi-yellow-fg">f</span><span class="ansi-yellow-fg">"</span><span class="ansi-yellow-fg">Parameter </span><span class="ansi-bold" style="color: rgb(175,95,135)">{</span>name<span class="ansi-bold" style="color: rgb(175,95,135)">!r}</span><span class="ansi-yellow-fg"> not found. Available parameters: </span><span class="ansi-bold" style="color: rgb(175,95,135)">{</span><span style="color: rgb(0,135,0)">sorted</span>(<span style="color: rgb(0,135,0)">self</span>._parameters)<span class="ansi-bold" style="color: rgb(175,95,135)">}</span><span class="ansi-yellow-fg">"</span>
 <span class="ansi-green-fg">--&gt; </span><span class="ansi-green-fg">878</span>     <span class="ansi-bold" style="color: rgb(0,135,0)">raise</span> <span class="ansi-bold" style="color: rgb(215,95,95)">KeyError</span>(msg)

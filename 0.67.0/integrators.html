@@ -8,7 +8,7 @@
       
       
       
-        <link rel="canonical" href="https://computational-biology-aachen.github.io/mxlpy/0.67.0/integrators.html">
+        <link rel="canonical" href="https://cpbl.rwth-aachen.de/MxlPy/0.67.0/integrators.html">
       
       
         <link rel="prev" href="symbolic.html">
@@ -1898,7 +1898,7 @@ _ = (s.simulate(10).get_result().unwrap_or_err()).variables.plot()</div>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=8d203c13">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=0744c1c3">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -1911,7 +1911,7 @@ Use <code>method="BDF"</code> (default) for stiff and <code>method="Adams"</code
 </div>
 </div>
 <div class="jp-Cell jp-CodeCell jp-Notebook-cell">
-<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=38eab8c5">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=db9d6db9">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -1964,7 +1964,7 @@ _ = s.get_result().unwrap_or_err().variables.plot()</div>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=e072e303">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=2eb7dbb1">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -1979,7 +1979,7 @@ If no runner is passed, the default runner of the model builder is used.</p>
 </div>
 </div>
 <div class="jp-Cell jp-CodeCell jp-Notebook-cell">
-<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=f04bb6bb">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=fb2545fd">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -2047,19 +2047,13 @@ res.variables</div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre> 20%|██        | 1/5 [00:02&lt;00:09,  2.40s/it]</pre>
+<pre> 20%|██        | 1/5 [00:01&lt;00:06,  1.57s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre> 60%|██████    | 3/5 [00:02&lt;00:01,  1.47it/s]</pre>
-</div>
-</div>
-<div class="jp-OutputArea-child">
-<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
-<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>100%|██████████| 5/5 [00:02&lt;00:00,  1.96it/s]</pre>
+<pre>100%|██████████| 5/5 [00:01&lt;00:00,  3.12it/s]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
@@ -2134,7 +2128,7 @@ res.variables</div>
 </div>
 </div>
 </div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=d6c1943b">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=30cb0f02">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -2147,7 +2141,7 @@ The custom runner is then used by every routine you pass it to.</p>
 </div>
 </div>
 <div class="jp-Cell jp-CodeCell jp-Notebook-cell">
-<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=c4035fbc">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=e94b37a4">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
@@ -2217,19 +2211,13 @@ res = scan.steady_state(
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre> 20%|██        | 1/5 [00:02&lt;00:09,  2.41s/it]</pre>
+<pre> 20%|██        | 1/5 [00:01&lt;00:07,  1.88s/it]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre> 40%|████      | 2/5 [00:02&lt;00:03,  1.06s/it]</pre>
-</div>
-</div>
-<div class="jp-OutputArea-child">
-<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
-<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
-<pre>100%|██████████| 5/5 [00:02&lt;00:00,  1.97it/s]</pre>
+<pre>100%|██████████| 5/5 [00:01&lt;00:00,  2.56it/s]</pre>
 </div>
 </div>
 <div class="jp-OutputArea-child">
@@ -2337,6 +2325,13 @@ s = (
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
 <pre>INFO:jax._src.xla_bridge:Unable to initialize backend 'proxy': The 'proxy' backend requires the address of an IFRT Proxy server. Set it via the JAX_BACKEND_TARGET environment variable or the jax_backend_target config option, e.g. JAX_BACKEND_TARGET=grpc://localhost:29000.
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>WARNING:jax._src.xla_bridge:An NVIDIA GPU may be present on this machine, but a CUDA-enabled jaxlib is not installed. Falling back to cpu.
 </pre>
 </div>
 </div>

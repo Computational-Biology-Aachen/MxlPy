@@ -1,191 +1,195 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/index.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/index.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/basics.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/basics.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/carousel.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/carousel.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/citing.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/citing.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/comparisons.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/comparisons.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/compartmentalisation.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/compartmentalisation.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/composition.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/composition.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/examples.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/examples.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/fitting.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/fitting.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/fuzzy_fitting.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/fuzzy_fitting.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/integrators.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/integrators.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/label-models.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/label-models.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/mca.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/mca.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/metaprogramming.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/metaprogramming.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/monte-carlo.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/monte-carlo.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/mxl-npe.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/mxl-npe.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/mxl-surrogates.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/mxl-surrogates.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/mxl-ude.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/mxl-ude.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/ode-model-builder.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/ode-model-builder.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/parallel.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/parallel.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/parameter_identifiability.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/parameter_identifiability.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/parameterise.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/parameterise.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/report.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/report.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/scans.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/scans.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/sensitivity.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/sensitivity.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/serialization.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/serialization.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/stability.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/stability.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/steady-state-model-builder.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/steady-state-model-builder.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/symbolic.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/symbolic.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/tips.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/tips.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0001-parallel-execution-pool-backend.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0001-parallel-execution-pool-backend.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0002-fluent-builder-and-cache-invalidation.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0002-fluent-builder-and-cache-invalidation.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0003-result-option-vs-exceptions.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0003-result-option-vs-exceptions.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0004-named-functions-no-lambdas.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0004-named-functions-no-lambdas.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0005-jax-as-orthogonal-subsystem.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0005-jax-as-orthogonal-subsystem.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0006-nn-surrogates-npe-split.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0006-nn-surrogates-npe-split.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0007-fit-vs-minimizers-split.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0007-fit-vs-minimizers-split.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0008-meta-codegen-single-source-of-truth.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0008-meta-codegen-single-source-of-truth.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0009-sbml-dual-use-bridge.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0009-sbml-dual-use-bridge.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0010-symbolic-module-scope.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0010-symbolic-module-scope.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0011-strict-tooling-for-downstream-scientists.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0011-strict-tooling-for-downstream-scientists.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0012-dual-uv-pixi-toolchains.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0012-dual-uv-pixi-toolchains.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0013-no-jax-model-builder.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0013-no-jax-model-builder.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/0014-builder-polymorphic-fit-and-scan.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/0014-builder-polymorphic-fit-and-scan.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/adrs/CONTEXT.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/adrs/CONTEXT.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/dev/api-surface-pr189.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/dev/api-surface-pr189.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
     <url>
-         <loc>https://computational-biology-aachen.github.io/mxlpy/0.67.0/dev/api-surface.html</loc>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/dev/api-surface.html</loc>
+         <lastmod>2026-11-09</lastmod>
+    </url>
+    <url>
+         <loc>https://cpbl.rwth-aachen.de/MxlPy/0.67.0/tmp/report.html</loc>
          <lastmod>2026-11-09</lastmod>
     </url>
 </urlset>
