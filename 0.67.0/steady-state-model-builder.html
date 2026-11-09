@@ -1,0 +1,3167 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://computational-biology-aachen.github.io/mxlpy/0.67.0/steady-state-model-builder.html">
+      
+      
+        <link rel="prev" href="ode-model-builder.html">
+      
+      
+        <link rel="next" href="tips.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Steady-state models - mxlpy docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="stylesheets/extra.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#steady-state-models" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="mxlpy docs" class="md-header__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mxlpy docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Steady-state models
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="mxlpy docs" class="md-nav__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mxlpy docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ODE features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="basics.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="composition.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model composition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scans.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scans
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mca.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sensitivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sensitivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fuzzy_fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzy fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="monte-carlo.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monte Carlo methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="label-models.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Label models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="comparisons.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparing models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parameterise.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model parameterisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="stability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stability analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parameter_identifiability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Identifiability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="symbolic.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Symbolic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="integrators.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrator configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="compartmentalisation.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartmentalisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mechanistic learning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Mechanistic learning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-ude.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UDEs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-surrogates.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Surrogates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-npe.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neural Posterior Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="carousel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reaction carousel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="metaprogramming.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metaprogramming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="serialization.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Serialization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="examples.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="report.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reporting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Other model builders
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Other model builders
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="ode-model-builder.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Steady-state models
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="steady-state-model-builder.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Steady-state models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#building-the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building the model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-scans" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter scans
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fitting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fitting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-coefficients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Response coefficients
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tips
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tips
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tips.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    General
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parallel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel execution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="citing.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How to cite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#building-the-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building the model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-scans" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter scans
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fitting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fitting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-coefficients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Response coefficients
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<script>
+(function (global, factory) {
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global = global || self, global.ClipboardCopyElement = factory());
+  }(this, function () { 'use strict';
+
+    function createNode(text) {
+      const node = document.createElement('pre');
+      node.style.width = '1px';
+      node.style.height = '1px';
+      node.style.position = 'fixed';
+      node.style.top = '5px';
+      node.textContent = text;
+      return node;
+    }
+
+    function copyNode(node) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(node.textContent);
+      }
+
+      const selection = getSelection();
+
+      if (selection == null) {
+        return Promise.reject(new Error());
+      }
+
+      selection.removeAllRanges();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      selection.addRange(range);
+      document.execCommand('copy');
+      selection.removeAllRanges();
+      return Promise.resolve();
+    }
+    function copyText(text) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(text);
+      }
+
+      const body = document.body;
+
+      if (!body) {
+        return Promise.reject(new Error());
+      }
+
+      const node = createNode(text);
+      body.appendChild(node);
+      copyNode(node);
+      body.removeChild(node);
+      return Promise.resolve();
+    }
+
+    function copy(button) {
+      const id = button.getAttribute('for');
+      const text = button.getAttribute('value');
+
+      function trigger() {
+        button.dispatchEvent(new CustomEvent('clipboard-copy', {
+          bubbles: true
+        }));
+      }
+
+      if (text) {
+        copyText(text).then(trigger);
+      } else if (id) {
+        const root = 'getRootNode' in Element.prototype ? button.getRootNode() : button.ownerDocument;
+        if (!(root instanceof Document || 'ShadowRoot' in window && root instanceof ShadowRoot)) return;
+        const node = root.getElementById(id);
+        if (node) copyTarget(node).then(trigger);
+      }
+    }
+
+    function copyTarget(content) {
+      if (content instanceof HTMLInputElement || content instanceof HTMLTextAreaElement) {
+        return copyText(content.value);
+      } else if (content instanceof HTMLAnchorElement && content.hasAttribute('href')) {
+        return copyText(content.href);
+      } else {
+        return copyNode(content);
+      }
+    }
+
+    function clicked(event) {
+      const button = event.currentTarget;
+
+      if (button instanceof HTMLElement) {
+        copy(button);
+      }
+    }
+
+    function keydown(event) {
+      if (event.key === ' ' || event.key === 'Enter') {
+        const button = event.currentTarget;
+
+        if (button instanceof HTMLElement) {
+          event.preventDefault();
+          copy(button);
+        }
+      }
+    }
+
+    function focused(event) {
+      event.currentTarget.addEventListener('keydown', keydown);
+    }
+
+    function blurred(event) {
+      event.currentTarget.removeEventListener('keydown', keydown);
+    }
+
+    class ClipboardCopyElement extends HTMLElement {
+      constructor() {
+        super();
+        this.addEventListener('click', clicked);
+        this.addEventListener('focus', focused);
+        this.addEventListener('blur', blurred);
+      }
+
+      connectedCallback() {
+        if (!this.hasAttribute('tabindex')) {
+          this.setAttribute('tabindex', '0');
+        }
+
+        if (!this.hasAttribute('role')) {
+          this.setAttribute('role', 'button');
+        }
+      }
+
+      get value() {
+        return this.getAttribute('value') || '';
+      }
+
+      set value(text) {
+        this.setAttribute('value', text);
+      }
+
+    }
+
+    if (!window.customElements.get('clipboard-copy')) {
+      window.ClipboardCopyElement = ClipboardCopyElement;
+      window.customElements.define('clipboard-copy', ClipboardCopyElement);
+    }
+
+    return ClipboardCopyElement;
+
+  }));
+</script>
+<script>
+      document.addEventListener('clipboard-copy', function(event) {
+        const notice = event.target.querySelector('.notice')
+        notice.hidden = false
+        setTimeout(function() {
+          notice.hidden = true
+        }, 1000)
+      })
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
+<style type="text/css">
+    pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }
+.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }
+.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */
+.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */
+.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */
+.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */
+.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */
+.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */
+.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */
+.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */
+.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */
+.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */
+.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */
+.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */
+.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */
+.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */
+.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */
+.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */
+.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */
+.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */
+.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */
+.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */
+.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */
+.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */
+.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */
+.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */
+.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */
+.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */
+.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */
+.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */
+.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */
+.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */
+.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */
+.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */
+.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */
+.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */
+.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */
+.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */
+.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */
+.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */
+.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */
+.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */
+.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */
+  </style>
+<link rel="stylesheet" href="assets/jupyter-b81bd4b389ab.css">
+<style type="text/css">
+.jupyter-wrapper{--jp-shadow-base-lightness: 0;--jp-shadow-umbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .2 );--jp-shadow-penumbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .14 );--jp-shadow-ambient-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .12 );--jp-elevation-z0: none;--jp-elevation-z1: 0px 2px 1px -1px var(--jp-shadow-umbra-color), 0px 1px 1px 0px var(--jp-shadow-penumbra-color), 0px 1px 3px 0px var(--jp-shadow-ambient-color);--jp-elevation-z2: 0px 3px 1px -2px var(--jp-shadow-umbra-color), 0px 2px 2px 0px var(--jp-shadow-penumbra-color), 0px 1px 5px 0px var(--jp-shadow-ambient-color);--jp-elevation-z4: 0px 2px 4px -1px var(--jp-shadow-umbra-color), 0px 4px 5px 0px var(--jp-shadow-penumbra-color), 0px 1px 10px 0px var(--jp-shadow-ambient-color);--jp-elevation-z6: 0px 3px 5px -1px var(--jp-shadow-umbra-color), 0px 6px 10px 0px var(--jp-shadow-penumbra-color), 0px 1px 18px 0px var(--jp-shadow-ambient-color);--jp-elevation-z8: 0px 5px 5px -3px var(--jp-shadow-umbra-color), 0px 8px 10px 1px var(--jp-shadow-penumbra-color), 0px 3px 14px 2px var(--jp-shadow-ambient-color);--jp-elevation-z12: 0px 7px 8px -4px var(--jp-shadow-umbra-color), 0px 12px 17px 2px var(--jp-shadow-penumbra-color), 0px 5px 22px 4px var(--jp-shadow-ambient-color);--jp-elevation-z16: 0px 8px 10px -5px var(--jp-shadow-umbra-color), 0px 16px 24px 2px var(--jp-shadow-penumbra-color), 0px 6px 30px 5px var(--jp-shadow-ambient-color);--jp-elevation-z20: 0px 10px 13px -6px var(--jp-shadow-umbra-color), 0px 20px 31px 3px var(--jp-shadow-penumbra-color), 0px 8px 38px 7px var(--jp-shadow-ambient-color);--jp-elevation-z24: 0px 11px 15px -7px var(--jp-shadow-umbra-color), 0px 24px 38px 3px var(--jp-shadow-penumbra-color), 0px 9px 46px 8px var(--jp-shadow-ambient-color);--jp-border-width: 1px;--jp-border-color0: var(--md-grey-400);--jp-border-color1: var(--md-grey-400);--jp-border-color2: var(--md-grey-300);--jp-border-color3: var(--md-grey-200);--jp-inverse-border-color: var(--md-grey-600);--jp-border-radius: 2px;--jp-ui-font-scale-factor: 1.2;--jp-ui-font-size0: .83333em;--jp-ui-font-size1: 13px;--jp-ui-font-size2: 1.2em;--jp-ui-font-size3: 1.44em;--jp-ui-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-ui-font-color0: rgba(0, 0, 0, 1);--jp-ui-font-color1: rgba(0, 0, 0, .87);--jp-ui-font-color2: rgba(0, 0, 0, .54);--jp-ui-font-color3: rgba(0, 0, 0, .38);--jp-ui-inverse-font-color0: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color1: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color2: rgba(255, 255, 255, .7);--jp-ui-inverse-font-color3: rgba(255, 255, 255, .5);--jp-content-line-height: 1.6;--jp-content-font-scale-factor: 1.2;--jp-content-font-size0: .83333em;--jp-content-font-size1: 14px;--jp-content-font-size2: 1.2em;--jp-content-font-size3: 1.44em;--jp-content-font-size4: 1.728em;--jp-content-font-size5: 2.0736em;--jp-content-presentation-font-size1: 17px;--jp-content-heading-line-height: 1;--jp-content-heading-margin-top: 1.2em;--jp-content-heading-margin-bottom: .8em;--jp-content-heading-font-weight: 500;--jp-content-font-color0: rgba(0, 0, 0, 1);--jp-content-font-color1: rgba(0, 0, 0, .87);--jp-content-font-color2: rgba(0, 0, 0, .54);--jp-content-font-color3: rgba(0, 0, 0, .38);--jp-content-link-color: var(--md-blue-700);--jp-content-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-code-font-size: 13px;--jp-code-line-height: 1.3077;--jp-code-padding: 5px;--jp-code-font-family-default: Menlo, Consolas, "DejaVu Sans Mono", monospace;--jp-code-font-family: var(--jp-code-font-family-default);--jp-code-presentation-font-size: 16px;--jp-code-cursor-width0: 1.4px;--jp-code-cursor-width1: 2px;--jp-code-cursor-width2: 4px;--jp-layout-color0: white;--jp-layout-color1: white;--jp-layout-color2: var(--md-grey-200);--jp-layout-color3: var(--md-grey-400);--jp-layout-color4: var(--md-grey-600);--jp-inverse-layout-color0: #111111;--jp-inverse-layout-color1: var(--md-grey-900);--jp-inverse-layout-color2: var(--md-grey-800);--jp-inverse-layout-color3: var(--md-grey-700);--jp-inverse-layout-color4: var(--md-grey-600);--jp-brand-color0: var(--md-blue-900);--jp-brand-color1: var(--md-blue-700);--jp-brand-color2: var(--md-blue-300);--jp-brand-color3: var(--md-blue-100);--jp-brand-color4: var(--md-blue-50);--jp-accent-color0: var(--md-green-900);--jp-accent-color1: var(--md-green-700);--jp-accent-color2: var(--md-green-300);--jp-accent-color3: var(--md-green-100);--jp-warn-color0: var(--md-orange-900);--jp-warn-color1: var(--md-orange-700);--jp-warn-color2: var(--md-orange-300);--jp-warn-color3: var(--md-orange-100);--jp-error-color0: var(--md-red-900);--jp-error-color1: var(--md-red-700);--jp-error-color2: var(--md-red-300);--jp-error-color3: var(--md-red-100);--jp-success-color0: var(--md-green-900);--jp-success-color1: var(--md-green-700);--jp-success-color2: var(--md-green-300);--jp-success-color3: var(--md-green-100);--jp-info-color0: var(--md-cyan-900);--jp-info-color1: var(--md-cyan-700);--jp-info-color2: var(--md-cyan-300);--jp-info-color3: var(--md-cyan-100);--jp-cell-padding: 5px;--jp-cell-collapser-width: 8px;--jp-cell-collapser-min-height: 20px;--jp-cell-collapser-not-active-hover-opacity: .6;--jp-cell-editor-background: var(--md-grey-100);--jp-cell-editor-border-color: var(--md-grey-300);--jp-cell-editor-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-cell-editor-active-background: var(--jp-layout-color0);--jp-cell-editor-active-border-color: var(--jp-brand-color1);--jp-cell-prompt-width: 64px;--jp-cell-prompt-font-family: var(--jp-code-font-family-default);--jp-cell-prompt-letter-spacing: 0px;--jp-cell-prompt-opacity: 1;--jp-cell-prompt-not-active-opacity: .5;--jp-cell-prompt-not-active-font-color: var(--md-grey-700);--jp-cell-inprompt-font-color: #307fc1;--jp-cell-outprompt-font-color: #bf5b3d;--jp-notebook-padding: 10px;--jp-notebook-select-background: var(--jp-layout-color1);--jp-notebook-multiselected-color: var(--md-blue-50);--jp-notebook-scroll-padding: calc( 100% - var(--jp-code-font-size) * var(--jp-code-line-height) - var(--jp-code-padding) - var(--jp-cell-padding) - 1px );--jp-rendermime-error-background: #fdd;--jp-rendermime-table-row-background: var(--md-grey-100);--jp-rendermime-table-row-hover-background: var(--md-light-blue-50);--jp-dialog-background: rgba(0, 0, 0, .25);--jp-console-padding: 10px;--jp-toolbar-border-color: var(--jp-border-color1);--jp-toolbar-micro-height: 8px;--jp-toolbar-background: var(--jp-layout-color1);--jp-toolbar-box-shadow: 0px 0px 2px 0px rgba(0, 0, 0, .24);--jp-toolbar-header-margin: 4px 4px 0px 4px;--jp-toolbar-active-background: var(--md-grey-300);--jp-statusbar-height: 24px;--jp-input-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-input-active-background: var(--jp-layout-color1);--jp-input-hover-background: var(--jp-layout-color1);--jp-input-background: var(--md-grey-100);--jp-input-border-color: var(--jp-inverse-border-color);--jp-input-active-border-color: var(--jp-brand-color1);--jp-input-active-box-shadow-color: rgba(19, 124, 189, .3);--jp-editor-selected-background: #d9d9d9;--jp-editor-selected-focused-background: #d7d4f0;--jp-editor-cursor-color: var(--jp-ui-font-color0);--jp-mirror-editor-keyword-color: #008000;--jp-mirror-editor-atom-color: #88f;--jp-mirror-editor-number-color: #080;--jp-mirror-editor-def-color: #00f;--jp-mirror-editor-variable-color: var(--md-grey-900);--jp-mirror-editor-variable-2-color: #05a;--jp-mirror-editor-variable-3-color: #085;--jp-mirror-editor-punctuation-color: #05a;--jp-mirror-editor-property-color: #05a;--jp-mirror-editor-operator-color: #aa22ff;--jp-mirror-editor-comment-color: #408080;--jp-mirror-editor-string-color: #ba2121;--jp-mirror-editor-string-2-color: #708;--jp-mirror-editor-meta-color: #aa22ff;--jp-mirror-editor-qualifier-color: #555;--jp-mirror-editor-builtin-color: #008000;--jp-mirror-editor-bracket-color: #997;--jp-mirror-editor-tag-color: #170;--jp-mirror-editor-attribute-color: #00c;--jp-mirror-editor-header-color: blue;--jp-mirror-editor-quote-color: #090;--jp-mirror-editor-link-color: #00c;--jp-mirror-editor-error-color: #f00;--jp-mirror-editor-hr-color: #999;--jp-collaborator-color1: #ffad8e;--jp-collaborator-color2: #dac83d;--jp-collaborator-color3: #72dd76;--jp-collaborator-color4: #00e4d0;--jp-collaborator-color5: #45d4ff;--jp-collaborator-color6: #e2b1ff;--jp-collaborator-color7: #ff9de6;--jp-vega-background: white;--jp-sidebar-min-width: 250px;--jp-search-toggle-off-opacity: .5;--jp-search-toggle-hover-opacity: .8;--jp-search-toggle-on-opacity: 1;--jp-search-selected-match-background-color: rgb(245, 200, 0);--jp-search-selected-match-color: black;--jp-search-unselected-match-background-color: var( --jp-inverse-layout-color0 );--jp-search-unselected-match-color: var(--jp-ui-inverse-font-color0);--jp-icon-contrast-color0: var(--md-purple-600);--jp-icon-contrast-color1: var(--md-green-600);--jp-icon-contrast-color2: var(--md-pink-600);--jp-icon-contrast-color3: var(--md-blue-600);--jp-jupyter-icon-color: #f37626;--jp-notebook-icon-color: #f37626;--jp-json-icon-color: var(--md-orange-700);--jp-console-icon-background-color: var(--md-blue-700);--jp-console-icon-color: white;--jp-terminal-icon-background-color: var(--md-grey-800);--jp-terminal-icon-color: var(--md-grey-200);--jp-text-editor-icon-color: var(--md-grey-700);--jp-inspector-icon-color: var(--md-grey-700);--jp-switch-color: var(--md-grey-400);--jp-switch-true-position-color: var(--md-orange-900)}
+</style>
+<div class="jupyter-wrapper">
+<div class="jp-Notebook" data-jp-theme-light="true" data-jp-theme-name="JupyterLab Light">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [1]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-1">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">InitialAssignment</span><span class="p">,</span>
+    <span class="n">SteadyStateModelBuilder</span><span class="p">,</span>
+    <span class="n">cartesian_product</span><span class="p">,</span>
+    <span class="n">fit</span><span class="p">,</span>
+    <span class="n">mca</span><span class="p">,</span>
+    <span class="n">plot</span><span class="p">,</span>
+    <span class="n">scan</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.meta</span><span class="w"> </span><span class="kn">import</span> <span class="n">generate_model_code_mxlweb</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-1">from __future__ import annotations
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from mxlpy import (
+    InitialAssignment,
+    SteadyStateModelBuilder,
+    cartesian_product,
+    fit,
+    mca,
+    plot,
+    scan,
+)
+from mxlpy.meta import generate_model_code_mxlweb</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h1 id="steady-state-models">Steady-state models<a class="anchor-link" href="#steady-state-models">¶</a></h1><p>A <code>SteadyStateModelBuilder</code> describes a model without any dynamics: there are no variables, only parameters and quantities derived from them.
+This makes it a good fit for algebraic models, e.g. analytic steady-state solutions, response curves or allometric relationships.</p>
+<p>Because there is nothing to integrate, a <code>SteadyStateModelBuilder</code> is never simulated.
+Instead it is <em>evaluated</em> directly, which is both simpler and much faster.</p>
+<p>As an example we use an enzyme following Michaelis-Menten kinetics, which is competitively inhibited by <span class="arithmatex">\(I\)</span></p>
+<p><div class="arithmatex">\[ v = \frac{V_{\max} \cdot S}{K_m \left(1 + \frac{I}{K_i}\right) + S} \qquad V_{\max} = k_{cat} \cdot E_{tot}\]</div></p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="building-the-model">Building the model<a class="anchor-link" href="#building-the-model">¶</a></h2><p>Parameters and derived quantities work just like in the other builders.
+Parameters can also be initial assignments, and derived quantities can depend on each other in any order.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [2]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-2">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">mul</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">a</span> <span class="o">*</span> <span class="n">b</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">apparent_km</span><span class="p">(</span><span class="n">km</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">i</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">ki</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">km</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">i</span> <span class="o">/</span> <span class="n">ki</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">michaelis_menten</span><span class="p">(</span><span class="n">s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">vmax</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">km</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">vmax</span> <span class="o">*</span> <span class="n">s</span> <span class="o">/</span> <span class="p">(</span><span class="n">km</span> <span class="o">+</span> <span class="n">s</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">ratio</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">a</span> <span class="o">/</span> <span class="n">b</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_model</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">SteadyStateModelBuilder</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">SteadyStateModelBuilder</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">add_parameters</span><span class="p">(</span>
+            <span class="p">{</span><span class="s2">"kcat"</span><span class="p">:</span> <span class="mf">10.0</span><span class="p">,</span> <span class="s2">"e_tot"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span> <span class="s2">"km"</span><span class="p">:</span> <span class="mf">2.0</span><span class="p">,</span> <span class="s2">"ki"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"S"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"I"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">}</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">add_parameter</span><span class="p">(</span><span class="s2">"vmax"</span><span class="p">,</span> <span class="n">InitialAssignment</span><span class="p">(</span><span class="n">fn</span><span class="o">=</span><span class="n">mul</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"kcat"</span><span class="p">,</span> <span class="s2">"e_tot"</span><span class="p">]))</span>
+        <span class="o">.</span><span class="n">add_derived</span><span class="p">(</span><span class="s2">"km_app"</span><span class="p">,</span> <span class="n">fn</span><span class="o">=</span><span class="n">apparent_km</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"km"</span><span class="p">,</span> <span class="s2">"I"</span><span class="p">,</span> <span class="s2">"ki"</span><span class="p">])</span>
+        <span class="o">.</span><span class="n">add_derived</span><span class="p">(</span><span class="s2">"v"</span><span class="p">,</span> <span class="n">fn</span><span class="o">=</span><span class="n">michaelis_menten</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"S"</span><span class="p">,</span> <span class="s2">"vmax"</span><span class="p">,</span> <span class="s2">"km_app"</span><span class="p">])</span>
+        <span class="o">.</span><span class="n">add_derived</span><span class="p">(</span><span class="s2">"saturation"</span><span class="p">,</span> <span class="n">fn</span><span class="o">=</span><span class="n">ratio</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"v"</span><span class="p">,</span> <span class="s2">"vmax"</span><span class="p">])</span>
+    <span class="p">)</span>
+
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">get_model</span><span class="p">()</span>
+<span class="n">model</span><span class="o">.</span><span class="n">derived</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-2">def mul(a: float, b: float) -&gt; float:
+    return a * b
+
+
+def apparent_km(km: float, i: float, ki: float) -&gt; float:
+    return km * (1 + i / ki)
+
+
+def michaelis_menten(s: float, vmax: float, km: float) -&gt; float:
+    return vmax * s / (km + s)
+
+
+def ratio(a: float, b: float) -&gt; float:
+    return a / b
+
+
+def get_model() -&gt; SteadyStateModelBuilder:
+    return (
+        SteadyStateModelBuilder()
+        .add_parameters(
+            {"kcat": 10.0, "e_tot": 0.5, "km": 2.0, "ki": 1.0, "S": 1.0, "I": 0.0}
+        )
+        .add_parameter("vmax", InitialAssignment(fn=mul, args=["kcat", "e_tot"]))
+        .add_derived("km_app", fn=apparent_km, args=["km", "I", "ki"])
+        .add_derived("v", fn=michaelis_menten, args=["S", "vmax", "km_app"])
+        .add_derived("saturation", fn=ratio, args=["v", "vmax"])
+    )
+
+
+model = get_model()
+model.derived</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[2]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/markdown" tabindex="0">
+<table>
+<thead>
+<tr>
+<th style="text-align:left"></th>
+<th style="text-align:left">value</th>
+<th style="text-align:left">unit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">km_app</td>
+<td style="text-align:left"><span class="arithmatex">\(km \left(\frac{I}{ki} + 1.0\right)\)</span></td>
+<td style="text-align:left"></td>
+</tr>
+<tr>
+<td style="text-align:left">v</td>
+<td style="text-align:left"><span class="arithmatex">\(\frac{S vmax}{S + km_{app}}\)</span></td>
+<td style="text-align:left"></td>
+</tr>
+<tr>
+<td style="text-align:left">saturation</td>
+<td style="text-align:left"><span class="arithmatex">\(\frac{v}{vmax}\)</span></td>
+<td style="text-align:left"></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="evaluation">Evaluation<a class="anchor-link" href="#evaluation">¶</a></h2><p><code>evaluate</code> returns all derived values as a <code>pandas.Series</code>.
+This replaces the <code>Simulator</code> for this builder.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [3]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-3">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">evaluate</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-3">model.evaluate()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[3]:</div>
+<div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
+<pre>km_app        2.000000
+v             1.666667
+saturation    0.333333
+dtype: float64</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>Optionally, the parameters (including initial assignments) can be included as well</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [4]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-4">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">include_parameters</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-4">model.evaluate(include_parameters=True)</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[4]:</div>
+<div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
+<pre>kcat          10.000000
+e_tot          0.500000
+km             2.000000
+ki             1.000000
+S              1.000000
+I              0.000000
+vmax           5.000000
+km_app         2.000000
+v              1.666667
+saturation     0.333333
+dtype: float64</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>The model is a normal fluent builder, so you can update parameters and evaluate again</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [5]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-5">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">update_parameter</span><span class="p">(</span><span class="s2">"I"</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span><span class="o">.</span><span class="n">evaluate</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-5">model.update_parameter("I", 2.0).evaluate()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[5]:</div>
+<div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
+<pre>km_app        6.000000
+v             0.714286
+saturation    0.142857
+dtype: float64</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="parameter-scans">Parameter scans<a class="anchor-link" href="#parameter-scans">¶</a></h2><p><code>scan.steady_state</code> accepts a <code>SteadyStateModelBuilder</code> and evaluates it for every row of <code>to_scan</code>.
+It returns a <code>SteadyStateScan</code> holding one <code>Evaluation</code> per scanned value.
+Since there are no variables, the values are accessed via <code>combined</code> or <code>get_args</code>.</p>
+<p>Nothing is integrated, so there is no integrator to configure and no <code>y0</code>.
+Time course and protocol scans are not available for this builder.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [6]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-6">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">res</span> <span class="o">=</span> <span class="n">scan</span><span class="o">.</span><span class="n">steady_state</span><span class="p">(</span>
+    <span class="n">get_model</span><span class="p">(),</span>
+    <span class="n">to_scan</span><span class="o">=</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"S"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">21</span><span class="p">)}),</span>
+<span class="p">)</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">combined</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="p">[</span><span class="s2">"v"</span><span class="p">]])</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xscale</span><span class="o">=</span><span class="s2">"log"</span><span class="p">,</span> <span class="n">xlabel</span><span class="o">=</span><span class="s2">"substrate / a.u."</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"rate / a.u."</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-6">res = scan.steady_state(
+    get_model(),
+    to_scan=pd.DataFrame({"S": np.geomspace(0.1, 100, 21)}),
+)
+
+fig, ax = plot.lines(res.combined.loc[:, ["v"]])
+ax.set(xscale="log", xlabel="substrate / a.u.", ylabel="rate / a.u.")
+plt.show()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  0%|          | 0/21 [00:00&lt;?, ?it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>100%|██████████| 21/21 [00:00&lt;00:00, 7674.51it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedImage jp-OutputArea-output" tabindex="0">
+<img alt="No description has been provided for this image" class="" src="data:image/webp;base64,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"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p><code>get_args</code> can additionally include the parameters</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [7]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-7">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">res</span><span class="o">.</span><span class="n">get_args</span><span class="p">(</span><span class="n">include_parameters</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-7">res.get_args(include_parameters=True).head()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[7]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>kcat</th>
+<th>e_tot</th>
+<th>km</th>
+<th>ki</th>
+<th>S</th>
+<th>I</th>
+<th>vmax</th>
+<th>km_app</th>
+<th>v</th>
+<th>saturation</th>
+</tr>
+<tr>
+<th>S</th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>0.100000</th>
+<td>10.0</td>
+<td>0.5</td>
+<td>2.0</td>
+<td>1.0</td>
+<td>0.100000</td>
+<td>0.0</td>
+<td>5.0</td>
+<td>2.0</td>
+<td>0.238095</td>
+<td>0.047619</td>
+</tr>
+<tr>
+<th>0.141254</th>
+<td>10.0</td>
+<td>0.5</td>
+<td>2.0</td>
+<td>1.0</td>
+<td>0.141254</td>
+<td>0.0</td>
+<td>5.0</td>
+<td>2.0</td>
+<td>0.329839</td>
+<td>0.065968</td>
+</tr>
+<tr>
+<th>0.199526</th>
+<td>10.0</td>
+<td>0.5</td>
+<td>2.0</td>
+<td>1.0</td>
+<td>0.199526</td>
+<td>0.0</td>
+<td>5.0</td>
+<td>2.0</td>
+<td>0.453566</td>
+<td>0.090713</td>
+</tr>
+<tr>
+<th>0.281838</th>
+<td>10.0</td>
+<td>0.5</td>
+<td>2.0</td>
+<td>1.0</td>
+<td>0.281838</td>
+<td>0.0</td>
+<td>5.0</td>
+<td>2.0</td>
+<td>0.617569</td>
+<td>0.123514</td>
+</tr>
+<tr>
+<th>0.398107</th>
+<td>10.0</td>
+<td>0.5</td>
+<td>2.0</td>
+<td>1.0</td>
+<td>0.398107</td>
+<td>0.0</td>
+<td>5.0</td>
+<td>2.0</td>
+<td>0.830045</td>
+<td>0.166009</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>Scanning multiple parameters works via <code>cartesian_product</code>, which yields a <code>pandas.MultiIndex</code></p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [8]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-8">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">res</span> <span class="o">=</span> <span class="n">scan</span><span class="o">.</span><span class="n">steady_state</span><span class="p">(</span>
+    <span class="n">get_model</span><span class="p">(),</span>
+    <span class="n">to_scan</span><span class="o">=</span><span class="n">cartesian_product</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">"S"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span>
+            <span class="s2">"I"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span>
+        <span class="p">}</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">heatmap_from_2d_idx</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">combined</span><span class="p">,</span> <span class="s2">"v"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"S"</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"I"</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="s2">"rate v"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-8">res = scan.steady_state(
+    get_model(),
+    to_scan=cartesian_product(
+        {
+            "S": np.geomspace(0.1, 100, 10),
+            "I": np.linspace(0, 5, 6),
+        }
+    ),
+)
+
+fig, ax, _ = plot.heatmap_from_2d_idx(res.combined, "v")
+ax.set(xlabel="S", ylabel="I", title="rate v")
+plt.show()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  0%|          | 0/60 [00:00&lt;?, ?it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>100%|██████████| 60/60 [00:00&lt;00:00, 8815.88it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedImage jp-OutputArea-output" tabindex="0">
+<img alt="No description has been provided for this image" class="" src="data:image/webp;base64,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"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>If an evaluation fails with an arithmetic error (e.g. a division by zero), the respective row is filled with <code>NaN</code> instead of failing the whole scan</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [9]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-9">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">scan</span><span class="o">.</span><span class="n">steady_state</span><span class="p">(</span>
+    <span class="n">get_model</span><span class="p">(),</span>
+    <span class="n">to_scan</span><span class="o">=</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"ki"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">]}),</span>
+<span class="p">)</span><span class="o">.</span><span class="n">combined</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-9">scan.steady_state(
+    get_model(),
+    to_scan=pd.DataFrame({"ki": [1.0, 0.0, 2.0]}),
+).combined</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  0%|          | 0/3 [00:00&lt;?, ?it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>100%|██████████| 3/3 [00:00&lt;00:00, 3695.42it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[9]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>km_app</th>
+<th>v</th>
+<th>saturation</th>
+</tr>
+<tr>
+<th>ki</th>
+<th></th>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>1.0</th>
+<td>2.0</td>
+<td>1.666667</td>
+<td>0.333333</td>
+</tr>
+<tr>
+<th>0.0</th>
+<td>NaN</td>
+<td>NaN</td>
+<td>NaN</td>
+</tr>
+<tr>
+<th>2.0</th>
+<td>2.0</td>
+<td>1.666667</td>
+<td>0.333333</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="fitting">Fitting<a class="anchor-link" href="#fitting">¶</a></h2><p><code>fit.steady_state</code> accepts a <code>SteadyStateModelBuilder</code> and fits its parameters to a <code>pandas.Series</code> of data.
+The data can contain any parameter or derived value.</p>
+<p>Here we assume we measured the rate <span class="arithmatex">\(v\)</span> and the saturation of the enzyme at <span class="arithmatex">\(S = 2\)</span> and fit <span class="arithmatex">\(K_m\)</span> and <span class="arithmatex">\(k_{cat}\)</span>.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [10]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-10">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fitted</span> <span class="o">=</span> <span class="n">fit</span><span class="o">.</span><span class="n">steady_state</span><span class="p">(</span>
+    <span class="n">get_model</span><span class="p">()</span><span class="o">.</span><span class="n">update_parameter</span><span class="p">(</span><span class="s2">"S"</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">),</span>
+    <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"km"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"kcat"</span><span class="p">:</span> <span class="mf">5.0</span><span class="p">},</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">({</span><span class="s2">"v"</span><span class="p">:</span> <span class="mf">1.25</span><span class="p">,</span> <span class="s2">"saturation"</span><span class="p">:</span> <span class="mf">0.25</span><span class="p">}),</span>
+    <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(),</span>
+<span class="p">)</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+<span class="n">fitted</span><span class="o">.</span><span class="n">best_pars</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-10">fitted = fit.steady_state(
+    get_model().update_parameter("S", 2.0),
+    p0={"km": 1.0, "kcat": 5.0},
+    data=pd.Series({"v": 1.25, "saturation": 0.25}),
+    minimizer=fit.LocalScipyMinimizer(),
+).unwrap_or_err()
+fitted.best_pars</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[10]:</div>
+<div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
+<pre>{'km': np.float64(6.000008381401803), 'kcat': np.float64(10.000006243050944)}</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>The returned <code>Fit</code> contains a copy of the model, which can be evaluated with the best parameters</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [11]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-11">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fitted</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">update_parameters</span><span class="p">(</span><span class="n">fitted</span><span class="o">.</span><span class="n">best_pars</span><span class="p">)</span><span class="o">.</span><span class="n">evaluate</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-11">fitted.model.update_parameters(fitted.best_pars).evaluate()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[11]:</div>
+<div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
+<pre>km_app        6.000008
+v             1.249999
+saturation    0.250000
+dtype: float64</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="response-coefficients">Response coefficients<a class="anchor-link" href="#response-coefficients">¶</a></h2><p>Response coefficients describe how much the derived values change if a parameter is perturbed.
+As the model is evaluated instead of simulated, these are just the (normalised) derivatives of <code>evaluate()</code>.
+For example, the rate <span class="arithmatex">\(v\)</span> responds proportionally to <span class="arithmatex">\(k_{cat}\)</span>.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [12]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-12">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">mca</span><span class="o">.</span><span class="n">response_coefficients</span><span class="p">(</span><span class="n">get_model</span><span class="p">(),</span> <span class="n">to_scan</span><span class="o">=</span><span class="p">[</span><span class="s2">"kcat"</span><span class="p">,</span> <span class="s2">"km"</span><span class="p">,</span> <span class="s2">"S"</span><span class="p">])</span><span class="o">.</span><span class="n">combined</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-12">mca.response_coefficients(get_model(), to_scan=["kcat", "km", "S"]).combined</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  0%|          | 0/3 [00:00&lt;?, ?it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 33%|███▎      | 1/3 [00:01&lt;00:03,  1.90s/it]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 67%|██████▋   | 2/3 [00:02&lt;00:00,  1.11it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>100%|██████████| 3/3 [00:02&lt;00:00,  1.55it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>100%|██████████| 3/3 [00:02&lt;00:00,  1.23it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[12]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>kcat</th>
+<th>km</th>
+<th>S</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>km_app</th>
+<td>0.0</td>
+<td>1.000000</td>
+<td>0.000000</td>
+</tr>
+<tr>
+<th>v</th>
+<td>1.0</td>
+<td>-0.666667</td>
+<td>0.666667</td>
+</tr>
+<tr>
+<th>saturation</th>
+<td>0.0</td>
+<td>-0.666667</td>
+<td>0.666667</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="export">Export<a class="anchor-link" href="#export">¶</a></h2><p><code>SteadyStateModelBuilder</code> models can be saved to the native <code>.mxl.json</code> format with <code>mxlpy.save</code> / <code>mxlpy.load</code>, and exported to <a href="https://github.com/Computational-Biology-Aachen/mxl-web">MxlWeb</a>, which evaluates them in the browser.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [13]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-13">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">generate_model_code_mxlweb</span><span class="p">(</span><span class="n">get_model</span><span class="p">()))</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-13">print(generate_model_code_mxlweb(get_model()))</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>import { SteadyStateModelBuilder } from "@computational-biology-aachen/mxlweb-core";
+import { Add, Divide, Mul, Name, Num } from "@computational-biology-aachen/mxlweb-core/mathml";
+
+export function initModel(): SteadyStateModelBuilder {
+    return new SteadyStateModelBuilder()
+      .addParameter("kcat", {
+        value: 10.0,
+        texName: 'kcat',
+      })
+      .addParameter("e_tot", {
+        value: 0.5,
+        texName: 'e\\_tot',
+      })
+      .addParameter("km", {
+        value: 2.0,
+        texName: 'km',
+      })
+      .addParameter("ki", {
+        value: 1.0,
+        texName: 'ki',
+      })
+      .addParameter("S", {
+        value: 1.0,
+        texName: 'S',
+      })
+      .addParameter("I", {
+        value: 0.0,
+        texName: 'I',
+      })
+      .addParameter("vmax", {
+        value: new Mul([new Name("e_tot"), new Name("kcat")]),
+        texName: 'vmax',
+      })
+      .addAssignment("km_app", {
+        fn: new Mul([new Name("km"), new Add([new Num(1.0), new Divide([new Name("I"), new Name("ki")])])]),
+        texName: 'km\\_app',
+      })
+      .addAssignment("v", {
+        fn: new Divide([new Mul([new Name("S"), new Name("vmax")]), new Add([new Name("S"), new Name("km_app")])]),
+        texName: 'v',
+      })
+      .addAssignment("saturation", {
+        fn: new Divide([new Name("v"), new Name("vmax")]),
+        texName: 'saturation',
+      })
+  }
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="current-limitations">Current limitations<a class="anchor-link" href="#current-limitations">¶</a></h2><p>The <code>SteadyStateModelBuilder</code> supports every routine whose question makes sense without dynamics: steady-state scans, fits (including group, ensemble and joint fits), Monte Carlo methods, response coefficients and sensitivity analysis.
+Time courses, protocols and everything about reactions or fluxes don't apply to it.</p>
+</div>
+</div>
+</div>
+</div>
+</div> <!-- jp-Notebook -->
+</div> <!-- jupyter-wrapper -->
+
+        <style>
+        ['pre { line-height: 125%; }\ntd.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\nspan.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\ntd.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\nspan.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\n.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }\n.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }\n.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */\n.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */\n.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */\n.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */\n.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */\n.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */\n.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */\n.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */\n.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */\n.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */\n.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */\n.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */\n.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */\n.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */\n.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */\n.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */\n.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */\n.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */\n.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */\n.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */\n.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */\n.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */\n.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */\n.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */\n.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */\n.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */\n.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */\n.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */\n.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */\n.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */\n.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */\n.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */\n.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */\n.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */\n.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */\n.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */\n.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */\n.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */\n.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */\n.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */\n.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */']
+        </style>
+        
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["content.code.copy", "content.code.annotate", "search.suggest", "search.highlight", "search.share", "navigation.instant", "navigation.instant.prefetch"], "search": "assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+    
+    
+      <script src="assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  <script data-mkdocs-jupyter-mathjax="{&quot;url&quot;: &quot;https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS_CHTML-full,Safe&quot;, &quot;version&quot;: 4}">
+/* Shared by full pages and Material's instant navigation. */
+(() => {
+  const config = JSON.parse(document.currentScript.dataset.mkdocsJupyterMathjax);
+  if (window.mkdocsJupyterMathJax) return;
+
+  let loading;
+  let queue = Promise.resolve();
+  let previous = [];
+
+  const ready = async () => {
+    if (!loading) {
+      loading = (async () => {
+        let math = window.MathJax;
+        if (!math?.typesetPromise) {
+          const url = new URL(config.url, document.baseURI).href;
+          const existing = Array.from(document.scripts).find(script =>
+            script.src && (script.src === url || script.id === 'MathJax-script' ||
+              (/mathjax/i.test(script.src) &&
+               /\/(?:MathJax|latest|(?:tex|mml)(?:-mml)?-(?:chtml|svg))\.js(?:[?#]|$)/i.test(script.src))));
+          if (existing) {
+            if (!math?.startup?.promise) {
+              await new Promise((resolve, reject) => {
+                existing.addEventListener('load', resolve, { once: true });
+                existing.addEventListener('error', reject, { once: true });
+              });
+            }
+          } else {
+            // Keep site macros, delimiters and startup hooks when supplied.
+            const options = math || {};
+            window.MathJax = {
+              ...options,
+              loader: {
+                ...options.loader,
+                load: Array.from(new Set(['ui/safe', ...(options.loader?.load || [])]))
+              },
+              startup: { typeset: false, ...options.startup },
+              tex: {
+                tags: 'ams',
+                useLabelIds: true,
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true,
+                ...options.tex
+              }
+            };
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = config.url;
+              script.id = 'MathJax-script';
+              script.async = true;
+              script.onload = resolve;
+              script.onerror = reject;
+              document.head.appendChild(script);
+            });
+          }
+        }
+        math = window.MathJax;
+        await math.startup.promise;
+        return math;
+      })();
+    }
+    const math = await loading;
+    // A site owner can extend the v3 queue again on each navigation.
+    await math.startup.promise;
+    return math;
+  };
+
+  const unrendered = node => {
+    if (node.matches('mjx-container')) return [];
+    if (!node.querySelector('mjx-container')) return [node];
+    // In v3, scanning generated assistive MathML again produces nested output.
+    return Array.from(node.children).flatMap(unrendered);
+  };
+
+  const refresh = () => {
+    // A separate chain also serializes v3, without changing v4's startup promise.
+    queue = queue.then(async () => {
+      const notebooks = Array.from(document.querySelectorAll('.jupyter-wrapper'));
+      if (!notebooks.length && !previous.length) return;
+      if (notebooks.length === previous.length &&
+          notebooks.every((node, index) => node === previous[index])) return;
+      const math = await ready();
+      if (previous.length) {
+        math.typesetClear(previous);
+        math.texReset();
+      }
+      previous = notebooks.filter(node => node.isConnected);
+      const pending = previous.flatMap(unrendered);
+      if (pending.length) await math.typesetPromise(pending);
+    }).catch(error => console.error('mkdocs-jupyter: MathJax rendering failed', error));
+    return queue;
+  };
+
+  window.mkdocsJupyterMathJax = { refresh };
+  const start = () => {
+    if (typeof document$ !== 'undefined') document$.subscribe(refresh);
+    else refresh();
+  };
+  // Theme bundles and user-provided MathJax scripts can follow notebook content.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else start();
+})();
+
+</script>
+</body>
+</html>
