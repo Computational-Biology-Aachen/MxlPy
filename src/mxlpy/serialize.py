@@ -24,16 +24,10 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import linecache
-import math
-import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
-import numpy as np
 import pandas as pd
-import scipy.integrate  # bound as `scipy`, used by generated rate fns
-import scipy.special
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
@@ -41,10 +35,10 @@ from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.meta import _mathml as mml
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
+    compile_fn,
     list_of_symbols,
     mathml_to_sympy,
     sympy_to_mathml,
-    sympy_to_python_fn,
 )
 from mxlpy.surrogates.abstract import mxl_json_mechanism_additive
 from mxlpy.types import Derived, InitialAssignment, SerializationError, Slider
@@ -732,28 +726,6 @@ def save(
 ###############################################################################
 
 
-def _compile_fn(expr: sympy.Expr, args: list[str]) -> Callable[..., float]:
-    src = sympy_to_python_fn(fn_name=_FN_NAME, args=args, expr=expr)
-    # Register the source in linecache under a unique filename so that
-    # inspect.getsource (and thus fn_to_sympy_expr / codegen) can recover it,
-    # which keeps loaded models re-serialisable and introspectable.
-    filename = f"<mxlpy-generated-{uuid.uuid4().hex}>"
-    linecache.cache[filename] = (
-        len(src),
-        None,
-        src.splitlines(keepends=True),
-        filename,
-    )
-    namespace: dict[str, Any] = {
-        "math": math,
-        "numpy": np,
-        "np": np,
-        "scipy": scipy,
-    }
-    exec(compile(src, filename, "exec"), namespace)  # noqa: S102
-    return namespace[_FN_NAME]
-
-
 class _Names(TypedDict):
     display_name: str | None
     tex_name: str | None
@@ -775,7 +747,7 @@ def _node_dict_to_fn(
 ) -> tuple[Callable[..., float], list[str]]:
     expr = mathml_to_sympy(mml.node_from_dict(node_dict))
     args = sorted(str(s) for s in expr.free_symbols)
-    return _compile_fn(expr, args), args
+    return compile_fn(expr, args, name=_FN_NAME), args
 
 
 def _entry_unit(

@@ -14,19 +14,22 @@ import inspect
 import itertools as it
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Self, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast, overload
 
 import numpy as np
 import pandas as pd
 import sympy
 from wadler_lindig import pformat
 
-from mxlpy import _topo, fns
+from mxlpy import _topo
 from mxlpy.dsl import from_dsl
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
+    fn_and_args,
     list_of_symbols,
     stoichiometries_to_sympy,
+    to_stoichiometry,
+    updated_fn_and_args,
 )
 from mxlpy.surrogates.abstract import AbstractSurrogate, SurrogateProtocol
 from mxlpy.types import (
@@ -1563,13 +1566,38 @@ class KineticModelBuilder:
         derived = self._derived
         return {k: v for k, v in derived.items() if k in cache.all_parameter_values}
 
-    @_invalidate_cache
+    @overload
+    def add_derived(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def add_derived(
         self,
         name: str,
         fn: RateFn,
         *,
         args: list[str],
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def add_derived(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr,
+        *,
+        args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
         display_name: str | None = None,
@@ -1604,6 +1632,7 @@ class KineticModelBuilder:
             The instance of the model with the added derived attribute.
 
         """
+        fn, args = fn_and_args(fn, args, origin=name)
         self._insert_id(name=name, ctx="derived")
         self._derived[name] = Derived(
             fn=fn,
@@ -1645,11 +1674,36 @@ class KineticModelBuilder:
         """
         return list(self.get_derived_variables())
 
-    @_invalidate_cache
+    @overload
+    def update_derived(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def update_derived(
         self,
         name: str,
         fn: RateFn | None = None,
+        *,
+        args: list[str] | None = None,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def update_derived(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr | None = None,
         *,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
@@ -1687,10 +1741,9 @@ class KineticModelBuilder:
 
         """
         der = self._derived[name]
-        if fn is not None:
-            der.fn = fn
-        if args is not None:
-            der.args = args
+        der.fn, der.args = updated_fn_and_args(
+            fn, args, origin=name, old_fn=der.fn, old_args=der.args
+        )
         if unit is not None:
             der.unit = unit
         if annotations is not None:
@@ -1865,14 +1918,43 @@ class KineticModelBuilder:
                 stoichs.setdefault(cpd_name, {})[rxn_name] = factor
         return stoichs[variable]
 
-    @_invalidate_cache
+    @overload
+    def add_reaction(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        stoichiometry: Mapping[str, float | str | Derived | sympy.Expr],
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        # source: str | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def add_reaction(
         self,
         name: str,
         fn: RateFn,
         *,
         args: list[str],
-        stoichiometry: Mapping[str, float | str | Derived],
+        stoichiometry: Mapping[str, float | str | Derived | sympy.Expr],
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        # source: str | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def add_reaction(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr,
+        *,
+        args: list[str] | None = None,
+        stoichiometry: Mapping[str, float | str | Derived | sympy.Expr],
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
         # source: str | None = None,
@@ -1914,10 +1996,11 @@ class KineticModelBuilder:
             The instance of the model with the added reaction.
 
         """
+        fn, args = fn_and_args(fn, args, origin=name)
         self._insert_id(name=name, ctx="reaction")
 
         stoich: dict[str, Derived | float] = {
-            k: Derived(fn=fns.constant, args=[v]) if isinstance(v, str) else v
+            k: to_stoichiometry(v, origin=f"{name}_{k}")
             for k, v in stoichiometry.items()
         }
         self._reactions[name] = Reaction(
@@ -1947,14 +2030,41 @@ class KineticModelBuilder:
         """
         return list(self._reactions)
 
-    @_invalidate_cache
+    @overload
+    def update_reaction(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        stoichiometry: Mapping[str, float | Derived | str | sympy.Expr] | None = None,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def update_reaction(
         self,
         name: str,
         fn: RateFn | None = None,
         *,
         args: list[str] | None = None,
-        stoichiometry: Mapping[str, float | Derived | str] | None = None,
+        stoichiometry: Mapping[str, float | Derived | str | sympy.Expr] | None = None,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def update_reaction(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr | None = None,
+        *,
+        args: list[str] | None = None,
+        stoichiometry: Mapping[str, float | Derived | str | sympy.Expr] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
         display_name: str | None = None,
@@ -1996,15 +2106,15 @@ class KineticModelBuilder:
 
         """
         rxn = self._reactions[name]
-        rxn.fn = rxn.fn if fn is None else fn
+        rxn.fn, rxn.args = updated_fn_and_args(
+            fn, args, origin=name, old_fn=rxn.fn, old_args=rxn.args
+        )
 
         if stoichiometry is not None:
-            stoich = {
-                k: Derived(fn=fns.constant, args=[v]) if isinstance(v, str) else v
+            rxn.stoichiometry = {
+                k: to_stoichiometry(v, origin=f"{name}_{k}")
                 for k, v in stoichiometry.items()
             }
-            rxn.stoichiometry = stoich
-        rxn.args = rxn.args if args is None else args
         rxn.unit = rxn.unit if unit is None else unit
         if annotations is not None:
             rxn.annotations = _normalize_annotations(annotations)
@@ -2241,13 +2351,36 @@ class KineticModelBuilder:
     # Think of something like NADPH / (NADP + NADPH) as a proxy for energy state
     ##########################################################################
 
-    @_invalidate_cache
+    @overload
+    def add_readout(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def add_readout(
         self,
         name: str,
         fn: RateFn,
         *,
         args: list[str],
+        unit: sympy.Expr | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def add_readout(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr,
+        *,
+        args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         display_name: str | None = None,
         tex_name: str | None = None,
@@ -2282,6 +2415,7 @@ class KineticModelBuilder:
             The instance of the model with the added readout.
 
         """
+        fn, args = fn_and_args(fn, args, origin=name)
         self._insert_id(name=name, ctx="readout")
         self._readouts[name] = Readout(
             fn=fn,

@@ -4,8 +4,15 @@
 
 from __future__ import annotations
 
+import linecache
+import math
+import re
+import uuid
 from typing import TYPE_CHECKING, Any, cast
 
+import numpy as np
+import scipy.integrate  # bound as `scipy`, used by generated fns
+import scipy.special
 import sympy
 from sympy.printing.numpy import JaxPrinter as _SympyJaxPrinter
 from sympy.printing.numpy import (
@@ -13,6 +20,7 @@ from sympy.printing.numpy import (
     _known_functions_numpy,  # pyright: ignore[reportPrivateUsage]
 )
 
+from mxlpy import fns
 from mxlpy.meta import _mathml as mml
 from mxlpy.meta.array_fns import ARRAY_NODE_TYPES
 from mxlpy.meta.source_tools import fn_to_sympy_expr
@@ -21,7 +29,12 @@ from mxlpy.types import Derived
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
+    from mxlpy.types import RateFn
+
 __all__ = [
+    "compile_fn",
+    "expr_to_fn",
+    "fn_and_args",
     "list_of_symbols",
     "mathml_to_sympy",
     "stoichiometries_to_sympy",
@@ -36,6 +49,8 @@ __all__ = [
     "sympy_to_inline_rust",
     "sympy_to_mathml",
     "sympy_to_python_fn",
+    "to_stoichiometry",
+    "updated_fn_and_args",
 ]
 
 # Sympy function type → MxlWeb TS class name (unary)
@@ -160,6 +175,190 @@ def stoichiometries_to_sympy(
         else:
             expr = expr + rxn_stoich * sympy.Symbol(rxn_name)  # type: ignore
     return expr.subs(1.0, 1)  # type: ignore
+
+
+###############################################################################
+# Expressions as model functions
+###############################################################################
+
+
+def compile_fn(expr: sympy.Expr, args: list[str], *, name: str) -> Callable[..., float]:
+    """Compile a sympy expression into an introspectable python function.
+
+    The generated source is registered in `linecache`, so `inspect.getsource`
+    (and thus `fn_to_sympy_expr`, LaTeX export and codegen) can recover it just
+    like for a hand-written function.
+
+    Parameters
+    ----------
+    expr
+        Expression forming the function body
+    args
+        Ordered argument names of the generated function
+    name
+        Name of the generated function, needs to be a valid identifier
+
+    Returns
+    -------
+    Callable[..., float]
+        The compiled function
+
+    """
+    src = sympy_to_python_fn(fn_name=name, args=args, expr=expr)
+    filename = f"<mxlpy-generated-{uuid.uuid4().hex}>"
+    linecache.cache[filename] = (
+        len(src),
+        None,
+        src.splitlines(keepends=True),
+        filename,
+    )
+    namespace: dict[str, Any] = {
+        "math": math,
+        "numpy": np,
+        "np": np,
+        "scipy": scipy,
+    }
+    exec(compile(src, filename, "exec"), namespace)  # noqa: S102
+    return namespace[name]
+
+
+def expr_to_fn(
+    expr: sympy.Expr,
+    *,
+    origin: str,
+) -> tuple[Callable[..., float], list[str]]:
+    """Convert a sympy expression over model names into a function and its args.
+
+    The free symbols of `expr` are taken as model names. Since the generated
+    function signature and `args` are built from the same (sorted) list, the
+    order of the arguments is irrelevant.
+
+    Parameters
+    ----------
+    expr
+        Expression whose free symbols are model names
+    origin
+        Name of the model entity the expression belongs to, used to name the
+        generated function
+
+    Returns
+    -------
+    tuple[Callable[..., float], list[str]]
+        The generated function and the model names to call it with
+
+    Examples
+    --------
+    >>> fn, args = expr_to_fn(sympy.Symbol("k1") / sympy.Symbol("km"), origin="keq")
+    >>> args
+    ['k1', 'km']
+
+    """
+    args = sorted(str(s) for s in expr.free_symbols)
+    name = "_" + re.sub(r"\W", "_", origin)
+    return compile_fn(expr, args, name=name), args
+
+
+def fn_and_args(
+    fn: RateFn | sympy.Expr,
+    args: list[str] | None,
+    *,
+    origin: str,
+) -> tuple[RateFn, list[str]]:
+    """Normalise a model function given as python function or sympy expression.
+
+    Parameters
+    ----------
+    fn
+        Python function or sympy expression over model names
+    args
+        Model names to call `fn` with. Required for python functions and
+        disallowed for sympy expressions, which carry their args themselves.
+    origin
+        Name of the model entity, used for naming and error messages
+
+    Returns
+    -------
+    tuple[RateFn, list[str]]
+        Python function and its args
+
+    """
+    if isinstance(fn, sympy.Expr):
+        if args is not None:
+            msg = (
+                f"{origin!r}: `args` can't be combined with a sympy expression, "
+                "its free symbols are used instead. Use model names as symbols, "
+                "e.g. by applying a `sympy.Lambda` to them."
+            )
+            raise TypeError(msg)
+        return expr_to_fn(fn, origin=origin)
+    if args is None:
+        msg = f"{origin!r}: `args` are required when passing a python function"
+        raise TypeError(msg)
+    return fn, args
+
+
+def updated_fn_and_args(
+    fn: RateFn | sympy.Expr | None,
+    args: list[str] | None,
+    *,
+    origin: str,
+    old_fn: RateFn,
+    old_args: list[str],
+) -> tuple[RateFn, list[str]]:
+    """Like `fn_and_args`, but missing `fn` or `args` keep their old values.
+
+    Parameters
+    ----------
+    fn
+        New python function or sympy expression, or None to keep the old one
+    args
+        New args, or None to keep the old ones. Disallowed for expressions.
+    origin
+        Name of the model entity, used for naming and error messages
+    old_fn
+        Current function
+    old_args
+        Current args
+
+    Returns
+    -------
+    tuple[RateFn, list[str]]
+        Python function and its args
+
+    """
+    if isinstance(fn, sympy.Expr):
+        return fn_and_args(fn, args, origin=origin)
+    return (old_fn if fn is None else fn), (old_args if args is None else args)
+
+
+def to_stoichiometry(
+    value: float | str | Derived | sympy.Expr,
+    *,
+    origin: str,
+) -> float | Derived:
+    """Normalise a user-supplied stoichiometric coefficient.
+
+    Parameters
+    ----------
+    value
+        Number, name of a model value, `Derived` or sympy expression
+    origin
+        Name of the model entity, used to name generated functions
+
+    Returns
+    -------
+    float | Derived
+        Normalised coefficient
+
+    """
+    if isinstance(value, str):
+        return Derived(fn=fns.constant, args=[value])
+    if isinstance(value, sympy.Expr):
+        if value.is_number:
+            return float(value)  # type: ignore[arg-type]
+        fn, args = expr_to_fn(value, origin=origin)
+        return Derived(fn=fn, args=args)
+    return value
 
 
 ###############################################################################

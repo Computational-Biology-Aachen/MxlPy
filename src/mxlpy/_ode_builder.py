@@ -14,7 +14,7 @@ import inspect
 import itertools as it
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Self, cast
+from typing import TYPE_CHECKING, Any, Self, cast, overload
 
 import pandas as pd
 from wadler_lindig import pformat
@@ -22,7 +22,9 @@ from wadler_lindig import pformat
 from mxlpy import _topo
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
+    fn_and_args,
     list_of_symbols,
+    updated_fn_and_args,
 )
 from mxlpy.surrogates.abstract_ode import AbstractOdeSurrogate
 from mxlpy.types import (
@@ -1113,13 +1115,38 @@ class OdeModelBuilder:
         derived = self._derived
         return {k: v for k, v in derived.items() if k in cache.all_parameter_values}
 
-    @_invalidate_cache
+    @overload
+    def add_derived(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def add_derived(
         self,
         name: str,
         fn: RateFn,
         *,
         args: list[str],
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def add_derived(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr,
+        *,
+        args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
         display_name: str | None = None,
@@ -1154,6 +1181,7 @@ class OdeModelBuilder:
             The instance of the model with the added derived attribute.
 
         """
+        fn, args = fn_and_args(fn, args, origin=name)
         self._insert_id(name=name, ctx="derived")
         self._derived[name] = Derived(
             fn=fn,
@@ -1195,11 +1223,36 @@ class OdeModelBuilder:
         """
         return list(self.get_derived_variables())
 
-    @_invalidate_cache
+    @overload
+    def update_derived(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def update_derived(
         self,
         name: str,
         fn: RateFn | None = None,
+        *,
+        args: list[str] | None = None,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def update_derived(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr | None = None,
         *,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
@@ -1237,10 +1290,9 @@ class OdeModelBuilder:
 
         """
         der = self._derived[name]
-        if fn is not None:
-            der.fn = fn
-        if args is not None:
-            der.args = args
+        der.fn, der.args = updated_fn_and_args(
+            fn, args, origin=name, old_fn=der.fn, old_args=der.args
+        )
         if unit is not None:
             der.unit = unit
         if annotations is not None:
@@ -1444,7 +1496,22 @@ class OdeModelBuilder:
             return copy.deepcopy(self._diff_eqs)
         return self._diff_eqs
 
-    @_invalidate_cache
+    @overload
+    def add_diff_eq(
+        self,
+        name: str,
+        initial_value: float | InitialAssignment,
+        fn: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        # source: str | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+        slider: Slider | None = None,
+    ) -> Self: ...
+
+    @overload
     def add_diff_eq(
         self,
         name: str,
@@ -1452,6 +1519,22 @@ class OdeModelBuilder:
         fn: RateFn,
         *,
         args: list[str],
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        # source: str | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+        slider: Slider | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def add_diff_eq(
+        self,
+        name: str,
+        initial_value: float | InitialAssignment,
+        fn: RateFn | sympy.Expr,
+        *,
+        args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
         # source: str | None = None,
@@ -1496,6 +1579,7 @@ class OdeModelBuilder:
             The instance of the model with the added diff_eq.
 
         """
+        fn, args = fn_and_args(fn, args, origin=name)
         self._insert_id(name=name, ctx="diff_eq")
         self._diff_eqs[name] = DiffEq(
             fn=fn,
@@ -1546,13 +1630,42 @@ class OdeModelBuilder:
         """
         return self.get_diff_eq_names()
 
-    @_invalidate_cache
+    @overload
+    def update_diff_eq(
+        self,
+        name: str,
+        *,
+        initial_value: float | InitialAssignment,
+        fn: sympy.Expr,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+        slider: Slider | None = None,
+    ) -> Self: ...
+
+    @overload
     def update_diff_eq(
         self,
         name: str,
         *,
         initial_value: float | InitialAssignment,
         fn: RateFn | None = None,
+        args: list[str] | None = None,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+        slider: Slider | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def update_diff_eq(
+        self,
+        name: str,
+        *,
+        initial_value: float | InitialAssignment,
+        fn: RateFn | sympy.Expr | None = None,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
@@ -1598,12 +1711,13 @@ class OdeModelBuilder:
 
         """
         diff_eq = self._diff_eqs[name]
-        diff_eq.fn = diff_eq.fn if fn is None else fn
+        diff_eq.fn, diff_eq.args = updated_fn_and_args(
+            fn, args, origin=name, old_fn=diff_eq.fn, old_args=diff_eq.args
+        )
         diff_eq.initial_value = (
             diff_eq.initial_value if initial_value is None else initial_value
         )
 
-        diff_eq.args = diff_eq.args if args is None else args
         diff_eq.unit = diff_eq.unit if unit is None else unit
         if annotations is not None:
             diff_eq.annotations = _normalize_annotations(annotations)
@@ -1923,13 +2037,36 @@ class OdeModelBuilder:
     # Think of something like NADPH / (NADP + NADPH) as a proxy for energy state
     ##########################################################################
 
-    @_invalidate_cache
+    @overload
+    def add_readout(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def add_readout(
         self,
         name: str,
         fn: RateFn,
         *,
         args: list[str],
+        unit: sympy.Expr | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def add_readout(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr,
+        *,
+        args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         display_name: str | None = None,
         tex_name: str | None = None,
@@ -1964,6 +2101,7 @@ class OdeModelBuilder:
             The instance of the model with the added readout.
 
         """
+        fn, args = fn_and_args(fn, args, origin=name)
         self._insert_id(name=name, ctx="readout")
         self._readouts[name] = Readout(
             fn=fn,
