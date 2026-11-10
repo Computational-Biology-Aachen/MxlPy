@@ -675,13 +675,21 @@ def _create_sbml_reactions(
                     sref.setConstant(False)
                 case Derived():
                     # SBML uses species references for derived stoichiometries
-                    # So we need to create a assignment rule and then refer to it
-                    reference = f"{compound_id}ref"
+                    # So we need to create a assignment rule and then refer to it.
+                    # The rule evaluates to the signed mxlpy coefficient, whose
+                    # sign isn't known statically, so it is always a product:
+                    # a negative product stoichiometry consumes the species.
+                    # The reaction name keeps the id unique across reactions.
+                    reference = f"{name}_{compound_id}_stoich"
                     _create_derived_parameter(sbml_model, reference, factor)
 
-                    sref = sbml_rxn.createReactant()
+                    sref = sbml_rxn.createProduct()
                     sref.setId(_convert_id_to_sbml(id_=reference, prefix="CPD"))
                     sref.setSpecies(_convert_id_to_sbml(id_=compound_id, prefix="CPD"))
+                    sref.setConstant(False)
+                    # Overridden by the assignment rule, but fbc:strict requires
+                    # a finite value to be set
+                    sref.setStoichiometry(1.0)
                 case _:
                     msg = f"Stoichiometry coefficient for '{compound_id}' has unsupported type {type(factor).__name__!r} - expected float or Derived"
                     raise NotImplementedError(msg)
