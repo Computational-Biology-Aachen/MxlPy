@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -51,6 +52,32 @@ def _fn_name(k: str, fn: Callable) -> str:
     return fn.__name__ if fn.__name__ != "<lambda>" else k
 
 
+def _unique_fn_name(fn_name: str, origin: str, source: str, *, ctx: Context) -> str:
+    """Find a name for `source` that doesn't shadow a different function.
+
+    Distinct functions can share a `__name__` (e.g. all functions revived by
+    `mxlpy.load` or generated from SymPy expressions), so keying purely by name
+    would silently replace one function body with another.
+    """
+    if ctx.functions.get(fn_name, source) == source:
+        return fn_name
+    base = f"{fn_name}_{re.sub(r'\W', '_', origin)}"
+    candidate, i = base, 1
+    while ctx.functions.get(candidate, source) != source:
+        candidate, i = f"{base}_{i}", i + 1
+    return candidate
+
+
+def _rename_fn_def(source: str, old: str, new: str) -> str:
+    return re.sub(
+        rf"^def {re.escape(old)}\(",
+        f"def {new}(",
+        source,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
 def _handle_fn_source(
     name: str,
     fn: Callable,
@@ -60,6 +87,12 @@ def _handle_fn_source(
 ) -> str:
     fn_name = _fn_name(name, fn)
     extracted = fn_to_source(fn, fn_name, args, strip_docstring=ctx.strip_docstring)
+    if (unique := _unique_fn_name(fn_name, name, extracted.main_source, ctx=ctx)) != (
+        fn_name
+    ):
+        main_source = _rename_fn_def(extracted.main_source, fn_name, unique)
+        extracted = extracted._replace(main_source=main_source)
+        fn_name = unique
     ctx.functions.update(extracted.dependencies)
     ctx.functions[fn_name] = extracted.main_source
     ctx.file_imports.update(extracted.imports)
