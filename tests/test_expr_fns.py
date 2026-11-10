@@ -15,6 +15,7 @@ import textwrap
 from typing import TYPE_CHECKING, Any
 
 import cloudpickle
+import numpy as np
 import pandas as pd
 import pytest
 import sympy
@@ -272,11 +273,14 @@ def test_codegen_matches_fn_model(codegen: Callable) -> None:
     assert codegen(expr_model()).full() == codegen(fn_model()).full()
 
 
-def test_sbml_export_matches_fn_model(tmp_path: Path) -> None:
-    expr_path, fn_path = tmp_path / "expr.xml", tmp_path / "fn.xml"
-    mxlpy.sbml.write(expr_model(), expr_path)
-    mxlpy.sbml.write(fn_model(), fn_path)
-    _assert_same_simulation(mxlpy.sbml.read(expr_path), mxlpy.sbml.read(fn_path))
+def test_sbml_roundtrip(tmp_path: Path) -> None:
+    path = tmp_path / "m.xml"
+    mxlpy.sbml.write(expr_model(), path)
+    restored = mxlpy.sbml.read(path)
+    expected = _simulate(fn_model())
+    actual = _simulate(restored)
+    for name in VARIABLES:
+        assert np.allclose(actual[name], expected[name], rtol=1e-6)
 
 
 ###############################################################################

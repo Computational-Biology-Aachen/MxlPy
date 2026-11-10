@@ -105,7 +105,7 @@ def test_roundtrip_derived_stoichiometry_explicit() -> None:
     m2 = _canonicalise(
         read(write(m1, TMP_DIR / "roundtrip_rxn_derived_stoich_explicit.xml"))
     )
-    pd.testing.assert_series_equal(m1.get_args(), m2.get_args().drop("xref"))
+    pd.testing.assert_series_equal(m1.get_args(), m2.get_args().drop("v1_x_stoich"))
 
 
 def test_roundtrip_derived_stoichiometry_implicit() -> None:
@@ -124,4 +124,54 @@ def test_roundtrip_derived_stoichiometry_implicit() -> None:
     m2 = _canonicalise(
         read(write(m1, TMP_DIR / "roundtrip_rxn_derived_stoich_implicit.xml"))
     )
-    pd.testing.assert_series_equal(m1.get_args(), m2.get_args().drop("xref"))
+    pd.testing.assert_series_equal(m1.get_args(), m2.get_args().drop("v1_x_stoich"))
+
+
+def _roundtrip_rhs(m1: KineticModelBuilder, name: str) -> None:
+    m2 = read(write(m1, TMP_DIR / f"{name}.xml"))
+    pd.testing.assert_series_equal(
+        m1.get_right_hand_side(), m2.get_right_hand_side(), check_names=False
+    )
+
+
+def test_roundtrip_derived_stoichiometry_keeps_sign() -> None:
+    # Derived stoichiometries used to always be exported as reactants, so a
+    # produced species came back as consumed (and vice versa)
+    m1 = (
+        KineticModelBuilder()
+        .add_parameters({"k1": 2.0, "n": 3.0})
+        .add_variables({"x": 2.0, "y": 1.0})
+        .add_reaction(
+            "v1",
+            fns.constant,
+            args=["k1"],
+            stoichiometry={
+                "x": Derived(fn=fns.neg, args=["n"]),
+                "y": Derived(fn=fns.constant, args=["n"]),
+            },
+        )
+    )
+    _roundtrip_rhs(m1, "roundtrip_rxn_derived_stoich_sign")
+
+
+def test_roundtrip_derived_stoichiometry_same_species_in_two_reactions() -> None:
+    # The species reference ids used to be `{species}ref`, so two reactions
+    # with a derived stoichiometry for the same species clashed
+    m1 = (
+        KineticModelBuilder()
+        .add_parameters({"k1": 2.0, "k2": 0.5, "n": 3.0})
+        .add_variable("x", 2.0)
+        .add_reaction(
+            "v1",
+            fns.constant,
+            args=["k1"],
+            stoichiometry={"x": Derived(fn=fns.constant, args=["n"])},
+        )
+        .add_reaction(
+            "v2",
+            fns.mass_action_1s,
+            args=["x", "k2"],
+            stoichiometry={"x": Derived(fn=fns.neg, args=["n"])},
+        )
+    )
+    _roundtrip_rhs(m1, "roundtrip_rxn_derived_stoich_shared_species")
