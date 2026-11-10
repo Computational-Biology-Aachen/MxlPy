@@ -50,3 +50,9 @@ This single constraint pays off in four places at once:
   location) rather than inlined as lambdas, even for one-off/model-specific kinetics.
 - This constraint does **not** extend to internal, non-model-facing glue code — lambdas
   remain fine there.
+- **SymPy expressions are allowed** (#157). An expression passed as `fn` (or as a
+  stoichiometry value) is compiled into a `def`-named function whose source is registered
+  in `linecache` (`mxlpy.meta.sympy_tools.compile_fn`, also used by `mxlpy.load`). It
+  therefore keeps every property listed in §3 apart from greppable reuse, so it suits
+  trivial one-off formulas (e.g. `4 / b_H`) that would otherwise become throwaway named
+  functions.

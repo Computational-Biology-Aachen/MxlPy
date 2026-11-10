@@ -11,6 +11,7 @@ import sympy
 
 from mxlpy import fns
 from mxlpy.fns import hill_1s, michaelis_menten_1s
+from mxlpy.meta.sympy_tools import expr_to_fn
 
 if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
@@ -63,6 +64,8 @@ def _resolve_rate(
     reactants: dict[str, float],
     products: dict[str, float],
     all_names: set[str],
+    *,
+    origin: str,
 ) -> tuple[RateFn, list[str]]:
     """Resolve a rate expression string to a (fn, args) pair."""
     rate_str = rate_str.strip()
@@ -99,11 +102,10 @@ def _resolve_rate(
         k_name = m.group(1).strip()
         consumed = _consumed(reactants, products)
         # Build expression k * s1 * s2 * ...
-        sym_list = [sympy.Symbol(name) for name in [k_name, *consumed]]
-        expr: sympy.Expr = sympy.Mul(*sym_list)
-        arg_names = [k_name, *consumed]
-        fn = sympy.lambdify([sympy.Symbol(a) for a in arg_names], expr, modules="math")
-        return fn, arg_names
+        expr: sympy.Expr = sympy.Mul(
+            *(sympy.Symbol(name) for name in [k_name, *consumed])
+        )
+        return expr_to_fn(expr, origin=origin)
 
     # --- named fn call: fn_name(arg1, arg2, ...) ---
     m = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)", rate_str)
@@ -116,7 +118,12 @@ def _resolve_rate(
 
     # --- arbitrary sympy expression ---
     try:
-        expr = sympy.sympify(rate_str)
+        # Map model names to plain symbols, otherwise e.g. `E`, `S` or `beta`
+        # would be parsed as SymPy constants / functions.
+        # sympy's `sympify` overloads omit the `locals` parameter
+        expr = sympy.sympify(  # pyright: ignore[reportCallIssue]
+            rate_str, locals={name: sympy.Symbol(name) for name in all_names}
+        )
     except sympy.SympifyError as e:
         msg = f"Cannot parse rate expression: {rate_str!r}"
         raise ValueError(msg) from e
@@ -127,8 +134,7 @@ def _resolve_rate(
     if unknown:
         msg = f"Unknown symbols in rate expression {rate_str!r}: {unknown}"
         raise ValueError(msg)
-    fn = sympy.lambdify([sympy.Symbol(s) for s in free], expr, modules="math")
-    return fn, free
+    return expr_to_fn(expr, origin=origin)
 
 
 def _first_top_level_comma(s: str) -> int:
@@ -262,13 +268,13 @@ def from_dsl[T: KineticModelBuilder](
             stoich_rev = {k: -v for k, v in stoich_fwd.items()}
 
             fwd_fn, fwd_args = _resolve_rate(
-                fwd_rate_str, reactants, products, all_names
+                fwd_rate_str, reactants, products, all_names, origin=f"r{r_idx}_fwd"
             )
             _validate_args(fwd_args, all_names, fwd_rate_str)
 
             # For reverse, swap reactant/product perspective
             rev_fn, rev_args = _resolve_rate(
-                rev_rate_str, products, reactants, all_names
+                rev_rate_str, products, reactants, all_names, origin=f"r{r_idx}_rev"
             )
             _validate_args(rev_args, all_names, rev_rate_str)
 
@@ -290,7 +296,9 @@ def from_dsl[T: KineticModelBuilder](
             _validate_variables(reactants, products, variables)
 
             stoich = _net_stoichiometry(reactants, products)
-            fn, args = _resolve_rate(rate_part, reactants, products, all_names)
+            fn, args = _resolve_rate(
+                rate_part, reactants, products, all_names, origin=f"r{r_idx}"
+            )
             _validate_args(args, all_names, rate_part)
 
             model.add_reaction(f"r{r_idx}", fn, args=args, stoichiometry=stoich)

@@ -25,7 +25,8 @@ def get_model() -> Model:
 `add_reaction(name, fn, *, args, stoichiometry, unit=None)`:
 - `fn` — a pure, **pickle-able** named function (no lambdas).
 - `args` — names of variables/parameters/derived/`"time"`, passed to `fn` **by position** (order must match `fn`).
-- `stoichiometry` — `{variable: coefficient}`; coefficients may be floats, a parameter name (string), or a `Derived`.
+- `stoichiometry` — `{variable: coefficient}`; coefficients may be floats, a parameter name (string), a `Derived`, or a SymPy expression.
+- Instead of `fn` + `args`, `fn` may be a SymPy expression over model names — see [SymPy expressions](#sympy-expressions).
 
 Singular vs plural: `add_parameter(name, value)` / `add_parameters({...})`; `add_variable(name, value)` / `add_variables({...})`. Protected names (e.g. `"time"`) raise `KeyError`; duplicate names raise `NameError`.
 
@@ -106,7 +107,30 @@ from mxlpy import Derived
 stoichiometry={"x": 1.0}                              # constant
 stoichiometry={"x": "stoich"}                         # value of parameter "stoich"
 stoichiometry={"x": Derived(fn=fns.constant, args=["stoich"])}  # computed
+stoichiometry={"x": 4 / sympy.Symbol("b_H")}          # computed, from an expression
 ```
+
+## SymPy expressions
+
+For simple one-off formulas, pass a SymPy expression instead of a named function + `args`. Its symbols **are** the model names, so there is no `args`; passing both is a type error, as is a function without `args`. Works for `add_derived`/`update_derived`, `add_reaction`/`update_reaction` (rate and stoichiometry values), `add_readout`, and `OdeModelBuilder.add_diff_eq`/`update_diff_eq`.
+
+```python
+import sympy
+
+b_H, kf_1, km_1 = sympy.Symbol("b_H"), sympy.Symbol("kf_1"), sympy.Symbol("km_1")
+
+(
+    model
+    .add_derived("keq", kf_1 / km_1)
+    .add_reaction("v1", fns.mass_action_1s, args=["S", "keq"], stoichiometry={"S": -1, "H": 4 / b_H})
+)
+```
+
+The expression is compiled into a regular, introspectable function (named after the entity, e.g. `_keq`), so simulation, LaTeX/code generation, `save`/`load`, SBML export and pickling behave exactly as for hand-written functions.
+
+- Prefer `sympy.Symbol("x")` over `sympy.symbols("x y")`: the latter is typed `Any`, which disables the static checks above.
+- To reuse a formula with other names, write it as a `sympy.Lambda` and apply it to the model symbols: `keq = sympy.Lambda((k1, km), k1 / km)`, then `model.add_derived("keq_1", keq(kf_1, km_1))`.
+
 
 ### Initial assignments
 

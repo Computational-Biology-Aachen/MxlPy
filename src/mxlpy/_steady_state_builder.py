@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Self, cast, overload
 
 import pandas as pd
 from wadler_lindig import pformat
@@ -14,7 +14,9 @@ from mxlpy import _topo
 from mxlpy._ode_builder import ArityMismatchError, _check_function_arity
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
+    fn_and_args,
     list_of_symbols,
+    updated_fn_and_args,
 )
 from mxlpy.types import (
     Annotation,
@@ -736,13 +738,38 @@ class SteadyStateModelBuilder:
         derived = self._derived
         return {k: v for k, v in derived.items() if k in cache.all_values}
 
-    @_invalidate_cache
+    @overload
+    def add_derived(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def add_derived(
         self,
         name: str,
         fn: RateFn,
         *,
         args: list[str],
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def add_derived(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr,
+        *,
+        args: list[str] | None = None,
         unit: sympy.Expr | None = None,
         annotations: Annotation | Iterable[Annotation] | None = None,
         display_name: str | None = None,
@@ -777,6 +804,7 @@ class SteadyStateModelBuilder:
             The instance of the model with the added derived attribute.
 
         """
+        fn, args = fn_and_args(fn, args, origin=name)
         self._insert_id(name=name, ctx="derived")
         self._derived[name] = Derived(
             fn=fn,
@@ -818,11 +846,36 @@ class SteadyStateModelBuilder:
         """
         return list(self.get_derived_variables())
 
-    @_invalidate_cache
+    @overload
+    def update_derived(
+        self,
+        name: str,
+        fn: sympy.Expr,
+        *,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @overload
     def update_derived(
         self,
         name: str,
         fn: RateFn | None = None,
+        *,
+        args: list[str] | None = None,
+        unit: sympy.Expr | None = None,
+        annotations: Annotation | Iterable[Annotation] | None = None,
+        display_name: str | None = None,
+        tex_name: str | None = None,
+    ) -> Self: ...
+
+    @_invalidate_cache
+    def update_derived(
+        self,
+        name: str,
+        fn: RateFn | sympy.Expr | None = None,
         *,
         args: list[str] | None = None,
         unit: sympy.Expr | None = None,
@@ -860,10 +913,9 @@ class SteadyStateModelBuilder:
 
         """
         der = self._derived[name]
-        if fn is not None:
-            der.fn = fn
-        if args is not None:
-            der.args = args
+        der.fn, der.args = updated_fn_and_args(
+            fn, args, origin=name, old_fn=der.fn, old_args=der.args
+        )
         if unit is not None:
             der.unit = unit
         if annotations is not None:
