@@ -31,7 +31,12 @@ from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.parallel import Cache, parallelise
-from mxlpy.runners import DynamicRunner, SteadyStateRunner, default_runner
+from mxlpy.runners import (
+    DynamicRunner,
+    SteadyStateRunner,
+    default_runner,
+    precompile,
+)
 from mxlpy.simulation import Evaluation, OdeSimulation, Simulation
 
 if TYPE_CHECKING:
@@ -409,12 +414,14 @@ def _steady_state(
         parallel = not isinstance(model, SteadyStateModelBuilder)
     model = _copy_with_y0(model, y0)
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
                 _steady_state_worker,
-                runner=default_runner(model) if runner is None else runner,
+                runner=runner,
             ),
             model=model,
         ),
@@ -663,13 +670,15 @@ def time_course(
     """
     model = _copy_with_y0(model, y0)
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
                 _time_course_worker,
                 time_points=time_points,
-                runner=default_runner(model) if runner is None else runner,
+                runner=runner,
             ),
             model=model,
         ),
@@ -902,6 +911,8 @@ def protocol(
     """
     model = _copy_with_y0(model, y0)
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
@@ -909,7 +920,7 @@ def protocol(
                 _protocol_worker,
                 protocol=protocol,
                 time_points_per_step=time_points_per_step,
-                runner=default_runner(model) if runner is None else runner,
+                runner=runner,
             ),
             model=model,
         ),
@@ -1006,6 +1017,8 @@ def protocol_time_course(
     """
     model = _copy_with_y0(model, y0)
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
@@ -1013,7 +1026,7 @@ def protocol_time_course(
                 _protocol_time_course_worker,
                 protocol=protocol,
                 time_points=time_points,
-                runner=default_runner(model) if runner is None else runner,
+                runner=runner,
             ),
             model=model,
         ),

@@ -9,22 +9,33 @@ collide with a libm function or a backend's own argument.
 from __future__ import annotations
 
 import copy
+import dataclasses
+import functools
 import hashlib
 import pickle
+import types
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import sympy
 
 from mxlpy.meta.array_fns import fold_data
 from mxlpy.meta.source_tools import replace_symbols
 
 if TYPE_CHECKING:
-    from collections.abc import Hashable
+    from collections.abc import Callable, Hashable
 
     import pandas as pd
 
-__all__ = ["Lowered", "NativeLoweringError", "fingerprint", "lower", "lower_outputs"]
+__all__ = [
+    "Lowered",
+    "NativeLoweringError",
+    "content_key",
+    "fingerprint",
+    "lower",
+    "lower_outputs",
+]
 
 
 class NativeLoweringError(ValueError):
@@ -155,13 +166,13 @@ class _Identity:
         return isinstance(other, _Identity) and other.item is self.item
 
 
-def _component(item: Any) -> Hashable:
+def _component(item: Any, key: Callable[[Any], Hashable]) -> Hashable:
     stoich = getattr(item, "stoichiometry", None) or {}
     return (
-        _Identity(item.fn),
+        key(item.fn),
         tuple(item.args),
         tuple(
-            (k, v if isinstance(v, int | float) else _component(v))
+            (k, v if isinstance(v, int | float) else _component(v, key))
             for k, v in stoich.items()
         ),
     )
@@ -171,20 +182,148 @@ def _digest(values: pd.Series | pd.DataFrame) -> str:
     return hashlib.sha256(pickle.dumps(values.to_numpy())).hexdigest()
 
 
+def _structure(
+    model: Any,
+    fn_key: Callable[[Any], Hashable],
+    surrogate_key: Callable[[Any], Hashable],
+) -> Hashable:
+    _check_lowerable(model)
+    return (
+        tuple(model.get_variable_names()),
+        tuple(model.get_parameter_names()),
+        *(
+            tuple(
+                (k, _component(v, fn_key)) for k, v in getattr(model, attr, {}).items()
+            )
+            for attr in ("_derived", "_reactions", "_diff_eqs", "_readouts")
+        ),
+        tuple(
+            (k, surrogate_key(v)) for k, v in getattr(model, "_surrogates", {}).items()
+        ),
+        # Data is folded into the compiled code as constants
+        tuple((k, _digest(v)) for k, v in getattr(model, "_data", {}).items()),
+    )
+
+
 def fingerprint(model: Any) -> Hashable:
     """A cheap key for what the compiled code depends on, not parameter values.
 
     It keeps references to the rate functions, so their identity stays unique.
     """
-    _check_lowerable(model)
+    return _structure(model, _Identity, _Identity)
+
+
+def _ref(obj: Any) -> tuple[str, str, str]:
+    return ("ref", getattr(obj, "__module__", ""), getattr(obj, "__qualname__", ""))
+
+
+def _code(code: types.CodeType) -> tuple:
     return (
-        tuple(model.get_variable_names()),
-        tuple(model.get_parameter_names()),
-        tuple((k, _component(v)) for k, v in getattr(model, "_derived", {}).items()),
-        tuple((k, _component(v)) for k, v in getattr(model, "_reactions", {}).items()),
-        tuple((k, _component(v)) for k, v in getattr(model, "_diff_eqs", {}).items()),
-        tuple((k, _Identity(v)) for k, v in getattr(model, "_surrogates", {}).items()),
-        tuple((k, _component(v)) for k, v in getattr(model, "_readouts", {}).items()),
-        # Data is folded into the compiled code as constants
-        tuple((k, _digest(v)) for k, v in getattr(model, "_data", {}).items()),
+        code.co_code,
+        code.co_names,
+        code.co_varnames,
+        code.co_freevars,
+        code.co_cellvars,
+        code.co_argcount,
+        code.co_posonlyargcount,
+        code.co_kwonlyargcount,
+        code.co_flags,
+        tuple(
+            _code(c) if isinstance(c, types.CodeType) else (type(c).__name__, repr(c))
+            for c in code.co_consts
+        ),
     )
+
+
+def _global_names(code: types.CodeType) -> set[str]:
+    names = set(code.co_names)
+    for c in code.co_consts:
+        if isinstance(c, types.CodeType):
+            names |= _global_names(c)
+    return names
+
+
+def _cell(cell: types.CellType, seen: set[int]) -> Hashable:
+    try:
+        return _canon(cell.cell_contents, seen)
+    except ValueError:  # an empty cell
+        return ("empty",)
+
+
+def _canon(obj: Any, seen: set[int]) -> Hashable:
+    """What `obj` computes, comparable across processes and pickling."""
+    if obj is None or isinstance(obj, bool | int | float | complex | str | bytes):
+        return (type(obj).__name__, repr(obj))
+    if isinstance(obj, tuple | list):
+        return (type(obj).__name__, tuple(_canon(i, seen) for i in obj))
+    if isinstance(obj, dict):
+        return (
+            "dict",
+            tuple((_canon(k, seen), _canon(v, seen)) for k, v in obj.items()),
+        )
+    if isinstance(obj, types.FunctionType):
+        if id(obj) in seen:
+            return ("recursion", obj.__qualname__)
+        seen.add(id(obj))
+        globs = obj.__globals__
+        return (
+            "fn",
+            obj.__module__,
+            obj.__qualname__,
+            _code(obj.__code__),
+            _canon(obj.__defaults__, seen),
+            _canon(obj.__kwdefaults__, seen),
+            tuple(_cell(c, seen) for c in obj.__closure__ or ()),
+            tuple(
+                (n, _canon(globs[n], seen))
+                for n in sorted(_global_names(obj.__code__))
+                if n in globs
+            ),
+        )
+    if isinstance(obj, functools.partial):
+        return (
+            "partial",
+            _canon(obj.func, seen),
+            _canon(obj.args, seen),
+            _canon(obj.keywords, seen),
+        )
+    if isinstance(obj, types.ModuleType):
+        return ("module", obj.__name__)
+    if isinstance(obj, type | types.BuiltinFunctionType | np.ufunc):
+        return _ref(obj)
+    if isinstance(obj, np.ndarray):
+        return (
+            "ndarray",
+            str(obj.dtype),
+            obj.shape,
+            hashlib.sha256(obj.tobytes()).hexdigest(),
+        )
+    if dataclasses.is_dataclass(obj):
+        return (
+            *_ref(type(obj)),
+            tuple(
+                (f.name, _canon(getattr(obj, f.name), seen))
+                for f in dataclasses.fields(obj)
+            ),
+        )
+    return (*_ref(type(obj)), hashlib.sha256(pickle.dumps(obj)).hexdigest())
+
+
+def content_key(model: Any) -> str | None:
+    """A key for what the compiled code depends on, which survives pickling.
+
+    Unlike `fingerprint`, which compares rate functions by identity, this hashes
+    their code, defaults, closures and globals, so a model sent to another process
+    keeps its key. Equal keys make equal code very likely but don't guarantee it
+    (e.g. a function calling a global function by an attribute), so callers have to
+    check the compiled code. None if some part of the model can't be keyed.
+    """
+    try:
+        structure = _structure(
+            model,
+            lambda fn: _canon(fn, set()),
+            lambda surrogate: _canon(surrogate, set()),
+        )
+    except Exception:  # noqa: BLE001  anything unkeyable just isn't shared
+        return None
+    return hashlib.sha256(repr(structure).encode()).hexdigest()

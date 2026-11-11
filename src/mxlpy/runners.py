@@ -31,7 +31,10 @@ Examples
 
 from __future__ import annotations
 
+import contextlib
+import sys
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Protocol, cast, overload
 
 from mxlpy._kinetic_builder import KineticModelBuilder
@@ -57,6 +60,7 @@ __all__ = [
     "OdeRunner",
     "SteadyStateRunner",
     "default_runner",
+    "precompile",
 ]
 
 
@@ -223,3 +227,26 @@ def default_runner(
     if isinstance(model, OdeModelBuilder):
         return OdeRunner()
     return KineticRunner()
+
+
+def precompile(runner: object, model: object) -> None:
+    """Compile a model for a `Native` integrator in this process, if it uses one.
+
+    Call this before running the model in parallel: `parallelise` sends the
+    compiled code to its workers, so they don't each compile it themselves.
+    """
+    if (native := sys.modules.get("mxlpy.integrators.int_native")) is None:
+        return
+    if not isinstance(runner, _IntegratingRunner) or not isinstance(
+        model, KineticModelBuilder | OdeModelBuilder
+    ):
+        return
+    if (integrator := runner.integrator) is None:
+        return
+    base = integrator.func if isinstance(integrator, partial) else integrator
+    if not (isinstance(base, type) and issubclass(base, native.Native)):
+        return
+    y0 = model.get_initial_conditions()
+    # Errors are left to the workers, which report them like without precompiling.
+    with contextlib.suppress(Exception):
+        integrator(model, tuple(y0[k] for k in model.get_variable_names()), None)

@@ -34,7 +34,12 @@ from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.parallel import parallelise
 from mxlpy.plot import _default_fig_ax, _default_fig_axs
-from mxlpy.runners import KineticRunner, SteadyStateRunner, default_runner
+from mxlpy.runners import (
+    KineticRunner,
+    SteadyStateRunner,
+    default_runner,
+    precompile,
+)
 from mxlpy.scan import _copy_with_y0, _steady_state_worker, steady_state
 from mxlpy.simulation import Evaluation, OdeSimulation, Simulation
 from mxlpy.symbolic.symbolic_model import to_symbolic_model
@@ -461,14 +466,17 @@ def _response_coefficients(
 ):
     """Non-overloaded implementation of `response_coefficients`, for internal callers."""
     to_scan = model.get_parameter_names() if to_scan is None else to_scan
+    model = _copy_with_y0(model, variables)
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
 
     res = parallelise(
         partial(
             _response_coefficient_worker,
-            model=_copy_with_y0(model, variables),
+            model=model,
             normalized=normalized,
             displacement=displacement,
-            runner=default_runner(model) if runner is None else runner,
+            runner=runner,
         ),
         inputs=list(zip(to_scan, to_scan, strict=True)),
         cache=None,

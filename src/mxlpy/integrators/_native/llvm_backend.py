@@ -20,7 +20,7 @@ from mxlpy.integrators._native.codegen import ExprEmitter
 if TYPE_CHECKING:
     from mxlpy.integrators._native.lower import Lowered
 
-__all__ = ["compile_model"]
+__all__ = ["compile_model", "load"]
 
 _DP = ct.POINTER(ct.c_double)
 _MODEL_FN = ct.CFUNCTYPE(None, ct.c_int, ct.c_double, _DP, _DP, _DP)
@@ -142,19 +142,21 @@ def _solver() -> ct.CDLL:
     return lib
 
 
+def _target_machine() -> llvm.TargetMachine:
+    _initialise()
+    return llvm.Target.from_triple(llvm.get_default_triple()).create_target_machine(
+        opt=2
+    )
+
+
 class _Compiled:
-    def __init__(self, low: Lowered) -> None:
-        _initialise()
+    def __init__(self, blob: bytes) -> None:
+        self.blob = blob
         # The engine takes ownership of its target machine, so they can't be shared.
-        tm = llvm.Target.from_triple(llvm.get_default_triple()).create_target_machine(
-            opt=2
+        self._engine = llvm.create_mcjit_compiler(
+            llvm.parse_assembly(""), _target_machine()
         )
-        mod = llvm.parse_assembly(to_llvm_ir(low))
-        mod.verify()
-        pto = llvm.create_pipeline_tuning_options(speed_level=2)
-        pb = llvm.create_pass_builder(tm, pto)
-        pb.getModulePassManager().run(mod, pb)
-        self._engine = llvm.create_mcjit_compiler(mod, tm)
+        self._engine.add_object_file(llvm.ObjectFileRef.from_data(blob))
         self._engine.finalize_object()
         self._ptr = self._engine.get_function_address("fcn")
         self._fn = _MODEL_FN(self._ptr)
@@ -196,7 +198,14 @@ class _Compiled:
     ) -> tuple[int, np.ndarray]:
         y = np.array(y0, dtype=float)
         out = np.empty((len(t_out), len(y)))
-        head = (len(y), y.ctypes.data_as(_DP), pars.ctypes.data_as(_DP), rtol, atol, nmax)
+        head = (
+            len(y),
+            y.ctypes.data_as(_DP),
+            pars.ctypes.data_as(_DP),
+            rtol,
+            atol,
+            nmax,
+        )
         tail = (len(t_out), t_out.ctypes.data_as(_DP), out.ctypes.data_as(_DP))
         self._lib.mxn_set_model(self._ptr)
         if method == "LSODA":
@@ -210,4 +219,15 @@ class _Compiled:
 
 def compile_model(low: Lowered) -> _Compiled:
     """Compile a lowered model to machine code."""
-    return _Compiled(low)
+    tm = _target_machine()
+    mod = llvm.parse_assembly(to_llvm_ir(low))
+    mod.verify()
+    pto = llvm.create_pipeline_tuning_options(speed_level=2)
+    pb = llvm.create_pass_builder(tm, pto)
+    pb.getModulePassManager().run(mod, pb)
+    return _Compiled(tm.emit_object(mod))
+
+
+def load(blob: bytes) -> _Compiled:
+    """Load the machine code of a `compile_model` result, e.g. in another process."""
+    return _Compiled(blob)

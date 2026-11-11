@@ -41,6 +41,7 @@ from mxlpy.runners import (
     DynamicRunner,
     SteadyStateRunner,
     default_runner,
+    precompile,
 )
 from mxlpy.scan import (
     ProtocolScan,
@@ -187,12 +188,14 @@ def steady_state(
     """
     model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
                 _steady_state_worker,
-                runner=default_runner(model) if runner is None else runner,
+                runner=runner,
             ),
             model=model,
         ),
@@ -295,13 +298,15 @@ def time_course(
     """
     model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
                 _time_course_worker,
                 time_points=time_points,
-                runner=default_runner(model) if runner is None else runner,
+                runner=runner,
             ),
             model=model,
         ),
@@ -405,6 +410,8 @@ def protocol(
     """
     model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
@@ -412,7 +419,7 @@ def protocol(
                 _protocol_worker,
                 protocol=protocol,
                 time_points_per_step=time_points_per_step,
-                runner=default_runner(model) if runner is None else runner,
+                runner=runner,
             ),
             model=model,
         ),
@@ -516,6 +523,8 @@ def protocol_time_course(
     """
     model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
@@ -523,7 +532,7 @@ def protocol_time_course(
                 _protocol_time_course_worker,
                 protocol=protocol,
                 time_points=time_points,
-                runner=default_runner(model) if runner is None else runner,
+                runner=runner,
             ),
             model=model,
         ),
@@ -679,13 +688,15 @@ def scan_steady_state(
     """
     model = scan._copy_with_y0(model, y0)  # noqa: SLF001
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         partial(
             _update_parameters_and_initial_conditions,
             fn=partial(
                 _parameter_scan_worker,
                 parameters=to_scan,
-                runner=default_runner(model) if runner is None else runner,
+                runner=runner,
             ),
             model=model,
         ),
@@ -1002,6 +1013,8 @@ def response_coefficients(
     """
     model = scan._copy_with_y0(model, variables)  # noqa: SLF001
 
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = parallelise(
         fn=partial(
             _update_parameters_and_initial_conditions,

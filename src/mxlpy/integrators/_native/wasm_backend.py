@@ -19,7 +19,7 @@ from mxlpy.integrators._native.codegen import ExprEmitter
 if TYPE_CHECKING:
     from mxlpy.integrators._native.lower import Lowered
 
-__all__ = ["abi_version", "compile_model"]
+__all__ = ["abi_version", "compile_model", "load"]
 
 _ASSET = Path(__file__).parent / "assets" / "solvers.wasm"
 _BINARY = {"add": "f64.add", "mul": "f64.mul", "div": "f64.div"}
@@ -167,10 +167,10 @@ def abi_version() -> int:
 
 
 class _Compiled:
-    def __init__(self, low: Lowered) -> None:
+    def __init__(self, module: wt.Module) -> None:
         rt = _runtime()
         self._rt = rt
-        module = wt.Module(rt.engine, to_wat(low))
+        self.blob = bytes(module.serialize())
         imports: list[Any] = [
             rt.memory if i.module == "env" else rt.solver[f"mxn_{i.name}"]
             for i in module.imports
@@ -251,4 +251,13 @@ class _Compiled:
 
 def compile_model(low: Lowered) -> _Compiled:
     """Compile a lowered model to WASM."""
-    return _Compiled(low)
+    return _Compiled(wt.Module(_runtime().engine, to_wat(low)))
+
+
+def load(blob: bytes) -> _Compiled:
+    """Load a `compile_model` result, e.g. in another process.
+
+    wasmtime runs serialized modules unchecked, so `blob` must come from
+    `compile_model` with the same wasmtime version, never from untrusted sources.
+    """
+    return _Compiled(wt.Module.deserialize(_runtime().engine, blob))

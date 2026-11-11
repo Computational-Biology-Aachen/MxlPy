@@ -15,6 +15,7 @@ from tqdm import tqdm
 from mxlpy import fit
 from mxlpy.distributions import LogNormal, sample
 from mxlpy.parallel import parallelise
+from mxlpy.runners import default_runner, precompile
 
 if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
@@ -89,6 +90,8 @@ def profile_likelihood(
     )
 
     model = deepcopy(model)
+    runner = default_runner(model) if runner is None else runner
+    precompile(runner, model)
     res = {}
     for value in tqdm(parameter_values, desc=parameter_name):
         model.update_parameter(parameter_name, value)

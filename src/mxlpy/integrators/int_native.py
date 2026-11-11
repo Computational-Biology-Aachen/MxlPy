@@ -27,12 +27,14 @@ import pandas as pd
 from mxlpy.integrators._native.backends import installed, problem
 from mxlpy.integrators._native.lower import (
     NativeLoweringError,
+    content_key,
     fingerprint,
     lower,
     lower_outputs,
 )
 from mxlpy.integrators.abstract import AbstractIntegrator, TimeCourse
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
+from mxlpy.parallel import register_worker_state
 from mxlpy.types import ArrayLike, IntegrationFailure, NoSteadyState, Result
 
 if TYPE_CHECKING:
@@ -59,12 +61,11 @@ _CHECK_RTOL = 1e-8
 _CHECK_STATES = 3
 # The solver keeps global state, so only one solve can run at a time in a process.
 _LOCK = threading.RLock()
-_CACHE: OrderedDict[Hashable, tuple[_Compiled, list[str]]] = OrderedDict()
-# wasmtime objects can't be freed once the interpreter has started shutting down.
-atexit.register(_CACHE.clear)
 
 
 class _Compiled(Protocol):
+    blob: bytes
+
     def rhs(self, t: float, y: Array, pars: Array) -> Array: ...
 
     def solve(
@@ -81,6 +82,91 @@ class _Compiled(Protocol):
     ) -> tuple[int, Array]: ...
 
     def eval_rows(self, t: Array, y: Array, pars: Array, n_out: int) -> Array: ...
+
+
+@dataclass
+class _Entry:
+    """Compiled code, with what's needed to load it in another process."""
+
+    backend: str
+    blob: bytes
+    par_names: list[str]
+    # The output names, for the compiled simulation outputs
+    names: list[str] = field(default_factory=list)
+    _compiled: _Compiled | None = None
+
+    @property
+    def compiled(self) -> _Compiled:
+        if (compiled := self._compiled) is None:
+            compiled = self._compiled = _backend_module(self.backend).load(self.blob)
+        return compiled
+
+
+# Compiled simulation outputs are None for models that need the Python path.
+type _Cached = _Entry | None
+
+# By `fingerprint`: hits are certain, but only for the very same model objects.
+_CACHE: OrderedDict[Hashable, _Cached] = OrderedDict()
+# By `content_key`: survives pickling, so it serves a model's copies in parallel
+# workers (and is sent to them), but hits have to be checked.
+_SHARED: OrderedDict[Hashable, _Cached] = OrderedDict()
+# wasmtime objects can't be freed once the interpreter has started shutting down.
+atexit.register(_CACHE.clear)
+atexit.register(_SHARED.clear)
+
+
+def _backend_module(backend: str) -> Any:
+    return importlib.import_module(f"mxlpy.integrators._native.{backend}_backend")
+
+
+def _store(
+    cache: OrderedDict[Hashable, _Cached], key: Hashable, entry: _Cached
+) -> None:
+    cache[key] = entry
+    while len(cache) > _CACHE_SIZE:
+        cache.popitem(last=False)
+
+
+def _shared_hit(
+    key: Hashable | None, check: Callable[[_Entry], None]
+) -> _Cached | bool:
+    """Return a checked `_SHARED` entry, or False if there's none to use."""
+    if key is None or key not in _SHARED:
+        return False
+    if (entry := _SHARED[key]) is None:
+        return None
+    try:
+        check(entry)
+    except (NativeLoweringError, ArithmeticError, ValueError) as e:
+        _LOGGER.debug("Native recompiles a model whose content key matched: %s", e)
+        return False
+    except Exception as e:  # noqa: BLE001  loading code shipped by another process
+        _LOGGER.debug("Native can't load shared compiled code: %r", e)
+        return False
+    _SHARED.move_to_end(key)
+    return entry
+
+
+def _export() -> (
+    list[tuple[Hashable, tuple[str, bytes, list[str], list[str]] | None]] | None
+):
+    """The shared compiled code, for parallel workers."""
+    with _LOCK:
+        return [
+            (k, None if e is None else (e.backend, e.blob, e.par_names, e.names))
+            for k, e in _SHARED.items()
+        ] or None
+
+
+def _install(
+    entries: list[tuple[Hashable, tuple[str, bytes, list[str], list[str]] | None]],
+) -> None:
+    with _LOCK:
+        for key, entry in entries:
+            _store(_SHARED, key, None if entry is None else _Entry(*entry))
+
+
+register_worker_state(_export, _install)
 
 
 def _parameters(model: Any, names: list[str]) -> Array:
@@ -134,22 +220,26 @@ def _pick_backend() -> str:
     raise ImportError(msg)
 
 
-def _compile(
-    model: Any, backend: str, t: float, y0: Array
-) -> tuple[_Compiled, list[str]]:
+def _compile(model: Any, backend: str, t: float, y0: Array) -> _Entry:
     key = (backend, fingerprint(model))
     with _LOCK:
         if (hit := _CACHE.get(key)) is not None:
             _CACHE.move_to_end(key)
             return hit
-        low = lower(model)
-        module = importlib.import_module(f"mxlpy.integrators._native.{backend}_backend")
-        compiled = module.compile_model(low)
-        _check_rhs(compiled, model, low.par_names, t, y0)
-        _CACHE[key] = (compiled, low.par_names)
-        while len(_CACHE) > _CACHE_SIZE:
-            _CACHE.popitem(last=False)
-        return _CACHE[key]
+        shared = None if (c := content_key(model)) is None else ("rhs", backend, c)
+        entry = _shared_hit(
+            shared,
+            lambda e: _check_rhs(e.compiled, model, e.par_names, t, y0),
+        )
+        if not isinstance(entry, _Entry):
+            low = lower(model)
+            compiled = _backend_module(backend).compile_model(low)
+            _check_rhs(compiled, model, low.par_names, t, y0)
+            entry = _Entry(backend, compiled.blob, low.par_names, _compiled=compiled)
+            if shared is not None:
+                _store(_SHARED, shared, entry)
+        _store(_CACHE, key, entry)
+        return entry
 
 
 def _check_outputs(
@@ -187,25 +277,38 @@ def _compile_outputs(
     backend: str,
     variables: pd.DataFrame,
     python: Callable[[pd.DataFrame], pd.DataFrame],
-) -> tuple[_Compiled, list[str], list[str]] | None:
+) -> _Entry | None:
     """Compile every reportable value of a model, or return None if that's not possible."""
     key = ("outputs", backend, fingerprint(model))
     if key in _CACHE:
         _CACHE.move_to_end(key)
-        return _CACHE[key]  # type: ignore[return-value]
-    entry = None
+        return _CACHE[key]
+    shared = None if (c := content_key(model)) is None else ("outputs", backend, c)
+    names: list[str] = []
+
+    def check(entry: _Entry) -> None:
+        if entry.names != names:
+            msg = "Compiled outputs have other names"
+            raise NativeLoweringError(msg)
+        _check_outputs(entry.compiled, model, entry.par_names, variables, python)
+
+    entry: _Entry | None = None
     try:
         names = [str(c) for c in python(variables.iloc[:1]).columns]
-        low = lower_outputs(model, names)
-        module = importlib.import_module(f"mxlpy.integrators._native.{backend}_backend")
-        compiled = module.compile_model(low)
-        _check_outputs(compiled, model, low.par_names, variables, python)
-        entry = (compiled, names, low.par_names)
+        if (hit := _shared_hit(shared, check)) is not False:
+            entry = hit  # type: ignore[assignment]
+        else:
+            low = lower_outputs(model, names)
+            compiled = _backend_module(backend).compile_model(low)
+            _check_outputs(compiled, model, low.par_names, variables, python)
+            entry = _Entry(backend, compiled.blob, low.par_names, names, compiled)
+            if shared is not None:
+                _store(_SHARED, shared, entry)
     except (NativeLoweringError, ArithmeticError, ValueError) as e:
         _LOGGER.debug("Native falls back to Python for simulation outputs: %s", e)
-    _CACHE[key] = entry  # type: ignore[assignment]
-    while len(_CACHE) > _CACHE_SIZE:
-        _CACHE.popitem(last=False)
+        if shared is not None:
+            _store(_SHARED, shared, None)
+    _store(_CACHE, key, entry)
     return entry
 
 
@@ -224,14 +327,13 @@ def args_time_course(
     with _LOCK:
         if (entry := _compile_outputs(model, backend, variables, python)) is None:
             return None
-        compiled, names, par_names = entry
-        values = compiled.eval_rows(
+        values = entry.compiled.eval_rows(
             np.asarray(variables.index, dtype=float),
             variables.to_numpy(dtype=float),
-            _parameters(model, par_names),
-            len(names),
+            _parameters(model, entry.par_names),
+            len(entry.names),
         )
-    return pd.DataFrame(values, index=variables.index, columns=names)
+    return pd.DataFrame(values, index=variables.index, columns=entry.names)
 
 
 @dataclass
@@ -315,10 +417,10 @@ class Native(AbstractIntegrator):
         if t_out[-1] == t_out[0]:
             return t_out, np.tile(y0, (len(t_out), 1))
         with _LOCK:
-            compiled, par_names = _compile(self.rhs, self.backend, self.t0, y0)
-            idid, values = compiled.solve(
+            entry = _compile(self.rhs, self.backend, self.t0, y0)
+            idid, values = entry.compiled.solve(
                 y0,
-                _parameters(self.rhs, par_names),
+                _parameters(self.rhs, entry.par_names),
                 t_out,
                 rtol=self.rtol,
                 atol=self.atol,

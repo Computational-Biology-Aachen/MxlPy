@@ -32,6 +32,41 @@ if TYPE_CHECKING:
 __all__ = ["Cache", "parallelise", "parallelise_keyless"]
 
 
+# (export, install) pairs: export runs in the parent before a pool starts, and
+# returns state for the workers (None for nothing), which install receives in each.
+_WORKER_STATE: list[tuple[Callable[[], Any], Callable[[Any], None]]] = []
+
+
+def register_worker_state(
+    export: Callable[[], Any], install: Callable[[Any], None]
+) -> None:
+    """Send state of this process to every worker that `parallelise` starts.
+
+    `export` runs before a pool starts and returns the state, or None if there is
+    none. Each worker passes it to `install` when it starts. Both have to be
+    module-level functions, so that workers can unpickle them.
+    """
+    _WORKER_STATE.append((export, install))
+
+
+def _install_worker_state(states: list[tuple[Callable[[Any], None], Any]]) -> None:
+    for install, state in states:
+        install(state)
+
+
+def _pool(max_workers: int | None) -> ProcessPoolExecutor:
+    states = [
+        (install, state)
+        for export, install in _WORKER_STATE
+        if (state := export()) is not None
+    ]
+    return ProcessPoolExecutor(
+        max_workers=multiprocessing.cpu_count() if max_workers is None else max_workers,
+        initializer=_install_worker_state if states else None,
+        initargs=(states,),
+    )
+
+
 def _pickle_name(k: Hashable) -> str:
     return f"{k}.p"
 
@@ -158,11 +193,7 @@ def parallelise[K: Hashable, Tin, Tout](
     results: list[tuple[K, Tout]]
     if parallel:
         results = []
-        max_workers = (
-            multiprocessing.cpu_count() if max_workers is None else max_workers
-        )
-
-        pool = ProcessPoolExecutor(max_workers=max_workers)
+        pool = _pool(max_workers)
         with tqdm(
             total=len(inputs),
             disable=disable_tqdm,
@@ -236,11 +267,7 @@ def parallelise_keyless[Tin, Tout](
     results: list[Tout]
     if parallel:
         results = []
-        max_workers = (
-            multiprocessing.cpu_count() if max_workers is None else max_workers
-        )
-
-        pool = ProcessPoolExecutor(max_workers=max_workers)
+        pool = _pool(max_workers)
         with tqdm(
             total=len(inputs),
             disable=disable_tqdm,

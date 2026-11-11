@@ -10,6 +10,7 @@ import sys
 from functools import partial
 from typing import Any
 
+import cloudpickle
 import numpy as np
 import pandas as pd
 import pytest
@@ -19,7 +20,9 @@ from scipy.integrate import simpson
 import mxlpy
 from mxlpy import Model, OdeModelBuilder, Scipy, Simulator, scan
 from mxlpy.fns import constant, mass_action_1s, mass_action_2s
-from mxlpy.runners import KineticRunner
+from mxlpy.integrators._native.lower import content_key
+from mxlpy.parallel import parallelise
+from mxlpy.runners import KineticRunner, precompile
 from mxlpy.types import IntegrationFailure, NoSteadyState, Result
 
 BACKENDS = [
@@ -617,3 +620,105 @@ def test_data_depending_on_state_is_rejected() -> None:
     )
     with pytest.raises(NativeLoweringError, match="only reference data and numbers"):
         lower(model)
+
+
+def _scaled(factor: float) -> Model:
+    def decay(x: float, k: float) -> float:
+        return factor * k * x
+
+    return (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 1.0)
+        .add_reaction("decay", decay, stoichiometry={"x": -1}, args=["x", "k"])
+    )
+
+
+def _decay2(x: float, k: float) -> float:
+    return 2.0 * k * x
+
+
+def _decay3(x: float, k: float) -> float:
+    return 3.0 * k * x
+
+
+def _decaying(fn: Any) -> Model:
+    return (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 1.0)
+        .add_reaction("decay", fn, stoichiometry={"x": -1}, args=["x", "k"])
+    )
+
+
+def test_content_key_survives_pickling() -> None:
+    for model in (chain(), _scaled(2.0)):
+        restored = cloudpickle.loads(cloudpickle.dumps(model))
+        assert content_key(restored) is not None
+        assert content_key(restored) == content_key(model)
+
+
+def test_content_key_sees_closures_and_code() -> None:
+    assert content_key(_scaled(2.0)) == content_key(_scaled(2.0))
+    assert content_key(_scaled(2.0)) != content_key(_scaled(3.0))
+    changed = chain().update_reaction(
+        "loss", fn=mass_action_2s, args=["p", "out", "out"]
+    )
+    assert content_key(changed) != content_key(chain())
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_shared_code_serves_pickled_copies(backend: Any) -> None:
+    from mxlpy.integrators import int_native  # noqa: PLC0415
+
+    model = _decaying(_decay2)
+    first = int_native._compile(model, backend, 0.0, np.ones(1))
+    copy = cloudpickle.loads(cloudpickle.dumps(model))
+    assert int_native._compile(copy, backend, 0.0, np.ones(1)) is first
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_wrongly_shared_code_is_recompiled(backend: Any, monkeypatch) -> None:  # noqa: ANN001
+    from mxlpy.integrators import int_native  # noqa: PLC0415
+
+    monkeypatch.setattr(int_native, "content_key", lambda _: "collision")
+    monkeypatch.setattr(int_native, "_SHARED", type(int_native._SHARED)())
+    Simulator(_decaying(_decay2), integrator=_native(backend)).simulate(1)
+    res = (
+        Simulator(
+            _decaying(_decay3), integrator=_native(backend, rtol=1e-10, atol=1e-10)
+        )
+        .simulate(1)
+        .get_result()
+        .unwrap_or_err()
+    )
+    assert res.variables["x"].iloc[-1] == pytest.approx(np.exp(-3.0), rel=1e-6)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_shared_code_loads_from_its_blob(backend: Any) -> None:
+    from mxlpy.integrators import int_native  # noqa: PLC0415
+
+    entry = int_native._compile(chain(), backend, 0.0, np.array([5.0, 0.0]))
+    loaded = int_native._Entry(entry.backend, entry.blob, entry.par_names)
+    pars = int_native._parameters(chain(), entry.par_names)
+    y = np.array([3.0, 1.0])
+    assert loaded.compiled.rhs(0.0, y, pars) == pytest.approx(
+        entry.compiled.rhs(0.0, y, pars)
+    )
+
+
+def _shared_keys(model: Model) -> tuple[set, str | None]:
+    from mxlpy.integrators import int_native  # noqa: PLC0415
+
+    return set(int_native._SHARED), int_native.content_key(model)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_workers_receive_precompiled_code(backend: Any) -> None:
+    model = _decaying(_decay2)
+    precompile(KineticRunner(integrator=_native(backend)), model)
+    for _, (keys, key) in parallelise(
+        _shared_keys, [(0, model), (1, model)], max_workers=2, disable_tqdm=True
+    ):
+        assert ("rhs", backend, key) in keys
