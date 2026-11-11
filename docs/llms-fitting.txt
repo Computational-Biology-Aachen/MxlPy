@@ -85,6 +85,39 @@ fit.joint_mixed(
 - `postprocess_fn=` (every fit routine, and per model on `FitSettings`/`MixedSettings`): a `(pd.DataFrame) -> pd.DataFrame` applied to the combined simulation result at the data's time points before the loss, for quantities derived from the whole time course (e.g. NPQ normalised by the first pulse: `lambda df: ((df["Fm"].iloc[0] - df["Fm"]) / df["Fm"]).to_frame("NPQ")`). Its output must contain the data columns; exceptions it raises propagate.
 - `LocalScipyMinimizer()` defaults to Nelder-Mead for a single parameter and L-BFGS-B otherwise. Failed simulations (infinite residuals) are replaced by a finite penalty, so gradient-based methods back off instead of stalling.
 
+## Bayesian posterior sampling (`fit.mcmc_*`)
+
+Sample the posterior of parameters (or initial conditions) instead of a point estimate, for credible intervals, parameter correlations and prediction uncertainty. `fit.mcmc_steady_state` / `fit.mcmc_time_course` / `fit.mcmc_protocol_time_course` take `(model, *, data, prior, sigma, ...)` and return `Result[McmcResult]`.
+
+- Likelihood: Gaussian on the **unscaled** data with known noise `sigma` (float; `pd.Series` per column / steady-state entry; `pd.DataFrame` per point). NaN data are ignored. No `loss_fn` / `standard_scale`.
+- `prior`: `{name: Distribution}` from `mxlpy.distributions` (each has `log_pdf(x)` and `positive_support`, the `distributions.Prior` protocol). Its keys are the sampled names; every sampled name needs a prior.
+- Positive-support priors (`LogNormal`, `LogUniform`, `Beta`, `Uniform` with `lower_bound >= 0`) are sampled in log space; results are always in natural units.
+- `x0` (optional, subset of `prior`) is the chains' start, default the model's current values (e.g. pass `fit.best_pars`); chains start slightly jittered around it. A non-finite posterior at `x0` returns an `Err`.
+- `sampler=fit.AdaptiveMetropolis(n_warmup=None, adaptation_interval=100, initial_scale=0.1)` (default): adapts the proposal covariance during warm-up (default = `n_samples` steps, discarded), then samples with it frozen. Custom samplers follow `fit.McmcSampler`.
+- Also: `n_samples` (per chain, after warm-up), `n_chains=4`, `seed` (reproducible, independent of `parallel`), `parallel`, `max_workers`, `timeout`, `y0`, `runner`, `postprocess_fn`, `as_deepcopy`.
+
+```python
+from mxlpy import fit
+from mxlpy.distributions import LogNormal
+
+res = fit.mcmc_time_course(
+    model, data=df,
+    prior={"k1": LogNormal(0, 1), "k2": LogNormal(0, 1)},
+    sigma=0.05, n_samples=2000, n_chains=4, seed=0,
+).unwrap_or_err()
+
+res.chains            # (n_chains, n_samples, n_params), names in res.parameter_names
+res.log_posterior     # (n_chains, n_samples), unnormalised, natural units
+res.acceptance_rates  # per chain, ~0.15-0.5 is healthy
+res.r_hat()           # rank-normalised split R-hat per parameter, < ~1.01 = converged
+res.ess()             # bulk effective sample size per parameter
+res.credible_intervals(level=0.95)  # DataFrame: lower / median / upper per parameter
+res.samples()         # DataFrame, MultiIndex (chain, draw)
+res.plot_traces(); res.plot_marginals()
+```
+
+Strongly correlated parameters mix slowly: if R-hat is high, draw more samples.
+
 ## Fuzzy fitting (`mxlpy.fuzzy`)
 
 Thompson sampling over a discrete grid of parameter values — a Bayesian alternative to gradient optimisation that returns success/fail counts per grid point (a posterior over each parameter).
@@ -142,6 +175,8 @@ class MyDist:
 
 sample({"p1": MyDist()}, n=5)
 ```
+
+Every built-in also has `log_pdf(x) -> float` (`-inf` outside the support) and `positive_support -> bool`, so it can serve as an MCMC prior (`distributions.Prior` protocol); add both to a custom distribution to use it as one.
 
 ## Parameterisation from BRENDA (`mxlpy.parameterise`)
 

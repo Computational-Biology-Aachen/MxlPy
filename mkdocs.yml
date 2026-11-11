@@ -22,6 +22,7 @@ nav:
       - Sensitivity analysis: sensitivity.ipynb
       - Fitting: fitting.ipynb
       - Fuzzy fitting: fuzzy_fitting.ipynb
+      - Bayesian inference (MCMC): bayesian-inference.ipynb
       - Monte Carlo methods: monte-carlo.ipynb
       - Label models: label-models.ipynb
       - Comparing models: comparisons.ipynb

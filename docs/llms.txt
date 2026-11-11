@@ -22,7 +22,7 @@ Each file is a self-contained reference for one topic area:
 - [simulation](llms-simulation.txt) — `Simulator`: time courses, protocols, steady state, the result object, error handling, integrator configuration, runners
 - [scans & MCA](llms-scans-mca.txt) — `scan` (steady-state / time-course / protocol parameter sweeps) and `mca` (elasticities, response coefficients, stability, rate characteristics)
 - [sensitivity](llms-sensitivity.txt) — global sensitivity: Morris screening and Sobol variance decomposition
-- [fitting](llms-fitting.txt) — `fit` (steady-state / time-course / protocol; group / ensemble / joint / mixed), minimizers, loss functions, fuzzy fitting, Monte Carlo (`mc`), distributions, parameterisation from BRENDA
+- [fitting](llms-fitting.txt) — `fit` (steady-state / time-course / protocol; group / ensemble / joint / mixed), minimizers, loss functions, Bayesian posterior sampling (`fit.mcmc_*`), fuzzy fitting, Monte Carlo (`mc`), distributions, parameterisation from BRENDA
 - [mechanistic learning](llms-mxl.txt) — neural-network surrogates, neural posterior estimation (`npe`), universal differential equations (UDEs), reaction carousels
 - [visualization](llms-visualization.txt) — the `plot` module and model-comparison `report`s
 - [import/export](llms-io.txt) — SBML read/write (+ MIRIAM annotations), native `.mxl.json` format, code/LaTeX generation (`meta`)
