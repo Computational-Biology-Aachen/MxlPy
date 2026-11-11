@@ -1044,14 +1044,26 @@ class KineticModelBuilder:
         """Get parameters which aren't used in the model."""
         args = set()
         for variable in self._variables.values():
-            if isinstance(variable, Derived):
-                args.update(variable.args)
+            if isinstance(init := variable.initial_value, InitialAssignment):
+                args.update(init.args)
+        for parameter in self._parameters.values():
+            if isinstance(init := parameter.value, InitialAssignment):
+                args.update(init.args)
         for derived in self._derived.values():
             args.update(derived.args)
         for reaction in self._reactions.values():
             args.update(reaction.args)
+            for factor in reaction.stoichiometry.values():
+                if isinstance(factor, Derived):
+                    args.update(factor.args)
         for surrogate in self._surrogates.values():
             args.update(surrogate.args)
+            for stoichiometry in surrogate.stoichiometries.values():
+                for factor in stoichiometry.values():
+                    if isinstance(factor, Derived):
+                        args.update(factor.args)
+        for readout in self._readouts.values():
+            args.update(readout.args)
         for event in self._events.values():
             args.update(event.trigger_args)
             for assignment in event.assignments.values():

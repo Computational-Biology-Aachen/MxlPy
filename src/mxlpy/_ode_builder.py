@@ -1009,10 +1009,17 @@ class OdeModelBuilder:
         args = set()
         for diff_eq in self._diff_eqs.values():
             args.update(diff_eq.args)
-            if isinstance(diff_eq.initial_value, Derived):
-                args.update(diff_eq.initial_value.args)
+            if isinstance(init := diff_eq.initial_value, InitialAssignment):
+                args.update(init.args)
+        for parameter in self._parameters.values():
+            if isinstance(init := parameter.value, InitialAssignment):
+                args.update(init.args)
         for derived in self._derived.values():
             args.update(derived.args)
+        for surrogate in self._surrogates.values():
+            args.update(surrogate.args)
+        for readout in self._readouts.values():
+            args.update(readout.args)
 
         return set(self._parameters).difference(args)
 

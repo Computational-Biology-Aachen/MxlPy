@@ -1,5 +1,8 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
+from mxlpy import Derived, InitialAssignment, Model
+
+
 def test_failure_difference() -> None:
     # FIXME: implement this
     assert True
@@ -195,9 +198,49 @@ def test_model_get_surrogate_reaction_names() -> None:
     assert True
 
 
+def _rate(x: float, k: float) -> float:
+    return k * x
+
+
+def _inverse(b: float) -> float:
+    return 1 / b
+
+
+def _double(c: float) -> float:
+    return 2 * c
+
+
 def test_model_get_unused_parameters() -> None:
-    # FIXME: implement this
-    assert True
+    m = (
+        Model()
+        .add_variables({"x": 1.0, "y": 0.0})
+        .add_parameters({"k": 1.0, "b": 10.0, "c": 3.0, "r": 2.0, "unused": 0.0})
+        .add_parameter("ia", InitialAssignment(fn=_double, args=["c"]))
+        .add_reaction(
+            "v",
+            fn=_rate,
+            args=["x", "k"],
+            stoichiometry={"x": -1, "y": Derived(fn=_inverse, args=["b"])},
+        )
+        .add_readout("ro", fn=_double, args=["r"])
+    )
+    assert m.get_unused_parameters() == {"unused", "ia"}
+
+
+def test_model_get_unused_parameters_removal_keeps_model_valid() -> None:
+    m = (
+        Model()
+        .add_variables({"x": 1.0, "y": 0.0})
+        .add_parameters({"k": 1.0, "b": 10.0})
+        .add_reaction(
+            "v",
+            fn=_rate,
+            args=["x", "k"],
+            stoichiometry={"x": -1, "y": Derived(fn=_inverse, args=["b"])},
+        )
+    )
+    m.remove_parameters(m.get_unused_parameters())
+    assert m.get_right_hand_side()["y"] == 0.1
 
 
 def test_model_get_variable_names() -> None:
