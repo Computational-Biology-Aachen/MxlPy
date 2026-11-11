@@ -9,13 +9,19 @@ collide with a libm function or a backend's own argument.
 from __future__ import annotations
 
 import copy
+import hashlib
+import pickle
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import sympy
 
+from mxlpy.meta.array_fns import fold_data
+
 if TYPE_CHECKING:
     from collections.abc import Hashable
+
+    import pandas as pd
 
 __all__ = ["Lowered", "NativeLoweringError", "fingerprint", "lower", "lower_outputs"]
 
@@ -53,6 +59,16 @@ def _check_lowerable(model: Any) -> None:
         raise NativeLoweringError(msg)
 
 
+def _fold(model: Any, assignments: list[tuple[str, Any]]) -> list[tuple[str, Any]]:
+    """Replace the array subtrees over model data by their values, as mxlweb-core does."""
+    data = getattr(model, "get_raw_data", dict)()
+    try:
+        return [(k, fold_data(sympy.sympify(e), data, k)) for k, e in assignments]
+    except Exception as e:
+        msg = f"Native can't lower this model's use of data: {e}"
+        raise NativeLoweringError(msg) from e
+
+
 def lower(model: Any) -> Lowered:
     """Lower a model, raising NativeLoweringError if it isn't symbolically representable."""
     from mxlpy.meta._via_sym_repr import _normalized_symbolic_model  # noqa: PLC0415
@@ -70,7 +86,9 @@ def lower(model: Any) -> Lowered:
         msg = f"Native can't lower this model to symbolic form: {e!r}"
         raise NativeLoweringError(msg) from e
 
-    body = _needed(nsm.body, [nsm.diff_eqs[v] for v in var_names])
+    folded = _fold(model, nsm.body + [(v, nsm.diff_eqs[v]) for v in var_names])
+    diff_eqs = dict(folded[len(nsm.body) :])
+    body = _needed(folded[: len(nsm.body)], [diff_eqs[v] for v in var_names])
     rename: dict[sympy.Symbol, sympy.Symbol] = {sympy.Symbol("time"): sympy.Symbol("t")}
     rename |= {sympy.Symbol(v): sympy.Symbol(f"y{i}") for i, v in enumerate(var_names)}
     rename |= {sympy.Symbol(p): sympy.Symbol(f"p{i}") for i, p in enumerate(par_names)}
@@ -81,7 +99,7 @@ def lower(model: Any) -> Lowered:
         assignments=[
             (rename[sympy.Symbol(a)].name, e.xreplace(rename)) for a, e in body
         ],
-        dydt=[sympy.sympify(nsm.diff_eqs[v]).xreplace(rename) for v in var_names],
+        dydt=[diff_eqs[v].xreplace(rename) for v in var_names],
     )
 
 
@@ -104,8 +122,9 @@ def lower_outputs(model: Any, names: list[str]) -> Lowered:
     rename: dict[sympy.Symbol, sympy.Symbol] = {sympy.Symbol("time"): sympy.Symbol("t")}
     rename |= {sympy.Symbol(v): sympy.Symbol(f"y{i}") for i, v in enumerate(var_names)}
     rename |= {sympy.Symbol(p): sympy.Symbol(f"p{i}") for i, p in enumerate(par_names)}
+    extended = _fold(model, nsm.extended)
     rename |= {
-        sympy.Symbol(a): sympy.Symbol(f"a{i}") for i, (a, _) in enumerate(nsm.extended)
+        sympy.Symbol(a): sympy.Symbol(f"a{i}") for i, (a, _) in enumerate(extended)
     }
     missing = [n for n in names if sympy.Symbol(n) not in rename]
     if missing:
@@ -115,8 +134,7 @@ def lower_outputs(model: Any, names: list[str]) -> Lowered:
         n=len(var_names),
         par_names=par_names,
         assignments=[
-            (rename[sympy.Symbol(a)].name, sympy.sympify(e).xreplace(rename))
-            for a, e in nsm.extended
+            (rename[sympy.Symbol(a)].name, e.xreplace(rename)) for a, e in extended
         ],
         dydt=[rename[sympy.Symbol(n)] for n in names],
     )
@@ -147,6 +165,10 @@ def _component(item: Any) -> Hashable:
     )
 
 
+def _digest(values: pd.Series | pd.DataFrame) -> str:
+    return hashlib.sha256(pickle.dumps(values.to_numpy())).hexdigest()
+
+
 def fingerprint(model: Any) -> Hashable:
     """A cheap key for what the compiled code depends on, not parameter values.
 
@@ -161,4 +183,6 @@ def fingerprint(model: Any) -> Hashable:
         tuple((k, _component(v)) for k, v in getattr(model, "_diff_eqs", {}).items()),
         tuple((k, _Identity(v)) for k, v in getattr(model, "_surrogates", {}).items()),
         tuple((k, _component(v)) for k, v in getattr(model, "_readouts", {}).items()),
+        # Data is folded into the compiled code as constants
+        tuple((k, _digest(v)) for k, v in getattr(model, "_data", {}).items()),
     )

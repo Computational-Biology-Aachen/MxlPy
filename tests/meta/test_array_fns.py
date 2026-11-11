@@ -15,7 +15,14 @@ from scipy.integrate import simpson
 
 from mxlpy import Model, load, save
 from mxlpy.meta import generate_model_code_mxlweb, generate_model_data_mxlweb
-from mxlpy.meta.array_fns import ArrayMaxOf, ArraySimpson, ArrayStd, ArraySum
+from mxlpy.meta.array_fns import (
+    ArrayIndex,
+    ArrayMaxOf,
+    ArraySimpson,
+    ArrayStd,
+    ArraySum,
+    fold_data,
+)
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
     mathml_to_sympy,
@@ -147,3 +154,53 @@ def test_mxlweb_codegen_data_tex_name() -> None:
     assert '.addData("light_spectrum", {' in code
     assert 'values: data["light_spectrum"].values,' in code
     assert "texName: 'light\\\\_spectrum'," in code
+
+
+def test_fold_data_replaces_array_subtrees() -> None:
+    k, light, wavelength = sympy.symbols("k light wavelength")
+    wl = np.linspace(400.0, 700.0, 31)
+    values = np.sin(wl / 100.0) ** 2
+    data = {"light": pd.Series(values), "wavelength": pd.Series(wl)}
+    folded = fold_data(k * ArraySimpson(light * light, wavelength), data, "absorbed")
+    assert folded.free_symbols == {k}
+    assert float(folded.subs(k, 2.0)) == pytest.approx(
+        2.0 * simpson(values * values, x=wl)
+    )
+
+
+def test_fold_data_reductions_and_index() -> None:
+    a = sympy.Symbol("a")
+    values = np.array([1.0, 4.0, 2.0, 3.0])
+    folded = fold_data(
+        ArraySum(a) / ArrayStd(a) + ArrayMaxOf(a) + ArrayIndex(a, -1),
+        {"a": pd.Series(values)},
+        "spread",
+    )
+    assert float(folded) == pytest.approx(
+        values.sum() / values.std(ddof=1) + values.max() + values[-1]
+    )
+
+
+def test_fold_data_without_data_is_identity() -> None:
+    x = sympy.Symbol("x")
+    assert fold_data(2 * x, {}, "y") == 2 * x
+
+
+def test_fold_data_rejects_non_data_in_array_node() -> None:
+    a, x = sympy.symbols("a x")
+    with pytest.raises(ValueError, match="only reference data and numbers, not 'x'"):
+        fold_data(ArraySum(a * x), {"a": pd.Series([1.0, 2.0])}, "v")
+
+
+def test_fold_data_rejects_array_result() -> None:
+    from mxlpy.meta.array_fns import ArraySlice  # noqa: PLC0415
+
+    a = sympy.Symbol("a")
+    with pytest.raises(ValueError, match="gives an array"):
+        fold_data(ArraySlice(a, 0, 2), {"a": pd.Series([1.0, 2.0, 3.0])}, "v")
+
+
+def test_fold_data_rejects_bare_data() -> None:
+    a, x = sympy.symbols("a x")
+    with pytest.raises(ValueError, match="data 'a' is an array"):
+        fold_data(a * x, {"a": pd.Series([1.0, 2.0])}, "v")

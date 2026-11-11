@@ -1202,8 +1202,9 @@ def _normalized_symbolic_model(
     ##################################
     linear = []
     readouts = []  # readouts
+    data_names = set(model._data)  # noqa: SLF001
     for i in order:
-        if i in inits or i in free_parameters:
+        if i in inits or i in free_parameters or i in data_names:
             continue
         if i in sr.readouts:
             readouts.append((i, assignments[i]))

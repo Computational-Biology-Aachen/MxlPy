@@ -13,14 +13,14 @@ stands for, so generated Python functions parse back to the same expression.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import scipy.integrate
 import sympy
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 __all__ = [
     "ARRAY_FNS",
@@ -35,6 +35,7 @@ __all__ = [
     "ArrayStd",
     "ArraySum",
     "array_fn_from_call",
+    "fold_data",
 ]
 
 
@@ -194,3 +195,98 @@ def array_fn_from_call(
     if (handle := ARRAY_FNS.get(py_fn)) is None:
         return None
     return handle(args, kwargs)
+
+
+# sympy stand-in -> its numpy/scipy kernel, matching the `_pythoncode` printers above
+_ARRAY_KERNELS: dict[type, Callable[..., Any]] = {
+    ArraySum: np.sum,
+    ArrayMean: np.mean,
+    ArrayStd: lambda a: np.std(a, ddof=1),
+    ArrayMaxOf: np.max,
+    ArrayMinOf: np.min,
+    ArrayIndex: lambda a, i: np.asarray(a)[int(i)],
+    ArraySlice: lambda a, start, stop: np.asarray(a)[int(start) : int(stop)],
+    ArrayAt: lambda a, t, times: np.asarray(a)[
+        np.argmin(np.abs(np.asarray(times) - t))
+    ],
+    ArraySimpson: lambda y, x: scipy.integrate.simpson(y, x=x),
+}
+
+
+_NODE_NAMES: dict[type, str] = dict(ARRAY_NODE_TYPES)
+
+
+def _outermost_array_nodes(expr: sympy.Basic) -> list[sympy.Basic]:
+    if type(expr) in ARRAY_NODE_TYPES:
+        return [expr]
+    return [n for arg in expr.args for n in _outermost_array_nodes(arg)]
+
+
+def _evaluate(expr: sympy.Basic, data: Mapping[str, Any]) -> Any:
+    """Evaluate an expression over data arrays and numbers only."""
+    if (kernel := _ARRAY_KERNELS.get(type(expr))) is not None:
+        return kernel(*(_evaluate(arg, data) for arg in expr.args))
+    values: dict[sympy.Basic, Any] = {}
+    replacements: dict[sympy.Basic, sympy.Symbol] = {}
+    for node in _outermost_array_nodes(expr):
+        replacements[node] = dummy = sympy.Dummy()
+        values[dummy] = _evaluate(node, data)
+    elementwise = expr.xreplace(replacements)
+    symbols = list(elementwise.free_symbols)
+    for symbol in symbols:
+        if symbol not in values:
+            values[symbol] = np.asarray(data[str(symbol)], dtype=float)
+    fn = sympy.lambdify(symbols, elementwise, modules="numpy")
+    return fn(*(values[s] for s in symbols))
+
+
+def fold_data(expr: sympy.Expr, data: Mapping[str, Any], where: str) -> sympy.Expr:
+    """`expr` with every array subtree evaluated against `data` and replaced by its number.
+
+    An array subtree may reference only data and numbers (mxl-schemas ADR 0014),
+    so it is a constant, and every scalar backend can treat the model as an
+    ordinary one. Changing the data means folding again.
+
+    Raises
+    ------
+    ValueError
+        Naming `where`, if an array subtree references anything but data, if it
+        evaluates to an array, or if data is used outside one.
+
+    """
+    if not data:
+        return expr
+
+    def touches_data(node: sympy.Basic) -> bool:
+        return bool(node.atoms(*ARRAY_NODE_TYPES)) or any(
+            s.name in data for s in node.free_symbols if isinstance(s, sympy.Symbol)
+        )
+
+    def fold(node: sympy.Basic) -> sympy.Basic:
+        if not touches_data(node):
+            return node
+        if (node_type := _NODE_NAMES.get(type(node))) is not None:
+            others = sorted(str(s) for s in node.free_symbols if str(s) not in data)
+            if others:
+                msg = (
+                    f"{where}: {node_type} may only reference data and numbers, "
+                    f"not {', '.join(repr(s) for s in others)}"
+                )
+                raise ValueError(msg)
+            value = _evaluate(node, data)
+            if np.ndim(value) != 0:
+                msg = (
+                    f"{where}: {node_type} gives an array; reduce it to a number "
+                    "(e.g. with Sum or Simpson)"
+                )
+                raise ValueError(msg)
+            return sympy.Float(float(value))
+        if isinstance(node, sympy.Symbol):
+            msg = (
+                f"{where}: data {node.name!r} is an array; reduce it to a number "
+                "(e.g. with Sum or Simpson) before using it"
+            )
+            raise ValueError(msg)  # noqa: TRY004, same model error as the others
+        return node.func(*(fold(arg) for arg in node.args))
+
+    return cast(sympy.Expr, fold(expr))

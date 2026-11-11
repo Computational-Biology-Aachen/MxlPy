@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import sympy
+from scipy.integrate import simpson
 
 import mxlpy
 from mxlpy import Model, OdeModelBuilder, Scipy, Simulator, scan
@@ -552,3 +553,67 @@ def test_sympy_expression_fns_with_module_calls(backend: Any) -> None:
         )
     )
     assert got == pytest.approx(expected, rel=1e-5, abs=1e-6)
+
+
+def _absorbed(intensity: float, spectrum: pd.Series, wavelength: pd.Series) -> float:
+    return intensity * simpson(spectrum, x=wavelength)
+
+
+def _light_consumption(x: float, light: float) -> float:
+    return light * x
+
+
+def _data_model(spectrum: np.ndarray) -> Model:
+    wavelength = np.arange(400.0, 701.0)
+    return (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("intensity", 1.0)
+        .add_data("wavelength", pd.Series(wavelength))
+        .add_data("spectrum", pd.Series(spectrum))
+        .add_derived("light", _absorbed, args=["intensity", "spectrum", "wavelength"])
+        .add_reaction(
+            "v", _light_consumption, args=["x", "light"], stoichiometry={"x": -1}
+        )
+    )
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_model_data_is_folded(backend: Any) -> None:
+    """Array subtrees over data become constants, as in mxlweb-core (#201)."""
+    model = _data_model(np.ones(301) / 300)
+    sim = Simulator(model, integrator=_native(backend, rtol=1e-10, atol=1e-10))
+    res = sim.simulate(1.0).get_result().unwrap_or_err()
+    assert res.variables["x"].iloc[-1] == pytest.approx(np.exp(-1.0), rel=1e-6)
+    assert res.fluxes["v"].iloc[-1] == pytest.approx(np.exp(-1.0), rel=1e-6)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_changed_model_data_recompiles(backend: Any) -> None:
+    model = _data_model(np.ones(301) / 300)
+    Simulator(model, integrator=_native(backend)).simulate(1.0)
+    model.update_data("spectrum", pd.Series(np.ones(301) / 150))
+    res = (
+        Simulator(model, integrator=_native(backend, rtol=1e-10, atol=1e-10))
+        .simulate(1.0)
+        .get_result()
+        .unwrap_or_err()
+    )
+    assert res.variables["x"].iloc[-1] == pytest.approx(np.exp(-2.0), rel=1e-6)
+
+
+def _state_weighted(x: float, spectrum: pd.Series, wavelength: pd.Series) -> float:
+    return simpson(x * spectrum, x=wavelength)
+
+
+def test_data_depending_on_state_is_rejected() -> None:
+    from mxlpy.integrators._native.lower import (  # noqa: PLC0415
+        NativeLoweringError,
+        lower,
+    )
+
+    model = _data_model(np.ones(301) / 300).update_derived(
+        "light", _state_weighted, args=["x", "spectrum", "wavelength"]
+    )
+    with pytest.raises(NativeLoweringError, match="only reference data and numbers"):
+        lower(model)
