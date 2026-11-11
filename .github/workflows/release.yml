@@ -48,8 +48,30 @@ jobs:
 
       - run: uv sync --all-extras --all-groups
       - run: uv run python -c "import toml;print('VERSION={}'.format(toml.load(open('pyproject.toml'))['project']['version']))" >> $GITHUB_ENV
+      # Results of expensive notebook cells (tagged `cache`) are reused across
+      # releases, see scripts/execute_docs.py. They live on the `docs-cache`
+      # branch: actions/cache entries are scoped to the ref, so a release (tag)
+      # run can't restore what the previous release saved.
+      - name: Restore cached notebook cells
+        run: |
+          mkdir -p .docs-cache/cells
+          if git fetch --quiet --depth 1 origin docs-cache; then
+            git archive FETCH_HEAD | tar -x -C .docs-cache/cells
+          fi
+      - name: Execute notebooks
+        run: uv run python scripts/execute_docs.py --prune
       - run: uv run mike deploy --update-aliases --push ${{ env.VERSION }} latest
+        env:
+          MKDOCS_EXECUTE: "false"
       - run: uv run mike set-default --push latest
+      # One orphan commit, force-pushed, so the branch doesn't accumulate history
+      - name: Save cached notebook cells
+        run: |
+          export GIT_INDEX_FILE="$RUNNER_TEMP/docs-cache-index"
+          git --work-tree=.docs-cache/cells add --all --force
+          tree=$(git write-tree)
+          commit=$(git commit-tree "$tree" -m "Cached docs notebook cells for ${{ env.VERSION }}")
+          git push --force origin "$commit:refs/heads/docs-cache"
       # Every version is a full copy of the docs (~12 MB since
       # scripts/mkdocs_shrink_html.py, ~31 MB before). Published Pages sites may
       # be no larger than 1 GB and deployments time out after 10 minutes;
