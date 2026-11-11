@@ -9,6 +9,7 @@ hand-written function.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import textwrap
@@ -32,6 +33,7 @@ from mxlpy import (
     to_symbolic_model,
 )
 from mxlpy.dsl import from_dsl
+from mxlpy.meta.source_tools import fn_to_sympy_expr
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -260,6 +262,40 @@ def test_symbolic_model_matches_fn_model() -> None:
     ]
 
 
+def _exp_log_model() -> KineticModelBuilder:
+    x, k = sympy.symbols("x k")
+    return (
+        KineticModelBuilder()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 1.0)
+        .add_reaction(
+            "v", k * sympy.exp(-x) + sympy.log(k + 1), stoichiometry={"x": -1}
+        )
+    )
+
+
+def test_fn_to_sympy_expr_uses_stored_expr() -> None:
+    x, k, a, b = sympy.symbols("x k a b")
+    fn = _exp_log_model().get_raw_reactions()["v"].fn
+    expected = k * sympy.exp(-x) + sympy.log(k + 1)
+    assert fn_to_sympy_expr(fn, origin="v") == expected
+    assert fn_to_sympy_expr(fn, origin="v", model_args=[a, b]) == expected.xreplace(
+        {k: a, x: b}
+    )
+
+
+def test_generated_fn_with_module_calls_parses_back() -> None:
+    """Without the stored expression, the source (`math.exp`, `math.log`) is parsed (#202)."""
+    x, k = sympy.symbols("x k")
+    fn = _exp_log_model().get_raw_reactions()["v"].fn
+    del fn.__mxlpy_expr__
+    parsed = fn_to_sympy_expr(fn, origin="v")
+    assert parsed is not None
+    expected = k * sympy.exp(-x) + sympy.log(k + 1)
+    point = {x: 0.3, k: 1.7}
+    assert float(parsed.subs(point)) == pytest.approx(float(expected.subs(point)))
+
+
 @pytest.mark.parametrize(
     "codegen",
     [
@@ -270,7 +306,13 @@ def test_symbolic_model_matches_fn_model() -> None:
     ],
 )
 def test_codegen_matches_fn_model(codegen: Callable) -> None:
-    assert codegen(expr_model()).full() == codegen(fn_model()).full()
+    # Expressions keep their exact numbers (`4`), parsed source has floats (`4.0`)
+    def strip_float_zeros(source: str) -> str:
+        return re.sub(r"(\d)\.0\b", r"\1", source)
+
+    assert strip_float_zeros(codegen(expr_model()).full()) == strip_float_zeros(
+        codegen(fn_model()).full()
+    )
 
 
 def test_sbml_roundtrip(tmp_path: Path) -> None:

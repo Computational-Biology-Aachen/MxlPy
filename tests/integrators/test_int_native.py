@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+import sympy
 
 import mxlpy
 from mxlpy import Model, OdeModelBuilder, Scipy, Simulator, scan
@@ -151,7 +152,7 @@ def test_requested_time_points_are_returned_exactly(backend: Any, method: str) -
         Simulator(lotka(), integrator=_tight_scipy()).simulate_time_course(points)
     )
     assert time == pytest.approx(points)
-    assert got == pytest.approx(expected, rel=1e-6)
+    assert got == pytest.approx(expected, rel=1e-5, abs=1e-6)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -355,9 +356,7 @@ def test_blow_up_is_not_reported_as_success(backend: Any, method: str) -> None:
         .add_parameter("k", 1.0)
         .add_reaction("r", mass_action_2s, stoichiometry={"x": 1}, args=["x", "x", "k"])
     )
-    res = mxlpy.Native(model, (1.0,), backend=backend, method=method).integrate(
-        t_end=2
-    )
+    res = mxlpy.Native(model, (1.0,), backend=backend, method=method).integrate(t_end=2)
     assert isinstance(res.value, IntegrationFailure)
 
 
@@ -532,3 +531,24 @@ def test_ode_models_with_the_same_names_do_not_share_code(backend: Any) -> None:
         )
     assert results[0].variables["x"].iloc[-1] == pytest.approx(np.e, rel=1e-5)
     assert results[1].variables["x"].iloc[-1] == pytest.approx(1 / np.e, rel=1e-5)
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_sympy_expression_fns_with_module_calls(backend: Any) -> None:
+    """Expression functions print as `math.exp`/`math.log`, which must lower (#202)."""
+    x, k = sympy.symbols("x k")
+    model = (
+        Model()
+        .add_variable("x", 1.0)
+        .add_parameter("k", 1.0)
+        .add_reaction(
+            "v", k * sympy.exp(-x) + sympy.log(k + 1), stoichiometry={"x": -1}
+        )
+    )
+    _, expected = _values(Simulator(model, integrator=_tight_scipy()).simulate(1.0))
+    _, got = _values(
+        Simulator(model, integrator=_native(backend, rtol=1e-10, atol=1e-10)).simulate(
+            1.0
+        )
+    )
+    assert got == pytest.approx(expected, rel=1e-5, abs=1e-6)

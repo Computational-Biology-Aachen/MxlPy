@@ -283,6 +283,21 @@ class Context:
         """Return default representation."""
         return pformat(self)
 
+    def namespace(self) -> dict[str, Any]:
+        """Names visible to the function: its module's, then its own globals.
+
+        A function compiled from source (e.g. `sympy_tools.compile_fn`) has no
+        real module, so its globals are the only place its imports live.
+        """
+        module_vars = {} if self.parent_module is None else vars(self.parent_module)
+        return module_vars | getattr(self.caller, "__globals__", {})
+
+    def namespace_modules(self) -> dict[str, ModuleType]:
+        """Modules visible to the function, including its own imports."""
+        return {
+            k: v for k, v in self.namespace().items() if isinstance(v, ModuleType)
+        } | self.modules
+
     def updated(
         self,
         symbols: dict[str, sympy.Symbol | sympy.Expr] | None = None,
@@ -673,13 +688,10 @@ def _handle_expr(node: ast.expr, ctx: Context) -> sympy.Expr | None:
 def _handle_name(node: ast.Name, ctx: Context) -> sympy.Symbol | sympy.Expr:
     value = ctx.symbols.get(node.id)
     if value is None:
-        global_variables = dict(
-            inspect.getmembers(
-                ctx.parent_module,
-                predicate=lambda x: isinstance(x, float),
-            )
-        )
-        value = sympy.Float(global_variables[node.id])
+        global_value = ctx.namespace().get(node.id)
+        if not isinstance(global_value, float):
+            raise KeyError(node.id)
+        value = sympy.Float(global_value)
     return value
 
 
@@ -782,11 +794,8 @@ def _handle_attribute(node: ast.Attribute, ctx: Context) -> sympy.Expr | None:
     """
     name = str(node.attr)
     module: ModuleType | None = None
-    modules = (
-        dict(inspect.getmembers(ctx.parent_module, predicate=inspect.ismodule))
-        | ctx.modules
-    )
-    variables = vars(ctx.parent_module)
+    modules = ctx.namespace_modules()
+    variables = ctx.namespace()
 
     match node.value:
         case ast.Name(l1):
@@ -869,7 +878,7 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
         case ast.Name(id):
             fn_name = str(id)
             fns = (
-                dict(inspect.getmembers(ctx.parent_module, predicate=callable))
+                {k: v for k, v in ctx.namespace().items() if callable(v)}
                 | dict(inspect.getmembers(builtins, predicate=callable))
                 | ctx.fns
             )
@@ -878,24 +887,28 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
         # FIXME: use _handle_attribute for this
         case ast.Attribute(attr=fn_name):
             module: ModuleType | None = None
-            modules = (
-                dict(inspect.getmembers(ctx.parent_module, predicate=inspect.ismodule))
-                | ctx.modules
-            )
+            modules = ctx.namespace_modules()
 
             levels = _find_root(node.func, [])
             module_name = ".".join(levels[:-1])
 
             _LOGGER.debug("Searching for module %s", module_name)
             for level in levels[:-1]:
+                if (submodule := modules.get(level)) is None:
+                    break
                 modules.update(
-                    dict(inspect.getmembers(modules[level], predicate=inspect.ismodule))
+                    dict(inspect.getmembers(submodule, predicate=inspect.ismodule))
                 )
-            module = modules.get(levels[-2])
+            else:
+                module = modules.get(levels[-2])
 
-            # Fall-back to absolute import
+            # Fall-back to absolute import. Anything else, e.g. a method of an
+            # argument (`data.sum()`), can't be parsed.
             if module is None:
-                module = importlib.import_module(module_name)
+                try:
+                    module = importlib.import_module(module_name)
+                except ImportError:
+                    return None
 
             fns = dict(inspect.getmembers(module, predicate=callable))
             py_fn = fns.get(fn_name)
@@ -1202,6 +1215,21 @@ def fn_to_source(
     )
 
 
+def _stored_expr(
+    fn: Callable,
+    model_args: list[sympy.Symbol | sympy.Expr] | None,
+) -> sympy.Expr | None:
+    """The expression a function was compiled from (`sympy_tools.compile_fn`), if any."""
+    if (stored := getattr(fn, "__mxlpy_expr__", None)) is None:
+        return None
+    expr, fn_args = stored
+    if not model_args:
+        return expr
+    return expr.xreplace(
+        {sympy.Symbol(a): v for a, v in zip(fn_args, model_args, strict=True)}
+    )
+
+
 def fn_to_sympy_expr(
     fn: Callable,
     origin: str,
@@ -1235,6 +1263,8 @@ def fn_to_sympy_expr(
         y**2
 
     """
+    if (stored := _stored_expr(fn, model_args)) is not None:
+        return stored
     try:
         fn_def = get_fn_ast(fn)
         fn_args = [str(arg.arg) for arg in fn_def.args.args]
@@ -1302,6 +1332,8 @@ def fn_to_sympy_exprs(
         List of sympy expressions, one per output, or None on failure
 
     """
+    if (stored := _stored_expr(fn, model_args)) is not None:
+        return [stored]
     try:
         fn_def = get_fn_ast(fn)
         fn_args = [str(arg.arg) for arg in fn_def.args.args]

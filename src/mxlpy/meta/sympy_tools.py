@@ -219,7 +219,10 @@ def compile_fn(expr: sympy.Expr, args: list[str], *, name: str) -> Callable[...,
         "scipy": scipy,
     }
     exec(compile(src, filename, "exec"), namespace)  # noqa: S102
-    return namespace[name]
+    fn = namespace[name]
+    # Lets `fn_to_sympy_expr` use the expression instead of parsing the source back
+    fn.__mxlpy_expr__ = (expr, tuple(args))
+    return fn
 
 
 def expr_to_fn(
