@@ -46,6 +46,18 @@ for each combination of model:data.
 - `joint_mixed`
 
 
+Bayesian posterior sampling (MCMC)
+----------------------------------
+Instead of a point estimate, sample the posterior distribution of the
+parameters given the data, a Gaussian measurement noise `sigma` and a prior
+per parameter, e.g. for credible intervals.
+
+- `mcmc_steady_state`
+- `mcmc_time_course`
+- `mcmc_protocol_time_course`
+
+Samplers: `AdaptiveMetropolis`
+
 Loss functions
 --------------
 - rmse
@@ -79,6 +91,16 @@ from ._joint import (
     joint_time_course,
 )
 from ._joint_mixed import joint_mixed
+from ._mcmc import (
+    AdaptiveMetropolis,
+    McmcChain,
+    McmcResult,
+    McmcSampler,
+    Sigma,
+    mcmc_protocol_time_course,
+    mcmc_steady_state,
+    mcmc_time_course,
+)
 from ._single import protocol_time_course, steady_state, time_course
 from .abstract import (
     EnsembleFit,
@@ -103,6 +125,7 @@ from .residuals import (
 )
 
 __all__: list[str] = [
+    "AdaptiveMetropolis",
     "Bounds",
     "EnsembleFit",
     "Fit",
@@ -112,9 +135,13 @@ __all__: list[str] = [
     "JointFit",
     "LocalScipyMinimizer",
     "LossFn",
+    "McmcChain",
+    "McmcResult",
+    "McmcSampler",
     "MixedSettings",
     "OptimisationState",
     "Residual",
+    "Sigma",
     "carousel_protocol_time_course",
     "carousel_steady_state",
     "carousel_time_course",
@@ -130,6 +157,9 @@ __all__: list[str] = [
     "joint_steady_state",
     "joint_time_course",
     "mae",
+    "mcmc_protocol_time_course",
+    "mcmc_steady_state",
+    "mcmc_time_course",
     "mean",
     "mean_absolute_percentage",
     "mean_squared",
