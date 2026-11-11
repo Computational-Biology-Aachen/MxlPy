@@ -40,6 +40,7 @@ __all__ = [
     "LogNormal",
     "LogUniform",
     "Normal",
+    "Prior",
     "RNG",
     "Skewnorm",
     "Uniform",
@@ -47,6 +48,19 @@ __all__ = [
 ]
 
 RNG = np.random.default_rng(seed=42)
+
+
+class Prior(Protocol):
+    """A distribution usable as a Bayesian prior (`mxlpy.fit.mcmc_*`)."""
+
+    def log_pdf(self, x: float) -> float:
+        """Log probability density at `x` (-inf outside the support)."""
+        ...
+
+    @property
+    def positive_support(self) -> bool:
+        """Whether the support lies within (0, inf)."""
+        ...
 
 
 class Distribution(Protocol):
@@ -108,6 +122,15 @@ class Beta:
             rng = RNG
         return rng.beta(self.a, self.b, num)
 
+    def log_pdf(self, x: float) -> float:
+        """Log probability density at `x` (-inf outside the support)."""
+        return float(stats.beta.logpdf(x, self.a, self.b))
+
+    @property
+    def positive_support(self) -> bool:
+        """Whether the support lies within (0, inf), e.g. to sample in log space."""
+        return True
+
 
 @dataclass
 class Uniform:
@@ -139,6 +162,19 @@ class Uniform:
         if rng is None:
             rng = RNG
         return rng.uniform(self.lower_bound, self.upper_bound, num)
+
+    def log_pdf(self, x: float) -> float:
+        """Log probability density at `x` (-inf outside the support)."""
+        return float(
+            stats.uniform.logpdf(
+                x, self.lower_bound, self.upper_bound - self.lower_bound
+            )
+        )
+
+    @property
+    def positive_support(self) -> bool:
+        """Whether the support lies within (0, inf), e.g. to sample in log space."""
+        return self.lower_bound >= 0
 
 
 @dataclass
@@ -177,6 +213,15 @@ class LogUniform:
             ),
         )
 
+    def log_pdf(self, x: float) -> float:
+        """Log probability density at `x` (-inf outside the support)."""
+        return float(stats.loguniform.logpdf(x, self.lower_bound, self.upper_bound))
+
+    @property
+    def positive_support(self) -> bool:
+        """Whether the support lies within (0, inf), e.g. to sample in log space."""
+        return True
+
 
 @dataclass
 class Normal:
@@ -208,6 +253,15 @@ class Normal:
         if rng is None:
             rng = RNG
         return rng.normal(self.loc, self.scale, num)
+
+    def log_pdf(self, x: float) -> float:
+        """Log probability density at `x` (-inf outside the support)."""
+        return float(stats.norm.logpdf(x, self.loc, self.scale))
+
+    @property
+    def positive_support(self) -> bool:
+        """Whether the support lies within (0, inf), e.g. to sample in log space."""
+        return False
 
 
 @dataclass
@@ -242,6 +296,15 @@ class LogNormal:
         if rng is None:
             rng = RNG
         return rng.lognormal(self.mean, self.sigma, num)
+
+    def log_pdf(self, x: float) -> float:
+        """Log probability density at `x` (-inf outside the support)."""
+        return float(stats.lognorm.logpdf(x, self.sigma, scale=np.exp(self.mean)))
+
+    @property
+    def positive_support(self) -> bool:
+        """Whether the support lies within (0, inf), e.g. to sample in log space."""
+        return True
 
 
 @dataclass
@@ -281,6 +344,15 @@ class Skewnorm:
         return cast(
             Array, stats.skewnorm(self.a, loc=self.loc, scale=self.scale).rvs(num)
         )
+
+    def log_pdf(self, x: float) -> float:
+        """Log probability density at `x` (-inf outside the support)."""
+        return float(stats.skewnorm.logpdf(x, self.a, loc=self.loc, scale=self.scale))
+
+    @property
+    def positive_support(self) -> bool:
+        """Whether the support lies within (0, inf), e.g. to sample in log space."""
+        return False
 
 
 @dataclass
@@ -361,6 +433,15 @@ class GaussianKde:
 
         """
         return cast(Array, self.kde.resample(num)[0])
+
+    def log_pdf(self, x: float) -> float:
+        """Log probability density at `x` (-inf outside the support)."""
+        return float(self.kde.logpdf(x)[0])
+
+    @property
+    def positive_support(self) -> bool:
+        """Whether the support lies within (0, inf), e.g. to sample in log space."""
+        return False
 
 
 def sample(
