@@ -117,3 +117,6 @@ src/mxlweb
 .github/copilot-instructions.md
 .claude
 CLAUDE.md
+
+# Cached results of docs notebook cells (scripts/execute_docs.py)
+.docs-cache/
