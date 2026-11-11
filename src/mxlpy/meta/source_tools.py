@@ -25,7 +25,7 @@ from wadler_lindig import pformat
 from mxlpy.meta.array_fns import ARRAY_FNS, array_fn_from_call
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from sympy.core.function import Function
 
@@ -59,10 +59,21 @@ __all__ = [
     "fn_to_sympy_exprs",
     "get_fn_ast",
     "get_fn_source",
+    "replace_symbols",
 ]
 
 _LOGGER = logging.getLogger(__name__)
 PARSE_ERROR = sympy.Symbol("ERROR")
+
+
+def _sympy_max(*args: sympy.Expr) -> sympy.Expr:
+    # Simplifying a Max/Min compares its arguments symbolically, which is slow
+    # for large ones; codegen handles the unsimplified form just as well.
+    return sympy.Max(*args, evaluate=all(sympy.sympify(a).is_number for a in args))
+
+
+def _sympy_min(*args: sympy.Expr) -> sympy.Expr:
+    return sympy.Min(*args, evaluate=all(sympy.sympify(a).is_number for a in args))
 
 
 def _sympy_log10(x: sympy.Expr) -> Function:
@@ -151,8 +162,8 @@ KNOWN_CONSTANTS: dict[float, sympy.Float] = {
 KNOWN_FNS: dict[Callable, sympy.Expr] = {
     # built-ins
     abs: sympy.Abs,  # type: ignore
-    min: sympy.Min,
-    max: sympy.Max,
+    min: _sympy_min,
+    max: _sympy_max,
     pow: sympy.Pow,
     # round: sympy
     # divmod
@@ -249,8 +260,8 @@ KNOWN_FNS: dict[Callable, sympy.Expr] = {
     np.less_equal: sympy.Le,
     np.log: sympy.log,
     np.log10: _sympy_log10,
-    np.maximum: sympy.Max,
-    np.minimum: sympy.Min,
+    np.maximum: _sympy_max,
+    np.minimum: _sympy_min,
     np.mod: sympy.Mod,
     np.positive: _sympy_positive,
     np.power: sympy.Pow,
@@ -712,7 +723,35 @@ def _handle_unaryop(node: ast.UnaryOp, ctx: Context) -> sympy.Expr:
             raise NotImplementedError(msg)
 
 
-def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
+_SUM_OPS = (ast.Add, ast.Sub)
+
+
+def _handle_sum(node: ast.BinOp, ctx: Context) -> sympy.Expr | None:
+    """Build a whole `a + b - c + ...` chain as one Add.
+
+    Building one Add per operator re-flattens an ever-growing sum (quadratic),
+    and recursing per operator overflows the stack for long sums. Products
+    stay pairwise: `2 * (x + y)` is only distributed by a two-factor Mul.
+    """
+    rest: list[tuple[ast.operator, ast.expr]] = []
+    current: ast.expr = node
+    while isinstance(current, ast.BinOp) and isinstance(current.op, _SUM_OPS):
+        rest.append((current.op, current.right))
+        current = current.left
+    if (first := _handle_expr(current, ctx)) is None:
+        return None
+    terms: list[Any] = [first]
+    for op, operand in reversed(rest):
+        if (expr := _handle_expr(operand, ctx)) is None:
+            return None
+        terms.append(-cast(Any, expr) if isinstance(op, ast.Sub) else expr)
+    return sympy.Add(*terms)
+
+
+def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr | None:
+    if isinstance(node.op, _SUM_OPS):
+        return _handle_sum(node, ctx)
+
     left = _handle_expr(node.left, ctx)
     left = cast(Any, left)  # stupid sympy types don't allow ops on symbols
 
@@ -720,10 +759,6 @@ def _handle_binop(node: ast.BinOp, ctx: Context) -> sympy.Expr:
     right = cast(Any, right)  # stupid sympy types don't allow ops on symbols
 
     match node.op:
-        case ast.Add():
-            return left + right
-        case ast.Sub():
-            return left - right
         case ast.Mult():
             return left * right
         case ast.Div():
@@ -1215,6 +1250,31 @@ def fn_to_source(
     )
 
 
+def replace_symbols(expr: sympy.Basic, mapping: Mapping[Any, Any]) -> Any:
+    """`expr.xreplace(mapping)`, without re-simplifying when only renaming symbols.
+
+    Rebuilding e.g. a `Max` over a large expression re-runs its (expensive)
+    argument comparison, although renaming symbols can't change its result.
+    """
+    if all(isinstance(v, sympy.Symbol) for v in mapping.values()):
+        with sympy.evaluate(False):  # noqa: FBT003
+            return expr.xreplace(mapping)
+    return expr.xreplace(mapping)
+
+
+def _arg_symbols(
+    fn_args: list[str], model_args: list[sympy.Symbol | sympy.Expr] | None
+) -> dict[str, sympy.Symbol | sympy.Expr]:
+    """The function's arguments, already mapped to the model's.
+
+    Parsing with them in place avoids rebuilding the finished expression with
+    `subs`, which re-simplifies it (e.g. every Max/Min).
+    """
+    if not model_args:
+        return {name: sympy.Symbol(name) for name in fn_args}
+    return dict(zip(fn_args, model_args, strict=True))
+
+
 def _stored_expr(
     fn: Callable,
     model_args: list[sympy.Symbol | sympy.Expr] | None,
@@ -1225,8 +1285,8 @@ def _stored_expr(
     expr, fn_args = stored
     if not model_args:
         return expr
-    return expr.xreplace(
-        {sympy.Symbol(a): v for a, v in zip(fn_args, model_args, strict=True)}
+    return replace_symbols(
+        expr, {sympy.Symbol(a): v for a, v in zip(fn_args, model_args, strict=True)}
     )
 
 
@@ -1272,7 +1332,7 @@ def fn_to_sympy_expr(
         sympy_expr = _handle_fn_body(
             fn_def.body,
             ctx=Context(
-                symbols={name: sympy.Symbol(name) for name in fn_args},
+                symbols=_arg_symbols(fn_args, model_args),
                 caller=fn,
                 parent_module=inspect.getmodule(fn),
                 origin=origin,
@@ -1285,18 +1345,6 @@ def fn_to_sympy_expr(
         # Evaluated fns and floats from attributes
         if isinstance(sympy_expr, float):
             return sympy.Float(sympy_expr)
-        if model_args is not None and len(model_args):
-            try:
-                sympy_expr = sympy_expr.subs(
-                    dict(zip(fn_args, model_args, strict=True))
-                )
-            except ValueError as e:
-                _LOGGER.warning("fn name: %s", fn.__name__)
-                _LOGGER.warning(
-                    "\n    fn args: %s \n    model args: %s", fn_args, model_args
-                )
-                raise ValueError from e
-
         return cast(sympy.Expr, sympy_expr)
 
     except (KeyError, TypeError, ValueError, NotImplementedError) as e:
@@ -1339,7 +1387,7 @@ def fn_to_sympy_exprs(
         fn_args = [str(arg.arg) for arg in fn_def.args.args]
 
         ctx = Context(
-            symbols={name: sympy.Symbol(name) for name in fn_args},
+            symbols=_arg_symbols(fn_args, model_args),
             caller=fn,
             parent_module=inspect.getmodule(fn),
             origin=origin,
@@ -1350,10 +1398,6 @@ def fn_to_sympy_exprs(
         exprs = _handle_fn_body_outputs(fn_def.body, ctx)
         if exprs is None:
             return None
-
-        if model_args is not None and len(model_args):
-            subs = dict(zip(fn_args, model_args, strict=True))
-            exprs = [cast(sympy.Expr, e.subs(subs)) for e in exprs]
 
     except (TypeError, ValueError, NotImplementedError) as e:
         msg = f"Failed parsing function '{fn.__name__}' of {origin}"

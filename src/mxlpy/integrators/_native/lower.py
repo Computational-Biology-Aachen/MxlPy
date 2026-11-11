@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 import sympy
 
 from mxlpy.meta.array_fns import fold_data
+from mxlpy.meta.source_tools import replace_symbols
 
 if TYPE_CHECKING:
     from collections.abc import Hashable
@@ -97,9 +98,9 @@ def lower(model: Any) -> Lowered:
         n=len(var_names),
         par_names=par_names,
         assignments=[
-            (rename[sympy.Symbol(a)].name, e.xreplace(rename)) for a, e in body
+            (rename[sympy.Symbol(a)].name, replace_symbols(e, rename)) for a, e in body
         ],
-        dydt=[diff_eqs[v].xreplace(rename) for v in var_names],
+        dydt=[replace_symbols(diff_eqs[v], rename) for v in var_names],
     )
 
 
@@ -134,7 +135,8 @@ def lower_outputs(model: Any, names: list[str]) -> Lowered:
         n=len(var_names),
         par_names=par_names,
         assignments=[
-            (rename[sympy.Symbol(a)].name, e.xreplace(rename)) for a, e in extended
+            (rename[sympy.Symbol(a)].name, replace_symbols(e, rename))
+            for a, e in extended
         ],
         dydt=[rename[sympy.Symbol(n)] for n in names],
     )
