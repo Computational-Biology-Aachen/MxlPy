@@ -36,7 +36,7 @@ from mxlpy.types import Derived, InitialAssignment
 from mxlpy.units import Quantity, unit_to_json
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
 
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
@@ -3298,9 +3298,13 @@ def generate_latex_diff(
         }
 
     def _fn_exprs(
-        items: dict[str, SymbolicDerived | SymbolicReaction],
+        items: Mapping[str, SymbolicDerived | SymbolicReaction | SymbolicFn],
     ) -> dict[str, sympy.Expr]:
-        return {k: v.fn.expr for k, v in items.items()}
+        # Reduced reactions and surrogate outputs are bare functions
+        return {
+            k: v.expr if isinstance(v, SymbolicFn) else v.fn.expr
+            for k, v in items.items()
+        }
 
     return DiffLatexCodegen(
         parameters=_build_rows(
