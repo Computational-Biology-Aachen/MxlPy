@@ -42,6 +42,19 @@ pip install mxlpy[sr]
 pip install mxlpy[torch, tensorflow, keras, jax, sr]
 ```
 
+For the fast `Native` integrator, which compiles your model to machine code and solves it with compiled Radau, LSODA and CVODE solvers, install the `native` extra.
+It pulls in [mxlpy-native](https://pypi.org/project/mxlpy-native/) (with `llvmlite`), which has wheels for Linux x86_64 and aarch64, macOS arm64 and Windows amd64 and arm64.
+On every other platform it installs a WASM backend (`wasmtime`) instead, which runs the same solvers without a compiler, a little slower.
+
+```shell
+pip install mxlpy[native]
+
+# force the WASM backend
+pip install mxlpy[native-wasm]
+```
+
+If something doesn't load, `python -m mxlpy_native` reports what's installed and how to fix each failure.
+
 For the CVODE solver from the [SUNDIALS](https://computing.llnl.gov/projects/sundials) suite, install the `sundials` extra, which uses the official [sundials4py](https://pypi.org/project/sundials4py/) bindings.
 It has wheels for Linux x86_64, macOS and Windows x64; on other platforms (e.g. Linux aarch64) the extra installs nothing and mxlpy falls back to the Scipy integrator.
 
