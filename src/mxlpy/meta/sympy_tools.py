@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import functools
 import linecache
 import math
 import re
@@ -16,6 +17,7 @@ import scipy.special
 import sympy
 from sympy.printing.numpy import JaxPrinter as _SympyJaxPrinter
 from sympy.printing.numpy import (
+    NumPyPrinter,
     _known_constants_numpy,  # pyright: ignore[reportPrivateUsage]
     _known_functions_numpy,  # pyright: ignore[reportPrivateUsage]
 )
@@ -109,6 +111,7 @@ def sympy_to_python_fn(
     fn_name: str,
     args: list[str],
     expr: sympy.Expr,
+    elementwise: bool = False,
 ) -> str:
     """Convert a sympy expression to a python function.
 
@@ -120,6 +123,10 @@ def sympy_to_python_fn(
         List of argument names for the function
     expr
         Sympy expression to convert to a function body
+    elementwise
+        Print with numpy, so the function also works on arrays (mxl-schemas
+        ADR 0015). `math` is faster on numbers, so this is only for
+        expressions that read arrays.
 
     Returns
     -------
@@ -138,8 +145,15 @@ def sympy_to_python_fn(
     """
     fn_args = ", ".join(f"{i}: float" for i in args)
 
+    body = (
+        NumPyPrinter({"fully_qualified_modules": True, "full_prec": False}).doprint(
+            expr
+        )
+        if elementwise
+        else sympy.pycode(expr, fully_qualified_modules=True, full_prec=False)
+    )
     return f"""def {fn_name}({fn_args}) -> float:
-    return {sympy.pycode(expr, fully_qualified_modules=True, full_prec=False)}
+    return {body}
     """.replace("math.factorial", "scipy.special.factorial")
 
 
@@ -182,7 +196,13 @@ def stoichiometries_to_sympy(
 ###############################################################################
 
 
-def compile_fn(expr: sympy.Expr, args: list[str], *, name: str) -> Callable[..., float]:
+def compile_fn(
+    expr: sympy.Expr,
+    args: list[str],
+    *,
+    name: str,
+    elementwise: bool = False,
+) -> Callable[..., float]:
     """Compile a sympy expression into an introspectable python function.
 
     The generated source is registered in `linecache`, so `inspect.getsource`
@@ -197,6 +217,8 @@ def compile_fn(expr: sympy.Expr, args: list[str], *, name: str) -> Callable[...,
         Ordered argument names of the generated function
     name
         Name of the generated function, needs to be a valid identifier
+    elementwise
+        Generate numpy code that also works on arrays (see `sympy_to_python_fn`)
 
     Returns
     -------
@@ -204,7 +226,9 @@ def compile_fn(expr: sympy.Expr, args: list[str], *, name: str) -> Callable[...,
         The compiled function
 
     """
-    src = sympy_to_python_fn(fn_name=name, args=args, expr=expr)
+    src = sympy_to_python_fn(
+        fn_name=name, args=args, expr=expr, elementwise=elementwise
+    )
     filename = f"<mxlpy-generated-{uuid.uuid4().hex}>"
     linecache.cache[filename] = (
         len(src),
@@ -213,6 +237,7 @@ def compile_fn(expr: sympy.Expr, args: list[str], *, name: str) -> Callable[...,
         filename,
     )
     namespace: dict[str, Any] = {
+        "functools": functools,
         "math": math,
         "numpy": np,
         "np": np,
