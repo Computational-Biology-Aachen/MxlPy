@@ -5,23 +5,31 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 import pytest
+import scipy
+import scipy.integrate
 import sympy
 from scipy.integrate import simpson
 
 from mxlpy import Model, load, save
 from mxlpy.meta import generate_model_code_mxlweb, generate_model_data_mxlweb
 from mxlpy.meta.array_fns import (
+    ArrayAt,
     ArrayIndex,
     ArrayMaxOf,
+    ArrayMean,
+    ArrayMinOf,
     ArraySimpson,
+    ArraySlice,
     ArrayStd,
     ArraySum,
+    array_lengths,
     fold_data,
+    simpson_weights,
 )
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
@@ -186,21 +194,98 @@ def test_fold_data_without_data_is_identity() -> None:
     assert fold_data(2 * x, {}, "y") == 2 * x
 
 
-def test_fold_data_rejects_non_data_in_array_node() -> None:
+def _fd(fn: Any, x: float, h: float = 1e-6) -> float:
+    return (fn(x + h) - fn(x - h)) / (2 * h)
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        lambda a: ArraySum(a),
+        lambda a: ArrayMean(a),
+        lambda a: ArrayStd(a),
+        lambda a: ArrayMaxOf(a),
+        lambda a: ArrayMinOf(a),
+        lambda a: ArrayIndex(a, -2),
+        lambda a: ArraySum(ArraySlice(a, 1, 3)),
+        lambda a: ArrayAt(a, 2.6, sympy.Symbol("t")),
+        lambda a: ArraySimpson(a, sympy.Symbol("t")),
+    ],
+)
+def test_derivatives_match_finite_differences(node: Any) -> None:
+    """d/ds of an array node is the node applied to the operand's derivative (ADR 0015)."""
+    s, w = sympy.symbols("s w")
+    data = {
+        "w": np.array([0.3, 1.2, 0.7, 2.0, 0.5]),
+        "t": np.array([0, 1, 2.5, 3, 4.2]),
+    }
+    expr = node(sympy.exp(-w * s) * s**2)
+    modules = [{"scipy": scipy}, "numpy"]
+    fn = sympy.lambdify([s, w, sympy.Symbol("t")], expr, modules=modules)
+    dfn = sympy.lambdify([s, w, sympy.Symbol("t")], expr.diff(s), modules=modules)
+    got = float(dfn(0.8, data["w"], data["t"]))
+    expected = _fd(lambda x: float(fn(x, data["w"], data["t"])), 0.8)
+    assert got == pytest.approx(expected, rel=1e-6)
+
+
+def test_simpson_weights() -> None:
+    x = np.array([0, 1, 2.5, 3, 4.2, 6])
+    y = np.array([1, 3, 2, 5, 4, -1.0])
+    assert simpson_weights(x) @ y == pytest.approx(simpson(y, x=x), rel=1e-12)
+
+
+def test_array_lengths_infers_array_derived() -> None:
+    a, c, k = sympy.symbols("a c k")
+    data = {"a": np.ones(4)}
+    lengths = array_lengths([("k", a * c), ("r", ArraySum(k))], data, {"r"})
+    assert lengths == {"k": 4}
+
+
+@pytest.mark.parametrize(
+    ("expr", "match"),
+    [
+        (sympy.Symbol("a") + sympy.Symbol("b"), "arrays of lengths"),
+        (ArraySum(sympy.Symbol("c")), "needs an array"),
+        (ArrayIndex(sympy.Symbol("a"), sympy.Symbol("c")), "only reference data"),
+        (ArrayIndex(sympy.Symbol("a"), 7), "is not an element"),
+        (ArraySum(ArraySlice(sympy.Symbol("a"), 3, 1)), "is empty"),
+        (
+            ArraySimpson(sympy.Symbol("a"), sympy.Symbol("a") * 2 + sympy.Symbol("b")),
+            "arrays of lengths",
+        ),
+    ],
+)
+def test_array_rules(expr: sympy.Expr, match: str) -> None:
+    data = {"a": np.ones(4), "b": np.ones(3)}
+    with pytest.raises(ValueError, match=match):
+        array_lengths([("v", expr)], data)
+
+
+def test_array_reaching_a_scalar_is_rejected() -> None:
+    a, c = sympy.symbols("a c")
+    with pytest.raises(ValueError, match="must be a number"):
+        array_lengths([("r", a * c)], {"a": np.ones(3)}, {"r"})
+
+
+def test_array_lengths_any_order() -> None:
+    a, c, k = sympy.symbols("a c k")
+    lengths = array_lengths([("r", ArraySum(k)), ("k", a * c)], {"a": np.ones(2)})
+    assert lengths == {"k": 2}
+
+
+def test_fold_data_keeps_state_dependent_arrays() -> None:
     a, x = sympy.symbols("a x")
-    with pytest.raises(ValueError, match="only reference data and numbers, not 'x'"):
-        fold_data(ArraySum(a * x), {"a": pd.Series([1.0, 2.0])}, "v")
+    data = {"a": pd.Series([1.0, 2.0])}
+    assert fold_data(ArraySum(a * x), data, "v") == ArraySum(a * x)
+    assert fold_data(x * ArraySum(a), data, "v") == 3.0 * x
 
 
-def test_fold_data_rejects_array_result() -> None:
-    from mxlpy.meta.array_fns import ArraySlice  # noqa: PLC0415
+def test_elementwise_code_reads_arrays() -> None:
+    from mxlpy.meta.sympy_tools import compile_fn
 
-    a = sympy.Symbol("a")
-    with pytest.raises(ValueError, match="gives an array"):
-        fold_data(ArraySlice(a, 0, 2), {"a": pd.Series([1.0, 2.0, 3.0])}, "v")
-
-
-def test_fold_data_rejects_bare_data() -> None:
     a, x = sympy.symbols("a x")
-    with pytest.raises(ValueError, match="data 'a' is an array"):
-        fold_data(a * x, {"a": pd.Series([1.0, 2.0])}, "v")
+    expr = ArraySum(sympy.exp(-a * x) + sympy.Max(a, x))
+    fn = compile_fn(expr, ["a", "x"], name="f", elementwise=True)
+    values = np.array([0.5, 1.0, 2.0])
+    expected = np.sum(np.exp(-values * 1.5) + np.maximum(values, 1.5))
+    assert fn(values, 1.5) == pytest.approx(expected, rel=1e-12)

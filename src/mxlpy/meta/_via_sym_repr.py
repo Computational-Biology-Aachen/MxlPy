@@ -1069,6 +1069,7 @@ def _get_dependencies_and_leaves(
             for k, v in model.get_raw_parameters(as_copy=False).items()
             if not isinstance(v.value, InitialAssignment)
         }
+        | set(getattr(model, "get_raw_data", dict)())
         | {"time"}
     )
     dependees = (

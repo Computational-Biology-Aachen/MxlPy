@@ -18,6 +18,9 @@ import numpy as np
 from mxlpy.integrators._native.codegen import ExprEmitter
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from mxlpy.integrators._native.codegen import Index
     from mxlpy.integrators._native.lower import Lowered
 
 __all__ = ["compile_model", "load"]
@@ -29,11 +32,23 @@ _BINARY = {"add": "fadd", "mul": "fmul", "div": "fdiv"}
 
 
 class _Emit(ExprEmitter):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, low: Lowered) -> None:
+        super().__init__({k: len(v) for k, v in low.data.items()} | low.arrays)
         self.lines: list[str] = []
         self.decls: set[str] = set()
         self.tmp = 0
+        self.block = "entry"
+        self.loops = 0
+        self.data = set(low.data)
+        # data are constants of the module, array buffers live on the stack
+        self.globals = [
+            f"@{k} = private unnamed_addr constant [{len(v)} x double] "
+            f"[{', '.join(f'double {self.const(float(x))}' for x in v)}]"
+            for k, v in low.data.items()
+        ]
+        self.allocas = [
+            f"  %{k} = alloca [{n} x double]" for k, n in low.arrays.items()
+        ]
 
     def _new(self, instr: str) -> str:
         self.tmp += 1
@@ -75,10 +90,61 @@ class _Emit(ExprEmitter):
     def negate(self, a: str) -> str:
         return self._new(f"xor i1 {a}, true")
 
+    def _ptr(self, array: str, idx: Index) -> str:
+        reg, offset = idx
+        if reg is None:
+            i = str(offset)
+        elif offset == 0:
+            i = reg
+        else:
+            i = self._new(f"add i64 {reg}, {offset}")
+        base = f"@{array}" if array in self.data else f"%{array}"
+        n = self.lengths[array]
+        return self._new(f"getelementptr [{n} x double], ptr {base}, i64 0, i64 {i}")
+
+    def load(self, array: str, idx: Index) -> str:
+        return self._new(f"load double, ptr {self._ptr(array, idx)}")
+
+    def store(self, array: str, idx: Index, value: str) -> None:
+        self.lines.append(f"  store double {value}, ptr {self._ptr(array, idx)}")
+
+    def loop(
+        self,
+        n: int,
+        inits: list[str],
+        body: Callable[[str, list[str]], list[str]],
+    ) -> list[str]:
+        self.loops += 1
+        label, pred = f"L{self.loops}", self.block
+        counter = f"%{label}.i"
+        accs = [f"%{label}.acc{j}" for j in range(len(inits))]
+        self.lines += [f"  br label %{label}", f"{label}:"]
+        self.block = label
+        phis = len(self.lines)
+        nexts = body(counter, accs)
+        if self.block != label:
+            msg = "internal error: a loop body must stay in one block"
+            raise RuntimeError(msg)
+        self.lines[phis:phis] = [
+            f"  {counter} = phi i64 [0, %{pred}], [{counter}.next, %{label}]",
+            *(
+                f"  {acc} = phi double [{init}, %{pred}], [{nxt}, %{label}]"
+                for acc, init, nxt in zip(accs, inits, nexts, strict=True)
+            ),
+        ]
+        self.lines += [
+            f"  {counter}.next = add i64 {counter}, 1",
+            f"  %{label}.more = icmp ult i64 {counter}.next, {n}",
+            f"  br i1 %{label}.more, label %{label}, label %{label}.end",
+            f"{label}.end:",
+        ]
+        self.block = f"{label}.end"
+        return nexts
+
 
 def to_llvm_ir(low: Lowered) -> str:
     """Emit `void fcn(int n, double t, double *y, double *dydt, double *pars)` as LLVM IR."""
-    em = _Emit()
+    em = _Emit(low)
     em.env["t"] = "%t"
 
     def load(ptr: str, i: int, name: str) -> None:
@@ -91,7 +157,10 @@ def to_llvm_ir(low: Lowered) -> str:
     for i in range(len(low.par_names)):
         load("%pars", i, f"p{i}")
     for name, expr in low.assignments:
-        em.env[name] = em.value(expr)
+        if name in low.arrays:
+            em.fill(name, expr)
+        else:
+            em.env[name] = em.value(expr)
         em.memo.clear()
     for i, expr in enumerate(low.dydt):
         v = em.value(expr)
@@ -100,7 +169,10 @@ def to_llvm_ir(low: Lowered) -> str:
     return "\n".join(
         [
             *sorted(em.decls),
+            *em.globals,
             "define void @fcn(i32 %n, double %t, ptr %y, ptr %dydt, ptr %pars) {",
+            "entry:",
+            *em.allocas,
             *em.lines,
             "  ret void",
             "}",

@@ -184,7 +184,7 @@ def test_reset(backend: Any) -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_parameter_update_applies_without_recompiling(backend: Any) -> None:
-    from mxlpy.integrators import int_native  # noqa: PLC0415
+    from mxlpy.integrators import int_native
 
     model = chain()
     sim = Simulator(model, integrator=_native(backend))
@@ -214,7 +214,7 @@ def test_structure_change_recompiles(backend: Any) -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_cache_eviction_keeps_other_models_working(backend: Any) -> None:
-    from mxlpy.integrators import int_native  # noqa: PLC0415
+    from mxlpy.integrators import int_native
 
     kept = lotka()
     integrator = mxlpy.Native(kept, (2.0, 1.0), backend=backend)
@@ -295,7 +295,7 @@ def test_lsoda_matches_scipy_lsoda(backend: Any, factory) -> None:  # noqa: ANN0
 )
 def test_cvode_matches_assimulo_cvode(backend: Any, factory) -> None:  # noqa: ANN001
     """Both run SUNDIALS' CVODE with BDF, so they agree well below the solver tolerance."""
-    from mxlpy import Assimulo  # noqa: PLC0415
+    from mxlpy import Assimulo
 
     points = np.linspace(0, 20, 41)
     _, expected = _values(
@@ -328,7 +328,7 @@ def test_unknown_method_raises(backend: Any) -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_non_lowerable_model_raises_clear_error(backend: Any) -> None:
-    from mxlpy.integrators.int_native import NativeLoweringError  # noqa: PLC0415
+    from mxlpy.integrators.int_native import NativeLoweringError
 
     def opaque(x: float) -> float:
         return float(np.mean([x, x**2]))  # numpy can't take symbols
@@ -344,7 +344,7 @@ def test_non_lowerable_model_raises_clear_error(backend: Any) -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_plain_callable_raises_clear_error(backend: Any) -> None:
-    from mxlpy.integrators.int_native import NativeLoweringError  # noqa: PLC0415
+    from mxlpy.integrators.int_native import NativeLoweringError
 
     with pytest.raises(NativeLoweringError, match="needs a model"):
         mxlpy.Native(lambda _t, y: y, (1.0,), backend=backend)  # type: ignore[arg-type]
@@ -373,7 +373,7 @@ def test_decreasing_time_points_raise(backend: Any) -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_pickles_for_workers(backend: Any) -> None:
-    import dill  # noqa: PLC0415
+    import dill
 
     integrator = mxlpy.Native(lotka(), (2.0, 1.0), backend=backend)
     expected = integrator.integrate(t_end=1).unwrap_or_err().values  # noqa: PD011
@@ -386,7 +386,7 @@ def test_pickles_for_workers(backend: Any) -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_parallel_scan(backend: Any) -> None:
-    import pandas as pd  # noqa: PLC0415
+    import pandas as pd
 
     pars = pd.DataFrame({"out": [0.2, 0.4, 0.8]})
     res = scan.steady_state(
@@ -447,7 +447,7 @@ def with_outputs() -> Model:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_compiled_outputs_match_python(backend: Any) -> None:
-    from mxlpy.integrators import int_native  # noqa: PLC0415
+    from mxlpy.integrators import int_native
 
     model = with_outputs()
     res = (
@@ -609,17 +609,28 @@ def _state_weighted(x: float, spectrum: pd.Series, wavelength: pd.Series) -> flo
     return simpson(x * spectrum, x=wavelength)
 
 
-def test_data_depending_on_state_is_rejected() -> None:
-    from mxlpy.integrators._native.lower import (  # noqa: PLC0415
-        NativeLoweringError,
-        lower,
-    )
-
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_data_depending_on_state(backend: Any) -> None:
+    """An array subtree may read variables (ADR 0015): light = x * sum(spectrum)."""
     model = _data_model(np.ones(301) / 300).update_derived(
         "light", _state_weighted, args=["x", "spectrum", "wavelength"]
     )
-    with pytest.raises(NativeLoweringError, match="only reference data and numbers"):
-        lower(model)
+    tol = {"rtol": 1e-10, "atol": 1e-10}
+    expected = (
+        Simulator(model, integrator=partial(Scipy, method="Radau", **tol))
+        .simulate(1.0)
+        .get_result()
+        .unwrap_or_err()
+    )
+    res = (
+        Simulator(model, integrator=_native(backend, **tol))
+        .simulate(1.0)
+        .get_result()
+        .unwrap_or_err()
+    )
+    assert res.variables["x"].iloc[-1] == pytest.approx(
+        expected.variables["x"].iloc[-1], rel=1e-6
+    )
 
 
 def _scaled(factor: float) -> Model:
@@ -669,7 +680,7 @@ def test_content_key_sees_closures_and_code() -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_shared_code_serves_pickled_copies(backend: Any) -> None:
-    from mxlpy.integrators import int_native  # noqa: PLC0415
+    from mxlpy.integrators import int_native
 
     model = _decaying(_decay2)
     first = int_native._compile(model, backend, 0.0, np.ones(1))
@@ -679,10 +690,12 @@ def test_shared_code_serves_pickled_copies(backend: Any) -> None:
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_wrongly_shared_code_is_recompiled(backend: Any, monkeypatch) -> None:  # noqa: ANN001
-    from mxlpy.integrators import int_native  # noqa: PLC0415
+    from mxlpy.integrators import int_native
 
     monkeypatch.setattr(int_native, "content_key", lambda _: "collision")
     monkeypatch.setattr(int_native, "_SHARED", type(int_native._SHARED)())
+    # nor may its code stay cached for later tests, which then never share it
+    monkeypatch.setattr(int_native, "_CACHE", type(int_native._CACHE)())
     Simulator(_decaying(_decay2), integrator=_native(backend)).simulate(1)
     res = (
         Simulator(
@@ -697,7 +710,7 @@ def test_wrongly_shared_code_is_recompiled(backend: Any, monkeypatch) -> None:  
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_shared_code_loads_from_its_blob(backend: Any) -> None:
-    from mxlpy.integrators import int_native  # noqa: PLC0415
+    from mxlpy.integrators import int_native
 
     entry = int_native._compile(chain(), backend, 0.0, np.array([5.0, 0.0]))
     loaded = int_native._Entry(entry.backend, entry.blob, entry.par_names)
@@ -709,7 +722,7 @@ def test_shared_code_loads_from_its_blob(backend: Any) -> None:
 
 
 def _shared_keys(model: Model) -> tuple[set, str | None]:
-    from mxlpy.integrators import int_native  # noqa: PLC0415
+    from mxlpy.integrators import int_native
 
     return set(int_native._SHARED), int_native.content_key(model)
 

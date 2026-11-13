@@ -27,12 +27,15 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
+import numpy as np
 import pandas as pd
+import sympy
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.meta import _mathml as mml
+from mxlpy.meta.array_fns import ARRAY_NODE_TYPES, array_lengths
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
     compile_fn,
@@ -45,9 +48,7 @@ from mxlpy.types import Derived, InitialAssignment, SerializationError, Slider
 from mxlpy.units import unit_from_json, unit_to_json
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
-
-    import sympy
+    from collections.abc import Callable, Collection, Mapping
 
     from mxlpy.surrogates.abstract import SurrogateProtocol
     from mxlpy.surrogates.abstract_ode import OdeSurrogateProtocol
@@ -74,6 +75,8 @@ __all__ = [
 SPEC_VERSION = "1.1"
 # Written instead of SPEC_VERSION by a model with data (`data_ref`).
 DATA_SPEC_VERSION = "1.2"
+# Written by a model whose arrays depend on more than data (ADR 0015).
+ARRAY_SPEC_VERSION = "1.3"
 # The schema is maintained in the shared, language-agnostic `mxl-schemas` repo
 # so it can be consumed by both mxlpy and mxlweb. It is intentionally not
 # vendored into this package. The URL is pinned to the major spec version, so a
@@ -255,14 +258,44 @@ def mxl_json_data_file(
     return out or None
 
 
+def _dynamic_arrays(section: Mapping[str, Any], data: Mapping[str, Any]) -> bool:
+    """Whether an array in the model section depends on more than data and numbers."""
+    data = {k: np.asarray(v, dtype=float) for k, v in data.items()}
+    exprs = {
+        f"{kind}:{k}": mathml_to_sympy(mml.node_from_dict(v["fn"]))
+        for kind in ("derived", "reactions", "readouts", "variables")
+        for k, v in section.get(kind, {}).items()
+        if "fn" in v
+    }
+    derived = [
+        (k.removeprefix("derived:"), e)
+        for k, e in exprs.items()
+        if k.startswith("derived:")
+    ]
+    if array_lengths(derived, data):
+        return True
+    return any(
+        not {str(s) for s in node.free_symbols} <= set(data)
+        for e in exprs.values()
+        for node in sympy.preorder_traversal(e)
+        if type(node) in ARRAY_NODE_TYPES
+    )
+
+
 def _envelope(
     model: KineticModelBuilder | OdeModelBuilder,
     data_ref: str,
+    section: Mapping[str, Any],
 ) -> dict[str, Any]:
     """`spec_version` and, for a model with data, `data_ref`."""
-    if not model.get_raw_data():
+    if not (data := model.get_raw_data()):
         return {"spec_version": SPEC_VERSION}
-    return {"spec_version": DATA_SPEC_VERSION, "data_ref": data_ref}
+    try:
+        dynamic = _dynamic_arrays(section, data)
+    except ValueError as e:
+        raise SerializationError(str(e)) from e
+    version = ARRAY_SPEC_VERSION if dynamic else DATA_SPEC_VERSION
+    return {"spec_version": version, "data_ref": data_ref}
 
 
 def model_to_dict(
@@ -383,7 +416,7 @@ def model_to_dict(
 
     return {
         "$schema": SCHEMA_URL,
-        **_envelope(model, data_ref),
+        **_envelope(model, data_ref, model_section),
         "kind": "kinetic",
         "model_id": model_id,
         "description": description,
@@ -559,7 +592,7 @@ def ode_model_to_dict(
 
     return {
         "$schema": ODE_SCHEMA_URL,
-        **_envelope(model, data_ref),
+        **_envelope(model, data_ref, model_section),
         "kind": "ode",
         "model_id": model_id,
         "description": description,
@@ -744,10 +777,50 @@ def _names_from_dict(entity: Mapping[str, Any]) -> _Names:
 
 def _node_dict_to_fn(
     node_dict: dict[str, Any],
+    arrays: Collection[str] = (),
 ) -> tuple[Callable[..., float], list[str]]:
     expr = mathml_to_sympy(mml.node_from_dict(node_dict))
     args = sorted(str(s) for s in expr.free_symbols)
-    return compile_fn(expr, args, name=_FN_NAME), args
+    elementwise = not set(args).isdisjoint(arrays)
+    return compile_fn(expr, args, name=_FN_NAME, elementwise=elementwise), args
+
+
+def _array_names(
+    spec: Mapping[str, Any], data_file: Mapping[str, Any] | None
+) -> set[str]:
+    """Data and array-valued derived quantities, whose readers need numpy code (ADR 0015).
+
+    Raises
+    ------
+    SerializationError
+        If an array breaks the rules of ADR 0015, e.g. a reaction rate,
+        stoichiometry or readout that is an array.
+
+    """
+    if not data_file:
+        return set()
+    data = {k: np.asarray(v["values"], dtype=float) for k, v in data_file.items()}
+
+    def expr(node: dict[str, Any]) -> sympy.Expr:
+        return mathml_to_sympy(mml.node_from_dict(node))
+
+    derived = [(k, expr(v["fn"])) for k, v in spec["derived"].items()]
+    # must be numbers; named so they can't collide with model names
+    scalars = [
+        (f"{kind} {k!r}", expr(v["fn"]))
+        for kind in ("variables", "reactions", "readouts")
+        for k, v in spec.get(kind, {}).items()
+        if "fn" in v
+    ] + [
+        (f"stoichiometry of {k!r} on {var!r}", expr(node))
+        for k, v in spec.get("reactions", {}).items()
+        for var, node in v.get("stoichiometry", {}).items()
+    ]
+    try:
+        arrays = array_lengths(derived + scalars, data, {k for k, _ in scalars})
+    except ValueError as e:
+        raise SerializationError(str(e)) from e
+    return {k for k, v in data.items() if v.ndim == 1} | set(arrays)
 
 
 def _entry_unit(
@@ -953,6 +1026,7 @@ def ode_model_from_dict(
     customs = spec.get("units", {})
     model = OdeModelBuilder()
     _add_data(model, data, data_file)
+    arrays = _array_names(spec, data_file)
 
     for name, par in spec["parameters"].items():
         model.add_parameter(
@@ -963,7 +1037,7 @@ def ode_model_from_dict(
             slider=_slider_from_dict(par),
         )
     for name, var in spec["variables"].items():
-        fn, args = _node_dict_to_fn(var["fn"])
+        fn, args = _node_dict_to_fn(var["fn"], arrays)
         model.add_diff_eq(
             name,
             initial_value=_node_dict_to_value(var["value"]),
@@ -974,7 +1048,7 @@ def ode_model_from_dict(
             slider=_slider_from_dict(var),
         )
     for name, der in spec["derived"].items():
-        fn, args = _node_dict_to_fn(der["fn"])
+        fn, args = _node_dict_to_fn(der["fn"], arrays)
         model.add_derived(
             name,
             fn,
@@ -983,7 +1057,7 @@ def ode_model_from_dict(
             **_names_from_dict(der),
         )
     for name, rdt in spec["readouts"].items():
-        fn, args = _node_dict_to_fn(rdt["fn"])
+        fn, args = _node_dict_to_fn(rdt["fn"], arrays)
         model.add_readout(
             name,
             fn,
@@ -1085,6 +1159,7 @@ def model_from_dict(
     customs = spec.get("units", {})
     model = KineticModelBuilder()
     _add_data(model, data, data_file)
+    arrays = _array_names(spec, data_file)
 
     for name, par in spec["parameters"].items():
         model.add_parameter(
@@ -1103,7 +1178,7 @@ def model_from_dict(
             slider=_slider_from_dict(var),
         )
     for name, der in spec["derived"].items():
-        fn, args = _node_dict_to_fn(der["fn"])
+        fn, args = _node_dict_to_fn(der["fn"], arrays)
         model.add_derived(
             name,
             fn,
@@ -1112,7 +1187,7 @@ def model_from_dict(
             **_names_from_dict(der),
         )
     for name, rxn in spec["reactions"].items():
-        fn, args = _node_dict_to_fn(rxn["fn"])
+        fn, args = _node_dict_to_fn(rxn["fn"], arrays)
         stoichiometry = {
             var: _node_dict_to_stoich(node)
             for var, node in rxn["stoichiometry"].items()
@@ -1126,7 +1201,7 @@ def model_from_dict(
             **_names_from_dict(rxn),
         )
     for name, rdt in spec["readouts"].items():
-        fn, args = _node_dict_to_fn(rdt["fn"])
+        fn, args = _node_dict_to_fn(rdt["fn"], arrays)
         model.add_readout(
             name,
             fn,
