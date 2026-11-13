@@ -16,6 +16,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Self, cast, overload
 
+import numpy as np
 import pandas as pd
 from wadler_lindig import pformat
 
@@ -235,6 +236,9 @@ class ModelCache:
         A pandas Series representing the rate of change of variables.
     initial_conditions
         calculated initial conditions
+    array_names
+        Array-valued derived quantities (mxl-schemas ADR 0015): internal
+        intermediates, left out of argument tables.
 
     """
 
@@ -249,6 +253,7 @@ class ModelCache:
     base_parameter_values: dict[str, float]
     all_parameter_values: dict[str, float]
     initial_conditions: dict[str, float]
+    array_names: frozenset[str] = frozenset()
 
 
 def _normalize_annotations(
@@ -502,6 +507,12 @@ class OdeModelBuilder:
             base_parameter_values=base_parameter_values,
             all_parameter_values=all_parameter_values,
             initial_conditions=initial_conditions,
+            # arrays come only from data, so a model without data has none
+            array_names=frozenset(
+                k for k in self._derived if np.ndim(dependent[k]) != 0
+            )
+            if self._data
+            else frozenset(),
         )
         return self._cache
 
@@ -2320,6 +2331,9 @@ class OdeModelBuilder:
             names.extend(self.get_surrogate_target_output_names())
         if include_readouts:
             names.extend(self.get_readout_names())
+        if self._data:
+            arrays = (self._cache or self._create_cache()).array_names
+            names = [n for n in names if n not in arrays]
         return names
 
     def _get_args(
@@ -2475,6 +2489,8 @@ class OdeModelBuilder:
         if include_readouts:
             for name in cache.readout_order:
                 self._readouts[name].calculate_inpl(name, raw)
+        for name in cache.array_names:
+            raw.pop(name)
         args = pd.Series(raw, dtype=float)
         return args.loc[
             self.get_arg_names(
@@ -2508,6 +2524,8 @@ class OdeModelBuilder:
             if include_readouts:
                 for name in cache.readout_order:
                     self._readouts[name].calculate_inpl(name, args)
+            for name in cache.array_names:
+                args.pop(name)
             args_by_time[time] = args  # type: ignore
         return args_by_time
 

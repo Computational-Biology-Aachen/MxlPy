@@ -17,6 +17,9 @@ import wasmtime as wt
 from mxlpy.integrators._native.codegen import ExprEmitter
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from mxlpy.integrators._native.codegen import Index
     from mxlpy.integrators._native.lower import Lowered
 
 __all__ = ["abi_version", "compile_model", "load"]
@@ -24,15 +27,28 @@ __all__ = ["abi_version", "compile_model", "load"]
 _ASSET = Path(__file__).parent / "assets" / "solvers.wasm"
 _BINARY = {"add": "f64.add", "mul": "f64.mul", "div": "f64.div"}
 _DOUBLE = 8
+_PAGE = 65536
 
 
 class _Emit(ExprEmitter):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, low: Lowered) -> None:
+        super().__init__({k: len(v) for k, v in low.data.items()} | low.arrays)
         self.body: list[str] = []
         self.imports: dict[str, int] = {}
         self.locals: list[str] = []
         self.tmp = 0
+        self.loops = 0
+        # Arrays live in the module's own memory, not the solver's: data first
+        # (a data segment), then the buffers of the array-valued assignments.
+        self.offsets: dict[str, int] = {}
+        end = 0
+        for k, n in self.lengths.items():
+            self.offsets[k] = end
+            end += n * _DOUBLE
+        self.array_bytes = end
+        self.segment = b"".join(
+            np.asarray(v, dtype="<f8").tobytes() for v in low.data.values()
+        )
 
     def set_local(self, name: str, kind: str, expr: str) -> str:
         self.locals.append(f"(local ${name} {kind})")
@@ -78,10 +94,56 @@ class _Emit(ExprEmitter):
     def negate(self, a: str) -> str:
         return self._new(f"(i32.eqz {a})", "i32")
 
+    def _addr(self, array: str, idx: Index) -> tuple[int, str]:
+        reg, offset = idx
+        at = self.offsets[array] + offset * _DOUBLE
+        if reg is None:
+            return at, "(i32.const 0)"
+        return at, f"(i32.shl (local.get {reg}) (i32.const 3))"
+
+    def load(self, array: str, idx: Index) -> str:
+        at, addr = self._addr(array, idx)
+        return self._new(f"(f64.load $arrays offset={at} {addr})")
+
+    def store(self, array: str, idx: Index, value: str) -> None:
+        at, addr = self._addr(array, idx)
+        self.body.append(f"(f64.store $arrays offset={at} {addr} {value})")
+
+    def loop(
+        self,
+        n: int,
+        inits: list[str],
+        body: Callable[[str, list[str]], list[str]],
+    ) -> list[str]:
+        self.loops += 1
+        label = f"$L{self.loops}"
+        counter = f"$i{self.loops}"
+        self.locals.append(f"(local {counter} i32)")
+        names = [f"acc{self.loops}_{j}" for j in range(len(inits))]
+        accs = [
+            self.set_local(name, "f64", init)
+            for name, init in zip(names, inits, strict=True)
+        ]
+        self.body.append(f"(local.set {counter} (i32.const 0))")
+        start = len(self.body)
+        nexts = body(counter, accs)
+        self.body += [
+            *(
+                f"(local.set ${name} {nxt})"
+                for name, nxt in zip(names, nexts, strict=True)
+            ),
+            f"(local.set {counter} (i32.add (local.get {counter}) (i32.const 1)))",
+            f"(br_if {label} (i32.lt_u (local.get {counter}) (i32.const {n})))",
+        ]
+        inner = self.body[start:]
+        del self.body[start:]
+        self.body.append(f"(loop {label} {' '.join(inner)})")
+        return accs
+
 
 def to_wat(low: Lowered) -> str:
     """Emit a module exporting `fcn(n, t, y, dydt, pars)`, sharing the solver's memory."""
-    em = _Emit()
+    em = _Emit(low)
     em.env["t"] = "(local.get $t)"
     for i in range(low.n):
         em.env[f"y{i}"] = em.set_local(
@@ -92,7 +154,10 @@ def to_wat(low: Lowered) -> str:
             f"p{i}", "f64", f"(f64.load offset={i * _DOUBLE} (local.get $pars))"
         )
     for name, expr in low.assignments:
-        em.env[name] = em.value(expr)
+        if name in low.arrays:
+            em.fill(name, expr)
+        else:
+            em.env[name] = em.value(expr)
         em.memo.clear()
     for i, expr in enumerate(low.dydt):
         em.body.append(
@@ -102,11 +167,20 @@ def to_wat(low: Lowered) -> str:
         f'(import "math" "{fn}" (func ${fn} (param {" ".join(["f64"] * nargs)}) (result f64)))'
         for fn, nargs in sorted(em.imports.items())
     ]
+    arrays = []
+    if em.array_bytes:
+        pages = -(-em.array_bytes // _PAGE)
+        data = "".join(f"\\{b:02x}" for b in em.segment)
+        arrays = [
+            f"(memory $arrays {pages})",
+            *([f'(data (memory $arrays) (i32.const 0) "{data}")'] if data else []),
+        ]
     return "\n".join(
         [
             "(module",
             '(import "env" "memory" (memory 1))',
             *imports,
+            *arrays,
             '(func (export "fcn") (param $n i32) (param $t f64) (param $y i32) (param $dydt i32) (param $pars i32)',
             *em.locals,
             *em.body,
