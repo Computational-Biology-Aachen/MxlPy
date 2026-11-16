@@ -433,15 +433,17 @@ class Simulator(Generic[M]):
             return self
         self._check_events_supported()
 
-        if self._time_shift is not None:
-            t_end -= self._time_shift
-
         prior_t_end: float = (
             0.0 if (variables := self.variables) is None else variables[-1].index[-1]
         )
         if t_end <= prior_t_end:
             msg = f"t_end={t_end} must be greater than the last simulated time point ({prior_t_end}). Call reset() to restart the simulation from t=0."
             raise ValueError(msg)
+
+        # Results are stored in absolute time, the integrator restarts at 0
+        # after update_variable(s)
+        if self._time_shift is not None:
+            t_end -= self._time_shift
 
         self._handle_simulation_results(
             self.integrator.integrate(t_end=t_end, steps=steps), skipfirst=True
@@ -479,9 +481,6 @@ class Simulator(Generic[M]):
 
         time_points = np.array(time_points, dtype=float)
 
-        if self._time_shift is not None:
-            time_points -= self._time_shift
-
         # Check if end is actually larger
         prior_t_end: float = (
             0.0 if (variables := self.variables) is None else variables[-1].index[-1]
@@ -495,6 +494,11 @@ class Simulator(Generic[M]):
             msg = f"Overlapping time points. Removing: {time_points[~larger]}"
             _LOGGER.warning(msg)
             time_points = time_points[larger]
+
+        # Results are stored in absolute time, the integrator restarts at 0
+        # after update_variable(s)
+        if self._time_shift is not None:
+            time_points -= self._time_shift
 
         self._handle_simulation_results(
             self.integrator.integrate_time_course(time_points=time_points),

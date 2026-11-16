@@ -116,3 +116,27 @@ def test_simulate_time_course_overlapping_points_warns(
         sim.simulate_time_course([2.0, 3.0, 4.0])  # 2.0 and 3.0 overlap
 
     assert any("Overlapping" in r.message for r in caplog.records)
+
+
+def test_simulate_after_update_variable_uses_absolute_time() -> None:
+    """t_end stays absolute after update_variable shifted the integrator's time."""
+    sim = Simulator(get_model()).simulate(10, steps=10)
+    sim.update_variable("S", 5.0)
+    sim.simulate(15, steps=5)
+    variables = sim.get_result().unwrap_or_err().variables
+    assert variables.index[-1] == pytest.approx(15.0)
+    assert variables.index.is_monotonic_increasing
+
+    with pytest.raises(ValueError, match="must be greater than"):
+        sim.simulate(12)
+
+
+def test_simulate_time_course_after_update_variable_uses_absolute_time() -> None:
+    sim = Simulator(get_model()).simulate_time_course([0.0, 5.0, 10.0])
+    sim.update_variable("S", 5.0)
+    sim.simulate_time_course([10.0, 12.0, 15.0])
+    variables = sim.get_result().unwrap_or_err().variables
+    assert list(variables.index) == pytest.approx([0.0, 5.0, 10.0, 12.0, 15.0])
+
+    with pytest.raises(ValueError, match="must be greater than"):
+        sim.simulate_time_course([11.0, 14.0])
