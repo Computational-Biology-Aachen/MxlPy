@@ -135,7 +135,7 @@ def to_symbolic_model(
             fn = fn.fn
         subs_map[name] = cast(
             sympy.Expr,
-            fn.expr.subs({sympy.Symbol(a): subs_map[a] for a in fn.args}),
+            fn.expr.xreplace({sympy.Symbol(a): subs_map[a] for a in fn.args}),
         )
 
     for name in _get_order(model):
@@ -149,9 +149,12 @@ def to_symbolic_model(
         if name in deps:
             _expand(name)
 
+    # Every value is already fully expanded, so one simultaneous structural
+    # pass suffices. subs would apply the keys one after another, re-walking
+    # the growing expression for each of them (98% of the runtime before).
     full_subs = {sympy.Symbol(k): v for k, v in subs_map.items()}
     eqs = [
-        cast(sympy.Expr, rsr.diffeqs[name].subs(full_subs))
+        cast(sympy.Expr, rsr.diffeqs[name].xreplace(full_subs))
         for name in model.get_variable_names()
     ]
 
