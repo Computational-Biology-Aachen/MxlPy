@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Generic, Self, cast, overload
 
 import numpy as np
 import pandas as pd
-from sympy import lambdify
 from typing_extensions import TypeVar
 from wadler_lindig import pformat
 
@@ -29,10 +28,12 @@ from mxlpy.integrators import DefaultIntegrator, Scipy
 from mxlpy.integrators.abstract import TimeCourse
 from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
 from mxlpy.simulation import OdeSimulation, Simulation
-from mxlpy.symbolic import to_symbolic_model
+from mxlpy.symbolic import jacobian_fn
 from mxlpy.types import IntegrationFailure, OscillationDetected, Result
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mxlpy.integrators import IntegratorProtocol, IntegratorType
     from mxlpy.types import ArrayLike
 
@@ -102,6 +103,9 @@ class Simulator(Generic[M]):
     _integrator_type: IntegratorType
     _time_shift: float | None
     _errors: list[Exception]
+    # Compiled jacobian (None if unsupported) and the model cache it was built
+    # for: valid until the model changes, which replaces its cache
+    _jacobian: tuple[object, Callable | None] | None
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -146,6 +150,7 @@ class Simulator(Generic[M]):
         self.simulation_parameters = None
         self.use_jacobian = use_jacobian
         self._errors = []
+        self._jacobian = None
 
         if test_run:
             self.model.get_right_hand_side(self.y0, time=0)
@@ -177,24 +182,7 @@ class Simulator(Generic[M]):
         jac_fn = None
         model = self.model
         if self.use_jacobian and isinstance(model, KineticModelBuilder):
-            try:
-                _jac = to_symbolic_model(model).jacobian()
-                _jac_fn = lambdify(
-                    (
-                        "time",
-                        self.model.get_variable_names(),
-                        self.model.get_parameter_names(),
-                    ),
-                    _jac,
-                )
-                jac_fn = lambda t, x: _jac_fn(  # noqa: E731
-                    t,
-                    x,
-                    list(self.model.get_parameter_values().values()),
-                )
-
-            except Exception as e:  # noqa: BLE001
-                _LOGGER.warning(str(e), stacklevel=2)
+            jac_fn = self._get_jacobian(model)
         elif self.use_jacobian:
             _LOGGER.warning("Jacobians are only supported for KineticModelBuilder")
 
@@ -228,6 +216,21 @@ class Simulator(Generic[M]):
             self.integrator._get_dependent = model.get_dependent  # noqa: SLF001
             self.integrator._param_update_callback = _update_param  # noqa: SLF001
             self.integrator._fired_names = previous_fired_names  # noqa: SLF001
+
+    def _get_jacobian(self, model: KineticModelBuilder) -> Callable | None:
+        model.get_parameter_values()  # (re)creates the cache
+        cache = model._cache  # noqa: SLF001
+        if self._jacobian is not None and self._jacobian[0] is cache:
+            return self._jacobian[1]
+        jac_fn = None
+        try:
+            jac_fn = jacobian_fn(model)
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.warning(
+                "Not using a jacobian, as it couldn't be compiled: %s", e, stacklevel=3
+            )
+        self._jacobian = (cache, jac_fn)
+        return jac_fn
 
     def clear_results(self) -> None:
         """Clear simulation results."""
