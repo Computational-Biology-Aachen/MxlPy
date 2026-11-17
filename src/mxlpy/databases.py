@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
-from mxlpy import sbml
 from mxlpy.types import Result
 
 if TYPE_CHECKING:
@@ -35,6 +34,9 @@ def _biomodel_id(accession: int | str) -> str:
 
 
 def _sbml_bytes_to_model(content: bytes) -> KineticModelBuilder:
+    # libsbml is heavy and only needed here, keep it out of `import mxlpy`
+    from mxlpy import sbml  # noqa: PLC0415
+
     with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
         tmp.write(content)
         tmp_path = Path(tmp.name)
