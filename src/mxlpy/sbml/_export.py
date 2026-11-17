@@ -815,5 +815,8 @@ def write(
         compartments=_default_compartments(compartments),
     )
 
-    libsbml.writeSBMLToFile(doc, str(file))
+    # libsbml signals failure (e.g. a missing directory) only by returning 0
+    if not libsbml.writeSBMLToFile(doc, str(file)):
+        msg = f"Could not write SBML file {file}"
+        raise OSError(msg)
     return file
