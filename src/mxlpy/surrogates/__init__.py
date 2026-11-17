@@ -20,19 +20,15 @@ if TYPE_CHECKING:
         from . import _keras as keras
         from . import _torch as torch
 else:
-    from lazy_import import lazy_module
+    from mxlpy._lazy import backend_getattr
 
-    equinox = lazy_module(
-        "mxlpy.surrogates._equinox",
-        error_strings={"module": "equinox", "install_name": "mxlpy[equinox]"},
-    )
-    keras = lazy_module(
-        "mxlpy.surrogates._keras",
-        error_strings={"module": "keras", "install_name": "mxlpy[tf]"},
-    )
-    torch = lazy_module(
-        "mxlpy.surrogates._torch",
-        error_strings={"module": "torch", "install_name": "mxlpy[torch]"},
+    __getattr__ = backend_getattr(
+        __name__,
+        {
+            "equinox": ("_equinox", "jax"),
+            "keras": ("_keras", "keras"),
+            "torch": ("_torch", "torch"),
+        },
     )
 
 
