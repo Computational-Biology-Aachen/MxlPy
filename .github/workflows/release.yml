@@ -12,6 +12,13 @@ on:
           normal full manual run.
         required: false
         type: string
+      publish_only_tag:
+        description: >-
+          Existing release tag to build and upload to PyPI, e.g. v0.55.0,
+          for a release whose run failed before publishing. Skips the docs
+          and the Slack notification. Leave empty for a normal run.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -21,7 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: github.event_name == 'release' || github.event.inputs.notify_only_tag == ''
+    if: >-
+      github.event_name == 'release' || (
+        github.event.inputs.notify_only_tag == '' &&
+        github.event.inputs.publish_only_tag == ''
+      )
     steps:
       - uses: actions/checkout@v6
         with:
@@ -106,6 +117,9 @@ jobs:
     if: github.event_name == 'release' || github.event.inputs.notify_only_tag == ''
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Empty (the default) checks out the triggering ref
+          ref: ${{ github.event.inputs.publish_only_tag }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
@@ -130,6 +144,14 @@ jobs:
     needs:
       - build-release
       - build-documentation
+    # build-documentation is skipped for publish_only_tag, which would skip
+    # this job too under the default `if: success()`
+    if: >-
+      !cancelled() &&
+      needs.build-release.result == 'success' && (
+        needs.build-documentation.result == 'success' ||
+        github.event.inputs.publish_only_tag != ''
+      )
     permissions:
       id-token: write
 
@@ -153,13 +175,13 @@ jobs:
     needs:
       - pypi-publish
 
-    # Runs for a real release, or a workflow_dispatch aimed at re-sending
-    # the notification for an already-published release (notify_only_tag
-    # set). needs.pypi-publish is skipped in that second case, so this
-    # can't use the default `if: success()` gate.
+    # Runs for a real release that reached PyPI, or a workflow_dispatch aimed
+    # at re-sending the notification for an already-published release
+    # (notify_only_tag set). needs.pypi-publish is skipped in that second
+    # case, so this can't use the default `if: success()` gate.
     if: >-
       !cancelled() && (
-        github.event_name == 'release' ||
+        (github.event_name == 'release' && needs.pypi-publish.result == 'success') ||
         (github.event_name == 'workflow_dispatch' && github.event.inputs.notify_only_tag != '')
       )
 
