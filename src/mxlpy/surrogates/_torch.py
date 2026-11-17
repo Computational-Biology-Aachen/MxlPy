@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Self, cast
 
 import numpy as np
@@ -13,6 +14,7 @@ from torch.optim.adam import Adam
 
 from mxlpy.nn._torch import MLP, DefaultDevice, LossFn, mean_abs_error
 from mxlpy.nn._torch import train as _train
+from mxlpy.surrogates._io import read_meta, surrogate_fields, write_meta
 from mxlpy.surrogates.abstract import (
     ACTIVATION_BUILDERS,
     AbstractSurrogate,
@@ -34,6 +36,7 @@ __all__ = [
     "OdeSurrogate",
     "Surrogate",
     "Trainer",
+    "load",
     "ode_surrogate_from_mxl_json",
     "surrogate_from_mxl_json",
     "train",
@@ -286,6 +289,13 @@ class Surrogate(AbstractSurrogate):
 
     model: torch.nn.Module
 
+    def save(self, path: str | Path) -> None:
+        """Save into the directory ``path``: ``surrogate.json`` plus ``model.pt`` (the ``state_dict``).
+
+        Load again with :func:`load` or :func:`mxlpy.surrogates.load`.
+        """
+        _save_model(self.model, write_meta(path, self, backend="torch"))
+
     def to_mxl_json(self) -> SurrogateJson:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
 
@@ -415,6 +425,13 @@ class OdeSurrogate(AbstractOdeSurrogate):
     """
 
     model: torch.nn.Module
+
+    def save(self, path: str | Path) -> None:
+        """Save into the directory ``path``: ``surrogate.json`` plus ``model.pt`` (the ``state_dict``).
+
+        Load again with :func:`load` or :func:`mxlpy.surrogates.load`.
+        """
+        _save_model(self.model, write_meta(path, self, backend="torch"))
 
     def to_mxl_json(self) -> OdeSurrogateJson:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
@@ -684,3 +701,46 @@ def train(
         surrogate_outputs=surrogate_outputs,
         surrogate_stoichiometries=surrogate_stoichiometries,
     ), trainer.get_loss()
+
+
+###############################################################################
+# Native save / load
+###############################################################################
+
+
+def _save_model(model: nn.Module, path: Path) -> None:
+    torch.save(model.state_dict(), path / "model.pt")
+
+
+def load(path: str | Path, *, model: nn.Module) -> Surrogate | OdeSurrogate:
+    """Load a torch surrogate saved with ``surrogate.save(path)``.
+
+    Only the weights are stored on disk, so ``model`` must be a freshly
+    constructed network with the saved architecture. Its weights are
+    replaced in place, onto ``model``'s own device.
+
+    Parameters
+    ----------
+    path
+        Directory written by ``save``.
+    model
+        Template network with the saved architecture.
+
+    Returns
+    -------
+    Surrogate | OdeSurrogate
+        Whichever kind was saved.
+
+    """
+    meta = read_meta(path, backend="torch")
+    param = next(model.parameters(), None)
+    state = torch.load(
+        Path(path) / "model.pt",
+        weights_only=True,
+        map_location=param.device if param is not None else "cpu",
+    )
+    model.load_state_dict(state)
+    kind, fields = surrogate_fields(meta)
+    if kind == "ode":
+        return OdeSurrogate(model=model, **fields)
+    return Surrogate(model=model, **fields)

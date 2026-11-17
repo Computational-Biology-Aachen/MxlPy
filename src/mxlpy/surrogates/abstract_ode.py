@@ -47,6 +47,8 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pandas as pd
 
 
@@ -159,6 +161,15 @@ class AbstractOdeSurrogate:
         for the full raise/``None`` contract, identical here.
         """
         return None
+
+    def save(self, path: str | Path) -> None:
+        """Save this surrogate into the directory ``path`` in its backend's native format.
+
+        Load it again with :func:`mxlpy.surrogates.load`. Implemented by
+        each backend's ``Surrogate``/``OdeSurrogate``.
+        """
+        msg = f"{type(self).__name__} doesn't support save."
+        raise NotImplementedError(msg)
 
     @abstractmethod
     def predict(

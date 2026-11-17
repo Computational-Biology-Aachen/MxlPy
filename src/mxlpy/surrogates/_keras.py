@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self, cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Self, cast
 
 import keras
 import numpy as np
@@ -11,6 +12,7 @@ import pandas as pd
 
 from mxlpy.nn._keras import MLP
 from mxlpy.nn._keras import train as _train
+from mxlpy.surrogates._io import read_meta, surrogate_fields, write_meta
 from mxlpy.surrogates.abstract import (
     ACTIVATION_BUILDERS,
     AbstractSurrogate,
@@ -33,6 +35,7 @@ __all__ = [
     "Optimizer",
     "Surrogate",
     "Trainer",
+    "load",
     "ode_surrogate_from_mxl_json",
     "surrogate_from_mxl_json",
     "train",
@@ -209,6 +212,13 @@ def ode_surrogate_from_mxl_json(
 class Surrogate(AbstractSurrogate):
     model: keras.Model
 
+    def save(self, path: str | Path) -> None:
+        """Save into the directory ``path``: ``surrogate.json`` plus ``model.keras``.
+
+        Load again with :func:`load` or :func:`mxlpy.surrogates.load`.
+        """
+        _save_model(self.model, write_meta(path, self, backend="keras"))
+
     def to_mxl_json(self) -> SurrogateJson:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
 
@@ -320,6 +330,13 @@ class OdeSurrogate(AbstractOdeSurrogate):
     """Ode surrogate using Keras, for `OdeModelBuilder`."""
 
     model: keras.Model
+
+    def save(self, path: str | Path) -> None:
+        """Save into the directory ``path``: ``surrogate.json`` plus ``model.keras``.
+
+        Load again with :func:`load` or :func:`mxlpy.surrogates.load`.
+        """
+        _save_model(self.model, write_meta(path, self, backend="keras"))
 
     def to_mxl_json(self) -> OdeSurrogateJson:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
@@ -527,3 +544,38 @@ def train(
         surrogate_outputs=surrogate_outputs,
         surrogate_stoichiometries=surrogate_stoichiometries,
     ), trainer.get_loss()
+
+
+###############################################################################
+# Native save / load
+###############################################################################
+
+
+def _save_model(model: keras.Model, path: Path) -> None:
+    model.save(path / "model.keras")
+
+
+def load(path: str | Path, **kwargs: Any) -> Surrogate | OdeSurrogate:
+    """Load a keras surrogate saved with ``surrogate.save(path)``.
+
+    ``model.keras`` stores the full architecture, so no template is needed.
+
+    Parameters
+    ----------
+    path
+        Directory written by ``save``.
+    kwargs
+        Forwarded to `keras.saving.load_model`, e.g. ``custom_objects``.
+
+    Returns
+    -------
+    Surrogate | OdeSurrogate
+        Whichever kind was saved.
+
+    """
+    meta = read_meta(path, backend="keras")
+    model = keras.saving.load_model(Path(path) / "model.keras", **kwargs)
+    kind, fields = surrogate_fields(meta)
+    if kind == "ode":
+        return OdeSurrogate(model=model, **fields)
+    return Surrogate(model=model, **fields)

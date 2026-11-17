@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Self, cast
 
 import equinox as eqx
@@ -14,6 +15,7 @@ import pandas as pd
 
 from mxlpy.nn._equinox import MLP, LossFn, mean_abs_error
 from mxlpy.nn._equinox import train as _train
+from mxlpy.surrogates._io import read_meta, surrogate_fields, write_meta
 from mxlpy.surrogates.abstract import (
     ACTIVATION_BUILDERS,
     AbstractSurrogate,
@@ -32,6 +34,7 @@ __all__ = [
     "OdeSurrogate",
     "Surrogate",
     "Trainer",
+    "load",
     "ode_surrogate_from_mxl_json",
     "surrogate_from_mxl_json",
     "train",
@@ -324,6 +327,13 @@ class Surrogate(AbstractSurrogate):
 
     model: eqx.Module
 
+    def save(self, path: str | Path) -> None:
+        """Save into the directory ``path``: ``surrogate.json`` plus ``model.eqx`` (``eqx.tree_serialise_leaves``).
+
+        Load again with :func:`load` or :func:`mxlpy.surrogates.load`.
+        """
+        _save_model(self.model, write_meta(path, self, backend="equinox"))
+
     def to_mxl_json(self) -> SurrogateJson:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
 
@@ -450,6 +460,13 @@ class OdeSurrogate(AbstractOdeSurrogate):
     """
 
     model: eqx.Module
+
+    def save(self, path: str | Path) -> None:
+        """Save into the directory ``path``: ``surrogate.json`` plus ``model.eqx`` (``eqx.tree_serialise_leaves``).
+
+        Load again with :func:`load` or :func:`mxlpy.surrogates.load`.
+        """
+        _save_model(self.model, write_meta(path, self, backend="equinox"))
 
     def to_mxl_json(self) -> OdeSurrogateJson:
         """Export this surrogate as a mxl-schemas ``nn_blocks`` entry.
@@ -715,3 +732,39 @@ def train(
         surrogate_outputs=surrogate_outputs,
         surrogate_stoichiometries=surrogate_stoichiometries,
     ), trainer.get_loss()
+
+
+###############################################################################
+# Native save / load
+###############################################################################
+
+
+def _save_model(model: eqx.Module, path: Path) -> None:
+    eqx.tree_serialise_leaves(path / "model.eqx", model)
+
+
+def load(path: str | Path, *, model: eqx.Module) -> Surrogate | OdeSurrogate:
+    """Load an equinox surrogate saved with ``surrogate.save(path)``.
+
+    Only the array leaves are stored on disk, so ``model`` must be a freshly
+    constructed module with the saved architecture (any key).
+
+    Parameters
+    ----------
+    path
+        Directory written by ``save``.
+    model
+        Template module with the saved architecture.
+
+    Returns
+    -------
+    Surrogate | OdeSurrogate
+        Whichever kind was saved.
+
+    """
+    meta = read_meta(path, backend="equinox")
+    model = eqx.tree_deserialise_leaves(Path(path) / "model.eqx", model)
+    kind, fields = surrogate_fields(meta)
+    if kind == "ode":
+        return OdeSurrogate(model=model, **fields)
+    return Surrogate(model=model, **fields)

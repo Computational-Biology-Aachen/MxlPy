@@ -38,9 +38,12 @@ else:
 
 from . import _poly as poly
 from . import _qss as qss
+from ._io import load
 
 __all__ = [
+    "equinox",
     "keras",
+    "load",
     "poly",
     "qss",
     "torch",
