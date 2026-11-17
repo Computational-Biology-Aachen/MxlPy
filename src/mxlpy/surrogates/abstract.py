@@ -27,6 +27,7 @@ __all__ = [
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
+    from pathlib import Path
 
     import pandas as pd
     import sympy
@@ -251,6 +252,15 @@ class AbstractSurrogate:
         the way "this isn't a neural net at all" is here.
         """
         return None
+
+    def save(self, path: str | Path) -> None:
+        """Save this surrogate into the directory ``path`` in its backend's native format.
+
+        Load it again with :func:`mxlpy.surrogates.load`. Implemented by
+        each backend's ``Surrogate``/``OdeSurrogate``.
+        """
+        msg = f"{type(self).__name__} doesn't support save."
+        raise NotImplementedError(msg)
 
     @abstractmethod
     def predict(

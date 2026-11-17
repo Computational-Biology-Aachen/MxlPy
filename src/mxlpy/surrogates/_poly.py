@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
 from numpy import polynomial
 
+from mxlpy.surrogates._io import read_meta, surrogate_fields, write_meta
 from mxlpy.surrogates.abstract import AbstractSurrogate
+from mxlpy.types import SerializationError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -19,6 +23,7 @@ if TYPE_CHECKING:
 __all__ = [
     "PolynomialExpansion",
     "Surrogate",
+    "load",
     "train",
 ]
 
@@ -36,6 +41,23 @@ PolynomialExpansion = (
 @dataclass(kw_only=True)
 class Surrogate(AbstractSurrogate):
     model: PolynomialExpansion
+
+    def save(self, path: str | Path) -> None:
+        """Save into the directory ``path``: ``surrogate.json`` plus ``model.json``.
+
+        ``model.json`` holds the series kind, coefficients, domain, window
+        and symbol. Load again with :func:`load` or
+        :func:`mxlpy.surrogates.load`.
+        """
+        path = write_meta(path, self, backend="poly")
+        state = {
+            "kind": type(self.model).__name__,
+            "coef": self.model.coef.tolist(),
+            "domain": self.model.domain.tolist(),
+            "window": self.model.window.tolist(),
+            "symbol": self.model.symbol,
+        }
+        (path / "model.json").write_text(json.dumps(state, indent=2))
 
     def predict_raw(self, y: np.ndarray) -> np.ndarray:
         """Predict raw output from the polynomial model.
@@ -153,3 +175,50 @@ def train(
             index=pd.Index(np.array(degrees), name="degree"),
         ),
     )
+
+
+_SERIES: dict[str, type[PolynomialExpansion]] = {
+    cls.__name__: cls
+    for cls in (
+        polynomial.Polynomial,
+        polynomial.Chebyshev,
+        polynomial.Legendre,
+        polynomial.Laguerre,
+        polynomial.Hermite,
+        polynomial.HermiteE,
+    )
+}
+
+
+def load(path: str | Path) -> Surrogate:
+    """Load a polynomial surrogate saved with ``surrogate.save(path)``.
+
+    Parameters
+    ----------
+    path
+        Directory written by ``save``.
+
+    Returns
+    -------
+    Surrogate
+        The polynomial surrogate.
+
+    Raises
+    ------
+    SerializationError
+        If ``model.json`` names an unknown series kind.
+
+    """
+    meta = read_meta(path, backend="poly")
+    state = json.loads((Path(path) / "model.json").read_text())
+    if (cls := _SERIES.get(state["kind"])) is None:
+        msg = f"Unknown polynomial series {state['kind']!r}."
+        raise SerializationError(msg)
+    model = cls(
+        np.array(state["coef"], dtype=float),
+        domain=state["domain"],
+        window=state["window"],
+        symbol=state["symbol"],
+    )
+    _, fields = surrogate_fields(meta)
+    return Surrogate(model=model, **fields)

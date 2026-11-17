@@ -65,6 +65,30 @@ surrogate.predict_raw(np.array([0.0]))    # sanity-check raw predictions
 
 A custom loss is any `(pred: Tensor, data: Tensor) -> Tensor`, e.g. `lambda`-free `def mean_abs(x, y): return torch.mean(torch.abs(x - y))`.
 
+### Saving & loading
+
+`surrogate.save(path)` writes a directory: `surrogate.json` (format_version, backend, args, outputs, stoichiometries incl. `Derived` + units, or `targets` for `OdeSurrogate`) next to the backend's native model file. `surrogates.load(path, *, model=None, **backend_kwargs)` dispatches on the stored backend and only imports that one; each backend module also has a typed `load` (e.g. `surrogates.torch.load(path, model=...)`).
+
+| backend | file | `model=` on load |
+| --- | --- | --- |
+| torch | `model.pt` (`state_dict`, loaded with `weights_only=True` onto the template's device) | required |
+| equinox | `model.eqx` (`eqx.tree_serialise_leaves`) | required |
+| keras | `model.keras` (`custom_objects=` forwarded to `keras.saving.load_model`) | rejected |
+| poly | `model.json` (series kind, coef, domain, window, symbol) | rejected |
+| qss | `model.dill` (pickled function — trusted files only) | rejected |
+
+```python
+def make_net():  # rebuild the architecture for torch/equinox templates
+    return torch.nn.Sequential(torch.nn.Linear(1, 50), torch.nn.ReLU(), torch.nn.Linear(50, 1))
+
+surrogate, _ = surrogates.torch.train(features=features, targets=targets, epochs=250, model=make_net())
+surrogate.save("v3-surrogate")                                   # overwrites existing files
+loaded = surrogates.load("v3-surrogate", model=make_net())       # torch / equinox: template required
+loaded = surrogates.load("keras-surrogate")                      # keras / poly / qss: no template
+```
+
+Works for any architecture the backend persists (LSTMs, custom modules). Independent of `mxlpy.save` (`.mxl.json`), which is the portable cross-language model format and only exports dense networks. Base classes and custom surrogates without a `save` raise `NotImplementedError`.
+
 ## Neural posterior estimation (`mxlpy.npe`)
 
 NPE answers "**what parameters could have produced this data?**" Train on synthetic data: sample parameters from a prior (these are the **targets**), simulate to generate observations (the **features**), then learn the inverse map. Works for steady-state and time-course data.
