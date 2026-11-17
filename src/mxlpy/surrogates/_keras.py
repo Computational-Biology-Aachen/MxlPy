@@ -41,7 +41,9 @@ __all__ = [
 type Optimizer = keras.optimizers.Optimizer | str
 type LossFn = keras.losses.Loss | str
 
-DefaultOptimizer = keras.optimizers.Adam()
+# A name, not an instance: keras builds a fresh optimizer per `compile`, while a
+# shared instance would be bound to the first model it trained
+DefaultOptimizer: Optimizer = "adam"
 DefaultLoss = keras.losses.MeanAbsoluteError()
 
 

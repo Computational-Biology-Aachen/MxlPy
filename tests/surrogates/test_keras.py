@@ -15,9 +15,10 @@ to_mxl_json`'s docstring for the raise-vs-`None` contract.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import numpy as np
+import pandas as pd
 import pytest
 
 pytest.importorskip("keras", exc_type=ImportError)
@@ -27,13 +28,11 @@ import keras
 from mxlpy.surrogates._keras import (
     OdeSurrogate,
     Surrogate,
+    Trainer,
     ode_surrogate_from_mxl_json,
     surrogate_from_mxl_json,
 )
 from mxlpy.types import SerializationError
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 def _dense_softplus_model() -> keras.Sequential:
@@ -257,3 +256,16 @@ def test_ode_surrogate_to_mxl_json_round_trips_predictions() -> None:
     reconstructed_value = reconstructed.predict(probe)["corr_block_x"]
     assert reconstructed_value == pytest.approx(original, rel=1e-5)
     assert reconstructed.targets == {"corr_block_x": ["x"]}
+
+
+def test_default_optimizer_not_shared() -> None:
+    """Each model gets its own default optimizer.
+
+    A shared instance is bound to the first model it trains: the tensorflow
+    backend then rejects any other model, jax silently reuses stale state.
+    """
+    features = pd.DataFrame({"x": np.linspace(0, 1, 8), "y": np.linspace(1, 2, 8)})
+    targets = pd.DataFrame({"v": features["x"] * features["y"]})
+    first = Trainer(features, targets).train(epochs=2)
+    second = Trainer(features, targets).train(epochs=2)
+    assert first.model.optimizer is not second.model.optimizer
