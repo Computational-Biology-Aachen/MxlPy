@@ -2395,7 +2395,7 @@ wheels = [
 
 [[package]]
 name = "mxlpy"
-version = "0.71.0"
+version = "0.72.0"
 source = { editable = "." }
 dependencies = [
     { name = "dill" },
