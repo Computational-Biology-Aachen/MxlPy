@@ -357,6 +357,27 @@ def test_build_model_repeated_substrate_args() -> None:
     assert reactions["v__01"].stoichiometry == {"A__0": -1, "A__1": -1, "B__01": 1}
 
 
+def test_build_model_labelled_modifier_uses_total() -> None:
+    """A labelled compound that only modifies a mapped reaction sees its total."""
+    model = KineticModelBuilder()
+    model.add_parameters({"k": 1.0})
+    model.add_variables({"A": 1.0, "B": 0.0, "C": 1.0})
+    model.add_reaction(
+        "v",
+        fn=mass_action_2s,
+        args=["A", "C", "k"],
+        stoichiometry={"A": -1, "B": 1},
+    )
+    label_model = LabelMapper(
+        model, label_variables={"A": 1, "B": 1, "C": 1}, label_maps={"v": [0]}
+    ).build_model()
+
+    reactions = label_model.get_raw_reactions()
+    assert reactions["v__0"].args == ["A__0", "C__total", "k"]
+    assert reactions["v__1"].args == ["A__1", "C__total", "k"]
+    label_model.get_initial_conditions()  # dependencies resolve
+
+
 def test_build_model_follows_labelmap_direction() -> None:
     """Product position i receives substrate position labelmap[i]."""
     model = KineticModelBuilder()

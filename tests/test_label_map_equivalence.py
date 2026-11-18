@@ -106,6 +106,20 @@ def _unlabelled_cofactor(y0: dict[str, float]) -> Model:
     return m
 
 
+def _labelled_modifier(y0: dict[str, float]) -> Model:
+    m = Model().add_parameters({"k1": 1.0, "k2": 1.0}).add_variables(y0)
+    m.add_reaction(
+        "v1",
+        fns.mass_action_2s,
+        args=["A", "C", "k1"],
+        stoichiometry={"A": -1, "B": 1},
+    )
+    m.add_reaction(
+        "v2", fns.mass_action_1s, args=["B", "k2"], stoichiometry={"B": -1, "A": 1}
+    )
+    return m
+
+
 NETWORKS = {
     "isomerisation": Network(
         build=_reversible_isomerisation,
@@ -145,6 +159,14 @@ NETWORKS = {
         label_variables={"A": 3, "B": 3},
         label_maps={"v1": [1, 2, 0], "v2": [0, 1, 2]},
         initial_labels={"A": 0},
+        closed=True,
+    ),
+    "labelled_modifier": Network(
+        build=_labelled_modifier,
+        steady_state={"A": 1.0, "B": 2.0, "C": 2.0},
+        label_variables={"A": 3, "B": 3, "C": 1},
+        label_maps={"v1": [1, 2, 0], "v2": [0, 1, 2]},
+        initial_labels={"A": 0, "C": 0},
         closed=True,
     ),
 }

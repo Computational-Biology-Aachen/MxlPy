@@ -416,6 +416,12 @@ def _create_isotopomer_reactions(
     base_substrates, base_products = _unpack_stoichiometries(
         stoichiometries=stoichiometry
     )
+    # Labelled compounds that only act as modifiers see their total concentration
+    participants = set(base_substrates) | set(base_products)
+    args = [
+        f"{arg}__total" if arg in label_variables and arg not in participants else arg
+        for arg in args
+    ]
     labels_per_substrate = _get_labels_per_variable(
         label_variables=label_variables,
         compounds=base_substrates,
