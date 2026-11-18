@@ -342,34 +342,35 @@ def _get_external_labels(
     return ""
 
 
-def _replace_args_positionally(
-    args: list[str],
-    base_names: list[str],
-    new_names: list[str],
-) -> list[str]:
-    """Replace each occurrence of a base name in args by its next labelled variant.
+def _rate_per_isotopomer(rate: float, *totals: float) -> float:
+    """Divide a total rate by the product of its substrates' total concentrations.
 
-    Repeated participants (e.g. ``2 A``) consume their variants in order, so
-    each occurrence of ``A`` in args refers to a different isotopomer.
+    Returns 0 where any total is 0.
 
     Examples
     --------
-        >>> _replace_args_positionally(["A", "A", "k"], ["A", "A"], ["A__0", "A__1"])
-        ['A__0', 'A__1', 'k']
+        >>> _rate_per_isotopomer(6.0, 2.0, 3.0)
+        1.0
+
+        >>> _rate_per_isotopomer(6.0)
+        6.0
 
     """
-    variants: defaultdict[str, list[str]] = defaultdict(list)
-    for base, new in zip(base_names, new_names, strict=True):
-        variants[base].append(new)
-    used: defaultdict[str, int] = defaultdict(int)
-    replaced = []
-    for arg in args:
-        if (options := variants.get(arg)) is None:
-            replaced.append(arg)
-            continue
-        replaced.append(options[min(used[arg], len(options) - 1)])
-        used[arg] += 1
-    return replaced
+    denom = np.prod(totals, axis=0)
+    safe = np.where(denom == 0, 1.0, denom)
+    return cast(float, np.where(denom == 0, 0.0, np.divide(rate, safe))[()])
+
+
+def _scaled_product(scale: float, *isotopomers: float) -> float:
+    """Multiply a per-isotopomer rate scale with isotopomer concentrations.
+
+    Examples
+    --------
+        >>> _scaled_product(2.0, 3.0, 4.0)
+        24.0
+
+    """
+    return cast(float, scale * np.prod(isotopomers, axis=0))
 
 
 def _create_isotopomer_reactions(
@@ -382,6 +383,13 @@ def _create_isotopomer_reactions(
     args: list[str],
 ) -> None:
     """Create isotopomer reactions.
+
+    The rate of the original reaction is evaluated once on total concentrations
+    as the derived value ``rate_name`` (every labelled argument is replaced by
+    its ``__total``). The derived ``{rate_name}__scale`` divides it by the
+    product of the labelled substrates' totals, so each isotopomer reaction
+    ``scale * prod(substrate isotopomers)`` carries its fraction of the total
+    rate. This is exact for any irreversible rate law.
 
     Examples
     --------
@@ -416,12 +424,18 @@ def _create_isotopomer_reactions(
     base_substrates, base_products = _unpack_stoichiometries(
         stoichiometries=stoichiometry
     )
-    # Labelled compounds that only act as modifiers see their total concentration
-    participants = set(base_substrates) | set(base_products)
-    args = [
-        f"{arg}__total" if arg in label_variables and arg not in participants else arg
-        for arg in args
-    ]
+    scale_name = f"{rate_name}__scale"
+    model.add_derived(
+        rate_name,
+        fn=function,
+        args=[f"{i}__total" if i in label_variables else i for i in args],
+    )
+    model.add_derived(
+        scale_name,
+        fn=_rate_per_isotopomer,
+        args=[rate_name]
+        + [f"{i}__total" for i in base_substrates if i in label_variables],
+    )
     labels_per_substrate = _get_labels_per_variable(
         label_variables=label_variables,
         compounds=base_substrates,
@@ -472,13 +486,14 @@ def _create_isotopomer_reactions(
 
         model.add_reaction(
             name=new_rate_name,
-            fn=function,
+            fn=_scaled_product,
             stoichiometry=new_stoichiometry,
-            args=_replace_args_positionally(
-                args,
-                base_names=base_substrates + base_products,
-                new_names=new_substrates + new_products,
-            ),
+            args=[scale_name]
+            + [
+                new
+                for base, new in zip(base_substrates, new_substrates, strict=True)
+                if base in label_variables
+            ],
         )
 
 
@@ -504,9 +519,12 @@ class LabelMapper:
 
     Notes
     -----
-    Isotopomer rates are obtained by calling the original rate function with
-    isotopomer concentrations. This is only exact for rate laws that are linear
-    in each substrate (e.g. mass action).
+    The rate of each mapped reaction is evaluated on total concentrations
+    (available as the derived value of the same name) and distributed over the
+    isotopomer reactions by the substrates' isotopomer fractions. This is exact
+    for any irreversible rate law. Products and modifiers in a rate's arguments
+    see their total concentration, so e.g. product inhibition works, but
+    reversible rate laws must be split into a forward and a backward reaction.
 
     Examples
     --------

@@ -2,9 +2,10 @@
 
 """Cross-model invariants of LabelMapper and LinearLabelMapper.
 
-All networks use mass-action kinetics (for which isotopomer rates are exact)
-and non-self-inverse label maps, so that the direction in which a label map
-is applied is observable.
+Networks use mass-action as well as non-linear (Michaelis-Menten, product
+inhibition) kinetics and non-self-inverse label maps, so that both the rate
+distribution over isotopomers and the direction in which a label map is
+applied are observable.
 """
 
 from __future__ import annotations
@@ -120,6 +121,87 @@ def _labelled_modifier(y0: dict[str, float]) -> Model:
     return m
 
 
+def _mm_isomerisation(y0: dict[str, float]) -> Model:
+    m = (
+        Model()
+        .add_parameters({"vmax_f": 2.0, "km_f": 1.0, "vmax_r": 2.0, "km_r": 1.0})
+        .add_variables(y0)
+    )
+    m.add_reaction(
+        "v1",
+        fns.michaelis_menten_1s,
+        args=["A", "vmax_f", "km_f"],
+        stoichiometry={"A": -1, "B": 1},
+    )
+    m.add_reaction(
+        "v2",
+        fns.michaelis_menten_1s,
+        args=["B", "vmax_r", "km_r"],
+        stoichiometry={"B": -1, "A": 1},
+    )
+    return m
+
+
+def _mm_condensation(y0: dict[str, float]) -> Model:
+    m = (
+        Model()
+        .add_parameters({"vmax": 3.0, "km_a": 1.0, "km_c": 1.0, "kr": 1.0})
+        .add_variables(y0)
+    )
+    m.add_reaction(
+        "v1",
+        fns.michaelis_menten_2s,
+        args=["A", "C", "vmax", "km_a", "km_c"],
+        stoichiometry={"A": -1, "C": -1, "D": 1},
+    )
+    m.add_reaction(
+        "v2",
+        fns.mass_action_1s,
+        args=["D", "kr"],
+        stoichiometry={"D": -1, "A": 1, "C": 1},
+    )
+    return m
+
+
+def _rubisco_mm(y0: dict[str, float]) -> Model:
+    m = Model().add_parameters({"kf": 1.0, "vmax": 3.0, "km": 1.0}).add_variables(y0)
+    m.add_reaction(
+        "v1",
+        fns.mass_action_2s,
+        args=["A", "C", "kf"],
+        stoichiometry={"A": -1, "C": -1, "P": 2},
+    )
+    m.add_reaction(
+        "v2",
+        fns.michaelis_menten_2s,
+        args=["P", "P", "vmax", "km", "km"],
+        stoichiometry={"P": -2, "A": 1, "C": 1},
+    )
+    return m
+
+
+def _product_inhibited(a: float, b: float, vmax: float, km: float, ki: float) -> float:
+    return vmax * a / (km * (1 + b / ki) + a)
+
+
+def _product_inhibition(y0: dict[str, float]) -> Model:
+    m = (
+        Model()
+        .add_parameters({"vmax": 1.0, "km": 1.0, "ki": 1.0, "k2": 1 / 3})
+        .add_variables(y0)
+    )
+    m.add_reaction(
+        "v1",
+        _product_inhibited,
+        args=["A", "B", "vmax", "km", "ki"],
+        stoichiometry={"A": -1, "B": 1},
+    )
+    m.add_reaction(
+        "v2", fns.mass_action_1s, args=["B", "k2"], stoichiometry={"B": -1, "A": 1}
+    )
+    return m
+
+
 NETWORKS = {
     "isomerisation": Network(
         build=_reversible_isomerisation,
@@ -167,6 +249,38 @@ NETWORKS = {
         label_variables={"A": 3, "B": 3, "C": 1},
         label_maps={"v1": [1, 2, 0], "v2": [0, 1, 2]},
         initial_labels={"A": 0, "C": 0},
+        closed=True,
+    ),
+    "mm_isomerisation": Network(
+        build=_mm_isomerisation,
+        steady_state={"A": 1.0, "B": 1.0},
+        label_variables={"A": 3, "B": 3},
+        label_maps={"v1": [1, 2, 0], "v2": [0, 1, 2]},
+        initial_labels={"A": 0},
+        closed=True,
+    ),
+    "mm_condensation": Network(
+        build=_mm_condensation,
+        steady_state={"A": 1.0, "C": 1.0, "D": 1.0},
+        label_variables={"A": 2, "C": 1, "D": 3},
+        label_maps={"v1": [2, 0, 1], "v2": [2, 0, 1]},
+        initial_labels={"A": 0},
+        closed=True,
+    ),
+    "rubisco_mm": Network(
+        build=_rubisco_mm,
+        steady_state={"A": 1.0, "C": 1.0, "P": 1.0},
+        label_variables={"A": 5, "C": 1, "P": 3},
+        label_maps={"v1": [2, 1, 0, 5, 3, 4], "v2": [0, 1, 2, 3, 4, 5]},
+        initial_labels={"C": 0},
+        closed=True,
+    ),
+    "product_inhibition": Network(
+        build=_product_inhibition,
+        steady_state={"A": 1.0, "B": 1.0},
+        label_variables={"A": 3, "B": 3},
+        label_maps={"v1": [1, 2, 0], "v2": [0, 1, 2]},
+        initial_labels={"A": 0},
         closed=True,
     ),
 }

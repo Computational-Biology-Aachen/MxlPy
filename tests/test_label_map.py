@@ -17,8 +17,9 @@ from mxlpy.label_map import (
     _get_external_labels,
     _get_labels_per_variable,
     _map_substrates_to_products,
+    _rate_per_isotopomer,
     _repack_stoichiometries,
-    _replace_args_positionally,
+    _scaled_product,
     _split_label_string,
     _total_concentration,
     _unpack_stoichiometries,
@@ -344,16 +345,18 @@ def test_build_model_repeated_substrate_args() -> None:
         args=["A", "A", "k"],
         stoichiometry={"A": -2, "B": 1},
     )
-    reactions = (
-        LabelMapper(model, label_variables={"A": 1, "B": 2}, label_maps={"v": [0, 1]})
-        .build_model()
-        .get_raw_reactions()
-    )
+    label_model = LabelMapper(
+        model, label_variables={"A": 1, "B": 2}, label_maps={"v": [0, 1]}
+    ).build_model()
+    reactions = label_model.get_raw_reactions()
+    derived = label_model.get_raw_derived()
 
-    assert reactions["v__00"].args == ["A__0", "A__0", "k"]
-    assert reactions["v__01"].args == ["A__0", "A__1", "k"]
-    assert reactions["v__10"].args == ["A__1", "A__0", "k"]
-    assert reactions["v__11"].args == ["A__1", "A__1", "k"]
+    assert derived["v"].args == ["A__total", "A__total", "k"]
+    assert derived["v__scale"].args == ["v", "A__total", "A__total"]
+    assert reactions["v__00"].args == ["v__scale", "A__0", "A__0"]
+    assert reactions["v__01"].args == ["v__scale", "A__0", "A__1"]
+    assert reactions["v__10"].args == ["v__scale", "A__1", "A__0"]
+    assert reactions["v__11"].args == ["v__scale", "A__1", "A__1"]
     assert reactions["v__01"].stoichiometry == {"A__0": -1, "A__1": -1, "B__01": 1}
 
 
@@ -372,10 +375,55 @@ def test_build_model_labelled_modifier_uses_total() -> None:
         model, label_variables={"A": 1, "B": 1, "C": 1}, label_maps={"v": [0]}
     ).build_model()
 
+    assert label_model.get_raw_derived()["v"].args == ["A__total", "C__total", "k"]
+    assert label_model.get_raw_derived()["v__scale"].args == ["v", "A__total"]
     reactions = label_model.get_raw_reactions()
-    assert reactions["v__0"].args == ["A__0", "C__total", "k"]
-    assert reactions["v__1"].args == ["A__1", "C__total", "k"]
+    assert reactions["v__0"].args == ["v__scale", "A__0"]
+    assert reactions["v__1"].args == ["v__scale", "A__1"]
     label_model.get_initial_conditions()  # dependencies resolve
+
+
+def test_build_model_product_in_args_uses_total() -> None:
+    """Products in a mapped rate (e.g. product inhibition) see their total."""
+    model = KineticModelBuilder()
+    model.add_parameters({"vmax": 1.0, "km": 1.0, "ki": 1.0})
+    model.add_variables({"A": 1.0, "B": 1.0, "ATP": 1.0})
+    model.add_reaction(
+        "v",
+        fn=lambda a, atp, b, vmax, km, ki: vmax * a * atp / (km * (1 + b / ki) + a),
+        args=["A", "ATP", "B", "vmax", "km", "ki"],
+        stoichiometry={"A": -1, "ATP": -1, "B": 1},
+    )
+    label_model = LabelMapper(
+        model, label_variables={"A": 1, "B": 1}, label_maps={"v": [0]}
+    ).build_model()
+
+    derived = label_model.get_raw_derived()
+    assert derived["v"].args == ["A__total", "ATP", "B__total", "vmax", "km", "ki"]
+    assert derived["v__scale"].args == ["v", "A__total"]
+    assert label_model.get_raw_reactions()["v__1"].args == ["v__scale", "A__1"]
+
+
+def test_rate_per_isotopomer() -> None:
+    assert _rate_per_isotopomer(6.0, 2.0, 3.0) == 1.0
+    assert _rate_per_isotopomer(6.0) == 6.0
+    assert _rate_per_isotopomer(6.0, 2.0, 0.0) == 0.0
+    # derived values are also evaluated on whole time courses
+    rate, totals_a, totals_b = np.array([[6.0, 6.0], [2.0, 0.0], [3.0, 3.0]])
+    np.testing.assert_array_equal(
+        _rate_per_isotopomer(rate, totals_a, totals_b),  # pyright: ignore[reportArgumentType]
+        [1.0, 0.0],
+    )
+
+
+def test_scaled_product() -> None:
+    assert _scaled_product(2.0, 3.0, 4.0) == 24.0
+    assert _scaled_product(2.0) == 2.0
+    scale, isotopomer = np.array([[1.0, 2.0], [3.0, 4.0]])
+    np.testing.assert_array_equal(
+        _scaled_product(scale, isotopomer),  # pyright: ignore[reportArgumentType]
+        [3.0, 8.0],
+    )
 
 
 def test_build_model_follows_labelmap_direction() -> None:
@@ -397,21 +445,6 @@ def test_build_model_follows_labelmap_direction() -> None:
     assert reactions["v__100"].stoichiometry == {"A__100": -1, "B__001": 1}
     assert reactions["v__010"].stoichiometry == {"A__010": -1, "B__100": 1}
     assert reactions["v__001"].stoichiometry == {"A__001": -1, "B__010": 1}
-
-
-def test_replace_args_positionally() -> None:
-    assert _replace_args_positionally(
-        ["A", "A", "k"], ["A", "A"], ["A__0", "A__1"]
-    ) == ["A__0", "A__1", "k"]
-    assert _replace_args_positionally(["A", "C", "k"], ["A", "C"], ["A__01", "C"]) == [
-        "A__01",
-        "C",
-        "k",
-    ]
-    assert _replace_args_positionally(
-        ["A", "A", "A"], ["A", "A"], ["A__0", "A__1"]
-    ) == ["A__0", "A__1", "A__1"]
-    assert _replace_args_positionally(["k"], [], []) == ["k"]
 
 
 def test_labelmapper_init(simple_model: KineticModelBuilder) -> None:
