@@ -36,7 +36,9 @@ class OscillationDetector(Protocol):
 
     Examples
     --------
-    Use the built-in autocorrelation detector (default)::
+    Detection is disabled by default (:class:`NoOscillationDetection`).
+
+    Use the built-in autocorrelation detector::
 
         Simulator(model).simulate_to_steady_state(
             oscillation_detector=DetectOscillations()
@@ -46,12 +48,6 @@ class OscillationDetector(Protocol):
 
         Simulator(model).simulate_to_steady_state(
             oscillation_detector=DetectOscillations(autocorr_threshold=0.5)
-        )
-
-    Disable detection entirely::
-
-        Simulator(model).simulate_to_steady_state(
-            oscillation_detector=NoOscillationDetection()
         )
 
     Use a scipy peak-finding detector::
@@ -96,15 +92,11 @@ class OscillationDetector(Protocol):
 class NoOscillationDetection:
     """No-op oscillation detector that never reports oscillations.
 
-    Use this variant when oscillation detection is not desired, e.g. for
-    fitting routines where the model is known to converge or where the
-    overhead of detection should be avoided.
+    This is the default detector for all steady-state calculations.
 
     Examples
     --------
-    >>> Simulator(model).simulate_to_steady_state(
-    ...     oscillation_detector=NoOscillationDetection()
-    ... )
+    >>> Simulator(model).simulate_to_steady_state()  # uses NoOscillationDetection
 
     """
 

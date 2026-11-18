@@ -26,7 +26,7 @@ from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.integrators import DefaultIntegrator, Scipy
 from mxlpy.integrators.abstract import TimeCourse
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
+from mxlpy.integrators.utils import OscillationDetector, no_oscillation_detection
 from mxlpy.simulation import OdeSimulation, Simulation
 from mxlpy.symbolic import jacobian_fn
 from mxlpy.types import IntegrationFailure, OscillationDetected, Result
@@ -634,7 +634,7 @@ class Simulator(Generic[M]):
         tolerance: float = 1e-6,
         *,
         rel_norm: bool = False,
-        oscillation_detector: OscillationDetector | None = detect_oscillations,
+        oscillation_detector: OscillationDetector | None = no_oscillation_detection,
     ) -> Self:
         """Simulate the model to steady state.
 
@@ -643,9 +643,9 @@ class Simulator(Generic[M]):
             >>> Simulator(model).simulate_to_steady_state()
             >>> Simulator(model).simulate_to_steady_state(tolerance=1e-8)
             >>> Simulator(model).simulate_to_steady_state(rel_norm=True)
-            >>> from mxlpy.integrators.utils import no_oscillation_detection
+            >>> from mxlpy.integrators.utils import detect_oscillations
             >>> Simulator(model).simulate_to_steady_state(
-            ...     oscillation_detector=no_oscillation_detection
+            ...     oscillation_detector=detect_oscillations
             ... )
 
         You can either supply only a terminal time point, or additionally also the
@@ -661,12 +661,12 @@ class Simulator(Generic[M]):
             Callable that analyses trajectory segments for oscillatory
             behaviour and returns :class:`~mxlpy.types.OscillationDetected`
             when oscillations are found, or ``None`` otherwise.  Pass
-            :func:`~mxlpy.integrators.utils.no_oscillation_detection` to
-            disable detection entirely, or
-            :func:`~mxlpy.integrators.utils.detect_oscillations_scipy` for a
-            peak-finding based alternative.
-            Default: :func:`~mxlpy.integrators.utils.detect_oscillations`
-            (autocorrelation-based).
+            :func:`~mxlpy.integrators.utils.detect_oscillations`
+            (autocorrelation-based) or
+            :func:`~mxlpy.integrators.utils.detect_oscillations_scipy`
+            (peak-finding) to enable detection.
+            Default: :func:`~mxlpy.integrators.utils.no_oscillation_detection`
+            (disabled).
 
         Returns
         -------

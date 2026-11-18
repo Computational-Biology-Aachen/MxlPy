@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Protocol, cast, overload
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
+from mxlpy.integrators.utils import OscillationDetector, no_oscillation_detection
 from mxlpy.simulation import Evaluation, OdeSimulation, Simulation
 from mxlpy.simulator import Simulator
 from mxlpy.types import Result
@@ -115,15 +115,15 @@ class _IntegratingRunner[
     rel_norm
         Whether to use the relative norm for the steady-state calculation.
     oscillation_detector
-        Callable for oscillation detection during steady-state calculations,
-        or ``None`` to disable.
+        Callable for oscillation detection during steady-state calculations.
+        Defaults to `no_oscillation_detection` (disabled).
 
     """
 
     integrator: IntegratorType | None = None
     tolerance: float = 1e-6
     rel_norm: bool = False
-    oscillation_detector: OscillationDetector | None = detect_oscillations
+    oscillation_detector: OscillationDetector | None = no_oscillation_detection
 
     def _run(
         self, model: Mi, simulate: Callable[[Simulator[Mi]], Simulator[Mi]]

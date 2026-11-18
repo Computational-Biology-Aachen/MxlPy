@@ -14,7 +14,7 @@ from mxlpy.integrators.abstract import (
     AbstractIntegrator,
     TimeCourse,
 )
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
+from mxlpy.integrators.utils import OscillationDetector, no_oscillation_detection
 from mxlpy.types import ArrayLike, Event, IntegrationFailure, NoSteadyState, Result
 
 if TYPE_CHECKING:
@@ -440,7 +440,7 @@ class Scipy(AbstractIntegrator):
         *,
         tolerance: float,
         rel_norm: bool,
-        oscillation_detector: OscillationDetector | None = detect_oscillations,
+        oscillation_detector: OscillationDetector | None = no_oscillation_detection,
         step_size: int = 100,
         max_steps: int = 1000,
     ) -> Result[TimeCourse]:
@@ -456,8 +456,9 @@ class Scipy(AbstractIntegrator):
             Callable that analyses each trajectory segment and returns an
             :class:`~mxlpy.types.OscillationDetected` exception when
             oscillatory behaviour is found, or ``None`` otherwise.  Pass
-            :func:`no_oscillation_detection` to disable detection entirely.
-            Default: :func:`detect_oscillations` (autocorrelation-based).
+            :func:`detect_oscillations` (autocorrelation-based) or
+            :func:`detect_oscillations_scipy` (peak-finding) to enable detection.
+            Default: :func:`no_oscillation_detection` (disabled).
         step_size
             Step size for the integration (default: 100).
         max_steps

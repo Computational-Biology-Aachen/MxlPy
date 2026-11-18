@@ -33,7 +33,7 @@ from mxlpy.integrators._native.lower import (
     lower_outputs,
 )
 from mxlpy.integrators.abstract import AbstractIntegrator, TimeCourse
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
+from mxlpy.integrators.utils import OscillationDetector, no_oscillation_detection
 from mxlpy.parallel import register_worker_state
 from mxlpy.types import ArrayLike, IntegrationFailure, NoSteadyState, Result
 
@@ -494,7 +494,7 @@ class Native(AbstractIntegrator):
         *,
         tolerance: float,
         rel_norm: bool,
-        oscillation_detector: OscillationDetector | None = detect_oscillations,
+        oscillation_detector: OscillationDetector | None = no_oscillation_detection,
         step_size: int = 100,
         max_steps: int = 1000,
         n_time_points: int = 100,
@@ -509,7 +509,8 @@ class Native(AbstractIntegrator):
             Whether to use relative normalization.
         oscillation_detector
             Callable that returns an exception if a segment oscillates, or None.
-            Pass `no_oscillation_detection` to disable detection.
+            Pass `detect_oscillations` to enable detection.
+            Default: `no_oscillation_detection` (disabled).
         step_size
             Length of each integration segment.
         max_steps

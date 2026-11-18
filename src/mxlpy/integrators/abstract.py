@@ -11,7 +11,7 @@ from typing import Protocol
 
 import numpy as np
 
-from mxlpy.integrators.utils import OscillationDetector, detect_oscillations
+from mxlpy.integrators.utils import OscillationDetector, no_oscillation_detection
 from mxlpy.types import Array, ArrayLike, Result, Rhs
 
 __all__ = [
@@ -109,7 +109,7 @@ class AbstractIntegrator(ABC):
         *,
         tolerance: float,
         rel_norm: bool,
-        oscillation_detector: OscillationDetector | None = detect_oscillations,
+        oscillation_detector: OscillationDetector | None = no_oscillation_detection,
     ) -> Result[TimeCourse]:
         """Integrate the system to steady state.
 
@@ -123,8 +123,9 @@ class AbstractIntegrator(ABC):
             Callable that analyses a trajectory segment and returns an
             :class:`~mxlpy.types.OscillationDetected` exception when
             oscillatory behaviour is found, or ``None`` otherwise.  Pass
-            :func:`no_oscillation_detection` to disable detection entirely.
-            Default: :func:`detect_oscillations` (autocorrelation-based).
+            :func:`detect_oscillations` (autocorrelation-based) or
+            :func:`detect_oscillations_scipy` (peak-finding) to enable detection.
+            Default: :func:`no_oscillation_detection` (disabled).
 
         Returns
         -------
@@ -199,7 +200,7 @@ class IntegratorProtocol(Protocol):
         *,
         tolerance: float,
         rel_norm: bool,
-        oscillation_detector: OscillationDetector | None = detect_oscillations,
+        oscillation_detector: OscillationDetector | None = no_oscillation_detection,
     ) -> Result[TimeCourse]:
         """Integrate the system to steady state.
 
@@ -213,8 +214,9 @@ class IntegratorProtocol(Protocol):
             Callable that analyses a trajectory segment and returns an
             :class:`~mxlpy.types.OscillationDetected` exception when
             oscillatory behaviour is found, or ``None`` otherwise.  Pass
-            :func:`no_oscillation_detection` to disable detection entirely.
-            Default: :func:`detect_oscillations` (autocorrelation-based).
+            :func:`detect_oscillations` (autocorrelation-based) or
+            :func:`detect_oscillations_scipy` (peak-finding) to enable detection.
+            Default: :func:`no_oscillation_detection` (disabled).
 
         Returns
         -------
@@ -309,7 +311,7 @@ class MockIntegrator(AbstractIntegrator):
         *,
         tolerance: float,  # noqa: ARG002
         rel_norm: bool,  # noqa: ARG002
-        oscillation_detector: OscillationDetector | None = detect_oscillations,  # noqa: ARG002
+        oscillation_detector: OscillationDetector | None = no_oscillation_detection,  # noqa: ARG002
     ) -> Result[TimeCourse]:
         """Integrate the system to steady state.
 

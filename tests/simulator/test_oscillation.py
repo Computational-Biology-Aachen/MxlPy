@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
 
@@ -12,6 +14,9 @@ from mxlpy.fns import mass_action_1s
 from mxlpy.integrators import Scipy
 from mxlpy.integrators.utils import detect_oscillations
 from mxlpy.types import NoSteadyState, OscillationDetected
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 # ---------------------------------------------------------------------------
 # Pure rate functions for an oscillating model (Lotka-Volterra)
@@ -148,7 +153,9 @@ def test_oscillating_model_returns_oscillation_detected(
     """Lotka-Volterra returns OscillationDetected, not NoSteadyState."""
     result = (
         Simulator(lotka_volterra, integrator=Scipy)
-        .simulate_to_steady_state(tolerance=1e-6)
+        .simulate_to_steady_state(
+            tolerance=1e-6, oscillation_detector=detect_oscillations
+        )
         .get_result()
     )
     assert isinstance(result.value, OscillationDetected)
@@ -160,7 +167,9 @@ def test_oscillating_model_species_names_resolved(
     """oscillating_species contains actual model variable names, not indices."""
     result = (
         Simulator(lotka_volterra, integrator=Scipy)
-        .simulate_to_steady_state(tolerance=1e-6)
+        .simulate_to_steady_state(
+            tolerance=1e-6, oscillation_detector=detect_oscillations
+        )
         .get_result()
     )
     assert isinstance(result.value, OscillationDetected)
@@ -176,12 +185,27 @@ def test_oscillating_model_period_is_estimated(
     """OscillationDetected carries a finite period estimate."""
     result = (
         Simulator(lotka_volterra, integrator=Scipy)
-        .simulate_to_steady_state(tolerance=1e-6)
+        .simulate_to_steady_state(
+            tolerance=1e-6, oscillation_detector=detect_oscillations
+        )
         .get_result()
     )
     assert isinstance(result.value, OscillationDetected)
     assert result.value.period is not None
     assert result.value.period > 0
+
+
+def _lotka_volterra_rhs(_t: float, y: Iterable[float]) -> tuple[float, ...]:
+    x, z = y
+    return (1.0 * x - 0.1 * x * z, 0.075 * x * z - 1.5 * z)
+
+
+def test_oscillation_detection_disabled_by_default() -> None:
+    """Without an explicit detector, an oscillator ends in NoSteadyState."""
+    result = Scipy(_lotka_volterra_rhs, (10.0, 5.0)).integrate_to_steady_state(
+        tolerance=1e-6, rel_norm=False, max_steps=20
+    )
+    assert isinstance(result.value, NoSteadyState)
 
 
 def test_converging_model_not_affected(converging_model: KineticModelBuilder) -> None:
@@ -217,7 +241,9 @@ def test_unwrap_oscillation_detected_raises(
     """unwrap_or_err on an oscillating result raises OscillationDetected."""
     result = (
         Simulator(lotka_volterra, integrator=Scipy)
-        .simulate_to_steady_state(tolerance=1e-6)
+        .simulate_to_steady_state(
+            tolerance=1e-6, oscillation_detector=detect_oscillations
+        )
         .get_result()
     )
     with pytest.raises(OscillationDetected):
