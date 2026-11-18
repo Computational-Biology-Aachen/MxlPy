@@ -1,0 +1,2315 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://cpbl.rwth-aachen.de/MxlPy/0.72.0/fuzzy_fitting.html">
+      
+      
+        <link rel="prev" href="fitting.html">
+      
+      
+        <link rel="next" href="bayesian-inference.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Fuzzy fitting - mxlpy docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="stylesheets/extra.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="mxlpy docs" class="md-header__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mxlpy docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Fuzzy fitting
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="mxlpy docs" class="md-nav__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mxlpy docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ODE features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="basics.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="composition.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model composition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scans.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scans
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mca.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sensitivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sensitivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+      <a href="fuzzy_fitting.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzy fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="bayesian-inference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bayesian inference (MCMC)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="monte-carlo.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monte Carlo methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="label-models.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Label models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="comparisons.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparing models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parameterise.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model parameterisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="stability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stability analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parameter_identifiability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Identifiability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="symbolic.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Symbolic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="integrators.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrator configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="compartmentalisation.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartmentalisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mechanistic learning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Mechanistic learning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-ude.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UDEs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-surrogates.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Surrogates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-npe.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neural Posterior Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="carousel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reaction carousel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="metaprogramming.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metaprogramming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="serialization.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Serialization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="examples.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="report.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reporting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Other model builders
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Other model builders
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="ode-model-builder.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="steady-state-model-builder.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Steady-state models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tips
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tips
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tips.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    General
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parallel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel execution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="citing.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How to cite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+  <h1>Fuzzy fitting</h1>
+
+<script>
+(function (global, factory) {
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global = global || self, global.ClipboardCopyElement = factory());
+  }(this, function () { 'use strict';
+
+    function createNode(text) {
+      const node = document.createElement('pre');
+      node.style.width = '1px';
+      node.style.height = '1px';
+      node.style.position = 'fixed';
+      node.style.top = '5px';
+      node.textContent = text;
+      return node;
+    }
+
+    function copyNode(node) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(node.textContent);
+      }
+
+      const selection = getSelection();
+
+      if (selection == null) {
+        return Promise.reject(new Error());
+      }
+
+      selection.removeAllRanges();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      selection.addRange(range);
+      document.execCommand('copy');
+      selection.removeAllRanges();
+      return Promise.resolve();
+    }
+    function copyText(text) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(text);
+      }
+
+      const body = document.body;
+
+      if (!body) {
+        return Promise.reject(new Error());
+      }
+
+      const node = createNode(text);
+      body.appendChild(node);
+      copyNode(node);
+      body.removeChild(node);
+      return Promise.resolve();
+    }
+
+    function copy(button) {
+      const id = button.getAttribute('for');
+      const text = button.getAttribute('value');
+
+      function trigger() {
+        button.dispatchEvent(new CustomEvent('clipboard-copy', {
+          bubbles: true
+        }));
+      }
+
+      if (text) {
+        copyText(text).then(trigger);
+      } else if (id) {
+        const root = 'getRootNode' in Element.prototype ? button.getRootNode() : button.ownerDocument;
+        if (!(root instanceof Document || 'ShadowRoot' in window && root instanceof ShadowRoot)) return;
+        const node = root.getElementById(id);
+        if (node) copyTarget(node).then(trigger);
+      }
+    }
+
+    function copyTarget(content) {
+      if (content instanceof HTMLInputElement || content instanceof HTMLTextAreaElement) {
+        return copyText(content.value);
+      } else if (content instanceof HTMLAnchorElement && content.hasAttribute('href')) {
+        return copyText(content.href);
+      } else {
+        return copyNode(content);
+      }
+    }
+
+    function clicked(event) {
+      const button = event.currentTarget;
+
+      if (button instanceof HTMLElement) {
+        copy(button);
+      }
+    }
+
+    function keydown(event) {
+      if (event.key === ' ' || event.key === 'Enter') {
+        const button = event.currentTarget;
+
+        if (button instanceof HTMLElement) {
+          event.preventDefault();
+          copy(button);
+        }
+      }
+    }
+
+    function focused(event) {
+      event.currentTarget.addEventListener('keydown', keydown);
+    }
+
+    function blurred(event) {
+      event.currentTarget.removeEventListener('keydown', keydown);
+    }
+
+    class ClipboardCopyElement extends HTMLElement {
+      constructor() {
+        super();
+        this.addEventListener('click', clicked);
+        this.addEventListener('focus', focused);
+        this.addEventListener('blur', blurred);
+      }
+
+      connectedCallback() {
+        if (!this.hasAttribute('tabindex')) {
+          this.setAttribute('tabindex', '0');
+        }
+
+        if (!this.hasAttribute('role')) {
+          this.setAttribute('role', 'button');
+        }
+      }
+
+      get value() {
+        return this.getAttribute('value') || '';
+      }
+
+      set value(text) {
+        this.setAttribute('value', text);
+      }
+
+    }
+
+    if (!window.customElements.get('clipboard-copy')) {
+      window.ClipboardCopyElement = ClipboardCopyElement;
+      window.customElements.define('clipboard-copy', ClipboardCopyElement);
+    }
+
+    return ClipboardCopyElement;
+
+  }));
+</script>
+<script>
+      document.addEventListener('clipboard-copy', function(event) {
+        const notice = event.target.querySelector('.notice')
+        notice.hidden = false
+        setTimeout(function() {
+          notice.hidden = true
+        }, 1000)
+      })
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
+<style type="text/css">
+    pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }
+.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }
+.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */
+.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */
+.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */
+.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */
+.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */
+.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */
+.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */
+.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */
+.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */
+.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */
+.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */
+.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */
+.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */
+.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */
+.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */
+.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */
+.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */
+.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */
+.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */
+.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */
+.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */
+.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */
+.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */
+.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */
+.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */
+.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */
+.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */
+.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */
+.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */
+.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */
+.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */
+.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */
+.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */
+.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */
+.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */
+.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */
+.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */
+.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */
+.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */
+.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */
+.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */
+  </style>
+<link rel="stylesheet" href="assets/jupyter-b81bd4b389ab.css">
+<style type="text/css">
+.jupyter-wrapper{--jp-shadow-base-lightness: 0;--jp-shadow-umbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .2 );--jp-shadow-penumbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .14 );--jp-shadow-ambient-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .12 );--jp-elevation-z0: none;--jp-elevation-z1: 0px 2px 1px -1px var(--jp-shadow-umbra-color), 0px 1px 1px 0px var(--jp-shadow-penumbra-color), 0px 1px 3px 0px var(--jp-shadow-ambient-color);--jp-elevation-z2: 0px 3px 1px -2px var(--jp-shadow-umbra-color), 0px 2px 2px 0px var(--jp-shadow-penumbra-color), 0px 1px 5px 0px var(--jp-shadow-ambient-color);--jp-elevation-z4: 0px 2px 4px -1px var(--jp-shadow-umbra-color), 0px 4px 5px 0px var(--jp-shadow-penumbra-color), 0px 1px 10px 0px var(--jp-shadow-ambient-color);--jp-elevation-z6: 0px 3px 5px -1px var(--jp-shadow-umbra-color), 0px 6px 10px 0px var(--jp-shadow-penumbra-color), 0px 1px 18px 0px var(--jp-shadow-ambient-color);--jp-elevation-z8: 0px 5px 5px -3px var(--jp-shadow-umbra-color), 0px 8px 10px 1px var(--jp-shadow-penumbra-color), 0px 3px 14px 2px var(--jp-shadow-ambient-color);--jp-elevation-z12: 0px 7px 8px -4px var(--jp-shadow-umbra-color), 0px 12px 17px 2px var(--jp-shadow-penumbra-color), 0px 5px 22px 4px var(--jp-shadow-ambient-color);--jp-elevation-z16: 0px 8px 10px -5px var(--jp-shadow-umbra-color), 0px 16px 24px 2px var(--jp-shadow-penumbra-color), 0px 6px 30px 5px var(--jp-shadow-ambient-color);--jp-elevation-z20: 0px 10px 13px -6px var(--jp-shadow-umbra-color), 0px 20px 31px 3px var(--jp-shadow-penumbra-color), 0px 8px 38px 7px var(--jp-shadow-ambient-color);--jp-elevation-z24: 0px 11px 15px -7px var(--jp-shadow-umbra-color), 0px 24px 38px 3px var(--jp-shadow-penumbra-color), 0px 9px 46px 8px var(--jp-shadow-ambient-color);--jp-border-width: 1px;--jp-border-color0: var(--md-grey-400);--jp-border-color1: var(--md-grey-400);--jp-border-color2: var(--md-grey-300);--jp-border-color3: var(--md-grey-200);--jp-inverse-border-color: var(--md-grey-600);--jp-border-radius: 2px;--jp-ui-font-scale-factor: 1.2;--jp-ui-font-size0: .83333em;--jp-ui-font-size1: 13px;--jp-ui-font-size2: 1.2em;--jp-ui-font-size3: 1.44em;--jp-ui-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-ui-font-color0: rgba(0, 0, 0, 1);--jp-ui-font-color1: rgba(0, 0, 0, .87);--jp-ui-font-color2: rgba(0, 0, 0, .54);--jp-ui-font-color3: rgba(0, 0, 0, .38);--jp-ui-inverse-font-color0: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color1: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color2: rgba(255, 255, 255, .7);--jp-ui-inverse-font-color3: rgba(255, 255, 255, .5);--jp-content-line-height: 1.6;--jp-content-font-scale-factor: 1.2;--jp-content-font-size0: .83333em;--jp-content-font-size1: 14px;--jp-content-font-size2: 1.2em;--jp-content-font-size3: 1.44em;--jp-content-font-size4: 1.728em;--jp-content-font-size5: 2.0736em;--jp-content-presentation-font-size1: 17px;--jp-content-heading-line-height: 1;--jp-content-heading-margin-top: 1.2em;--jp-content-heading-margin-bottom: .8em;--jp-content-heading-font-weight: 500;--jp-content-font-color0: rgba(0, 0, 0, 1);--jp-content-font-color1: rgba(0, 0, 0, .87);--jp-content-font-color2: rgba(0, 0, 0, .54);--jp-content-font-color3: rgba(0, 0, 0, .38);--jp-content-link-color: var(--md-blue-700);--jp-content-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-code-font-size: 13px;--jp-code-line-height: 1.3077;--jp-code-padding: 5px;--jp-code-font-family-default: Menlo, Consolas, "DejaVu Sans Mono", monospace;--jp-code-font-family: var(--jp-code-font-family-default);--jp-code-presentation-font-size: 16px;--jp-code-cursor-width0: 1.4px;--jp-code-cursor-width1: 2px;--jp-code-cursor-width2: 4px;--jp-layout-color0: white;--jp-layout-color1: white;--jp-layout-color2: var(--md-grey-200);--jp-layout-color3: var(--md-grey-400);--jp-layout-color4: var(--md-grey-600);--jp-inverse-layout-color0: #111111;--jp-inverse-layout-color1: var(--md-grey-900);--jp-inverse-layout-color2: var(--md-grey-800);--jp-inverse-layout-color3: var(--md-grey-700);--jp-inverse-layout-color4: var(--md-grey-600);--jp-brand-color0: var(--md-blue-900);--jp-brand-color1: var(--md-blue-700);--jp-brand-color2: var(--md-blue-300);--jp-brand-color3: var(--md-blue-100);--jp-brand-color4: var(--md-blue-50);--jp-accent-color0: var(--md-green-900);--jp-accent-color1: var(--md-green-700);--jp-accent-color2: var(--md-green-300);--jp-accent-color3: var(--md-green-100);--jp-warn-color0: var(--md-orange-900);--jp-warn-color1: var(--md-orange-700);--jp-warn-color2: var(--md-orange-300);--jp-warn-color3: var(--md-orange-100);--jp-error-color0: var(--md-red-900);--jp-error-color1: var(--md-red-700);--jp-error-color2: var(--md-red-300);--jp-error-color3: var(--md-red-100);--jp-success-color0: var(--md-green-900);--jp-success-color1: var(--md-green-700);--jp-success-color2: var(--md-green-300);--jp-success-color3: var(--md-green-100);--jp-info-color0: var(--md-cyan-900);--jp-info-color1: var(--md-cyan-700);--jp-info-color2: var(--md-cyan-300);--jp-info-color3: var(--md-cyan-100);--jp-cell-padding: 5px;--jp-cell-collapser-width: 8px;--jp-cell-collapser-min-height: 20px;--jp-cell-collapser-not-active-hover-opacity: .6;--jp-cell-editor-background: var(--md-grey-100);--jp-cell-editor-border-color: var(--md-grey-300);--jp-cell-editor-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-cell-editor-active-background: var(--jp-layout-color0);--jp-cell-editor-active-border-color: var(--jp-brand-color1);--jp-cell-prompt-width: 64px;--jp-cell-prompt-font-family: var(--jp-code-font-family-default);--jp-cell-prompt-letter-spacing: 0px;--jp-cell-prompt-opacity: 1;--jp-cell-prompt-not-active-opacity: .5;--jp-cell-prompt-not-active-font-color: var(--md-grey-700);--jp-cell-inprompt-font-color: #307fc1;--jp-cell-outprompt-font-color: #bf5b3d;--jp-notebook-padding: 10px;--jp-notebook-select-background: var(--jp-layout-color1);--jp-notebook-multiselected-color: var(--md-blue-50);--jp-notebook-scroll-padding: calc( 100% - var(--jp-code-font-size) * var(--jp-code-line-height) - var(--jp-code-padding) - var(--jp-cell-padding) - 1px );--jp-rendermime-error-background: #fdd;--jp-rendermime-table-row-background: var(--md-grey-100);--jp-rendermime-table-row-hover-background: var(--md-light-blue-50);--jp-dialog-background: rgba(0, 0, 0, .25);--jp-console-padding: 10px;--jp-toolbar-border-color: var(--jp-border-color1);--jp-toolbar-micro-height: 8px;--jp-toolbar-background: var(--jp-layout-color1);--jp-toolbar-box-shadow: 0px 0px 2px 0px rgba(0, 0, 0, .24);--jp-toolbar-header-margin: 4px 4px 0px 4px;--jp-toolbar-active-background: var(--md-grey-300);--jp-statusbar-height: 24px;--jp-input-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-input-active-background: var(--jp-layout-color1);--jp-input-hover-background: var(--jp-layout-color1);--jp-input-background: var(--md-grey-100);--jp-input-border-color: var(--jp-inverse-border-color);--jp-input-active-border-color: var(--jp-brand-color1);--jp-input-active-box-shadow-color: rgba(19, 124, 189, .3);--jp-editor-selected-background: #d9d9d9;--jp-editor-selected-focused-background: #d7d4f0;--jp-editor-cursor-color: var(--jp-ui-font-color0);--jp-mirror-editor-keyword-color: #008000;--jp-mirror-editor-atom-color: #88f;--jp-mirror-editor-number-color: #080;--jp-mirror-editor-def-color: #00f;--jp-mirror-editor-variable-color: var(--md-grey-900);--jp-mirror-editor-variable-2-color: #05a;--jp-mirror-editor-variable-3-color: #085;--jp-mirror-editor-punctuation-color: #05a;--jp-mirror-editor-property-color: #05a;--jp-mirror-editor-operator-color: #aa22ff;--jp-mirror-editor-comment-color: #408080;--jp-mirror-editor-string-color: #ba2121;--jp-mirror-editor-string-2-color: #708;--jp-mirror-editor-meta-color: #aa22ff;--jp-mirror-editor-qualifier-color: #555;--jp-mirror-editor-builtin-color: #008000;--jp-mirror-editor-bracket-color: #997;--jp-mirror-editor-tag-color: #170;--jp-mirror-editor-attribute-color: #00c;--jp-mirror-editor-header-color: blue;--jp-mirror-editor-quote-color: #090;--jp-mirror-editor-link-color: #00c;--jp-mirror-editor-error-color: #f00;--jp-mirror-editor-hr-color: #999;--jp-collaborator-color1: #ffad8e;--jp-collaborator-color2: #dac83d;--jp-collaborator-color3: #72dd76;--jp-collaborator-color4: #00e4d0;--jp-collaborator-color5: #45d4ff;--jp-collaborator-color6: #e2b1ff;--jp-collaborator-color7: #ff9de6;--jp-vega-background: white;--jp-sidebar-min-width: 250px;--jp-search-toggle-off-opacity: .5;--jp-search-toggle-hover-opacity: .8;--jp-search-toggle-on-opacity: 1;--jp-search-selected-match-background-color: rgb(245, 200, 0);--jp-search-selected-match-color: black;--jp-search-unselected-match-background-color: var( --jp-inverse-layout-color0 );--jp-search-unselected-match-color: var(--jp-ui-inverse-font-color0);--jp-icon-contrast-color0: var(--md-purple-600);--jp-icon-contrast-color1: var(--md-green-600);--jp-icon-contrast-color2: var(--md-pink-600);--jp-icon-contrast-color3: var(--md-blue-600);--jp-jupyter-icon-color: #f37626;--jp-notebook-icon-color: #f37626;--jp-json-icon-color: var(--md-orange-700);--jp-console-icon-background-color: var(--md-blue-700);--jp-console-icon-color: white;--jp-terminal-icon-background-color: var(--md-grey-800);--jp-terminal-icon-color: var(--md-grey-200);--jp-text-editor-icon-color: var(--md-grey-700);--jp-inspector-icon-color: var(--md-grey-700);--jp-switch-color: var(--md-grey-400);--jp-switch-true-position-color: var(--md-orange-900)}
+</style>
+<div class="jupyter-wrapper">
+<div class="jp-Notebook" data-jp-theme-light="true" data-jp-theme-name="JupyterLab Light">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell celltag_cache">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell celltag_cache" id="cell-id=8c92b09f">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="celltoolbar">
+<div class="button_container tags_button_container">
+<span class="tag-container">
+<span class="cell-tag">cache</span>
+</span>
+</div>
+</div>
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-1">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">example_models</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_upper_glycolysis</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">plot</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.fuzzy</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThompsonState</span><span class="p">,</span> <span class="n">thompson_sampling</span>
+
+<span class="c1"># Create artificial data</span>
+<span class="n">p_orig</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"k1"</span><span class="p">:</span> <span class="mf">0.25</span><span class="p">,</span>
+    <span class="s2">"k2"</span><span class="p">:</span> <span class="mf">1.2</span><span class="p">,</span>
+    <span class="s2">"k3"</span><span class="p">:</span> <span class="mf">1.6</span><span class="p">,</span>
+    <span class="s2">"k3m"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span>
+    <span class="s2">"k4"</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="s2">"k5"</span><span class="p">:</span> <span class="mf">1.3</span><span class="p">,</span>
+    <span class="s2">"k6"</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span>
+    <span class="s2">"k7"</span><span class="p">:</span> <span class="mf">2.5</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="n">m</span> <span class="o">=</span> <span class="n">get_upper_glycolysis</span><span class="p">()</span><span class="o">.</span><span class="n">update_parameters</span><span class="p">(</span><span class="n">p_orig</span><span class="p">)</span>
+<span class="n">data</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Simulator</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+    <span class="o">.</span><span class="n">simulate_time_course</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">))</span>
+    <span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+<span class="p">)</span>
+
+<span class="c1"># Perform sampling</span>
+<span class="n">state</span> <span class="o">=</span> <span class="n">thompson_sampling</span><span class="p">(</span>
+    <span class="n">m</span><span class="p">,</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span>
+    <span class="n">state</span><span class="o">=</span><span class="n">ThompsonState</span><span class="o">.</span><span class="n">from_parameter_values</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">"k1"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-1</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">,</span> <span class="mi">21</span><span class="p">),</span>
+            <span class="s2">"k2"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-1</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">,</span> <span class="mi">21</span><span class="p">),</span>
+            <span class="s2">"k3"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-1</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">,</span> <span class="mi">21</span><span class="p">),</span>
+            <span class="s2">"k3m"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-1</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">,</span> <span class="mi">21</span><span class="p">),</span>
+            <span class="s2">"k4"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-1</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">,</span> <span class="mi">21</span><span class="p">),</span>
+            <span class="s2">"k5"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-1</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">,</span> <span class="mi">21</span><span class="p">),</span>
+            <span class="s2">"k6"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-1</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">,</span> <span class="mi">21</span><span class="p">),</span>
+            <span class="s2">"k7"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">geomspace</span><span class="p">(</span><span class="mf">1e-1</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">,</span> <span class="mi">21</span><span class="p">),</span>
+        <span class="p">}</span>
+    <span class="p">),</span>
+    <span class="n">rtol</span><span class="o">=</span><span class="mf">0.11</span><span class="p">,</span>
+    <span class="n">n</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+    <span class="n">parallel</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-1">import numpy as np
+
+from example_models import get_upper_glycolysis
+from mxlpy import Simulator, plot
+from mxlpy.fuzzy import ThompsonState, thompson_sampling
+
+# Create artificial data
+p_orig = {
+    "k1": 0.25,
+    "k2": 1.2,
+    "k3": 1.6,
+    "k3m": 0.5,
+    "k4": 100,
+    "k5": 1.3,
+    "k6": 1.5,
+    "k7": 2.5,
+}
+m = get_upper_glycolysis().update_parameters(p_orig)
+data, _ = (
+    Simulator(m)
+    .simulate_time_course(np.linspace(0, 10, 11, dtype=float))
+    .get_result()
+    .unwrap_or_err()
+)
+
+# Perform sampling
+state = thompson_sampling(
+    m,
+    data=data,
+    state=ThompsonState.from_parameter_values(
+        {
+            "k1": np.geomspace(1e-1, 1e2, 21),
+            "k2": np.geomspace(1e-1, 1e2, 21),
+            "k3": np.geomspace(1e-1, 1e2, 21),
+            "k3m": np.geomspace(1e-1, 1e2, 21),
+            "k4": np.geomspace(1e-1, 1e2, 21),
+            "k5": np.geomspace(1e-1, 1e2, 21),
+            "k6": np.geomspace(1e-1, 1e2, 21),
+            "k7": np.geomspace(1e-1, 1e2, 21),
+        }
+    ),
+    rtol=0.11,
+    n=1000,
+    parallel=True,
+)</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  0%|          | 0/1000 [00:00&lt;?, ?it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  0%|          | 1/1000 [00:02&lt;39:56,  2.40s/it]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  1%|          | 9/1000 [00:02&lt;03:23,  4.86it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  3%|▎         | 33/1000 [00:02&lt;00:43, 22.11it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  5%|▌         | 53/1000 [00:02&lt;00:24, 38.82it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>  8%|▊         | 77/1000 [00:02&lt;00:14, 61.92it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 10%|█         | 101/1000 [00:02&lt;00:10, 86.32it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 12%|█▎        | 125/1000 [00:03&lt;00:08, 109.19it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 15%|█▌        | 150/1000 [00:03&lt;00:06, 134.59it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 17%|█▋        | 173/1000 [00:03&lt;00:05, 154.23it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 20%|█▉        | 198/1000 [00:03&lt;00:04, 175.88it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 22%|██▏       | 221/1000 [00:03&lt;00:04, 183.42it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 24%|██▍       | 243/1000 [00:03&lt;00:04, 187.80it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 26%|██▋       | 265/1000 [00:03&lt;00:03, 196.14it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 29%|██▉       | 289/1000 [00:03&lt;00:03, 203.85it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 31%|███▏      | 313/1000 [00:03&lt;00:03, 202.69it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 34%|███▍      | 338/1000 [00:04&lt;00:03, 211.12it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 36%|███▌      | 360/1000 [00:04&lt;00:02, 213.41it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 38%|███▊      | 382/1000 [00:04&lt;00:03, 164.87it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 40%|████      | 405/1000 [00:04&lt;00:03, 177.66it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 43%|████▎     | 429/1000 [00:04&lt;00:03, 190.01it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 45%|████▌     | 453/1000 [00:04&lt;00:02, 194.72it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 48%|████▊     | 477/1000 [00:04&lt;00:02, 203.63it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 50%|█████     | 501/1000 [00:04&lt;00:02, 209.54it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 52%|█████▎    | 525/1000 [00:04&lt;00:02, 212.73it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 55%|█████▍    | 547/1000 [00:05&lt;00:02, 210.91it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 57%|█████▋    | 569/1000 [00:05&lt;00:02, 212.26it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 59%|█████▉    | 594/1000 [00:05&lt;00:01, 222.17it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 62%|██████▏   | 617/1000 [00:05&lt;00:01, 221.86it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 64%|██████▍   | 640/1000 [00:05&lt;00:01, 221.77it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 66%|██████▋   | 663/1000 [00:05&lt;00:01, 220.59it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 69%|██████▊   | 686/1000 [00:05&lt;00:01, 215.95it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 71%|███████▏  | 713/1000 [00:05&lt;00:01, 227.09it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 74%|███████▎  | 737/1000 [00:05&lt;00:01, 226.07it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 76%|███████▌  | 761/1000 [00:06&lt;00:01, 228.84it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 79%|███████▉  | 788/1000 [00:06&lt;00:00, 240.59it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 81%|████████▏ | 813/1000 [00:06&lt;00:00, 229.39it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 84%|████████▍ | 841/1000 [00:06&lt;00:00, 235.52it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 87%|████████▋ | 869/1000 [00:06&lt;00:00, 244.57it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 90%|████████▉ | 897/1000 [00:06&lt;00:00, 249.30it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 92%|█████████▏| 923/1000 [00:06&lt;00:00, 250.40it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 95%|█████████▍| 949/1000 [00:06&lt;00:00, 252.32it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre> 98%|█████████▊| 981/1000 [00:06&lt;00:00, 264.99it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>100%|██████████| 1000/1000 [00:06&lt;00:00, 143.78it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=ed916e3b">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [1]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-2">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">CubicSpline</span>
+
+<span class="c1"># Visualize results</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">grid_layout</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">state</span><span class="p">),</span> <span class="n">n_cols</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<span class="n">ai</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">axs</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">axs</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">xticks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">var</span><span class="p">[</span><span class="s2">"x"</span><span class="p">]))</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">bar</span><span class="p">(</span><span class="n">xticks</span><span class="p">,</span> <span class="n">var</span><span class="p">[</span><span class="s2">"success"</span><span class="p">]</span> <span class="o">/</span> <span class="n">var</span><span class="p">[</span><span class="s2">"fail"</span><span class="p">])</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xticks</span><span class="p">(</span><span class="n">xticks</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xticklabels</span><span class="p">((</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">i</span><span class="si">:</span><span class="s2">.0e</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">var</span><span class="p">[</span><span class="s2">"x"</span><span class="p">]),</span> <span class="n">rotation</span><span class="o">=</span><span class="mi">90</span><span class="p">)</span>
+
+    <span class="n">x_trans</span> <span class="o">=</span> <span class="n">CubicSpline</span><span class="p">(</span><span class="n">var</span><span class="p">[</span><span class="s2">"x"</span><span class="p">],</span> <span class="n">xticks</span><span class="p">)</span>
+    <span class="n">x_data</span> <span class="o">=</span> <span class="n">x_trans</span><span class="p">(</span><span class="n">p_orig</span><span class="p">[</span><span class="n">name</span><span class="p">])</span>
+    <span class="n">y_data</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">transData</span><span class="o">.</span><span class="n">inverted</span><span class="p">()</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">ax</span><span class="o">.</span><span class="n">transAxes</span><span class="o">.</span><span class="n">transform</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">]))[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">p_orig</span><span class="p">[</span><span class="n">name</span><span class="p">],</span>
+        <span class="n">xy</span><span class="o">=</span><span class="p">(</span><span class="n">x_data</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>  <span class="c1"># type: ignore</span>
+        <span class="n">xytext</span><span class="o">=</span><span class="p">(</span><span class="n">x_data</span><span class="p">,</span> <span class="n">y_data</span><span class="p">),</span>  <span class="c1"># type: ignore</span>
+        <span class="n">ha</span><span class="o">=</span><span class="s2">"center"</span><span class="p">,</span>
+        <span class="n">arrowprops</span><span class="o">=</span><span class="p">{</span><span class="s2">"arrowstyle"</span><span class="p">:</span> <span class="s2">"-&gt;"</span><span class="p">},</span>
+    <span class="p">)</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-2">from scipy.interpolate import CubicSpline
+
+# Visualize results
+fig, axs = plot.grid_layout(len(state.state), n_cols=4)
+ai = iter(axs)
+
+for ax, (name, var) in zip(axs, state.state.items(), strict=False):
+    ax.set(title=f"{name}")
+    xticks = np.arange(len(var["x"]))
+
+    ax.bar(xticks, var["success"] / var["fail"])
+    ax.set_xticks(xticks)
+    ax.set_xticklabels((f"{i:.0e}" for i in var["x"]), rotation=90)
+
+    x_trans = CubicSpline(var["x"], xticks)
+    x_data = x_trans(p_orig[name])
+    y_data = ax.transData.inverted().transform(ax.transAxes.transform([0, 0.5]))[1]
+    ax.annotate(
+        p_orig[name],
+        xy=(x_data, 0),  # type: ignore
+        xytext=(x_data, y_data),  # type: ignore
+        ha="center",
+        arrowprops={"arrowstyle": "-&gt;"},
+    )</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedImage jp-OutputArea-output" tabindex="0">
+<img alt="No description has been provided for this image" class="" src="data:image/webp;base64,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"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=48397663">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-3">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-3"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=a4c5be53">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-4">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-4"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div> <!-- jp-Notebook -->
+</div> <!-- jupyter-wrapper -->
+
+        <style>
+        ['pre { line-height: 125%; }\ntd.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\nspan.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\ntd.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\nspan.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\n.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }\n.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }\n.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */\n.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */\n.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */\n.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */\n.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */\n.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */\n.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */\n.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */\n.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */\n.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */\n.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */\n.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */\n.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */\n.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */\n.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */\n.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */\n.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */\n.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */\n.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */\n.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */\n.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */\n.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */\n.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */\n.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */\n.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */\n.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */\n.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */\n.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */\n.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */\n.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */\n.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */\n.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */\n.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */\n.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */\n.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */\n.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */\n.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */\n.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */\n.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */\n.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */\n.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */']
+        </style>
+        
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["content.code.copy", "content.code.annotate", "search.suggest", "search.highlight", "search.share", "navigation.instant", "navigation.instant.prefetch"], "search": "assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+    
+    
+      <script src="assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  <script data-mkdocs-jupyter-mathjax="{&quot;url&quot;: &quot;https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS_CHTML-full,Safe&quot;, &quot;version&quot;: 4}">
+/* Shared by full pages and Material's instant navigation. */
+(() => {
+  const config = JSON.parse(document.currentScript.dataset.mkdocsJupyterMathjax);
+  if (window.mkdocsJupyterMathJax) return;
+
+  let loading;
+  let queue = Promise.resolve();
+  let previous = [];
+
+  const ready = async () => {
+    if (!loading) {
+      loading = (async () => {
+        let math = window.MathJax;
+        if (!math?.typesetPromise) {
+          const url = new URL(config.url, document.baseURI).href;
+          const existing = Array.from(document.scripts).find(script =>
+            script.src && (script.src === url || script.id === 'MathJax-script' ||
+              (/mathjax/i.test(script.src) &&
+               /\/(?:MathJax|latest|(?:tex|mml)(?:-mml)?-(?:chtml|svg))\.js(?:[?#]|$)/i.test(script.src))));
+          if (existing) {
+            if (!math?.startup?.promise) {
+              await new Promise((resolve, reject) => {
+                existing.addEventListener('load', resolve, { once: true });
+                existing.addEventListener('error', reject, { once: true });
+              });
+            }
+          } else {
+            // Keep site macros, delimiters and startup hooks when supplied.
+            const options = math || {};
+            window.MathJax = {
+              ...options,
+              loader: {
+                ...options.loader,
+                load: Array.from(new Set(['ui/safe', ...(options.loader?.load || [])]))
+              },
+              startup: { typeset: false, ...options.startup },
+              tex: {
+                tags: 'ams',
+                useLabelIds: true,
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true,
+                ...options.tex
+              }
+            };
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = config.url;
+              script.id = 'MathJax-script';
+              script.async = true;
+              script.onload = resolve;
+              script.onerror = reject;
+              document.head.appendChild(script);
+            });
+          }
+        }
+        math = window.MathJax;
+        await math.startup.promise;
+        return math;
+      })();
+    }
+    const math = await loading;
+    // A site owner can extend the v3 queue again on each navigation.
+    await math.startup.promise;
+    return math;
+  };
+
+  const unrendered = node => {
+    if (node.matches('mjx-container')) return [];
+    if (!node.querySelector('mjx-container')) return [node];
+    // In v3, scanning generated assistive MathML again produces nested output.
+    return Array.from(node.children).flatMap(unrendered);
+  };
+
+  const refresh = () => {
+    // A separate chain also serializes v3, without changing v4's startup promise.
+    queue = queue.then(async () => {
+      const notebooks = Array.from(document.querySelectorAll('.jupyter-wrapper'));
+      if (!notebooks.length && !previous.length) return;
+      if (notebooks.length === previous.length &&
+          notebooks.every((node, index) => node === previous[index])) return;
+      const math = await ready();
+      if (previous.length) {
+        math.typesetClear(previous);
+        math.texReset();
+      }
+      previous = notebooks.filter(node => node.isConnected);
+      const pending = previous.flatMap(unrendered);
+      if (pending.length) await math.typesetPromise(pending);
+    }).catch(error => console.error('mkdocs-jupyter: MathJax rendering failed', error));
+    return queue;
+  };
+
+  window.mkdocsJupyterMathJax = { refresh };
+  const start = () => {
+    if (typeof document$ !== 'undefined') document$.subscribe(refresh);
+    else refresh();
+  };
+  // Theme bundles and user-provided MathJax scripts can follow notebook content.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else start();
+})();
+
+</script>
+</body>
+</html>
