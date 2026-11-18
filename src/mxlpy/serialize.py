@@ -72,11 +72,11 @@ __all__ = [
     "steady_state_model_to_dict",
 ]
 
-SPEC_VERSION = "1.1"
+SPEC_VERSION = "0.2"
 # Written instead of SPEC_VERSION by a model with data (`data_ref`).
-DATA_SPEC_VERSION = "1.2"
+DATA_SPEC_VERSION = "0.3"
 # Written by a model whose arrays depend on more than data (ADR 0015).
-ARRAY_SPEC_VERSION = "1.3"
+ARRAY_SPEC_VERSION = "0.4"
 # The schema is maintained in the shared, language-agnostic `mxl-schemas` repo
 # so it can be consumed by both mxlpy and mxlweb. It is intentionally not
 # vendored into this package. The URL is pinned to the major spec version, so a

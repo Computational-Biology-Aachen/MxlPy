@@ -1,5 +1,5 @@
 {
-  "$comment": "Cross-language identifier fixtures for v1/identifiers.json. `cases`: canonical(input) must equal output (and canonical(output) == output). `map_cases`: mapping all inputs of one model, in order, must produce outputs. `collisions`: mapping these inputs of one model must fail.",
+  "$comment": "Cross-language identifier fixtures for v0/identifiers.json. `cases`: canonical(input) must equal output (and canonical(output) == output). `map_cases`: mapping all inputs of one model, in order, must produce outputs. `collisions`: mapping these inputs of one model must fail.",
   "cases": [
     {"input": "x", "output": "x"},
     {"input": "_private", "output": "_private"},

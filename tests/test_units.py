@@ -75,7 +75,7 @@ def _canonical(rel: str) -> str:
 
 
 def test_registry_matches_mxl_schemas() -> None:
-    canonical = json.loads(_canonical("v1/units.json"))
+    canonical = json.loads(_canonical("v0/units.json"))
     kinds = canonical["kinds"]
     # Same ids in the same (canonical factor) order.
     assert list(REGISTRY) == [k["id"] for k in kinds]
@@ -224,7 +224,7 @@ def _model_with_units() -> KineticModelBuilder:
 
 def test_model_to_dict_writes_units() -> None:
     data = model_to_dict(_model_with_units(), model_id="m")
-    assert data["spec_version"] == "1.1"
+    assert data["spec_version"] == "0.2"
     spec = data["model"]
     assert spec["variables"]["S"]["unit"] == {
         "factors": [{"kind": "mole", "prefix": "milli", "exponent": 1}]

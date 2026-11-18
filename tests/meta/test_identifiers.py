@@ -68,7 +68,7 @@ def test_canonical_identifier_map_keeps_canonical_names() -> None:
 
 
 def test_vendored_rules_match_mxl_schemas() -> None:
-    spec = json.loads(_canonical("v1/identifiers.json"))
+    spec = json.loads(_canonical("v0/identifiers.json"))
     assert set(spec["reserved"]) == RESERVED
     assert spec["symbols"] == SYMBOLS
     assert spec["transliterate"] == TRANSLITERATE

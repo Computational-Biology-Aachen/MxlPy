@@ -6,7 +6,7 @@
 
 Model ids are free-form strings (``"CO2 (dissolved)"``), but exporters that turn a
 model into code need identifiers. Both mxlpy and mxlweb-core map names through the
-same rules (mxl-schemas ``v1/identifiers.json``), so a model has the same ids in
+same rules (mxl-schemas ``v0/identifiers.json``), so a model has the same ids in
 Python and JavaScript. ``RESERVED`` and ``TRANSLITERATE`` are vendored copies of
 that file; a drift test compares them against it.
 """

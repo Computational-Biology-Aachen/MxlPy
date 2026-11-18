@@ -4,7 +4,7 @@
 
 Besides the convenience aliases (``mmol_s``, ``ppfd``, ...), this module holds
 the shared unit vocabulary of the mxl* tool family (:data:`REGISTRY` and
-:data:`PREFIXES`, mirroring ``mxl-schemas/v1/units.json``); :func:`unit_to_json` and
+:data:`PREFIXES`, mirroring ``mxl-schemas/v0/units.json``); :func:`unit_to_json` and
 :func:`unit_from_json` convert between sympy unit expressions and the
 ``.mxl.json`` unit representation (a flat list of ``{kind, prefix?, exponent}``
 factors, the SBML unitDefinition model) that mxlweb uses as well.
@@ -176,7 +176,7 @@ __all__ = [
 ]
 
 ###############################################################################
-# Shared registry — mirrors mxl-schemas/v1/units.json; kept in sync by
+# Shared registry — mirrors mxl-schemas/v0/units.json; kept in sync by
 # tests/test_units.py. Order matters: it is the canonical factor order.
 ###############################################################################
 

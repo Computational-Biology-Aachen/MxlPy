@@ -143,7 +143,7 @@ def test_save_load_round_trip(tmp_path: Path) -> None:
     model = _spectral_model()
     save(model, tmp_path / "spectral.mxl.json")
     doc = json.loads((tmp_path / "spectral.mxl.json").read_text())
-    assert doc["spec_version"] == "1.2"
+    assert doc["spec_version"] == "0.3"
     assert doc["data_ref"] == "spectral.data.json"
     assert (tmp_path / "spectral.data.json").exists()
 
