@@ -104,7 +104,7 @@ if outcome is None:
     print("Simulation failed")
 ```
 
-Steady-state search raises `OscillationDetected(species, period)` if it detects oscillations, or `NoSteadyState` if it fails to converge.
+Steady-state search raises `NoSteadyState` if it fails to converge. Oscillation detection is off by default; pass `oscillation_detector=detect_oscillations` (or `detect_oscillations_scipy`, both from `mxlpy.integrators`) to get `OscillationDetected(species, period)` for oscillating models instead.
 
 ```python
 from mxlpy import OscillationDetected
@@ -139,13 +139,14 @@ Routines (`scan`, `fit`, `mc`, `mca`, `carousel`, `identify`, `fuzzy`) don't tak
 ```python
 from functools import partial
 from mxlpy import KineticRunner, OdeRunner, EvaluationRunner, Scipy, scan
+from mxlpy.integrators import detect_oscillations
 from mxlpy.runners import default_runner
 
 runner = KineticRunner(
     integrator=partial(Scipy, rtol=1e-8, atol=1e-8),
     tolerance=1e-8,             # steady-state tolerance
     rel_norm=False,
-    oscillation_detector=None,  # disable oscillation detection
+    oscillation_detector=detect_oscillations,  # opt in (default: disabled)
 )
 scan.steady_state(model, to_scan=df, runner=runner)
 default_runner(model)           # KineticRunner() / OdeRunner() / EvaluationRunner() by builder
