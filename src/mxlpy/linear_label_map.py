@@ -126,29 +126,29 @@ def _stoichiometry_to_duplicate_list(stoichiometry: dict[str, int]) -> list[str]
 def _map_substrates_to_labelmap(
     substrates: list[str], labelmap: list[int]
 ) -> list[str]:
-    """Map substrate labels to product label positions.
+    """Gather substrate label positions into product label positions.
+
+    Product position ``i`` receives substrate position ``labelmap[i]``,
+    consistent with `LabelMapper` and modelbase.
 
     Parameters
     ----------
     substrates
-        List of substrate names
+        List of substrate label position names
     labelmap
-        List of integers mapping substrate positions to product positions
+        For each product position, the substrate position it receives
 
     Returns
     -------
-        Dictionary mapping substrate names to product label positions
+        Substrate label position feeding each product position
 
     Examples
     --------
-        >>> _map_substrates_to_labelmap(['A', 'B'], [1, 0])
-        {'A': 1, 'B': 0}
+        >>> _map_substrates_to_labelmap(['A', 'B', 'C'], [2, 0, 1])
+        ['C', 'A', 'B']
 
     """
-    res = ["EXT"] * len(substrates)
-    for substrate, pos in zip(substrates, labelmap, strict=True):
-        res[pos] = substrate
-    return res
+    return [substrates[i] for i in labelmap]
 
 
 def _add_label_influx_or_efflux(
@@ -169,7 +169,7 @@ def _add_label_influx_or_efflux(
     products
         List of product identifiers
     labelmap
-        List of integer labels corresponding to substrate positions
+        For each product position, the substrate position it receives
 
     Returns
     -------
@@ -181,7 +181,8 @@ def _add_label_influx_or_efflux(
     Raises
     ------
     ValueError
-        If the labelmap length is less than the number of substrates
+        If the labelmap length doesn't match the number of label positions
+        or contains an index outside of them
 
     """
     # Add label outfluxes
@@ -195,6 +196,12 @@ def _add_label_influx_or_efflux(
     # Broken labelmap
     if (diff := len(labelmap) - len(substrates)) < 0:
         msg = f"Labelmap has {len(labelmap)} entries but reaction needs {len(substrates)} - missing {abs(diff)} label(s)"
+        raise ValueError(msg)
+    if diff > 0:
+        msg = f"Labelmap has {len(labelmap)} entries but reaction only has {len(substrates)} label position(s)"
+        raise ValueError(msg)
+    if invalid := [i for i in labelmap if not 0 <= i < len(substrates)]:
+        msg = f"Labelmap indices {invalid} are outside of the reaction's {len(substrates)} label position(s)"
         raise ValueError(msg)
     return substrates, products
 
@@ -226,6 +233,10 @@ class LinearLabelMapper:
         A dictionary mapping label names to their respective counts.
     label_maps : dict[str, list[int]]
         A dictionary mapping reaction names to their respective label maps.
+        Product position ``i`` (over the concatenated product label positions)
+        receives substrate position ``labelmap[i]``, as in `LabelMapper`.
+        Reaction participants that aren't in ``label_variables`` (e.g. cofactors)
+        are ignored.
 
     Methods
     -------
@@ -328,7 +339,13 @@ class LinearLabelMapper:
         rxns = self.model.get_raw_reactions()
         for rxn_name, label_map in self.label_maps.items():
             rxn = rxns[rxn_name]
-            subs, prods = _unpack_stoichiometries(rxn.stoichiometry)
+            subs, prods = _unpack_stoichiometries(
+                {
+                    k: v
+                    for k, v in rxn.stoichiometry.items()
+                    if k in self.label_variables
+                }
+            )
 
             subs = _stoichiometry_to_duplicate_list(subs)
             prods = _stoichiometry_to_duplicate_list(prods)

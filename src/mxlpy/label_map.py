@@ -156,6 +156,8 @@ def _map_substrates_to_products(
 ) -> str:
     """Map the rate_suffix to products using the labelmap.
 
+    Product position ``i`` receives substrate position ``labelmap[i]``.
+
     Examples
     --------
         >>> _map_substrates_to_products(rate_suffix="01", labelmap=[1, 0])
@@ -340,6 +342,36 @@ def _get_external_labels(
     return ""
 
 
+def _replace_args_positionally(
+    args: list[str],
+    base_names: list[str],
+    new_names: list[str],
+) -> list[str]:
+    """Replace each occurrence of a base name in args by its next labelled variant.
+
+    Repeated participants (e.g. ``2 A``) consume their variants in order, so
+    each occurrence of ``A`` in args refers to a different isotopomer.
+
+    Examples
+    --------
+        >>> _replace_args_positionally(["A", "A", "k"], ["A", "A"], ["A__0", "A__1"])
+        ['A__0', 'A__1', 'k']
+
+    """
+    variants: defaultdict[str, list[str]] = defaultdict(list)
+    for base, new in zip(base_names, new_names, strict=True):
+        variants[base].append(new)
+    used: defaultdict[str, int] = defaultdict(int)
+    replaced = []
+    for arg in args:
+        if (options := variants.get(arg)) is None:
+            replaced.append(arg)
+            continue
+        replaced.append(options[min(used[arg], len(options) - 1)])
+        used[arg] += 1
+    return replaced
+
+
 def _create_isotopomer_reactions(
     model: KineticModelBuilder,
     label_variables: dict[str, int],
@@ -432,15 +464,15 @@ def _create_isotopomer_reactions(
         )
         new_rate_name = rate_name + "__" + rate_suffix
 
-        replacements = dict(zip(base_substrates, new_substrates, strict=True)) | dict(
-            zip(base_products, new_products, strict=True)
-        )
-
         model.add_reaction(
             name=new_rate_name,
             fn=function,
             stoichiometry=new_stoichiometry,
-            args=[replacements.get(k, k) for k in args],
+            args=_replace_args_positionally(
+                args,
+                base_names=base_substrates + base_products,
+                new_names=new_substrates + new_products,
+            ),
         )
 
 
@@ -460,7 +492,15 @@ class LabelMapper:
     label_variables
         Dict mapping species to number of labels
     label_maps
-        Dict mapping reactions to label transfer patterns
+        Dict mapping reactions to label transfer patterns.
+        Product position ``i`` (over the concatenated product label positions)
+        receives substrate position ``labelmap[i]``.
+
+    Notes
+    -----
+    Isotopomer rates are obtained by calling the original rate function with
+    isotopomer concentrations. This is only exact for rate laws that are linear
+    in each substrate (e.g. mass action).
 
     Examples
     --------

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from mxlpy import KineticModelBuilder
-from mxlpy.fns import mass_action_1s
+from mxlpy.fns import mass_action_1s, mass_action_2s
 from mxlpy.label_map import (
     LabelMapper,
     _assign_compound_labels,
@@ -18,6 +18,7 @@ from mxlpy.label_map import (
     _get_labels_per_variable,
     _map_substrates_to_products,
     _repack_stoichiometries,
+    _replace_args_positionally,
     _split_label_string,
     _total_concentration,
     _unpack_stoichiometries,
@@ -332,34 +333,64 @@ def test_get_labels_per_variable() -> None:
     assert result == [3, 0, 2]
 
 
-def test_labelmapper_build_model() -> None:
-    # FIXME: implement this
-    assert True
+def test_build_model_repeated_substrate_args() -> None:
+    """Each occurrence of a repeated substrate refers to its own isotopomer."""
+    model = KineticModelBuilder()
+    model.add_parameters({"k": 1.0})
+    model.add_variables({"A": 1.0, "B": 0.0})
+    model.add_reaction(
+        "v",
+        fn=mass_action_2s,
+        args=["A", "A", "k"],
+        stoichiometry={"A": -2, "B": 1},
+    )
+    reactions = (
+        LabelMapper(model, label_variables={"A": 1, "B": 2}, label_maps={"v": [0, 1]})
+        .build_model()
+        .get_raw_reactions()
+    )
+
+    assert reactions["v__00"].args == ["A__0", "A__0", "k"]
+    assert reactions["v__01"].args == ["A__0", "A__1", "k"]
+    assert reactions["v__10"].args == ["A__1", "A__0", "k"]
+    assert reactions["v__11"].args == ["A__1", "A__1", "k"]
+    assert reactions["v__01"].stoichiometry == {"A__0": -1, "A__1": -1, "B__01": 1}
 
 
-def test_labelmapper_get_isotopomer_of() -> None:
-    # FIXME: implement this
-    assert True
+def test_build_model_follows_labelmap_direction() -> None:
+    """Product position i receives substrate position labelmap[i]."""
+    model = KineticModelBuilder()
+    model.add_parameters({"k": 1.0})
+    model.add_variables({"A": 1.0, "B": 0.0})
+    model.add_reaction(
+        "v", fn=mass_action_1s, args=["A", "k"], stoichiometry={"A": -1, "B": 1}
+    )
+    reactions = (
+        LabelMapper(
+            model, label_variables={"A": 3, "B": 3}, label_maps={"v": [1, 2, 0]}
+        )
+        .build_model()
+        .get_raw_reactions()
+    )
+
+    assert reactions["v__100"].stoichiometry == {"A__100": -1, "B__001": 1}
+    assert reactions["v__010"].stoichiometry == {"A__010": -1, "B__100": 1}
+    assert reactions["v__001"].stoichiometry == {"A__001": -1, "B__010": 1}
 
 
-def test_labelmapper_get_isotopomers() -> None:
-    # FIXME: implement this
-    assert True
-
-
-def test_labelmapper_get_isotopomers_by_regex() -> None:
-    # FIXME: implement this
-    assert True
-
-
-def test_labelmapper_get_isotopomers_of_at_position() -> None:
-    # FIXME: implement this
-    assert True
-
-
-def test_labelmapper_get_isotopomers_of_with_n_labels() -> None:
-    # FIXME: implement this
-    assert True
+def test_replace_args_positionally() -> None:
+    assert _replace_args_positionally(
+        ["A", "A", "k"], ["A", "A"], ["A__0", "A__1"]
+    ) == ["A__0", "A__1", "k"]
+    assert _replace_args_positionally(["A", "C", "k"], ["A", "C"], ["A__01", "C"]) == [
+        "A__01",
+        "C",
+        "k",
+    ]
+    assert _replace_args_positionally(
+        ["A", "A", "A"], ["A", "A"], ["A__0", "A__1"]
+    ) == ["A__0", "A__1", "A__1"]
+    assert _replace_args_positionally(["k"], [], []) == ["k"]
 
 
 def test_labelmapper_init(simple_model: KineticModelBuilder) -> None:
@@ -398,6 +429,10 @@ def test_map_substrates_to_products() -> None:
 
     result = _map_substrates_to_products("1010", [1, 0, 3, 2])
     assert result == "0101"
+
+    # non-self-inverse maps distinguish gather from scatter
+    assert _map_substrates_to_products("100", [1, 2, 0]) == "001"
+    assert _map_substrates_to_products("100", [2, 0, 1]) == "010"
 
 
 def test_model_with_derived_variables(simple_model: KineticModelBuilder) -> None:

@@ -173,24 +173,81 @@ def test_linear_label_mapper_get_isotopomers() -> None:
     assert isotopomers["C"] == ["C__0"]
 
 
-def test_linearlabelmapper_build_model() -> None:
-    # FIXME: implement this
-    assert True
-
-
-def test_linearlabelmapper_get_isotopomers() -> None:
-    # FIXME: implement this
-    assert True
-
-
 def test_map_substrates_to_labelmap() -> None:
-    """Test mapping substrates to label map."""
-    substrates = ["A", "B", "C"]
-    labelmap = [2, 0, 1]
+    """Product position i receives substrate position labelmap[i] (gather)."""
+    assert _map_substrates_to_labelmap(["A", "B", "C"], [2, 0, 1]) == ["C", "A", "B"]
+    assert _map_substrates_to_labelmap(["A", "B", "C"], [1, 2, 0]) == ["B", "C", "A"]
+    assert _map_substrates_to_labelmap(["A", "B", "C"], [0, 1, 2]) == ["A", "B", "C"]
 
-    result = _map_substrates_to_labelmap(substrates, labelmap)
 
-    assert result == ["B", "C", "A"]
+@pytest.mark.parametrize(
+    "labelmap", [[0, 1, 2], [2, 1, 0], [1, 2, 0], [2, 0, 1], [0, 2, 1]]
+)
+def test_build_model_reactions_follow_labelmap(labelmap: list[int]) -> None:
+    model = KineticModelBuilder()
+    model.add_variables({"A": 1.0, "B": 1.0})
+    model.add_parameters({"k": 1.0})
+    model.add_reaction("v", fn=lambda k: k, stoichiometry={"A": -1, "B": 1}, args=["k"])
+    label_model = LinearLabelMapper(
+        model, label_variables={"A": 3, "B": 3}, label_maps={"v": labelmap}
+    ).build_model(concs=pd.Series({"A": 1.0, "B": 1.0}), fluxes=pd.Series({"v": 1.0}))
+
+    reactions = label_model.get_raw_reactions()
+    assert set(reactions) == {f"v__{i}" for i in range(3)}
+    consumed = []
+    for product_pos, substrate_pos in enumerate(labelmap):
+        rxn = reactions[f"v__{product_pos}"]
+        assert set(rxn.stoichiometry) == {f"A__{substrate_pos}", f"B__{product_pos}"}
+        assert rxn.args == [f"A__{substrate_pos}", "v"]
+        consumed.append(substrate_pos)
+    assert sorted(consumed) == [0, 1, 2]
+
+
+@pytest.mark.parametrize(
+    ("labelmap", "match"),
+    [
+        ([0, 1], "missing 1 label"),
+        ([0, 1, 2, 0], "only has 3 label position"),
+        ([0, 1, 3], r"indices \[3\] are outside"),
+        ([0, -1, 2], r"indices \[-1\] are outside"),
+    ],
+)
+def test_build_model_rejects_invalid_labelmap(labelmap: list[int], match: str) -> None:
+    model = KineticModelBuilder()
+    model.add_variables({"A": 1.0, "B": 1.0})
+    model.add_parameters({"k": 1.0})
+    model.add_reaction("v", fn=lambda k: k, stoichiometry={"A": -1, "B": 1}, args=["k"])
+    mapper = LinearLabelMapper(
+        model, label_variables={"A": 3, "B": 3}, label_maps={"v": labelmap}
+    )
+    with pytest.raises(ValueError, match=match):
+        mapper.build_model(
+            concs=pd.Series({"A": 1.0, "B": 1.0}), fluxes=pd.Series({"v": 1.0})
+        )
+
+
+def test_build_model_ignores_unlabelled_participants() -> None:
+    model = KineticModelBuilder()
+    model.add_variables({"A": 1.0, "ATP": 1.0, "B": 1.0})
+    model.add_parameters({"k": 1.0})
+    model.add_reaction(
+        "v",
+        fn=lambda k: k,
+        stoichiometry={"A": -1, "ATP": -1, "B": 1},
+        args=["k"],
+    )
+    label_model = LinearLabelMapper(
+        model, label_variables={"A": 2, "B": 2}, label_maps={"v": [1, 0]}
+    ).build_model(
+        concs=pd.Series({"A": 1.0, "ATP": 1.0, "B": 1.0}),
+        fluxes=pd.Series({"v": 1.0}),
+    )
+
+    assert not any(k.startswith("ATP") for k in label_model.get_raw_variables())
+    reactions = label_model.get_raw_reactions()
+    assert set(reactions) == {"v__0", "v__1"}
+    assert set(reactions["v__0"].stoichiometry) == {"A__1", "B__0"}
+    assert set(reactions["v__1"].stoichiometry) == {"A__0", "B__1"}
 
 
 def test_neg_one_div() -> None:
