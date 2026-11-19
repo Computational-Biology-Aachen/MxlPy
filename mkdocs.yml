@@ -20,6 +20,7 @@ nav:
       - Scans: scans.ipynb
       - MCA: mca.ipynb
       - Sensitivity analysis: sensitivity.ipynb
+      - Parameter sensitivities: forward-sensitivities.ipynb
       - Fitting: fitting.ipynb
       - Fuzzy fitting: fuzzy_fitting.ipynb
       - Bayesian inference (MCMC): bayesian-inference.ipynb

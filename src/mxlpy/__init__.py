@@ -68,6 +68,7 @@ from . import (
     report,
     runners,
     scan,
+    sensitivities,
     sensitivity,
     units,
 )
@@ -189,6 +190,7 @@ __all__ = [
     "save",
     "sbml",
     "scan",
+    "sensitivities",
     "sensitivity",
     "surrogates",
     "symbolic",

@@ -97,7 +97,7 @@ def test_jacobian_defaults_to_chain_rule(monkeypatch: pytest.MonkeyPatch) -> Non
     def fail(_: KineticModelBuilder) -> None:
         raise NotImplementedError
 
-    monkeypatch.setattr(mxlpy.symbolic.jacobian, "_chain_rule", fail)
+    monkeypatch.setattr(mxlpy.symbolic.jacobian, "compile_derivatives", fail)
     with pytest.raises(NotImplementedError):
         jacobian_fn(_model())
 

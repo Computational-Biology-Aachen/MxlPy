@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, Self, cast, overload
+from typing import TYPE_CHECKING, Generic, Literal, Self, cast, overload
 
 import numpy as np
 import pandas as pd
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from mxlpy.integrators import IntegratorProtocol, IntegratorType
+    from mxlpy.sensitivities import Sensitivities
     from mxlpy.types import ArrayLike
 
 _LOGGER = logging.getLogger(__name__)
@@ -106,6 +107,8 @@ class Simulator(Generic[M]):
     # Compiled jacobian (None if unsupported) and the model cache it was built
     # for: valid until the model changes, which replaces its cache
     _jacobian: tuple[object, Callable | None] | None
+    # Whether y0 still comes from the model, i.e. follows its initial assignments
+    _y0_from_model: bool
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -142,6 +145,8 @@ class Simulator(Generic[M]):
             raise TypeError(msg)
         self.model = model
         self.y0 = model.get_initial_conditions() if y0 is None else y0
+        # Initial assignments then depend on the parameters (sensitivities)
+        self._y0_from_model = y0 is None
 
         self._integrator_type = DefaultIntegrator if integrator is None else integrator
         self._time_shift = None
@@ -181,10 +186,8 @@ class Simulator(Generic[M]):
 
         jac_fn = None
         model = self.model
-        if self.use_jacobian and isinstance(model, KineticModelBuilder):
+        if self.use_jacobian:
             jac_fn = self._get_jacobian(model)
-        elif self.use_jacobian:
-            _LOGGER.warning("Jacobians are only supported for KineticModelBuilder")
 
         # update_variable(s)/clear_results() rebuild the integrator (new y0)
         # without being a "reset" - fired_names must survive them, since it's
@@ -217,7 +220,9 @@ class Simulator(Generic[M]):
             self.integrator._param_update_callback = _update_param  # noqa: SLF001
             self.integrator._fired_names = previous_fired_names  # noqa: SLF001
 
-    def _get_jacobian(self, model: KineticModelBuilder) -> Callable | None:
+    def _get_jacobian(
+        self, model: KineticModelBuilder | OdeModelBuilder
+    ) -> Callable | None:
         model.get_parameter_values()  # (re)creates the cache
         cache = model._cache  # noqa: SLF001
         if self._jacobian is not None and self._jacobian[0] is cache:
@@ -342,6 +347,7 @@ class Simulator(Generic[M]):
 
         """
         sim_variables = self.variables
+        self._y0_from_model = False
 
         # In case someone calls this before the first simulation
         if sim_variables is None:
@@ -696,6 +702,121 @@ class Simulator(Generic[M]):
 
         self._handle_simulation_results(result, skipfirst=False)
         return self
+
+    def simulate_sensitivities(
+        self,
+        time_points: ArrayLike,
+        parameters: list[str],
+        *,
+        outputs: list[str] | None = None,
+        method: Literal["auto", "forward", "finite_difference"] = "auto",
+        rel_step: float = 1e-3,
+    ) -> Result[Sensitivities]:
+        """Sensitivities of a time course w.r.t. parameters and initial values.
+
+        Starts from the simulator's current initial values (after
+        `update_variable(s)` from the last simulated state, in absolute time)
+        and doesn't change its results, see `mxlpy.sensitivities.time_course`.
+
+        Examples
+        --------
+            >>> sens = Simulator(model).simulate_sensitivities([1, 2, 5], ["k1", "x"])
+            >>> sens.unwrap_or_err().sensitivities["k1"]
+
+        Parameters
+        ----------
+        time_points
+            Time points at which the sensitivities are returned
+        parameters
+            Parameters and variables (for their initial values) to differentiate w.r.t.
+        outputs
+            Derived quantities and reactions to include. Defaults to all
+        method
+            `forward`, `finite_difference` or `auto` (forward when possible)
+        rel_step
+            Relative step for the finite differences
+
+        Returns
+        -------
+        Result[Sensitivities]
+            Values and their sensitivities at `time_points`
+
+        """
+        from mxlpy import sensitivities  # noqa: PLC0415 (imports Simulator)
+
+        # Like simulate_time_course: the integrator restarts at 0 after
+        # update_variable(s), results are reported in absolute time
+        shift = 0.0 if self._time_shift is None else self._time_shift
+        res = sensitivities.time_course(
+            self.model,
+            np.asarray(time_points, dtype=float) - shift,
+            parameters,
+            y0=None if self._y0_from_model else self.y0,
+            integrator=self._integrator_type,
+            outputs=outputs,
+            method=method,
+            rel_step=rel_step,
+        )
+        if shift != 0.0 and not isinstance(sens := res.value, Exception):
+            sens.trajectories.index += shift
+            for df in sens.sensitivities.values():
+                df.index += shift
+        return res
+
+    def simulate_sensitivities_to_steady_state(
+        self,
+        parameters: list[str],
+        *,
+        outputs: list[str] | None = None,
+        method: Literal["auto", "forward", "finite_difference"] = "auto",
+        rel_step: float = 1e-3,
+        tolerance: float = 1e-6,
+        rel_norm: bool = False,
+    ) -> Result[Sensitivities]:
+        """Sensitivities of the steady state w.r.t. parameters and initial values.
+
+        Doesn't change the simulator's results, see
+        `mxlpy.sensitivities.steady_state` for details.
+
+        Examples
+        --------
+            >>> sens = Simulator(model).simulate_sensitivities_to_steady_state(["k1"])
+            >>> sens.unwrap_or_err().sensitivities["k1"]
+
+        Parameters
+        ----------
+        parameters
+            Parameters and variables (for their initial values) to differentiate w.r.t.
+        outputs
+            Derived quantities and reactions to include. Defaults to all
+        method
+            `forward`, `finite_difference` or `auto` (forward when possible)
+        rel_step
+            Relative step for the finite differences
+        tolerance
+            Steady-state tolerance
+        rel_norm
+            Whether to use the relative norm for the steady-state check
+
+        Returns
+        -------
+        Result[Sensitivities]
+            Steady-state values and their sensitivities (a single row)
+
+        """
+        from mxlpy import sensitivities  # noqa: PLC0415 (imports Simulator)
+
+        return sensitivities.steady_state(
+            self.model,
+            parameters,
+            y0=None if self._y0_from_model else self.y0,
+            integrator=self._integrator_type,
+            outputs=outputs,
+            method=method,
+            rel_step=rel_step,
+            tolerance=tolerance,
+            rel_norm=rel_norm,
+        )
 
     @overload
     def get_result(self: Simulator[KineticModelBuilder]) -> Result[Simulation]: ...
