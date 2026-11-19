@@ -19,7 +19,6 @@ pre-evaluation snapshot instead.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 
 import numpy as np
@@ -421,10 +420,21 @@ def test_simulator_rejects_steady_state_model() -> None:
         Simulator(SteadyStateModelBuilder().add_parameter("a", 1.0))  # type: ignore[arg-type]
 
 
-def test_use_jacobian_warns_for_ode_model(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.WARNING):
-        Simulator(production_decay_model(), use_jacobian=True)
-    assert "Jacobians are only supported" in caplog.text
+def _decay(x: float, k: float) -> float:
+    return -k * x
+
+
+def test_use_jacobian_for_ode_model() -> None:
+    model = (
+        OdeModelBuilder()
+        .add_parameter("k", 0.5)
+        .add_diff_eq("x", 2.0, _decay, args=["x", "k"])
+    )
+    sim = Simulator(model, use_jacobian=True)
+    assert sim.integrator.jacobian is not None  # type: ignore[attr-defined]
+    expected = Simulator(model).simulate(5).get_result().unwrap_or_err().variables
+    actual = sim.simulate(5).get_result().unwrap_or_err().variables
+    np.testing.assert_allclose(actual.iloc[-1], expected.iloc[-1], rtol=1e-5)
 
 
 def test_simulation_args_robust_to_builder_returning_variables(
