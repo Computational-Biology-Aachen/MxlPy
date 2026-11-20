@@ -22,6 +22,7 @@ nav:
       - Sensitivity analysis: sensitivity.ipynb
       - Parameter sensitivities: forward-sensitivities.ipynb
       - Fitting: fitting.ipynb
+      - Time-dependent inputs: time-dependent-inputs.ipynb
       - Fuzzy fitting: fuzzy_fitting.ipynb
       - Bayesian inference (MCMC): bayesian-inference.ipynb
       - Monte Carlo methods: monte-carlo.ipynb

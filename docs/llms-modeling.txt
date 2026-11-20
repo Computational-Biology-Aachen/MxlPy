@@ -155,6 +155,30 @@ import pandas as pd
 model.add_data("light", pd.Series({"400nm": 200.0, "500nm": 300.0}))  # attach data, e.g. for derived aggregates
 ```
 
+### Time-dependent inputs (`mxlpy.fns_input`)
+
+Parameterised input signals as derived values of `"time"`, whose shape parameters can be fitted like kinetic ones ("input estimation"). Unlike protocols (piecewise-constant parameter changes between integrations) they are model functions: fittable, differentiable (forward sensitivities), symbolic, serialisable and exported by all code generators (the Diffrax integrator can't trace them, use `mxlpy.jax` or Native).
+
+```python
+from mxlpy import fns_input as inp
+
+model.add_derived("drug", inp.smooth_step, args=["time", "d_low", "t_on", "d_high", "steepness"])  # logistic switch
+model.add_derived("dose", inp.bolus, args=["time", "area", "peak_time", "width"])      # Gaussian pulse with given area
+model.add_derived("light", inp.periodic_step, args=["time", "low", "high", "period", "on_fraction", "sharpness"])  # smooth day/night, high phase first
+model.add_derived("u", inp.step, args=["time", "a", "t_s", "b"])                   # hard switch (discontinuous, prefer smooth_step / protocols)
+model.add_derived("u", inp.multi_step([10.0, 20.0], steepness=5.0), args=["time", "l0", "l1", "l2"])  # fixed switch times, fitted levels; steepness required (None: hard)
+
+# Cubic spline through fitted values at fixed knot times (constant beyond the knots)
+model.add_spline_input("EGF", knots=[0, 5, 10, 30, 60], initial=1.0, positive=True)  # adds parameters EGF_0..EGF_4 + derived EGF
+# positive=True: spline of log values, exp'd (stays > 0); monotone=True: Fritsch-Butland monotone cubic (no overshoot);
+# initial_slope=0.0: clamped start (default natural). Same as:
+model.add_derived("EGF", inp.cubic_spline(knots, positive=True), args=["time", *inp.spline_parameter_names("EGF", 5)])
+fit.time_course(model, p0={"EGF_0": 1.0, ..., "k1": 0.1}, data=data, loss_fn=fit.GaussianNll(0.05),
+                minimizer=fit.LeastSquaresMinimizer(), transform="log")
+```
+
+Splines are piecewise polynomials (`sympy.Piecewise`) whose size grows ~quadratically with the knots: up to ~20 knots is cheap. Choose the knot count with `select.compare` over models with different knots (see [advanced](llms-advanced.txt)).
+
 ## Introspection & CRUD
 
 The model exposes a full create/read/update/delete API. Property accessors (`.parameters`, `.variables`, `.reactions`, `.derived`) return **copies** — mutate only via methods.

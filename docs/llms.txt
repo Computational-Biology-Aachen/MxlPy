@@ -18,7 +18,7 @@ Targets Python 3.12–3.13. Part of a tool family with [MxlBricks](https://githu
 
 Each file is a self-contained reference for one topic area:
 
-- [modeling](llms-modeling.txt) — building models: variables, parameters, reactions, rate functions (`fns`), derived quantities, initial assignments, data, introspection/CRUD, `compose`, compartmentalisation, label models
+- [modeling](llms-modeling.txt) — building models: variables, parameters, reactions, rate functions (`fns`), derived quantities, time-dependent inputs (`fns_input`: splines, steps, bolus), initial assignments, data, introspection/CRUD, `compose`, compartmentalisation, label models
 - [simulation](llms-simulation.txt) — `Simulator`: time courses, protocols, steady state, the result object, error handling, integrator configuration, runners
 - [scans & MCA](llms-scans-mca.txt) — `scan` (steady-state / time-course / protocol parameter sweeps) and `mca` (elasticities, response coefficients, stability, rate characteristics)
 - [sensitivity](llms-sensitivity.txt) — global sensitivity (Morris screening, Sobol variance decomposition) and local forward sensitivities (`mxlpy.forward_sensitivities`)

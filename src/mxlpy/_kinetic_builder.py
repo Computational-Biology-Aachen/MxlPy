@@ -58,7 +58,7 @@ from mxlpy.unit_inference import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
 
     from sympy.physics.units.quantities import Quantity
 
@@ -1699,6 +1699,62 @@ class KineticModelBuilder:
             tex_name=tex_name,
         )
         return self
+
+    def add_spline_input(
+        self,
+        name: str,
+        knots: Sequence[float],
+        *,
+        initial: float | Sequence[float] = 1.0,
+        positive: bool = False,
+        monotone: bool = False,
+        initial_slope: float | None = None,
+    ) -> Self:
+        """Add a time-dependent input as a cubic spline with fitted knot values.
+
+        Adds one parameter per knot, `{name}_0`, `{name}_1`, ...
+        (`fns_input.spline_parameter_names`), and the derived value `name`
+        interpolating them over time (`fns_input.cubic_spline`). Fit the knot
+        parameters to estimate an unknown input from downstream data.
+
+        Examples
+        --------
+            >>> model.add_spline_input("light", knots=[0, 10, 20, 40], initial=100.0,
+            ...                        positive=True)
+            >>> fit.time_course(model, p0={"light_0": 100.0, ...}, data=data, ...)
+
+        Parameters
+        ----------
+        name
+            Name of the input (a derived value)
+        knots
+            Knot times, at least two, strictly increasing
+        initial
+            Initial knot values, one for all or one per knot
+        positive
+            Interpolate in log space so the input stays positive
+        monotone
+            Monotone spline without overshoot between knots
+        initial_slope
+            Fixed first derivative at the first knot, e.g. 0
+
+        Returns
+        -------
+        Self
+            The model with the added parameters and input
+
+        """
+        from mxlpy.fns_input import _add_spline_input  # noqa: PLC0415
+
+        return _add_spline_input(
+            self,
+            name,
+            knots,
+            initial=initial,
+            positive=positive,
+            monotone=monotone,
+            initial_slope=initial_slope,
+        )
 
     def get_derived_parameter_names(self) -> list[str]:
         """Retrieve the names of derived parameters.
