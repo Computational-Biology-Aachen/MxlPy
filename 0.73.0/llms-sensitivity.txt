@@ -1,0 +1,109 @@
+# MxlPy — Global sensitivity analysis
+
+[← back to index](llms.txt)
+
+`mxlpy.sensitivity` ranks and quantifies how much each parameter drives a chosen model output. `SALib` is a core dependency (no extra install). Workflow: **screen** cheaply with Morris, then **quantify** the survivors with Sobol.
+
+## The `output` and `param_bounds` contract (shared by both)
+
+- `output` — a callable `(model, samples: pd.DataFrame) -> np.ndarray` that maps the whole sample matrix (one row per sample, columns = parameter names) to **one scalar per row**. There are no built-in output helpers: build the reduction on `mxlpy.scan`, which runs samples in parallel, caches, and returns `NaN` on integration failure (the `NaN` then propagates into the indices).
+- `param_bounds` — `dict[str, tuple[float, float]]` of `(lower, upper)` sampling bounds per parameter.
+- `seed` — for reproducible sampling and bootstrap.
+
+```python
+from mxlpy import scan, sensitivity
+import numpy as np
+
+# Steady-state value of a species
+def steady_state_x(model, samples):
+    return scan.steady_state(model, to_scan=samples).variables["x"].to_numpy()
+
+# Peak over a time course
+def max_x(model, samples):
+    return scan.time_course(model, to_scan=samples, time_points=time_points).get_agg_per_run("max")["x"].to_numpy()
+
+# Area under the curve (pass np.trapezoid as the aggregator)
+def auc_x(model, samples):
+    return scan.time_course(model, to_scan=samples, time_points=time_points).get_agg_per_run(np.trapezoid)["x"].to_numpy()
+```
+
+## Morris screening
+
+`sensitivity.morris(model, *, output, param_bounds, n_trajectories=10, num_levels=4, seed=None) -> pd.DataFrame`
+
+Elementary-effects screening: which parameters matter at all, at only `n_trajectories * (k + 1)` evaluations for `k` parameters. Result is indexed by parameter with columns:
+
+- `mu` — mean elementary effect
+- `mu_star` — mean **absolute** effect; the importance ranking
+- `sigma` — std of effects (nonlinearity / interaction)
+- `mu_star_conf` — bootstrap CI
+
+Reading: low `mu_star` = unimportant; high `mu_star` + low `sigma` = important & roughly linear; high `mu_star` + high `sigma` = important & nonlinear/interacting.
+
+```python
+result = sensitivity.morris(
+    model,
+    output=steady_state_x,
+    param_bounds={"k1": (0.5, 2.0), "k2": (0.5, 2.0), "k_out": (0.5, 2.0)},
+    n_trajectories=20,
+    seed=0,
+)
+result.sort_values("mu_star", ascending=False)
+```
+
+## Sobol variance decomposition
+
+`sensitivity.sobol(model, *, output, param_bounds, n_samples=1024, seed=None) -> pd.DataFrame`
+
+Once Morris has screened out the noise, Sobol quantifies *how much* of the output variance each survivor explains. Cost is `n_samples * (k + 2)` evaluations, so it is a deliberate second pass. `n_samples` **must be a power of two** (`ValueError` otherwise). Result is indexed by parameter with columns:
+
+- `S1` — first-order index: variance explained by the parameter **alone**
+- `ST` — total-order index: variance explained **including all interactions**
+- `S1_conf`, `ST_conf` — bootstrap CIs
+
+Reading: high `S1` = direct driver; large `ST − S1` gap = acts mainly through interactions; `ST ≈ 0` = negligible.
+
+```python
+result = sensitivity.sobol(
+    model,
+    output=steady_state_x,
+    param_bounds={"k1": (0.5, 2.0), "k2": (0.5, 2.0)},
+    n_samples=1024,   # power of two; total evals = n_samples * (k + 2)
+    seed=0,
+)
+result.sort_values("ST", ascending=False)
+```
+
+## Local (forward) sensitivities
+
+`mxlpy.forward_sensitivities` (`mxlpy.sensitivity` is the global analysis above) computes the derivatives `d y(t) / d theta` of every variable, derived quantity and reaction w.r.t. parameters and variable initial values. Forward sensitivities solve `dS/dt = J S + df/dtheta` alongside the model, with `J` and `df/dtheta` generated symbolically (needs sympy-convertible rate functions); steady states use the implicit function theorem (conserved totals are fixed by the initial values). Models that can't be differentiated symbolically (NN surrogates, unparsable functions) fall back to central finite differences with a warning. Works for `Model`/`KineticModelBuilder` and `OdeModelBuilder`.
+
+```python
+from mxlpy import forward_sensitivities
+
+sens = forward_sensitivities.time_course(model, time_points, ["k1", "k2", "x"]).unwrap_or_err()
+sens.simulated                 # DataFrame: time x (variables, derived, reactions)
+sens.derivatives["k1"]         # same shape: d simulated / d k1
+sens.method                    # "forward" | "finite_difference"
+sens.to_array()                # (time, column, parameter)
+
+forward_sensitivities.steady_state(model, ["k1"])   # single row
+
+# explicit initial values / output subset / method
+forward_sensitivities.time_course(model, time_points, ["k1"], y0={...}, outputs=["v1"], method="auto")
+forward_sensitivities.steady_state(model, ["k1"], method="finite_difference", displacement=1e-3)
+
+# runners provide the same, with their integrator / steady-state settings
+KineticRunner(derivatives="auto", displacement=1e-3).time_course_sensitivities(model, time_points, ["k1"])
+KineticRunner().steady_state_sensitivities(model, ["k1"])
+```
+
+- Variable names in `wrt` give sensitivities w.r.t. their initial values. Derived parameters / initial-assignment parameters are rejected (differentiate w.r.t. the parameters they're computed from).
+- Without `y0`, initial values come from the model, so parameter-dependent initial assignments are differentiated too.
+- `method="forward"` raises if symbolic differentiation isn't possible; `displacement` (default `1e-3`) is the relative finite-difference step — smaller steps amplify integrator noise.
+- Integrators compiling the model themselves (`compiles_model = True`: `Native`, `Diffrax`) always use finite differences.
+- Returns `Result[ForwardSensitivities]`; integration failures are values, call `.unwrap_or_err()`.
+- Generated code is cached per model structure: parameter/variable value updates reuse it, structural changes (adding/removing/redefining components, initial assignments) regenerate it. Copies and pickled models share it.
+- `mca.response_coefficients` and gradient-based fits use the runner's sensitivities.
+- `Simulator(model, use_jacobian=True)` now also compiles the analytic Jacobian for `OdeModelBuilder`.
+
