@@ -46,6 +46,29 @@ fig, ax = plot.lines(errors, legend=False)
 ax.set(xlabel="parameter value", ylabel="abs(error)")
 ```
 
+### Fisher information (`identify.fisher_information`)
+
+Cheap local alternative to profile likelihoods: one sensitivity evaluation at the optimum gives the noise-weighted residual Jacobian `S`, `F = SᵀS` and the asymptotic covariance `F⁻¹` (assumes Gaussian noise, approximately linear model around the optimum).
+
+```python
+from mxlpy import identify
+
+fim = identify.fisher_information(
+    model,
+    data,                    # Series: steady state, DataFrame: time course (+ protocol=...)
+    fit_result,              # fit.Fit or {name: value}; variable names = fitted initial values
+    sigma=0.1,               # scalar, Series per observable, DataFrame per point; None = estimate noise variance Σr²/(n-p)
+    # y0=... (same as the fit), runner=None (its derivatives= picks forward / finite differences),
+    # transform="log" (log10-unit uncertainties), rtol=1e-6 (relative singular value cutoff)
+)
+fim.covariance, fim.correlation, fim.std_errors   # inf std errors for non-identifiable parameters
+fim.wald_ci(alpha=0.95)      # value, std_error, lower, upper (t distribution if sigma was estimated)
+fim.eigen()                  # (eigenvalues desc, eigenvectors as columns): small = sloppy combinations
+fim.non_identifiable()       # null-space combinations (rows), empty if all identifiable
+fim.matrix, fim.design, fim.rank, fim.chi2
+plot.heatmap(fim.correlation, annotate=True)
+```
+
 ## Stability visualisation
 
 Phase-plane vector fields and steady-state classification. `plot.trajectories_2d(model, x1=(name, values), x2=(name, values))` draws a quiver field over two variables and returns `(fig, ax)`, so you can overlay example trajectories:

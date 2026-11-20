@@ -73,3 +73,37 @@ result = sensitivity.sobol(
 )
 result.sort_values("ST", ascending=False)
 ```
+
+## Local (forward) sensitivities
+
+`mxlpy.forward_sensitivities` (`mxlpy.sensitivity` is the global analysis above) computes the derivatives `d y(t) / d theta` of every variable, derived quantity and reaction w.r.t. parameters and variable initial values. Forward sensitivities solve `dS/dt = J S + df/dtheta` alongside the model, with `J` and `df/dtheta` generated symbolically (needs sympy-convertible rate functions); steady states use the implicit function theorem (conserved totals are fixed by the initial values). Models that can't be differentiated symbolically (NN surrogates, unparsable functions) fall back to central finite differences with a warning. Works for `Model`/`KineticModelBuilder` and `OdeModelBuilder`.
+
+```python
+from mxlpy import forward_sensitivities
+
+sens = forward_sensitivities.time_course(model, time_points, ["k1", "k2", "x"]).unwrap_or_err()
+sens.simulated                 # DataFrame: time x (variables, derived, reactions)
+sens.derivatives["k1"]         # same shape: d simulated / d k1
+sens.method                    # "forward" | "finite_difference"
+sens.to_array()                # (time, column, parameter)
+
+forward_sensitivities.steady_state(model, ["k1"])   # single row
+
+# explicit initial values / output subset / method
+forward_sensitivities.time_course(model, time_points, ["k1"], y0={...}, outputs=["v1"], method="auto")
+forward_sensitivities.steady_state(model, ["k1"], method="finite_difference", displacement=1e-3)
+
+# runners provide the same, with their integrator / steady-state settings
+KineticRunner(derivatives="auto", displacement=1e-3).time_course_sensitivities(model, time_points, ["k1"])
+KineticRunner().steady_state_sensitivities(model, ["k1"])
+```
+
+- Variable names in `wrt` give sensitivities w.r.t. their initial values. Derived parameters / initial-assignment parameters are rejected (differentiate w.r.t. the parameters they're computed from).
+- Without `y0`, initial values come from the model, so parameter-dependent initial assignments are differentiated too.
+- `method="forward"` raises if symbolic differentiation isn't possible; `displacement` (default `1e-3`) is the relative finite-difference step — smaller steps amplify integrator noise.
+- Integrators compiling the model themselves (`compiles_model = True`: `Native`, `Diffrax`) always use finite differences.
+- Returns `Result[ForwardSensitivities]`; integration failures are values, call `.unwrap_or_err()`.
+- Generated code is cached per model structure: parameter/variable value updates reuse it, structural changes (adding/removing/redefining components, initial assignments) regenerate it. Copies and pickled models share it.
+- `mca.response_coefficients` and gradient-based fits use the runner's sensitivities.
+- `Simulator(model, use_jacobian=True)` now also compiles the analytic Jacobian for `OdeModelBuilder`.
+
