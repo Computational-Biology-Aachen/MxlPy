@@ -25,10 +25,12 @@ from mxlpy.runners import DynamicRunner, KineticRunner, SteadyStateRunner
 from mxlpy.simulator import _normalise_protocol_index
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
 
     from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy.distributions import Prior
     from mxlpy.fit.abstract import PostprocessFn
+    from mxlpy.fit.penalties import Penalty
     from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
     from mxlpy.simulation import Simulation
     from mxlpy.types import Array, RateFn
@@ -312,6 +314,8 @@ def carousel_steady_state(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
 ) -> mxlpy.fit.abstract.EnsembleFit:
@@ -358,6 +362,15 @@ def carousel_steady_state(
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     timeout
@@ -379,6 +392,8 @@ def carousel_steady_state(
         loss_fn=loss_fn,
         postprocess_fn=postprocess_fn,
         bounds=bounds,
+        prior=prior,
+        penalty=penalty,
         as_deepcopy=as_deepcopy,
         timeout=timeout,
     )
@@ -396,6 +411,8 @@ def carousel_time_course(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
 ) -> mxlpy.fit.abstract.EnsembleFit:
@@ -444,6 +461,15 @@ def carousel_time_course(
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     timeout
@@ -465,6 +491,8 @@ def carousel_time_course(
         loss_fn=loss_fn,
         postprocess_fn=postprocess_fn,
         bounds=bounds,
+        prior=prior,
+        penalty=penalty,
         as_deepcopy=as_deepcopy,
         timeout=timeout,
     )
@@ -483,6 +511,8 @@ def carousel_protocol_time_course(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     as_deepcopy: bool = True,
     timeout: float | None = None,
 ) -> mxlpy.fit.abstract.EnsembleFit:
@@ -532,6 +562,15 @@ def carousel_protocol_time_course(
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     timeout
@@ -555,6 +594,8 @@ def carousel_protocol_time_course(
         loss_fn=loss_fn,
         postprocess_fn=postprocess_fn,
         bounds=bounds,
+        prior=prior,
+        penalty=penalty,
         as_deepcopy=as_deepcopy,
         timeout=timeout,
     )

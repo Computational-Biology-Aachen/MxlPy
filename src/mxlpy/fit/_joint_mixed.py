@@ -7,7 +7,7 @@
 ###############################################################################
 
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import partial
 from typing import Any, cast
@@ -15,8 +15,9 @@ from typing import Any, cast
 import numpy as np
 from loky import ProcessPoolExecutor
 
+from mxlpy.distributions import Prior
 from mxlpy.fit import losses
-from mxlpy.fit._joint import _pool
+from mxlpy.fit._joint import _minimize_joint, _pool
 from mxlpy.fit.abstract import (
     FitResidual,
     JointFit,
@@ -25,12 +26,12 @@ from mxlpy.fit.abstract import (
     _joint_settings,
     _Settings,
 )
+from mxlpy.fit.penalties import Penalty
 from mxlpy.fit.residuals import steady_state_residual
 from mxlpy.minimizers.abstract import (
     Bounds,
     LossFn,
     MinimizerProtocol,
-    OptimisationState,
 )
 from mxlpy.runners import SteadyStateRunner
 from mxlpy.types import Result
@@ -72,6 +73,8 @@ def joint_mixed(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     parallel: bool = True,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
@@ -121,6 +124,15 @@ def joint_mixed(
         series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     parallel
@@ -152,18 +164,15 @@ def joint_mixed(
     ]
 
     with _pool(parallel=parallel, max_workers=max_workers) as pool:
-        min_result = minimizer(
+        return _minimize_joint(
             partial(
                 _mixed_sum_of_residuals,
                 fits=full_settings,
                 pool=pool,
             ),
-            p0,
-            {} if bounds is None else bounds,
+            p0=p0,
+            minimizer=minimizer,
+            bounds=bounds,
+            prior=prior,
+            penalty=penalty,
         )
-
-    match min_result.value:
-        case OptimisationState(parameters, residual):
-            return Result(JointFit(parameters, loss=residual))
-        case _ as e:
-            return Result(e)

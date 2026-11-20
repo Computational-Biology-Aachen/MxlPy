@@ -214,7 +214,7 @@ def test_more_validation() -> None:
     data = _data(_decay())
     with pytest.raises(ValueError, match="residuals are zero"):
         identify.fisher_information(_decay(), data, {"k": K})
-    with pytest.raises(ValueError, match="DataFrame data"):
+    with pytest.raises(ValueError, match="time course data"):
         identify.fisher_information(
             _decay(), data.iloc[-1], {"k": K}, sigma=data.iloc[[-1]]
         )

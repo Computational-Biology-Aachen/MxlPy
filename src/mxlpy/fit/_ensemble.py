@@ -6,7 +6,7 @@
 ###############################################################################
 
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from functools import partial
 from typing import Any, overload
 
@@ -15,9 +15,11 @@ import pandas as pd
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
+from mxlpy.distributions import Prior
 from mxlpy.fit import losses
 from mxlpy.fit._single import _steady_state, protocol_time_course, time_course
 from mxlpy.fit.abstract import EnsembleFit, FitResidual, PostprocessFn
+from mxlpy.fit.penalties import Penalty
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
     steady_state_residual,
@@ -50,6 +52,8 @@ def ensemble_steady_state[M: (KineticModelBuilder, OdeModelBuilder)](
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
@@ -68,6 +72,8 @@ def ensemble_steady_state(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
@@ -86,6 +92,8 @@ def ensemble_steady_state[M: _Model](
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
@@ -133,6 +141,15 @@ def ensemble_steady_state[M: _Model](
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     parallel
@@ -160,6 +177,8 @@ def ensemble_steady_state[M: _Model](
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
+                    prior=prior,
+                    penalty=penalty,
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
@@ -183,6 +202,8 @@ def ensemble_time_course[M: KineticModelBuilder | OdeModelBuilder](
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
@@ -232,6 +253,15 @@ def ensemble_time_course[M: KineticModelBuilder | OdeModelBuilder](
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     parallel
@@ -259,6 +289,8 @@ def ensemble_time_course[M: KineticModelBuilder | OdeModelBuilder](
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
+                    prior=prior,
+                    penalty=penalty,
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),
@@ -283,6 +315,8 @@ def ensemble_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
@@ -333,6 +367,15 @@ def ensemble_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         Number of time points per step in the protocol
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     parallel
@@ -362,6 +405,8 @@ def ensemble_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
                     minimizer=minimizer,
                     residual_fn=residual_fn,
                     bounds=bounds,
+                    prior=prior,
+                    penalty=penalty,
                     as_deepcopy=as_deepcopy,
                 ),
                 inputs=list(enumerate(ensemble)),

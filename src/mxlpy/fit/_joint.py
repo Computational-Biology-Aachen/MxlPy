@@ -8,7 +8,7 @@
 
 import contextlib
 import multiprocessing
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import partial
 from typing import Any
@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 from loky import ProcessPoolExecutor
 
+from mxlpy.distributions import Prior
 from mxlpy.fit import losses
 from mxlpy.fit.abstract import (
     FitResidual,
@@ -25,6 +26,7 @@ from mxlpy.fit.abstract import (
     _joint_settings,
     _Settings,
 )
+from mxlpy.fit.penalties import Penalty, collect_penalties, penalised
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
     steady_state_residual,
@@ -35,6 +37,7 @@ from mxlpy.minimizers.abstract import (
     LossFn,
     MinimizerProtocol,
     OptimisationState,
+    Residual,
 )
 from mxlpy.runners import DynamicRunner, SteadyStateRunner
 from mxlpy.types import Result
@@ -66,6 +69,36 @@ def _sum_of_residuals(
     return error
 
 
+def _minimize_joint(
+    residual: Residual,
+    *,
+    p0: dict[str, float],
+    minimizer: MinimizerProtocol,
+    bounds: Bounds | None,
+    prior: Mapping[str, Prior] | None,
+    penalty: Penalty | Sequence[Penalty] | None,
+) -> Result[JointFit]:
+    """Minimize the summed residual of a joint fit plus its penalties."""
+    with_penalty = None
+    if penalties := collect_penalties(prior, penalty, list(p0)):
+        residual = with_penalty = penalised(residual, penalties)
+    match minimizer(residual, p0, {} if bounds is None else bounds).value:
+        case OptimisationState(parameters, value):
+            if with_penalty is None:
+                return Result(JointFit(parameters, loss=value))
+            # Evaluated separately, as `value - penalty` loses the loss's
+            # precision if the penalty dominates
+            return Result(
+                JointFit(
+                    parameters,
+                    loss=with_penalty.inner(parameters),
+                    penalty=with_penalty.penalty(parameters),
+                )
+            )
+        case _ as e:
+            return Result(e)
+
+
 def _pool(
     *, parallel: bool, max_workers: int | None
 ) -> ProcessPoolExecutor | contextlib.nullcontext[None]:
@@ -86,6 +119,8 @@ def joint_steady_state(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     parallel: bool = True,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
@@ -127,6 +162,15 @@ def joint_steady_state(
         series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     parallel
@@ -158,21 +202,19 @@ def joint_steady_state(
     ]
 
     with _pool(parallel=parallel, max_workers=max_workers) as pool:
-        min_result = minimizer(
+        return _minimize_joint(
             partial(
                 _sum_of_residuals,
                 residual_fn=steady_state_residual,
                 fits=full_settings,
                 pool=pool,
             ),
-            p0,
-            {} if bounds is None else bounds,
+            p0=p0,
+            minimizer=minimizer,
+            bounds=bounds,
+            prior=prior,
+            penalty=penalty,
         )
-    match min_result.value:
-        case OptimisationState(parameters, residual):
-            return Result(JointFit(parameters, loss=residual))
-        case _ as e:
-            return Result(e)
 
 
 def joint_time_course(
@@ -185,6 +227,8 @@ def joint_time_course(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     parallel: bool = True,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
@@ -220,6 +264,15 @@ def joint_time_course(
         series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     parallel
@@ -251,22 +304,19 @@ def joint_time_course(
     ]
 
     with _pool(parallel=parallel, max_workers=max_workers) as pool:
-        min_result = minimizer(
+        return _minimize_joint(
             partial(
                 _sum_of_residuals,
                 residual_fn=time_course_residual,
                 fits=full_settings,
                 pool=pool,
             ),
-            p0,
-            {} if bounds is None else bounds,
+            p0=p0,
+            minimizer=minimizer,
+            bounds=bounds,
+            prior=prior,
+            penalty=penalty,
         )
-
-    match min_result.value:
-        case OptimisationState(parameters, residual):
-            return Result(JointFit(parameters, loss=residual))
-        case _ as e:
-            return Result(e)
 
 
 def joint_protocol_time_course(
@@ -279,6 +329,8 @@ def joint_protocol_time_course(
     loss_fn: LossFn = losses.rmse,
     postprocess_fn: PostprocessFn | None = None,
     bounds: Bounds | None = None,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
     parallel: bool = True,
     max_workers: int | None = None,
     as_deepcopy: bool = True,
@@ -314,6 +366,15 @@ def joint_protocol_time_course(
         series. Its output has to contain the data columns.
     bounds
         Mapping of bounds per parameter
+    prior
+        Prior per fitted parameter (`mxlpy.distributions`), whose negative log
+        densities are added to the loss (maximum a posteriori with a
+        `GaussianNll` loss, regularisation with others). Parameters without
+        one are unpenalised. Same mapping as for `mcmc_*`
+    penalty
+        Further penalties added to the loss, see `mxlpy.fit.Penalty`, e.g.
+        `PriorPenalty(prior, weight=...)` to weight priors against a
+        heuristic loss
     as_deepcopy
         Whether to copy the model to avoid overwriting the state
     parallel
@@ -345,19 +406,16 @@ def joint_protocol_time_course(
     ]
 
     with _pool(parallel=parallel, max_workers=max_workers) as pool:
-        min_result = minimizer(
+        return _minimize_joint(
             partial(
                 _sum_of_residuals,
                 residual_fn=protocol_time_course_residual,
                 fits=full_settings,
                 pool=pool,
             ),
-            p0,
-            {} if bounds is None else bounds,
+            p0=p0,
+            minimizer=minimizer,
+            bounds=bounds,
+            prior=prior,
+            penalty=penalty,
         )
-
-    match min_result.value:
-        case OptimisationState(parameters, residual):
-            return Result(JointFit(parameters, loss=residual))
-        case _ as e:
-            return Result(e)

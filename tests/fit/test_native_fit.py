@@ -347,3 +347,59 @@ def test_protocol_data_after_the_protocol_is_ignored(
         ).unwrap_or_err()
     _assert_native(caplog)
     assert res.best_pars["k2"] == pytest.approx(2.0, rel=1e-6)
+
+
+def _noisy_data() -> pd.DataFrame:
+    data = _data(["x", "y"])
+    rng = np.random.default_rng(1)
+    return data + rng.normal(0, [0.01, 0.05], data.shape)
+
+
+def test_gaussian_nll_per_observable_sigma(caplog: pytest.LogCaptureFixture) -> None:
+    data = _noisy_data()
+    loss = fit.GaussianNll(sigma=pd.Series({"x": 0.01, "y": 0.05}))
+    native = _fit(caplog, data=data, loss_fn=loss, transform="log")
+    _assert_native(caplog)
+    scipy = fit.time_course(
+        _model(),
+        p0=P0,
+        data=data,
+        loss_fn=loss,
+        minimizer=fit.LeastSquaresMinimizer(),
+        transform="log",
+    ).unwrap_or_err()
+    # k2 is poorly determined by the noisier y, so MINPACK's stopping
+    # criterion leaves it slightly further from the optimum than scipy
+    for k in TRUE:
+        assert native.best_pars[k] == pytest.approx(scipy.best_pars[k], rel=1e-4)
+    assert native.loss == pytest.approx(scipy.loss, rel=1e-7)
+
+
+def test_gaussian_nll_per_point_sigma_falls_back(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    data = _noisy_data()
+    sigma = pd.DataFrame(0.02, index=data.index, columns=data.columns)
+    res = _fit(caplog, data=data, loss_fn=fit.GaussianNll(sigma), transform="log")
+    assert "sigma per data point" in caplog.text
+    assert np.isfinite(res.loss)
+
+
+def test_priors_fall_back_to_scipy(caplog: pytest.LogCaptureFixture) -> None:
+    from mxlpy.distributions import Normal  # noqa: PLC0415
+
+    prior = {"k1": Normal(0.5, 0.1)}
+    loss = fit.GaussianNll(0.02)
+    native = _fit(caplog, data=_noisy_data(), prior=prior, loss_fn=loss)
+    assert "priors and penalties can't be compiled" in caplog.text
+    scipy = fit.time_course(
+        _model(),
+        p0=P0,
+        data=_noisy_data(),
+        prior=prior,
+        loss_fn=loss,
+        minimizer=fit.LeastSquaresMinimizer(method="lm"),
+    ).unwrap_or_err()
+    for k in TRUE:
+        assert native.best_pars[k] == pytest.approx(scipy.best_pars[k], rel=1e-6)
+    assert native.penalty == pytest.approx(scipy.penalty, rel=1e-6)
