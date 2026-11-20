@@ -254,9 +254,18 @@ class OdeRunner(_IntegratingRunner[OdeModelBuilder, OdeSimulation]):
 class EvaluationRunner:
     """Runner for `SteadyStateModelBuilder` models.
 
-    These have no dynamics, so they are evaluated instead of integrated, which
-    leaves nothing to configure.
+    These have no dynamics, so they are evaluated instead of integrated.
+
+    Parameters
+    ----------
+    displacement
+        Relative step of finite differences, e.g. of response coefficients.
+        Smaller than the integrating runners' default, as evaluations have no
+        integration error the step has to stay above
+
     """
+
+    displacement: float = 1e-4
 
     def steady_state(self, model: SteadyStateModelBuilder) -> Result[Evaluation]:
         """Evaluate the model."""

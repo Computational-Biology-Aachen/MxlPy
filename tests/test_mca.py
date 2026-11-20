@@ -4,13 +4,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from mxlpy import KineticModelBuilder, Simulator, fns
+from mxlpy import KineticModelBuilder, KineticRunner, Simulator, fns
 from mxlpy.mca import (
     RateCharacteristics,
     SteadyStateStability,
@@ -20,6 +22,12 @@ from mxlpy.mca import (
     steady_state_stability,
     variable_elasticities,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from mxlpy.simulation import Simulation
+    from mxlpy.types import Result
 
 
 def linear_chain() -> KineticModelBuilder:
@@ -79,9 +87,73 @@ def test_parameter_elasticities_returns_dataframe() -> None:
     assert set(result.index) == {"v_in", "v1", "v2"}
 
 
-def test_response_coefficients() -> None:
-    # FIXME: implement this
-    assert True
+def _reversible_with_outputs() -> KineticModelBuilder:
+    """A <-> B (A + B conserved), with a derived quantity and a readout."""
+    return (
+        KineticModelBuilder()
+        .add_parameters({"kf": 1.0, "kr": 0.5, "c": 2.0})
+        .add_variables({"A": 1.0, "B": 0.0})
+        .add_derived("tot", fns.add, args=["A", "B"])
+        .add_reaction(
+            "vf", fns.mass_action_1s, args=["A", "kf"], stoichiometry={"A": -1, "B": 1}
+        )
+        .add_reaction(
+            "vr", fns.mass_action_1s, args=["B", "kr"], stoichiometry={"A": 1, "B": -1}
+        )
+        .add_readout("ro", fns.proportional, args=["A", "c"])
+    )
+
+
+@pytest.mark.parametrize("model_fn", [linear_chain, _reversible_with_outputs])
+@pytest.mark.parametrize("normalized", [True, False])
+def test_response_coefficients_forward_matches_finite_differences(
+    model_fn: Callable[[], KineticModelBuilder], *, normalized: bool
+) -> None:
+    forward = response_coefficients(
+        model_fn(), normalized=normalized, parallel=False
+    ).combined
+    fd = response_coefficients(
+        model_fn(),
+        normalized=normalized,
+        parallel=False,
+        runner=KineticRunner(derivatives="finite_difference", displacement=1e-4),
+    ).combined
+    assert list(forward.index) == list(fd.index)
+    assert list(forward.columns) == list(fd.columns)
+    np.testing.assert_allclose(forward, fd, atol=1e-5)
+
+
+def test_response_coefficients_use_a_single_steady_state() -> None:
+    calls: list[int] = []
+
+    class Counting(KineticRunner):
+        def steady_state(self, model: KineticModelBuilder) -> Result[Simulation]:
+            calls.append(1)
+            return super().steady_state(model)
+
+    runner = Counting()
+    response_coefficients(linear_chain(), parallel=False, runner=runner)
+    # The forward sensitivities simulate through Simulator, not the runner
+    assert calls == []
+    response_coefficients(
+        linear_chain(),
+        parallel=False,
+        runner=Counting(derivatives="finite_difference"),
+    )
+    # 2 per parameter + 1 for the normalisation each
+    assert len(calls) == 3 * 3
+
+
+def _interp_rate(x: float, k: float) -> float:
+    # np.interp can't be parsed symbolically
+    return k * float(np.interp(x, [0.0, 10.0], [0.0, 10.0]))
+
+
+def test_response_coefficients_fall_back_to_finite_differences() -> None:
+    model = linear_chain().update_reaction("v1", fn=_interp_rate)
+    fd = response_coefficients(model, parallel=False).combined
+    expected = response_coefficients(linear_chain(), parallel=False).combined
+    np.testing.assert_allclose(fd, expected, atol=1e-4)
 
 
 def test_response_coefficients_finite() -> None:
@@ -116,10 +188,16 @@ def test_response_coefficients_zero_parameter() -> None:
             stoichiometry={"S": -1.0},
         )
     )
-    result = response_coefficients(model, to_scan=["k_zero"], parallel=False)
+    fd = KineticRunner(derivatives="finite_difference")
+    result = response_coefficients(model, to_scan=["k_zero"], parallel=False, runner=fd)
     col = result.variables["k_zero"]
     # k_zero = 0 → displacement = 0 → NaN, not a crash
     assert col.isnull().any() or not np.isfinite(col.to_numpy()).all()
+    # The forward sensitivities have no step: S doesn't depend on k_zero
+    forward = response_coefficients(
+        model, to_scan=["k_zero"], parallel=False, normalized=False
+    )
+    assert forward.variables["k_zero"].to_numpy() == pytest.approx(0.0)
 
 
 def test_responsecoefficients_combined() -> None:

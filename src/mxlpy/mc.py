@@ -905,7 +905,6 @@ def response_coefficients(
     variables: dict[str, float] | None = None,
     cache: Cache | None = None,
     normalized: bool = True,
-    displacement: float = 1e-4,
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
@@ -922,7 +921,6 @@ def response_coefficients(
     variables: dict[str, float] | None = None,
     cache: Cache | None = None,
     normalized: bool = True,
-    displacement: float = 1e-4,
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
@@ -938,7 +936,6 @@ def response_coefficients(
     to_scan: list[str],
     cache: Cache | None = None,
     normalized: bool = True,
-    displacement: float = 1e-4,
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
@@ -954,7 +951,6 @@ def response_coefficients(
     variables: dict[str, float] | None = None,
     cache: Cache | None = None,
     normalized: bool = True,
-    displacement: float = 1e-4,
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
@@ -993,8 +989,6 @@ def response_coefficients(
         Cache object for storing results
     normalized
         Whether to use normalized elasticities
-    displacement
-        Displacement for finite difference calculations
     disable_tqdm
         Whether to disable the tqdm progress bar
     parallel
@@ -1002,8 +996,9 @@ def response_coefficients(
     max_workers
         Maximum number of workers for parallel processing
     runner
-        How each model is simulated, see `mxlpy.runners`.
-        Defaults to `KineticRunner()`.
+        How each model is simulated and differentiated, see `mxlpy.runners`
+        and `mxlpy.mca.response_coefficients`. Defaults to the model's
+        default runner.
 
     Returns
     -------
@@ -1022,7 +1017,6 @@ def response_coefficients(
                 mca._response_coefficients,  # noqa: SLF001
                 to_scan=to_scan,
                 normalized=normalized,
-                displacement=displacement,
                 disable_tqdm=disable_tqdm,
                 parallel=False,
                 runner=runner,

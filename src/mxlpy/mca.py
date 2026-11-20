@@ -20,9 +20,11 @@ Mathematical Background:
 from __future__ import annotations
 
 import copy
+import dataclasses
+import logging
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Any, Generic, overload
+from typing import TYPE_CHECKING, Any, Generic, cast, overload
 
 import numpy as np
 import pandas as pd
@@ -54,6 +56,8 @@ if TYPE_CHECKING:
 
 type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
 
+_LOGGER = logging.getLogger(__name__)
+
 # Defaults to Simulation, so bare result types keep their meaning
 SE = TypeVar("SE", Simulation, OdeSimulation, Evaluation, default=Simulation)
 
@@ -75,7 +79,6 @@ def _response_coefficient_worker[M: _Model](
     *,
     model: M,
     normalized: bool,
-    displacement: float = 1e-4,
     runner: SteadyStateRunner[M, Any],
 ) -> pd.Series:
     """Calculate response coefficients for a single parameter.
@@ -95,11 +98,9 @@ def _response_coefficient_worker[M: _Model](
         Metabolic model instance
     normalized
         Whether to normalize the coefficients
-    displacement
-        Relative perturbation size (default: 1e-4)
     runner
-        How the model is simulated, see `mxlpy.runners`.
-        Defaults to `KineticRunner()`.
+        How the model is simulated, see `mxlpy.runners`. Its `displacement`
+        is the relative perturbation size (default: 1e-3)
 
     Returns
     -------
@@ -109,6 +110,7 @@ def _response_coefficient_worker[M: _Model](
         - Series of flux response coefficients
 
     """
+    displacement = float(getattr(runner, "displacement", 1e-3))
     old = model.get_parameter_values()[parameter]
 
     model.update_parameters({parameter: old * (1 + displacement)})
@@ -124,6 +126,51 @@ def _response_coefficient_worker[M: _Model](
         norm = _steady_state_worker(model, runner=runner).get_combined().iloc[-1]
         resp *= old / norm
     return resp
+
+
+def _forward_response_coefficients(
+    model: _Model,
+    to_scan: list[str],
+    runner: SteadyStateRunner[Any, Any],
+    *,
+    normalized: bool,
+) -> pd.DataFrame | None:
+    """Response coefficients from the runner's steady-state sensitivities.
+
+    One steady state and a linear solve for all parameters (implicit function
+    theorem). None if the runner can't provide forward sensitivities, so the
+    caller falls back to parallel finite differences: runners without
+    sensitivities or set to finite differences, models that can't be
+    differentiated symbolically and failed simulations.
+    """
+    derivatives = getattr(runner, "derivatives", None)
+    if (
+        not callable(getattr(runner, "steady_state_sensitivities", None))
+        or derivatives == "finite_difference"
+    ):
+        return None
+    if derivatives == "auto" and dataclasses.is_dataclass(runner):
+        # Fail instead of silently using serial finite differences, which the
+        # caller computes in parallel
+        runner = dataclasses.replace(runner, derivatives="forward")  # type: ignore[type-var]
+    try:
+        res = cast(Any, runner).steady_state_sensitivities(model, to_scan)
+    except Exception as e:  # noqa: BLE001
+        _LOGGER.debug("Response coefficients by finite differences, as %s", e)
+        return None
+    if isinstance(sens := res.value, Exception):
+        return None
+
+    resp = pd.DataFrame({k: v.iloc[-1] for k, v in sens.derivatives.items()})
+    if normalized:
+        values = model.get_parameter_values()
+        resp = resp * pd.Series({k: values[k] for k in to_scan})
+        resp = resp.div(sens.simulated.iloc[-1], axis=0)
+    # The order of the finite-difference results: fluxes last
+    names, fluxes = _split_outputs(model, list(resp.index))
+    if names is None:
+        return resp
+    return resp.loc[names + (fluxes or [])]
 
 
 def _split_outputs(
@@ -344,7 +391,6 @@ def response_coefficients(
     to_scan: list[str] | None = None,
     variables: dict[str, float] | None = None,
     normalized: bool = True,
-    displacement: float = 1e-4,
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
@@ -359,7 +405,6 @@ def response_coefficients(
     to_scan: list[str] | None = None,
     variables: dict[str, float] | None = None,
     normalized: bool = True,
-    displacement: float = 1e-4,
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
@@ -373,7 +418,6 @@ def response_coefficients(
     *,
     to_scan: list[str] | None = None,
     normalized: bool = True,
-    displacement: float = 1e-4,
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
@@ -387,7 +431,6 @@ def response_coefficients(
     to_scan: list[str] | None = None,
     variables: dict[str, float] | None = None,
     normalized: bool = True,
-    displacement: float = 1e-4,
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
@@ -416,8 +459,6 @@ def response_coefficients(
         Custom variable values. Defaults to initial conditions.
     normalized
         Whether to normalize coefficients
-    displacement
-        Relative perturbation size
     disable_tqdm
         Disable progress bar
     parallel
@@ -425,8 +466,14 @@ def response_coefficients(
     max_workers
         Maximum number of workers
     runner
-        How the model is simulated, see `mxlpy.runners`.
-        Defaults to `KineticRunner()`.
+        How the model is simulated and differentiated, see `mxlpy.runners`.
+        Defaults to the model's default runner. Runners providing
+        sensitivities (`KineticRunner`, `OdeRunner`) compute all coefficients
+        from a single steady state with the implicit function theorem, unless
+        `derivatives="finite_difference"` or the model can't be
+        differentiated symbolically. Otherwise every parameter is perturbed
+        by the runner's relative `displacement` (central finite differences
+        of two steady states each, in parallel)
 
     Returns
     -------
@@ -440,7 +487,6 @@ def response_coefficients(
         to_scan=to_scan,
         variables=variables,
         normalized=normalized,
-        displacement=displacement,
         disable_tqdm=disable_tqdm,
         parallel=parallel,
         max_workers=max_workers,
@@ -454,7 +500,6 @@ def _response_coefficients(
     to_scan: list[str] | None = None,
     variables: dict[str, float] | None = None,
     normalized: bool = True,
-    displacement: float = 1e-4,
     disable_tqdm: bool = False,
     parallel: bool = True,
     max_workers: int | None = None,
@@ -468,14 +513,25 @@ def _response_coefficients(
     to_scan = model.get_parameter_names() if to_scan is None else to_scan
     model = _copy_with_y0(model, variables)
     runner = default_runner(model) if runner is None else runner
-    precompile(runner, model)
 
+    if (
+        combined := _forward_response_coefficients(
+            model, to_scan, runner, normalized=normalized
+        )
+    ) is not None:
+        variable_names, flux_names = _split_outputs(model, list(combined.index))
+        return ResponseCoefficients(
+            combined=combined,
+            variable_names=variable_names,
+            flux_names=flux_names,
+        )
+
+    precompile(runner, model)
     res = parallelise(
         partial(
             _response_coefficient_worker,
             model=model,
             normalized=normalized,
-            displacement=displacement,
             runner=runner,
         ),
         inputs=list(zip(to_scan, to_scan, strict=True)),

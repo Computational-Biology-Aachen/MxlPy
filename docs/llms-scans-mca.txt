@@ -66,7 +66,7 @@ plot.heatmaps_from_2d_idx(res.variables)
 
 ## Metabolic Control Analysis (`mxlpy.mca`)
 
-MCA quantifies how sensitive steady-state concentrations and fluxes are to small changes in parameters or variable concentrations. Results are **normalised** by default (`normalized=False` for raw); the perturbation size is `displacement` (default `1e-4`, a central finite difference).
+MCA quantifies how sensitive steady-state concentrations and fluxes are to small changes in parameters or variable concentrations. Results are **normalised** by default (`normalized=False` for raw). Elasticities use central finite differences with `displacement` (default `1e-4`). Response coefficients come from the runner: `KineticRunner`/`OdeRunner` compute all of them from one steady state with forward sensitivities (implicit function theorem, exact); `runner=KineticRunner(derivatives="finite_difference", displacement=1e-3)`, `SteadyStateModelBuilder` (`EvaluationRunner(displacement=1e-4)`) and models that can't be differentiated symbolically use parallel central finite differences of two steady states per parameter.
 
 ### Elasticities (any state, not just steady state)
 
