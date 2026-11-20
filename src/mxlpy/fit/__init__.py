@@ -103,6 +103,7 @@ from ._mcmc import (
     mcmc_steady_state,
     mcmc_time_course,
 )
+from ._native import NativeLeastSquaresMinimizer
 from ._single import protocol_time_course, steady_state, time_course
 from .abstract import (
     EnsembleFit,
@@ -143,6 +144,7 @@ __all__: list[str] = [
     "McmcResult",
     "McmcSampler",
     "MixedSettings",
+    "NativeLeastSquaresMinimizer",
     "OptimisationState",
     "Residual",
     "Sigma",

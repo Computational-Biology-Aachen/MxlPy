@@ -234,6 +234,11 @@ class _Compiled:
         self._fn = _MODEL_FN(self._ptr)
         self._lib = _solver()
 
+    @property
+    def address(self) -> int:
+        """Address of the compiled function, valid while this object is alive."""
+        return self._ptr
+
     def rhs(self, t: float, y: np.ndarray, pars: np.ndarray) -> np.ndarray:
         y, dydt = np.array(y, dtype=float), np.empty(len(y))
         self._fn(
