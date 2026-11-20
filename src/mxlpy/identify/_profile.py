@@ -19,10 +19,10 @@ from scipy import stats
 from mxlpy import fit
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit._gradient import _log_names
-from mxlpy.fit.abstract import _Settings, _split_p0
+from mxlpy.fit._single import _evaluate_loss, _fit_data
+from mxlpy.fit.abstract import _split_p0
 from mxlpy.fit.losses import _is_likelihood
 from mxlpy.fit.penalties import collect_penalties, fix_penalties
-from mxlpy.identify._fisher import residual_fn
 from mxlpy.parallel import parallelise
 from mxlpy.runners import default_runner, precompile
 
@@ -251,19 +251,16 @@ class _Problem:
 
     def _evaluate(self, model: _Model, y0: dict[str, float] | None) -> float:
         """Loss without free parameters, there is nothing to fit."""
-        settings = _Settings(
-            model=model,
-            data=self.data,
+        return _evaluate_loss(
+            model,
+            self.data,
+            self.protocol,
             y0=y0,
             runner=self.runner,
             loss_fn=self.loss_fn,
             postprocess_fn=self.postprocess_fn,
-            p_names=[],
-            v_names=[],
             standard_scale=self.standard_scale,
-            protocol=self.protocol,
         )
-        return float(residual_fn(self.data, self.protocol)({}, settings=settings))
 
     def fit(
         self,
@@ -292,7 +289,6 @@ class _Problem:
         bounds, transform = self._subset(list(p0))
         kwargs: dict[str, Any] = {
             "p0": p0,
-            "data": self.data,
             "minimizer": self.minimizer,
             "y0": y0,
             "runner": self.runner,
@@ -304,17 +300,7 @@ class _Problem:
             "transform": transform,
             "as_deepcopy": False,
         }
-        if self.protocol is not None:
-            res = fit.protocol_time_course(
-                model,  # type: ignore[arg-type]
-                protocol=self.protocol,
-                **kwargs,
-            )
-        elif isinstance(self.data, pd.Series):
-            res = fit.steady_state(model, **kwargs)
-        else:
-            res = fit.time_course(model, **kwargs)  # type: ignore[arg-type]
-        match res.value:
+        match _fit_data(model, self.data, self.protocol, **kwargs).value:
             case fit.Fit() as best if math.isfinite(best.objective):
                 return best.objective + constant, {**best.best_pars, **fixed}
             case _:

@@ -30,6 +30,7 @@ nav:
       - Model parameterisation: parameterise.ipynb
       - Stability analysis: stability.ipynb
       - Identifiability: parameter_identifiability.ipynb
+      - Model selection: model-selection.ipynb
       - Symbolic: symbolic.ipynb
       - Integrator configuration: integrators.ipynb
       - Compartmentalisation: compartmentalisation.ipynb
