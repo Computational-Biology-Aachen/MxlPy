@@ -1,21 +1,19 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
-"""Numerical parameter identification estimations."""
+"""Fisher information and asymptotic parameter uncertainty."""
 
 from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from functools import cached_property, partial
-from typing import TYPE_CHECKING, Any, cast
+from functools import cached_property
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 from scipy import stats
-from tqdm import tqdm
 
 from mxlpy import fit
-from mxlpy.distributions import LogNormal, prior_penalty, sample
 from mxlpy.fit._gradient import GradientResidual, _log_names
 from mxlpy.fit.abstract import _Settings, _split_p0
 from mxlpy.fit.losses import _sigma_array
@@ -24,8 +22,7 @@ from mxlpy.fit.residuals import (
     steady_state_residual,
     time_course_residual,
 )
-from mxlpy.parallel import parallelise
-from mxlpy.runners import default_runner, precompile
+from mxlpy.runners import default_runner
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -35,117 +32,14 @@ if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy._steady_state_builder import SteadyStateModelBuilder
-    from mxlpy.distributions import Prior
     from mxlpy.fit._gradient import Transform
     from mxlpy.fit.losses import Sigma
-    from mxlpy.runners import DynamicRunner
-    from mxlpy.simulation import Simulation
     from mxlpy.types import Array
 
 __all__ = [
     "FisherInformation",
     "fisher_information",
-    "profile_likelihood",
 ]
-
-
-def _mc_fit_time_course_worker(
-    p0: pd.Series,
-    model: KineticModelBuilder,
-    data: pd.DataFrame,
-    loss_fn: fit.LossFn,
-    runner: DynamicRunner[KineticModelBuilder, Simulation] | None,
-    prior: Mapping[str, Prior] | None = None,
-) -> float:
-    fit_result = fit.time_course(
-        model=model,
-        p0=cast(dict, p0.to_dict()),
-        data=data,
-        loss_fn=loss_fn,
-        minimizer=fit.LocalScipyMinimizer(),
-        runner=runner,
-        prior=prior,
-    )
-    match fit_result.value:
-        case fit.Fit() as res:
-            return res.objective
-        case _:
-            return np.inf
-
-
-def profile_likelihood(
-    model: KineticModelBuilder,
-    data: pd.DataFrame,
-    parameter_name: str,
-    parameter_values: Array,
-    n_random: int = 10,
-    loss_fn: fit.LossFn = fit.rmse,
-    *,
-    runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
-    prior: Mapping[str, Prior] | None = None,
-) -> pd.Series:
-    """Estimate the profile likelihood of model parameters given data.
-
-    Parameters
-    ----------
-    model
-        The model to be fitted.
-    data
-        The data to fit the model to.
-    parameter_name
-        The name of the parameter to profile.
-    parameter_values
-        The values of the parameter to profile.
-    n_random
-        Number of Monte Carlo samples.
-    loss_fn
-        Loss function to use for fitting.
-    runner
-        How the model is simulated, see `mxlpy.runners`.
-        Defaults to `KineticRunner()`.
-    prior
-        Priors of the parameters, added to the objective as in the fit
-        functions. The prior of the profiled parameter is added to the
-        profile at each of its values
-
-    """
-    parameter_distributions = sample(
-        {
-            k: LogNormal(np.log(v), sigma=1)
-            for k, v in model.get_parameter_values().items()
-        },
-        n=n_random,
-    )
-
-    model = deepcopy(model)
-    runner = default_runner(model) if runner is None else runner
-    precompile(runner, model)
-    others = {k: v for k, v in (prior or {}).items() if k != parameter_name}
-    own = (prior or {}).get(parameter_name)
-    res = {}
-    for value in tqdm(parameter_values, desc=parameter_name):
-        model.update_parameter(parameter_name, value)
-        res[value] = dict(
-            parallelise(
-                partial(
-                    _mc_fit_time_course_worker,
-                    model=model,
-                    data=data,
-                    loss_fn=loss_fn,
-                    runner=runner,
-                    prior=others or None,
-                ),
-                inputs=list(
-                    parameter_distributions.drop(columns=parameter_name).iterrows()
-                ),
-                disable_tqdm=True,
-            )
-        )
-    errors = pd.DataFrame(res, dtype=float).T.abs().mean(axis=1)
-    if own is not None:
-        errors += [prior_penalty(own, float(v)) for v in errors.index]
-    errors.index.name = "fitting error"
-    return errors
 
 
 ###############################################################################
@@ -311,6 +205,15 @@ class FisherInformation:
         return out
 
 
+def residual_fn(data: pd.Series | pd.DataFrame, protocol: pd.DataFrame | None) -> Any:
+    """Residual function of the data: steady state, time course or protocol."""
+    if protocol is not None:
+        return protocol_time_course_residual
+    if isinstance(data, pd.Series):
+        return steady_state_residual
+    return time_course_residual
+
+
 def _sigma_vector(
     sigma: Sigma,
     data: pd.Series | pd.DataFrame,
@@ -380,12 +283,6 @@ def fisher_information(
         parameters = parameters.best_pars
     values = {k: float(v) for k, v in parameters.items()}
     model = deepcopy(model)
-    if protocol is not None:
-        residual_fn: Any = protocol_time_course_residual
-    elif isinstance(data, pd.Series):
-        residual_fn = steady_state_residual
-    else:
-        residual_fn = time_course_residual
     p_names, v_names = _split_p0(model, values)
     if unknown := sorted(set(values) - set(p_names) - set(v_names)):
         msg = f"Unknown parameters or variables: {unknown}"
@@ -401,7 +298,7 @@ def fisher_information(
         standard_scale=False,
         protocol=protocol,
     )
-    residual = GradientResidual(residual_fn, settings)
+    residual = GradientResidual(residual_fn(data, protocol), settings)
     r = residual.residuals(values)
     if not np.isfinite(r).all():
         msg = "Simulation failed at the given parameters"

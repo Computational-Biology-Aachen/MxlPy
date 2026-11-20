@@ -27,24 +27,32 @@ print(res.summary())
 
 ## Numerical (practical) identifiability (`mxlpy.identify`)
 
-`profile_likelihood` asks whether a parameter is *practically* identifiable from data: for each fixed value of the parameter of interest it refits the remaining parameters (from `n_random` random starts) and records the best error. A clear minimum around the true value ⟹ identifiable; a flat profile ⟹ not.
+`profile_likelihood` gives likelihood-ratio confidence intervals and classifies identifiability. For each parameter it steps away from the optimum in both directions, fixing the parameter and refitting all others (warm-started), with steps adapting to the profile; a side stops when the objective has increased by the threshold, at the end of the profiled range or after `max_steps` fits; without bounds the range is a factor 1000 either way for log10 steps, else ±1000·max(|value|, 1). Both sides of all parameters run in parallel.
 
 ```python
-import numpy as np
-from mxlpy import plot
-from mxlpy.identify import profile_likelihood
+from mxlpy import fit, identify, plot
 
-errors = profile_likelihood(            # -> pd.Series indexed by parameter value
+nll = fit.GaussianNll(sigma=0.01)               # likelihood loss -> threshold chi2.ppf(alpha, 1) / 2
+res = fit.time_course(model, p0=p0, data=data, loss_fn=nll,
+                      minimizer=fit.LeastSquaresMinimizer()).unwrap_or_err()
+profiles = identify.profile_likelihood(
     model,
-    data=data,                          # pd.DataFrame
-    parameter_name="beta",
-    parameter_values=np.linspace(0.1, 0.3, 10),
-    n_random=10,                         # random starts for the nuisance parameters
-    # loss_fn=fit.rmse                   # optional
+    data,                    # Series: steady state, DataFrame: time course (+ protocol=...)
+    res,                     # parameters: fit.Fit or {name: value} (as fisher_information); refitted first; variables = fitted initial values
+    loss_fn=nll,             # same loss as the fit; other losses need threshold=
+    # names=["k1"],          # parameters to profile, default: all fitted
+    # alpha=0.95, threshold=None (simultaneous for n params: chi2.ppf(alpha, n) / 2)
+    # minimizer=None (LeastSquaresMinimizer), y0, protocol, runner, bounds, prior, penalty,
+    # transform="log" (profile in log10 steps), postprocess_fn, standard_scale, max_steps=100, parallel=True, max_workers
 )
-fig, ax = plot.lines(errors, legend=False)
-ax.set(xlabel="parameter value", ylabel="abs(error)")
+profiles.ci                  # DataFrame: value, lower, upper, identifiability (bounds ±inf if not crossed)
+profiles["k1"].delta         # Δ objective indexed by the profiled values
+profiles["k1"].parameters    # all fitted values along the profile (which parameters compensate)
+profiles.better_optimum      # set (with a warning) if a profile found a better fit: refit + profile again
+fig, axs = plot.profile_likelihood(profiles)
 ```
+
+Identifiability: `identifiable` (threshold crossed on both sides), `practically_non_identifiable` (a side reaches the end of the range without crossing), `structurally_non_identifiable` (flat, < 1% of the threshold, over the whole range), `inconclusive` (a side ran out of steps or its fits failed). The profiled parameter's prior stays in the objective at its fixed values; the edge of its support (e.g. `Uniform`) ends the profile like a bound.
 
 ### Fisher information (`identify.fisher_information`)
 

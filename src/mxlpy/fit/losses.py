@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 import numpy as np
 import pandas as pd
@@ -71,6 +71,14 @@ class GaussianNll:
         Standard deviation of the measurement noise: a scalar, one value per
         observable (Series) or per data point (DataFrame like the data)
 
+    Attributes
+    ----------
+    is_likelihood
+        Marks the loss as a negative log-likelihood: fits compare data and
+        prediction unscaled, and differences in it are calibrated, e.g. for
+        the confidence thresholds of `mxlpy.identify.profile_likelihood`.
+        Custom likelihood losses can set it as well
+
     Examples
     --------
         >>> fit.time_course(model, p0=p0, data=data,
@@ -80,6 +88,7 @@ class GaussianNll:
     """
 
     sigma: Sigma = 1.0
+    is_likelihood: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
         """Check that sigma is positive."""
@@ -120,6 +129,11 @@ class GaussianNll:
             msg = "sigma has to be given for every observed data point"
             raise ValueError(msg)
         return 0.5 * float(np.sum(np.square(z[compared])))
+
+
+def _is_likelihood(loss_fn: object) -> bool:
+    """Whether a loss is a negative log-likelihood (has `is_likelihood`)."""
+    return bool(getattr(loss_fn, "is_likelihood", False))
 
 
 def mean(

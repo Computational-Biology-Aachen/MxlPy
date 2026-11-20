@@ -288,3 +288,33 @@ def test_network_with_existing_ax() -> None:
     fig, ax = network(m_2v_1p_1d_1r(), ax=ax0)
     assert ax is ax0
     plt.close(fig)
+
+
+def test_profile_likelihood() -> None:
+    from mxlpy import KineticModelBuilder, fit, fns, identify  # noqa: PLC0415
+    from mxlpy.plot import profile_likelihood  # noqa: PLC0415
+
+    model = (
+        KineticModelBuilder()
+        .add_parameters({"p": 3.0, "k": 1.0})
+        .add_variables({"x": 1.0})
+        .add_reaction("vin", fns.constant, args=["p"], stoichiometry={"x": 1})
+        .add_reaction(
+            "vout", fns.mass_action_1s, args=["x", "k"], stoichiometry={"x": -1}
+        )
+    )
+    profiles = identify.profile_likelihood(
+        model,
+        pd.Series({"x": 2.0}),
+        {"p": 2.0, "k": 1.0},
+        loss_fn=fit.GaussianNll(1.0),
+        transform={"k": "log"},
+        bounds={"p": (0.1, 10.0)},  # flat, so k spans six decades
+        parallel=False,
+    )
+    fig, axs = profile_likelihood(profiles)
+    assert isinstance(fig, Figure)
+    axes = list(axs)
+    assert axes[0].get_xlabel() == "p"
+    assert axes[1].get_xscale() == "log"
+    plt.close(fig)
