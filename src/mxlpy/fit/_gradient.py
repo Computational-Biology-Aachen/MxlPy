@@ -19,12 +19,12 @@ import pandas as pd
 
 from mxlpy.fit import losses
 from mxlpy.fit.residuals import (
-    _align_time,
     _apply_updates,
     protocol_time_course_residual,
     steady_state_residual,
     time_course_residual,
 )
+from mxlpy.simulation import _align_time
 
 if TYPE_CHECKING:
     from collections.abc import Callable

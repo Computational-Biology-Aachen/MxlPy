@@ -11,6 +11,7 @@ import pandas as pd
 
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.runners import DynamicRunner
+from mxlpy.simulation import _align_time
 from mxlpy.types import cast
 
 if TYPE_CHECKING:
@@ -34,31 +35,6 @@ def _apply_updates(updates: dict[str, float], settings: _Settings[Any]) -> None:
         model.update_variables(y0)
     for p in settings.v_names:
         model.update_variable(p, updates[p])
-
-
-def _align_time(prediction: pd.DataFrame, time_points: pd.Index) -> pd.DataFrame:
-    """Rows of a time-indexed prediction at the time points of the data.
-
-    Simulated time points can differ from the requested ones in the last
-    bits (e.g. accumulated protocol step ends), so they're matched within a
-    tiny tolerance rather than exactly. Also drops other simulated times,
-    e.g. the initial one. Predictions that aren't indexed by unique times
-    (e.g. relabelled by a postprocess_fn) are returned unchanged.
-    """
-    index = pd.Index(time_points)
-    if (
-        len(prediction) == 0
-        or not pd.api.types.is_numeric_dtype(index)
-        or not pd.api.types.is_numeric_dtype(prediction.index)
-        or not prediction.index.is_unique
-    ):
-        return prediction
-    scale = max(
-        1.0, float(np.abs(np.asarray(time_points, dtype=float)).max(initial=0.0))
-    )
-    return prediction.sort_index().reindex(
-        index=time_points, method="nearest", tolerance=1e-9 * scale
-    )
 
 
 def _loss(settings: _Settings[Any], res: Result[Any], names: list[str]) -> float:

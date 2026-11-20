@@ -7,12 +7,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import pytest
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from mxlpy import KineticModelBuilder, KineticRunner, Simulator, fns
+from mxlpy import (
+    KineticModelBuilder,
+    KineticRunner,
+    Simulator,
+    SteadyStateModelBuilder,
+    fns,
+)
 from mxlpy.mca import (
     RateCharacteristics,
     SteadyStateStability,
@@ -22,6 +29,7 @@ from mxlpy.mca import (
     steady_state_stability,
     variable_elasticities,
 )
+from mxlpy.types import InitialAssignment
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -140,8 +148,8 @@ def test_response_coefficients_use_a_single_steady_state() -> None:
         parallel=False,
         runner=Counting(derivatives="finite_difference"),
     )
-    # 2 per parameter + 1 for the normalisation each
-    assert len(calls) == 3 * 3
+    # 2 per parameter + 1 for the normalisation, shared by all
+    assert len(calls) == 2 * 3 + 1
 
 
 def _interp_rate(x: float, k: float) -> float:
@@ -171,12 +179,7 @@ def test_response_coefficients_returns_named_result() -> None:
 
 
 def test_response_coefficients_zero_parameter() -> None:
-    """Parameter value of 0.0 causes division by zero in the finite-difference.
-
-    ``_response_coefficient_worker`` divides by ``2 * displacement * old``
-    where ``old = 0.0``.  For pandas Series this silently yields NaN rather
-    than raising.  This test documents the current behavior.
-    """
+    """A parameter at 0 gets an absolute finite-difference step, not a zero one."""
     model = (
         KineticModelBuilder()
         .add_variable("S", 1.0)
@@ -188,16 +191,172 @@ def test_response_coefficients_zero_parameter() -> None:
             stoichiometry={"S": -1.0},
         )
     )
-    fd = KineticRunner(derivatives="finite_difference")
-    result = response_coefficients(model, to_scan=["k_zero"], parallel=False, runner=fd)
-    col = result.variables["k_zero"]
-    # k_zero = 0 → displacement = 0 → NaN, not a crash
-    assert col.isnull().any() or not np.isfinite(col.to_numpy()).all()
-    # The forward sensitivities have no step: S doesn't depend on k_zero
+    # S doesn't depend on k_zero
+    for runner in (None, KineticRunner(derivatives="finite_difference")):
+        result = response_coefficients(
+            model, to_scan=["k_zero"], parallel=False, normalized=False, runner=runner
+        )
+        assert result.variables["k_zero"].to_numpy() == pytest.approx(0.0)
+
+
+###############################################################################
+# Time courses
+###############################################################################
+
+T = np.linspace(0, 5, 11)
+FD = KineticRunner(derivatives="finite_difference", displacement=1e-4)
+
+
+def _assert_same(a: pd.DataFrame, b: pd.DataFrame, atol: float) -> None:
+    assert a.index.equals(b.index)
+    assert list(a.columns) == list(b.columns)
+    np.testing.assert_allclose(a.to_numpy(), b.to_numpy(), atol=atol)
+
+
+@pytest.mark.parametrize("model_fn", [linear_chain, _reversible_with_outputs])
+@pytest.mark.parametrize("normalized", [True, False])
+def test_time_course_response_coefficients_forward_matches_finite_differences(
+    model_fn: Callable[[], KineticModelBuilder], *, normalized: bool
+) -> None:
     forward = response_coefficients(
-        model, to_scan=["k_zero"], parallel=False, normalized=False
+        model_fn(), time_points=T, normalized=normalized, parallel=False
+    ).combined
+    fd = response_coefficients(
+        model_fn(), time_points=T, normalized=normalized, parallel=False, runner=FD
+    ).combined
+    _assert_same(forward, fd, atol=1e-5)
+
+
+def test_time_course_response_coefficients_match_analytic() -> None:
+    # dA/dt = k_in - k1 A, so dA(t)/dk_in = (1 - exp(-k1 t)) / k1 with k1 = 1
+    rc = response_coefficients(
+        linear_chain(), time_points=T, normalized=False, parallel=False
     )
-    assert forward.variables["k_zero"].to_numpy() == pytest.approx(0.0)
+    da = rc.for_parameter("k_in")
+    assert isinstance(da, pd.DataFrame)
+    assert list(da.index) == list(T)
+    assert list(da.columns) == ["A", "B", "v_in", "v1", "v2"]
+    np.testing.assert_allclose(da["A"], 1 - np.exp(-T), atol=1e-6)
+    # Rows are (time, output); the variable / flux split works per time point
+    assert list(rc.variables.loc[2.0].index) == ["A", "B"]
+    assert list(rc.fluxes.loc[2.0].index) == ["v_in", "v1", "v2"]
+
+
+def test_time_course_response_coefficients_approach_steady_state() -> None:
+    late = response_coefficients(
+        linear_chain(), time_points=[0.0, 60.0], parallel=False
+    ).combined.loc[60.0]
+    steady = response_coefficients(linear_chain(), parallel=False).combined
+    _assert_same(late, steady, atol=1e-6)
+
+
+def test_time_course_response_coefficients_fall_back_to_finite_differences() -> None:
+    model = linear_chain().update_reaction("v1", fn=_interp_rate)
+    fd = response_coefficients(model, time_points=T, parallel=False).combined
+    expected = response_coefficients(
+        linear_chain(), time_points=T, parallel=False
+    ).combined
+    np.testing.assert_allclose(fd, expected, atol=1e-4)
+
+
+def test_time_course_response_coefficients_need_dynamics() -> None:
+    model = SteadyStateModelBuilder().add_parameter("a", 1.0)
+    with pytest.raises(TypeError, match="no dynamics"):
+        response_coefficients(model, time_points=T)  # type: ignore[call-overload]
+
+
+@pytest.mark.parametrize(
+    "elasticities", [variable_elasticities, parameter_elasticities]
+)
+@pytest.mark.parametrize("normalized", [True, False])
+def test_elasticities_over_time_match_finite_differences(
+    elasticities: Callable[..., pd.DataFrame], *, normalized: bool
+) -> None:
+    exact = elasticities(linear_chain(), time_points=T, normalized=normalized)
+    fd = elasticities(
+        linear_chain(),
+        time_points=T,
+        normalized=normalized,
+        runner=KineticRunner(derivatives="finite_difference"),
+    )
+    _assert_same(exact, fd, atol=1e-8)
+    assert exact.index.names == ["time", None]
+    assert list(exact.index.get_level_values(1).unique()) == ["v_in", "v1", "v2"]
+
+
+def test_elasticities_over_time_are_those_of_the_trajectory() -> None:
+    model = _reversible_with_outputs()
+    exact = variable_elasticities(model, time_points=T, normalized=True)
+    states = (
+        Simulator(model).simulate_time_course(T).get_result().unwrap_or_err().variables
+    )
+    t = T[4]
+    at_t = variable_elasticities(
+        model,
+        variables={k: float(states.loc[t, k]) for k in ("A", "B")},
+        time=t,
+    )
+    _assert_same(exact.loc[t], at_t, atol=1e-6)
+
+
+def test_elasticities_over_time_fall_back_to_finite_differences() -> None:
+    model = linear_chain().update_reaction("v1", fn=_interp_rate)
+    fd = variable_elasticities(model, time_points=T)
+    expected = variable_elasticities(linear_chain(), time_points=T)
+    np.testing.assert_allclose(fd, expected, atol=1e-4)
+
+
+def _assigned_rate_model() -> KineticModelBuilder:
+    """v1 = k3 A with k3 = 2 k1 an initial assignment."""
+    return (
+        KineticModelBuilder()
+        .add_variables({"A": 5.0})
+        .add_parameters({"k1": 1.0, "k3": InitialAssignment(fn=fns.twice, args=["k1"])})
+        .add_reaction(
+            "v1", fns.mass_action_1s, args=["A", "k3"], stoichiometry={"A": -1}
+        )
+    )
+
+
+def test_parameter_elasticities_over_time_follow_initial_assignments() -> None:
+    times = [0.0, 0.5, 1.0]
+    exact = parameter_elasticities(
+        _assigned_rate_model(), to_scan=["k1"], time_points=times, normalized=False
+    )
+    # dv1/dk1 = 2 A(t) with A(t) = 5 exp(-2 t)
+    np.testing.assert_allclose(
+        exact["k1"], 10 * np.exp(-2 * np.array(times)), rtol=1e-4
+    )
+
+
+def test_duplicate_time_points_are_rejected() -> None:
+    with pytest.raises(ValueError, match="duplicates"):
+        response_coefficients(linear_chain(), time_points=[0, 1, 1], parallel=False)
+    with pytest.raises(ValueError, match="duplicates"):
+        variable_elasticities(linear_chain(), time_points=[0, 1, 1])
+
+
+def test_time_courses_need_a_dynamic_runner() -> None:
+    class SteadyOnly:
+        def steady_state(self, model: KineticModelBuilder) -> Result[Simulation]:
+            return KineticRunner().steady_state(model)
+
+    with pytest.raises(TypeError, match="time courses"):
+        response_coefficients(
+            linear_chain(),
+            time_points=T,
+            runner=SteadyOnly(),  # type: ignore[arg-type]
+        )
+
+
+def test_elasticities_of_a_single_state_take_no_runner() -> None:
+    with pytest.raises(TypeError, match="time_points"):
+        variable_elasticities(linear_chain(), runner=KineticRunner())
+
+
+def test_elasticities_take_a_time_or_time_points() -> None:
+    with pytest.raises(ValueError, match="either"):
+        variable_elasticities(linear_chain(), time=1.0, time_points=T)
 
 
 def test_responsecoefficients_combined() -> None:
@@ -246,13 +405,8 @@ def test_variable_elasticities_returns_dataframe() -> None:
     assert set(result.index) == {"v_in", "v1", "v2"}
 
 
-def test_variable_elasticities_zero_variable_produces_nan_or_inf() -> None:
-    """Variable=0.0 → displacement=0 → division by zero → inf/NaN.
-
-    The function computes ``(upper - lower) / (2 * displacement * old)`` where
-    ``old = 0.0``.  For pandas Series this yields inf or NaN rather than raising.
-    This test documents the current behavior.
-    """
+def test_variable_elasticities_at_zero() -> None:
+    """A variable at 0 gets an absolute finite-difference step, not a zero one."""
     model = (
         KineticModelBuilder()
         .add_variable("S", 0.0)  # zero initial condition
@@ -265,8 +419,11 @@ def test_variable_elasticities_zero_variable_produces_nan_or_inf() -> None:
         )
     )
     result = variable_elasticities(model, normalized=False)
-    # Division by zero → inf or NaN in the S column
-    assert not np.isfinite(result["S"].to_numpy()).all()
+    # v1 = k S, so dv1/dS = k
+    assert result.loc["v1", "S"] == pytest.approx(1.0)
+    # Normalised elasticities are undefined at v1 = 0
+    normalized = variable_elasticities(model)
+    assert not np.isfinite(normalized["S"].to_numpy()).all()
 
 
 ###############################################################################

@@ -66,7 +66,7 @@ plot.heatmaps_from_2d_idx(res.variables)
 
 ## Metabolic Control Analysis (`mxlpy.mca`)
 
-MCA quantifies how sensitive steady-state concentrations and fluxes are to small changes in parameters or variable concentrations. Results are **normalised** by default (`normalized=False` for raw). Elasticities use central finite differences with `displacement` (default `1e-4`). Response coefficients come from the runner: `KineticRunner`/`OdeRunner` compute all of them from one steady state with forward sensitivities (implicit function theorem, exact); `runner=KineticRunner(derivatives="finite_difference", displacement=1e-3)`, `SteadyStateModelBuilder` (`EvaluationRunner(displacement=1e-4)`) and models that can't be differentiated symbolically use parallel central finite differences of two steady states per parameter.
+MCA quantifies how sensitive steady-state concentrations and fluxes are to small changes in parameters or variable concentrations. Results are **normalised** by default (`normalized=False` for raw). Elasticities at a single state use central finite differences with the relative step `displacement` (default `1e-4`; absolute for values at 0). Response coefficients come from the runner: `KineticRunner`/`OdeRunner` compute all of them from one steady state with forward sensitivities (implicit function theorem, exact); `runner=KineticRunner(derivatives="finite_difference", displacement=1e-3)`, `SteadyStateModelBuilder` (`EvaluationRunner(displacement=1e-4)`) and models that can't be differentiated symbolically use parallel central finite differences of two steady states per parameter.
 
 ### Elasticities (any state, not just steady state)
 
@@ -92,6 +92,24 @@ fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 plot.heatmap(crcs, ax=ax1)
 plot.heatmap(frcs, ax=ax2)
 ```
+
+### Time-dependent MCA (along a trajectory)
+
+`time_points=` turns response coefficients and elasticities into time-dependent ones along the trajectory from the initial conditions (`variables=`). Rows are indexed by `(time, output)`; normalised values are NaN/inf where an output is 0 (e.g. variables starting at 0).
+
+```python
+rc = mca.response_coefficients(model, to_scan=["k1", "k2"], time_points=np.linspace(0, 10, 101))
+rc.combined                  # (time, output) x parameters
+rc.variables.loc[2.0]        # all variable responses at t = 2
+plot.lines(rc.for_parameter("k1"))   # time x outputs
+
+elas = mca.variable_elasticities(model, time_points=np.linspace(0, 10, 101))   # (time, reaction) x variables
+elas = mca.parameter_elasticities(model, time_points=..., runner=KineticRunner())
+elas.xs("v1", level=1)       # time x variables of one reaction
+```
+
+- Response coefficients: one integration of the forward sensitivity equations for all parameters; parallel central finite differences of two time courses per parameter for runners with `derivatives="finite_difference"` or models that can't be differentiated. `KineticModelBuilder` and `OdeModelBuilder` only.
+- Elasticities: one simulation, then exact derivatives of the rates at every state from the compiled model (finite differences with `displacement` as fallback). `time=` (single state) and `time_points=` are mutually exclusive; `runner=` only applies with `time_points` (simulation, and `derivatives="finite_difference"` forces finite differences with the elasticity's own `displacement`). Duplicate time points are rejected.
 
 ### Steady-state stability
 
