@@ -49,12 +49,13 @@ from mxlpy.label_map import LabelMapper
 from mxlpy.types import Derived
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable, Iterator
+    from collections.abc import Generator, Iterable, Iterator, Sequence
 
     from matplotlib.collections import QuadMesh
     from numpy.typing import NDArray
 
     from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy.identify import ProfileLikelihood
     from mxlpy.linear_label_map import LinearLabelMapper
     from mxlpy.types import Array, ArrayLike
 
@@ -84,6 +85,7 @@ __all__ = [
     "lines_mean_std_from_2d_idx",
     "network",
     "one_axes",
+    "profile_likelihood",
     "relative_label_distribution",
     "reset_prop_cycle",
     "rotate_xlabels",
@@ -1648,6 +1650,70 @@ def shade_protocol(
                 title="protocol" if protocol.name is None else cast(str, protocol.name),
             )
         )
+
+
+def profile_likelihood(
+    profiles: ProfileLikelihood,
+    *,
+    names: Sequence[str] | None = None,
+    n_cols: int = 3,
+    col_width: float = 3,
+    row_height: float = 2.5,
+    grid: bool = True,
+) -> FigAxs:
+    """Plot profile likelihoods with their confidence intervals.
+
+    One axes per parameter shows the increase of the objective along the
+    profile, the threshold (dashed), the optimum (dotted) and the confidence
+    interval (shaded). Parameters profiled in log10 steps get a log x-axis if
+    their profile spans more than a decade.
+
+    Parameters
+    ----------
+    profiles
+        Result of `mxlpy.identify.profile_likelihood`
+    names
+        Parameters to plot, all by default
+    n_cols
+        Number of columns of the grid
+    col_width
+        Width of each column in inches
+    row_height
+        Height of each row in inches
+    grid
+        Whether to add a grid to each axis
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
+    names = list(profiles.profiles) if names is None else list(names)
+    fig, axs = grid_layout(
+        len(names),
+        n_cols=n_cols,
+        col_width=col_width,
+        row_height=row_height,
+        sharex=False,
+        sharey=True,
+        grid=grid,
+    )
+    for i, (ax, name) in enumerate(zip(axs, names, strict=False)):
+        profile = profiles[name]
+        x = profile.delta.index.to_numpy(dtype=float)
+        ax.plot(x, profile.delta.to_numpy(), marker=".", color="C0")
+        ax.axhline(profile.threshold, color="C3", linestyle="dashed")
+        ax.axvline(profile.value, color="0.4", linestyle="dotted")
+        lower = max(profile.ci_lower, float(x.min()))
+        upper = min(profile.ci_upper, float(x.max()))
+        ax.axvspan(lower, upper, color="C0", alpha=0.15, linewidth=0)
+        if profile.log and x.max() > 10 * x.min():
+            ax.set_xscale("log")
+        ax.set(xlabel=name, title=profile.identifiability.replace("_", " "))
+        if i % n_cols == 0:
+            ax.set_ylabel("Δ objective")
+    return fig, axs
 
 
 ##########################################################################

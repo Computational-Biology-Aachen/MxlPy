@@ -17,7 +17,7 @@ from wadler_lindig import pformat
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
-from mxlpy.fit.losses import GaussianNll
+from mxlpy.fit.losses import _is_likelihood
 from mxlpy.runners import default_runner
 from mxlpy.simulator import _normalise_protocol_index
 
@@ -199,7 +199,7 @@ class _Settings[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuild
         return (
             self.standard_scale
             and len(self.data) > 1
-            and not isinstance(self.loss_fn, GaussianNll)
+            and not _is_likelihood(self.loss_fn)
         )
 
     @cached_property

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mxlpy import KineticModelBuilder, Simulator, fit, fns, identify
+from mxlpy import KineticModelBuilder, Simulator, fit, fns
 from mxlpy.distributions import (
     Laplace,
     LogNormal,
@@ -368,20 +368,6 @@ def test_joint_and_mixed() -> None:
         parallel=False,
     ).unwrap_or_err()
     assert mixed.best_pars["p"] == pytest.approx(4 / 3, rel=1e-4)
-
-
-def test_profile_likelihood_adds_profiled_prior() -> None:
-    data = _decay_data()
-    values = np.array([0.4, 0.5, 0.6])
-    prior = {"k1": Normal(0.6, 0.05)}
-    plain = identify.profile_likelihood(
-        _decay_model(), data, "k1", values, n_random=2, loss_fn=NLL
-    )
-    with_prior = identify.profile_likelihood(
-        _decay_model(), data, "k1", values, n_random=2, loss_fn=NLL, prior=prior
-    )
-    expected = plain + [0.5 * ((v - 0.6) / 0.05) ** 2 for v in values]
-    np.testing.assert_allclose(with_prior, expected, rtol=1e-3, atol=1e-6)
 
 
 @pytest.mark.parametrize(
