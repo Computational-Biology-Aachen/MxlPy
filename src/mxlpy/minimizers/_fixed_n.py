@@ -84,6 +84,7 @@ class FixedNMinimizer(AbstractMinimizer):
         res = minimize(
             res_fn,
             x0=list(p0.values()),
+            jac=res_fn.jac_for(self.method),
             bounds=[bounds.get(name, (1e-6, 1e6)) for name in p0],
             method=self.method,
             tol=self.tol,

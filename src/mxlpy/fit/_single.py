@@ -15,6 +15,7 @@ from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit import losses
+from mxlpy.fit._gradient import GradientResidual, Sensitivities, Transform, transformed
 from mxlpy.fit.abstract import Fit, FitResidual, PostprocessFn, _Settings, _split_p0
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
@@ -26,6 +27,7 @@ from mxlpy.minimizers.abstract import (
     LossFn,
     MinimizerProtocol,
     OptimisationState,
+    Residual,
 )
 from mxlpy.runners import DynamicRunner, SteadyStateRunner, default_runner
 from mxlpy.simulation import Evaluation, OdeSimulation, Simulation
@@ -51,16 +53,27 @@ def _minimize[M: _Model](
     minimizer: MinimizerProtocol,
     residual_fn: FitResidual,
     bounds: Bounds | None,
+    sensitivities: Sensitivities | None = None,
+    transform: Transform | None = None,
 ) -> Result[Fit[M]]:
-    match minimizer(
-        partial(residual_fn, settings=settings), p0, {} if bounds is None else bounds
-    ).value:
-        case OptimisationState(parameters, residual):
+    residual: Residual = (
+        partial(residual_fn, settings=settings)
+        if sensitivities is None
+        else GradientResidual(residual_fn, settings, sensitivities=sensitivities)
+    )
+    residual, p0, minimizer_bounds, back = transformed(
+        residual,
+        p0,
+        {} if bounds is None else bounds,
+        transform,
+    )
+    match minimizer(residual, p0, minimizer_bounds).value:
+        case OptimisationState(parameters, value):
             return Result(
                 Fit(
                     model=settings.model,
-                    best_pars=parameters,
-                    loss=residual,
+                    best_pars=back(parameters),
+                    loss=value,
                 )
             )
         case _ as e:
@@ -82,6 +95,8 @@ def steady_state(
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    sensitivities: Sensitivities | None = None,
+    transform: Transform | None = None,
 ) -> Result[Fit[KineticModelBuilder]]: ...
 
 
@@ -100,6 +115,8 @@ def steady_state(
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    sensitivities: Sensitivities | None = None,
+    transform: Transform | None = None,
 ) -> Result[Fit[OdeModelBuilder]]: ...
 
 
@@ -117,6 +134,8 @@ def steady_state(
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    sensitivities: Sensitivities | None = None,
+    transform: Transform | None = None,
 ) -> Result[Fit[SteadyStateModelBuilder]]: ...
 
 
@@ -134,6 +153,8 @@ def steady_state[M: _Model](
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    sensitivities: Sensitivities | None = None,
+    transform: Transform | None = None,
 ) -> Result[Fit[M]]:
     """Fit model parameters to steady-state experimental data.
 
@@ -172,6 +193,16 @@ def steady_state[M: _Model](
     standard_scale
         Whether to apply standard scale to data and prediction. Skipped for
         fewer than two data points.
+    sensitivities
+        How the minimizer gets derivatives: `forward` (sensitivity equations,
+        see `mxlpy.sensitivities`) or `finite_difference` residual Jacobians.
+        None (default) leaves derivatives to the minimizer. Needs one of the
+        default residual functions
+    transform
+        Fit `log` (log10) or `linear` values, for all or per name. Defaults
+        to linear. Log space suits values spanning orders of magnitude with
+        `LeastSquaresMinimizer`, but the unit first steps of quasi-Newton
+        methods like L-BFGS-B then change values tenfold
 
     Returns
     -------
@@ -191,6 +222,8 @@ def steady_state[M: _Model](
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
+        sensitivities=sensitivities,
+        transform=transform,
     )
 
 
@@ -208,6 +241,8 @@ def _steady_state[M: _Model](
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    sensitivities: Sensitivities | None = None,
+    transform: Transform | None = None,
 ) -> Result[Fit[M]]:
     """Non-overloaded implementation of `steady_state`, for internal callers."""
     _check_y0(model, y0)
@@ -231,6 +266,8 @@ def _steady_state[M: _Model](
         minimizer=minimizer,
         residual_fn=residual_fn,
         bounds=bounds,
+        sensitivities=sensitivities,
+        transform=transform,
     )
 
 
@@ -248,6 +285,8 @@ def time_course[M: KineticModelBuilder | OdeModelBuilder](
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    sensitivities: Sensitivities | None = None,
+    transform: Transform | None = None,
 ) -> Result[Fit[M]]:
     """Fit model parameters to time course of experimental data.
 
@@ -286,6 +325,16 @@ def time_course[M: KineticModelBuilder | OdeModelBuilder](
     standard_scale
         Whether to apply standard scale to data and prediction. Skipped for
         fewer than two data points.
+    sensitivities
+        How the minimizer gets derivatives: `forward` (sensitivity equations,
+        see `mxlpy.sensitivities`) or `finite_difference` residual Jacobians.
+        None (default) leaves derivatives to the minimizer. Needs one of the
+        default residual functions
+    transform
+        Fit `log` (log10) or `linear` values, for all or per name. Defaults
+        to linear. Log space suits values spanning orders of magnitude with
+        `LeastSquaresMinimizer`, but the unit first steps of quasi-Newton
+        methods like L-BFGS-B then change values tenfold
 
     Returns
     -------
@@ -312,6 +361,8 @@ def time_course[M: KineticModelBuilder | OdeModelBuilder](
         minimizer=minimizer,
         residual_fn=residual_fn,
         bounds=bounds,
+        sensitivities=sensitivities,
+        transform=transform,
     )
 
 
@@ -330,6 +381,8 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    sensitivities: Sensitivities | None = None,
+    transform: Transform | None = None,
 ) -> Result[Fit[M]]:
     """Fit model parameters to time course of experimental data.
 
@@ -380,6 +433,16 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     standard_scale
         Whether to apply standard scale to data and prediction. Skipped for
         fewer than two data points.
+    sensitivities
+        How the minimizer gets derivatives: `forward` (sensitivity equations,
+        see `mxlpy.sensitivities`) or `finite_difference` residual Jacobians.
+        None (default) leaves derivatives to the minimizer. Needs one of the
+        default residual functions
+    transform
+        Fit `log` (log10) or `linear` values, for all or per name. Defaults
+        to linear. Log space suits values spanning orders of magnitude with
+        `LeastSquaresMinimizer`, but the unit first steps of quasi-Newton
+        methods like L-BFGS-B then change values tenfold
 
     Returns
     -------
@@ -408,4 +471,6 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         minimizer=minimizer,
         residual_fn=residual_fn,
         bounds=bounds,
+        sensitivities=sensitivities,
+        transform=transform,
     )
