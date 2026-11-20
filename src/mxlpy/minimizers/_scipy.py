@@ -24,7 +24,6 @@ from mxlpy.types import Array, FitFailure, Result
 from .abstract import AbstractMinimizer, Bounds, OptimisationState, Residual
 
 __all__ = [
-    "GaussNewtonMinimizer",
     "GlobalScipyMinimizer",
     "LOGGER",
     "LeastSquaresMinimizer",
@@ -33,9 +32,27 @@ __all__ = [
 ]
 
 # scipy methods using a gradient, which then gets passed as `jac`
-GRADIENT_METHODS = frozenset(
-    {"CG", "BFGS", "Newton-CG", "L-BFGS-B", "TNC", "SLSQP", "trust-constr"}
+_GRADIENT_METHODS = frozenset(
+    {
+        "CG",
+        "BFGS",
+        "Newton-CG",
+        "L-BFGS-B",
+        "TNC",
+        "SLSQP",
+        "trust-constr",
+        "dogleg",
+        "trust-ncg",
+        "trust-krylov",
+        "trust-exact",
+    }
 )
+# scipy methods using a Hessian, which then gets passed as `hess`
+_HESSIAN_METHODS = frozenset(
+    {"Newton-CG", "trust-constr", "dogleg", "trust-ncg", "trust-krylov", "trust-exact"}
+)
+# ... of which these can't do without one
+_HESSIAN_REQUIRED = frozenset({"dogleg", "trust-ncg", "trust-krylov", "trust-exact"})
 _DEFAULT_BOUNDS = (1e-6, 1e6)
 
 if TYPE_CHECKING:
@@ -131,9 +148,25 @@ class _FiniteResidual:
 
     def jac_for(self, method: str) -> Callable[[Array], Array] | None:
         """`jac` argument for `scipy.optimize.minimize` with `method`."""
-        if self.has_gradient and method in GRADIENT_METHODS:
+        if self.has_gradient and method in _GRADIENT_METHODS:
             return self.gradient
         return None
+
+    def hess_for(self, method: str, p0: dict[str, float]) -> Any:
+        """`hess` argument for `scipy.optimize.minimize` with `method`.
+
+        The Gauss-Newton Hessian of the residual if it has one (`rmse` and
+        `mean_squared` losses), else BFGS updates for `trust-constr`.
+        """
+        if method not in _HESSIAN_METHODS or not self.has_gradient:
+            return None
+        hessian = getattr(self.residual_fn, "hessian", None)
+        if callable(hessian) and hessian(p0) is not None:
+            return self.hessian
+        if method in _HESSIAN_REQUIRED:
+            msg = f"Only the rmse and mean_squared losses have a Gauss-Newton Hessian, use method='trust-constr' instead of {method!r} for others"
+            raise ValueError(msg)
+        return BFGS() if method == "trust-constr" else None
 
 
 @dataclass(kw_only=True, slots=True)
@@ -143,6 +176,18 @@ class LocalScipyMinimizer(AbstractMinimizer):
     By default (`method=None`), Nelder-Mead is used to fit a single parameter
     and L-BFGS-B otherwise, as the first L-BFGS-B step is of unit length,
     which for a single parameter frequently lands on its bounds.
+
+    Gradient-based methods use the derivatives of the fit (see
+    `mxlpy.runners`), and methods using a Hessian its Gauss-Newton
+    approximation `Jᵀ (d²loss/dr²) J` for the `rmse` and `mean_squared`
+    losses (BFGS updates for other losses with `trust-constr`). Unlike
+    `LeastSquaresMinimizer`, which minimizes the sum of squares, these
+    minimize the fit's loss function itself. `trust-exact` ignores bounds.
+
+    Examples
+    --------
+        >>> fit.time_course(model, p0=p0, data=data,
+        ...                 minimizer=LocalScipyMinimizer(method="trust-constr"))
 
     See Also
     --------
@@ -182,19 +227,36 @@ class LocalScipyMinimizer(AbstractMinimizer):
         if (method := self.method) is None:
             method = "Nelder-Mead" if len(p0) == 1 else "L-BFGS-B"
         res_fn = _FiniteResidual(residual_fn, list(p0))
+        pairs = [bounds.get(name, _DEFAULT_BOUNDS) for name in p0]
+        x0 = np.array(list(p0.values()), dtype=float)
+        kwargs: dict[str, Any] = {"bounds": pairs}
+        if method == "trust-constr":
+            # Start feasible, with a small barrier so bounds only matter close
+            # to them. The default of 0.1 slows convergence down to the
+            # gradient tolerance
+            lb = np.array([-np.inf if lo is None else lo for lo, _ in pairs])
+            ub = np.array([np.inf if hi is None else hi for _, hi in pairs])
+            x0 = np.clip(x0, lb, ub)
+            kwargs["options"] = {"initial_barrier_parameter": 1e-6}
+        elif method == "trust-exact":
+            LOGGER.debug("The trust-exact method ignores bounds")
+            kwargs = {}
 
         res: OptimizeResult = minimize(
             res_fn,
-            x0=list(p0.values()),
+            x0=x0,
             jac=res_fn.jac_for(method),
-            bounds=[bounds.get(name, _DEFAULT_BOUNDS) for name in p0],
+            hess=res_fn.hess_for(method, p0),
             method=method,
             tol=self.tol,
+            **kwargs,
         )
         if res_fn.is_penalty(res.fun):
             LOGGER.warning("Minimisation failed, no finite residual found")
             return Result(FitFailure(extra_info=["No finite residual found"]))
-        if res.success:
+        # trust-exact stops with status 2 if no step improves the loss any
+        # more, e.g. at a perfect fit, where the loss is at machine precision
+        if res.success or (method == "trust-exact" and res.status == 2):  # noqa: PLR2004
             return Result(
                 OptimisationState(
                     parameters=dict(
@@ -284,10 +346,10 @@ class LeastSquaresMinimizer(AbstractMinimizer):
     """Nonlinear least squares using `scipy.optimize.least_squares`.
 
     Minimizes the sum of squares of the residual vector (the standard-scaled
-    prediction minus the data), using its Jacobian. This needs a residual
-    providing them, i.e. a fit with `sensitivities` set. The reported loss
-    is the value of the fit's loss function, so results stay comparable to
-    other minimizers.
+    prediction minus the data), using its Jacobian (see `mxlpy.runners` for
+    how it is computed). This needs one of the residual functions of
+    `mxlpy.fit.residuals`. The reported loss is the value of the fit's loss
+    function, so results stay comparable to other minimizers.
 
     Parameters
     ----------
@@ -299,18 +361,32 @@ class LeastSquaresMinimizer(AbstractMinimizer):
         Tolerance for the change of the cost, the parameters and the gradient
     max_nfev
         Maximal number of residual evaluations, None uses the scipy default
+    backend
+        `scipy` or `native`, which runs `lm` with the model and its forward
+        sensitivities entirely in compiled code (needs `mxlpy[native]`'s
+        llvm backend, falls back to scipy otherwise). It integrates with the
+        method and tolerances of the runner's `Native` integrator, or
+        Native's defaults
 
     Examples
     --------
         >>> fit.time_course(model, p0=p0, data=data,
-        ...                 minimizer=LeastSquaresMinimizer(),
-        ...                 sensitivities="forward")
+        ...                 minimizer=LeastSquaresMinimizer())
+        >>> fit.time_course(model, p0=p0, data=data, transform="log",
+        ...                 minimizer=LeastSquaresMinimizer(method="lm", backend="native"))
 
     """
 
     method: Literal["trf", "dogbox", "lm"] = "trf"
     tol: float = 1e-8
     max_nfev: int | None = None
+    backend: Literal["scipy", "native"] = "scipy"
+
+    def __post_init__(self) -> None:
+        """Check that the backend supports the method."""
+        if self.backend == "native" and self.method != "lm":
+            msg = "The native backend only implements method='lm'"
+            raise ValueError(msg)
 
     def __call__(
         self,
@@ -320,8 +396,19 @@ class LeastSquaresMinimizer(AbstractMinimizer):
     ) -> Result[OptimisationState]:
         """Minimize the sum of squared residuals."""
         if not callable(getattr(residual_fn, "residuals", None)):
-            msg = "LeastSquaresMinimizer needs residual vectors, fit with sensitivities='forward' or 'finite_difference'"
+            msg = "LeastSquaresMinimizer needs residual vectors, fit with one of the residual functions of mxlpy.fit.residuals"
             raise TypeError(msg)
+        if self.backend == "native":
+            from mxlpy.fit._native import least_squares as native  # noqa: PLC0415 (imports this module)
+
+            return native(
+                residual_fn,
+                p0,
+                bounds,
+                max_nfev=100 * (len(p0) + 1)
+                if self.max_nfev is None
+                else self.max_nfev,
+            )
         residuals = cast(
             Callable[[dict[str, float]], Array],
             residual_fn.residuals,  # type: ignore[attr-defined]
@@ -378,101 +465,3 @@ class LeastSquaresMinimizer(AbstractMinimizer):
             LOGGER.warning("Minimisation failed due to %s", res.message)
             return Result(FitFailure(extra_info=[res.message]))
         return Result(OptimisationState(parameters=parameters, residual=float(loss)))
-
-
-@dataclass(kw_only=True, slots=True)
-class GaussNewtonMinimizer(AbstractMinimizer):
-    """Trust-region minimization of the loss with a Gauss-Newton Hessian.
-
-    Uses the exact gradient and the Gauss-Newton approximation of the
-    Hessian (Jᵀ (d²loss/dr²) J, positive semi-definite), both from the same
-    sensitivity solve. Unlike `LeastSquaresMinimizer`, which minimizes the
-    sum of squares, it minimizes the fit's loss function itself. This needs
-    a fit with `sensitivities` set and the `rmse` or `mean_squared` loss;
-    other differentiable losses fall back to BFGS updates of the Hessian
-    (`trust-constr` only).
-
-    Parameters
-    ----------
-    method
-        `trust-constr` (supports bounds) or `trust-exact` (ignores bounds)
-    tol
-        Tolerance for termination
-    max_iter
-        Maximal number of iterations
-
-    Examples
-    --------
-        >>> fit.time_course(model, p0=p0, data=data,
-        ...                 minimizer=GaussNewtonMinimizer(),
-        ...                 sensitivities="forward")
-
-    """
-
-    method: Literal["trust-constr", "trust-exact"] = "trust-constr"
-    tol: float = 1e-8
-    max_iter: int = 1000
-
-    def __call__(
-        self,
-        residual_fn: Residual,
-        p0: dict[str, float],
-        bounds: Bounds,
-    ) -> Result[OptimisationState]:
-        """Minimize the loss."""
-        if not callable(getattr(residual_fn, "hessian", None)):
-            msg = "GaussNewtonMinimizer needs derivatives, fit with sensitivities='forward' or 'finite_difference'"
-            raise TypeError(msg)
-        res_fn = _FiniteResidual(residual_fn, list(p0))
-        x0 = np.array(list(p0.values()), dtype=float)
-
-        hess: Any = res_fn.hessian
-        if residual_fn.hessian(p0) is None:  # type: ignore[attr-defined]
-            if self.method != "trust-constr":
-                msg = "Only the rmse and mean_squared losses have a Gauss-Newton Hessian, use method='trust-constr' for others"
-                raise ValueError(msg)
-            LOGGER.debug("No Gauss-Newton Hessian for this loss, using BFGS updates")
-            hess = BFGS()
-
-        kwargs: dict[str, Any] = {}
-        if self.method == "trust-constr":
-            pairs = [bounds.get(name, _DEFAULT_BOUNDS) for name in p0]
-            lb = np.array([-np.inf if lo is None else lo for lo, _ in pairs])
-            ub = np.array([np.inf if hi is None else hi for _, hi in pairs])
-            x0 = np.clip(x0, lb, ub)
-            kwargs["bounds"] = list(zip(lb, ub, strict=True))
-            # A small barrier, so bounds only matter close to them. The
-            # default of 0.1 slows convergence down to the gradient tolerance
-            kwargs["options"] = {
-                "maxiter": self.max_iter,
-                "xtol": self.tol,
-                "gtol": self.tol,
-                "initial_barrier_parameter": 1e-6,
-                "barrier_tol": self.tol,
-            }
-        else:
-            LOGGER.debug("The trust-exact method ignores bounds")
-            kwargs["options"] = {"maxiter": self.max_iter, "gtol": self.tol}
-
-        res: OptimizeResult = minimize(
-            res_fn,
-            x0=x0,
-            jac=res_fn.gradient,
-            hess=hess,
-            method=self.method,
-            **kwargs,
-        )
-        if res_fn.is_penalty(res.fun):
-            LOGGER.warning("Minimisation failed, no finite residual found")
-            return Result(FitFailure(extra_info=["No finite residual found"]))
-        # trust-exact stops with status 2 if no step improves the loss any
-        # more, e.g. at a perfect fit, where the loss is at machine precision
-        if not (res.success or (self.method == "trust-exact" and res.status == 2)):  # noqa: PLR2004
-            LOGGER.warning("Minimisation failed due to %s", res.message)
-            return Result(FitFailure(extra_info=[res.message]))
-        return Result(
-            OptimisationState(
-                parameters=dict(zip(p0, res.x, strict=True)),
-                residual=float(res.fun),
-            )
-        )

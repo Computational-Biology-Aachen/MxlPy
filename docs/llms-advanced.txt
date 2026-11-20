@@ -58,8 +58,8 @@ fim = identify.fisher_information(
     data,                    # Series: steady state, DataFrame: time course (+ protocol=...)
     fit_result,              # fit.Fit or {name: value}; variable names = fitted initial values
     sigma=0.1,               # scalar, Series per observable, DataFrame per point; None = estimate noise variance Σr²/(n-p)
-    # y0=... (same as the fit), sensitivities="forward" | "finite_difference",
-    # transform="log" (log10-unit uncertainties), rtol=1e-6 (relative singular value cutoff), runner=None
+    # y0=... (same as the fit), runner=None (its derivatives= picks forward / finite differences),
+    # transform="log" (log10-unit uncertainties), rtol=1e-6 (relative singular value cutoff)
 )
 fim.covariance, fim.correlation, fim.std_errors   # inf std errors for non-identifiable parameters
 fim.wald_ci(alpha=0.95)      # value, std_error, lower, upper (t distribution if sigma was estimated)

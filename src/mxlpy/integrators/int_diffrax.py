@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from diffrax import (
@@ -36,6 +36,8 @@ if TYPE_CHECKING:
 @dataclass
 class Diffrax(AbstractIntegrator):
     """Diffrax integrator for solving ODEs."""
+
+    compiles_model: ClassVar[bool] = True
 
     rhs: Rhs
     y0: tuple[float, ...]

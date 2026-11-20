@@ -12,19 +12,22 @@ function theorem instead. Models which can't be differentiated symbolically
 (e.g. neural-network surrogates or functions that can't be parsed) fall back
 to central finite differences.
 
+For global sensitivity analysis (Morris, Sobol) see `mxlpy.sensitivity`.
+
 Examples
 --------
-    >>> sens = sensitivities.time_course(model, [1, 2, 5], ["k1", "k2"])
-    >>> sens.unwrap_or_err().sensitivities["k1"]
+    >>> sens = forward_sensitivities.time_course(model, [1, 2, 5], ["k1", "k2"])
+    >>> sens.unwrap_or_err().derivatives["k1"]
 
 """
 
 from __future__ import annotations
 
-from ._core import Sensitivities, steady_state, time_course
+from ._core import DerivativeMethod, ForwardSensitivities, steady_state, time_course
 
 __all__ = [
-    "Sensitivities",
+    "DerivativeMethod",
+    "ForwardSensitivities",
     "steady_state",
     "time_course",
 ]

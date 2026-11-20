@@ -1,6 +1,6 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
-from typing import cast
+from typing import Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -14,13 +14,15 @@ from mxlpy import (
     fns,
     make_protocol,
 )
-from mxlpy.fit import GaussNewtonMinimizer, LeastSquaresMinimizer, LocalScipyMinimizer
+from mxlpy.fit import LeastSquaresMinimizer, LocalScipyMinimizer
 from mxlpy.fit._gradient import GradientResidual, _TransformedGradient, transformed
 from mxlpy.fit.abstract import _Settings
 from mxlpy.fit.residuals import steady_state_residual, time_course_residual
+from mxlpy.forward_sensitivities import ForwardSensitivities
 from mxlpy.minimizers import FixedNMinimizer, GlobalScipyMinimizer
 from mxlpy.minimizers.abstract import MinimizerProtocol
-from mxlpy.runners import default_runner
+from mxlpy.runners import KineticRunner, default_runner
+from mxlpy.types import ArrayLike, Result
 
 TRUE = {"k1": 0.5, "k2": 2.0}
 P0 = {"k1": 1.5, "k2": 0.7}
@@ -50,14 +52,16 @@ def _data() -> pd.DataFrame:
 
 
 def _settings(
-    loss_fn: fit.LossFn = fit.rmse, data: pd.DataFrame | None = None
+    loss_fn: fit.LossFn = fit.rmse,
+    data: pd.DataFrame | None = None,
+    derivatives: Literal["auto", "forward", "finite_difference"] = "forward",
 ) -> _Settings:
     model = _model()
     return _Settings(
         model=model,
         data=_data() if data is None else data,
         y0=None,
-        runner=default_runner(model),
+        runner=KineticRunner(derivatives=derivatives),
         loss_fn=loss_fn,
         p_names=list(P0),
         v_names=[],
@@ -79,18 +83,16 @@ def _custom_loss(y_pred: pd.DataFrame, y_true: pd.DataFrame) -> float:
 
 @pytest.mark.parametrize("loss_fn", [fit.rmse, fit.mean_squared, fit.mae, _custom_loss])
 def test_gradient_matches_numeric_loss_gradient(loss_fn: fit.LossFn) -> None:
-    residual = GradientResidual(
-        time_course_residual, _settings(loss_fn), sensitivities="forward"
-    )
+    residual = GradientResidual(time_course_residual, _settings(loss_fn))
     np.testing.assert_allclose(
         residual.gradient(P0), _numeric_gradient(residual, P0), rtol=1e-4
     )
 
 
 def test_forward_and_finite_difference_jacobians_agree() -> None:
-    fw = GradientResidual(time_course_residual, _settings(), sensitivities="forward")
+    fw = GradientResidual(time_course_residual, _settings())
     fd = GradientResidual(
-        time_course_residual, _settings(), sensitivities="finite_difference"
+        time_course_residual, _settings(derivatives="finite_difference")
     )
     assert fw.forward
     assert not fd.forward
@@ -104,9 +106,7 @@ def test_forward_and_finite_difference_jacobians_agree() -> None:
 def test_missing_data_is_left_out() -> None:
     data = _data()
     data.iloc[3, 0] = np.nan
-    residual = GradientResidual(
-        time_course_residual, _settings(data=data), sensitivities="forward"
-    )
+    residual = GradientResidual(time_course_residual, _settings(data=data))
     assert residual.residuals(P0).shape == (len(T) * 3 - 1,)
     assert residual.jacobian(P0).shape == (len(T) * 3 - 1, 2)
     np.testing.assert_allclose(
@@ -119,9 +119,7 @@ def test_constant_data_columns_are_left_out() -> None:
     # the residual vector, else least squares only sees the penalty
     data = _data()
     data["y"] = 0.5
-    residual = GradientResidual(
-        time_course_residual, _settings(data=data), sensitivities="forward"
-    )
+    residual = GradientResidual(time_course_residual, _settings(data=data))
     assert residual.residuals(P0).shape == (len(T) * 2,)
     assert np.isfinite(residual.jacobian(P0)).all()
     np.testing.assert_allclose(
@@ -130,24 +128,25 @@ def test_constant_data_columns_are_left_out() -> None:
 
 
 @pytest.mark.parametrize(
-    ("minimizer", "sensitivities"),
+    ("minimizer", "derivatives"),
     [
         (LeastSquaresMinimizer(), "forward"),
         (LeastSquaresMinimizer(), "finite_difference"),
-        (LeastSquaresMinimizer(method="lm"), "forward"),
-        (LocalScipyMinimizer(), "forward"),
-        (FixedNMinimizer(n_steps=200), "forward"),
+        (LeastSquaresMinimizer(method="lm"), "auto"),
+        (LocalScipyMinimizer(), "auto"),
+        (FixedNMinimizer(n_steps=200), "auto"),
     ],
 )
 def test_time_course_fits_recover_parameters(
-    minimizer: MinimizerProtocol, sensitivities: str
+    minimizer: MinimizerProtocol,
+    derivatives: Literal["auto", "forward", "finite_difference"],
 ) -> None:
     res = fit.time_course(
         _model(),
         p0=P0,
         data=_data(),
         minimizer=minimizer,
-        sensitivities=sensitivities,  # type: ignore[arg-type]
+        runner=KineticRunner(derivatives=derivatives),
     ).unwrap_or_err()
     for k, v in TRUE.items():
         assert res.best_pars[k] == pytest.approx(v, rel=1e-3)
@@ -159,7 +158,6 @@ def test_log_transform_least_squares() -> None:
         p0={"k1": 20.0, "k2": 0.01},
         data=_data(),
         minimizer=LeastSquaresMinimizer(),
-        sensitivities="forward",
         transform="log",
     ).unwrap_or_err()
     for k, v in TRUE.items():
@@ -167,9 +165,7 @@ def test_log_transform_least_squares() -> None:
 
 
 def test_transformed_maps_values_and_bounds() -> None:
-    residual = GradientResidual(
-        time_course_residual, _settings(), sensitivities="forward"
-    )
+    residual = GradientResidual(time_course_residual, _settings())
     wrapped, p0, bounds, back = transformed(
         residual, P0, {"k1": (1e-2, 1e2)}, {"k1": "log", "k2": "linear"}
     )
@@ -191,26 +187,85 @@ def test_transform_validation() -> None:
         transformed(_quadratic, {"a": 1.0}, {}, {"b": "log"})
 
 
-def test_least_squares_needs_residual_vectors() -> None:
-    with pytest.raises(TypeError, match="sensitivities"):
-        fit.time_course(
-            _model(), p0=P0, data=_data(), minimizer=LeastSquaresMinimizer()
-        )
-
-
-def test_custom_residual_fn_rejected() -> None:
+def test_least_squares_needs_default_residual_fn() -> None:
     def custom(updates: dict[str, float], settings: _Settings) -> float:
         return time_course_residual(updates, settings)
 
-    with pytest.raises(ValueError, match="residual functions"):
+    with pytest.raises(TypeError, match="residual functions"):
         fit.time_course(
             _model(),
             p0=P0,
             data=_data(),
             minimizer=LeastSquaresMinimizer(),
             residual_fn=custom,
-            sensitivities="forward",
         )
+    with pytest.raises(ValueError, match="residual functions"):
+        GradientResidual(custom, _settings())  # type: ignore[arg-type]
+
+
+def test_custom_residual_fn_keeps_gradient_free_minimizers_working() -> None:
+    def custom(updates: dict[str, float], settings: _Settings) -> float:
+        return time_course_residual(updates, settings)
+
+    res = fit.time_course(
+        _model(),
+        p0=P0,
+        data=_data(),
+        minimizer=LocalScipyMinimizer(),
+        residual_fn=custom,
+    ).unwrap_or_err()
+    for k, v in TRUE.items():
+        assert res.best_pars[k] == pytest.approx(v, rel=1e-3)
+
+
+class _NoSensitivitiesRunner:
+    """Custom runner without sensitivity methods, delegating simulations."""
+
+    def __init__(self) -> None:
+        self.inner = KineticRunner()
+
+    def steady_state(self, model: KineticModelBuilder) -> object:
+        return self.inner.steady_state(model)
+
+    def time_course(self, model: KineticModelBuilder, time_points: object) -> object:
+        return self.inner.time_course(model, time_points)  # type: ignore[arg-type]
+
+
+def test_runner_without_sensitivities_uses_finite_differences() -> None:
+    settings = _settings()
+    settings.runner = _NoSensitivitiesRunner()  # type: ignore[assignment]
+    residual = GradientResidual(time_course_residual, settings)
+    assert not residual.forward
+    np.testing.assert_allclose(
+        residual.jacobian(P0),
+        GradientResidual(time_course_residual, _settings()).jacobian(P0),
+        atol=1e-4,
+    )
+    res = fit.time_course(
+        _model(),
+        p0=P0,
+        data=_data(),
+        minimizer=LeastSquaresMinimizer(),
+        runner=_NoSensitivitiesRunner(),  # type: ignore[arg-type]
+    ).unwrap_or_err()
+    for k, v in TRUE.items():
+        assert res.best_pars[k] == pytest.approx(v, rel=1e-3)
+
+
+def test_derivatives_come_from_the_runner() -> None:
+    calls: list[list[str]] = []
+
+    class Counting(KineticRunner):
+        def time_course_sensitivities(
+            self, model: KineticModelBuilder, time_points: ArrayLike, wrt: list[str]
+        ) -> Result[ForwardSensitivities]:
+            calls.append(wrt)
+            return super().time_course_sensitivities(model, time_points, wrt)
+
+    settings = _settings()
+    settings.runner = Counting()
+    GradientResidual(time_course_residual, settings).jacobian(P0)
+    assert calls == [list(P0)]
 
 
 def test_postprocess_falls_back_to_finite_differences() -> None:
@@ -224,7 +279,6 @@ def test_postprocess_falls_back_to_finite_differences() -> None:
         data=data,
         minimizer=LeastSquaresMinimizer(),
         postprocess_fn=double,
-        sensitivities="forward",
     ).unwrap_or_err()
     for k, v in TRUE.items():
         assert res.best_pars[k] == pytest.approx(v, rel=1e-3)
@@ -249,7 +303,6 @@ def test_steady_state_fits() -> None:
         p0={"kf": 1.0, "kr": 2.0},
         data=data,
         minimizer=LeastSquaresMinimizer(),
-        sensitivities="forward",
         standard_scale=False,
     ).unwrap_or_err()
     assert res.best_pars["kf"] == pytest.approx(2.0, rel=1e-4)
@@ -265,10 +318,9 @@ def test_steady_state_fits() -> None:
         v_names=[],
         standard_scale=False,
     )
-    fw = GradientResidual(steady_state_residual, settings, sensitivities="forward")
-    fd = GradientResidual(
-        steady_state_residual, settings, sensitivities="finite_difference"
-    )
+    fw = GradientResidual(steady_state_residual, settings)
+    settings.runner = KineticRunner(derivatives="finite_difference")
+    fd = GradientResidual(steady_state_residual, settings)
     at = {"kf": 1.0, "kr": 2.0}
     np.testing.assert_allclose(fw.jacobian(at), fd.jacobian(at), atol=1e-5)
 
@@ -284,12 +336,11 @@ def test_steady_state_model_builder_uses_finite_differences() -> None:
         p0={"k": 3.0},
         data=pd.Series({"d": 5.0}),
         minimizer=LeastSquaresMinimizer(),
-        sensitivities="forward",
     ).unwrap_or_err()
     assert res.best_pars["k"] == pytest.approx(2.5, rel=1e-6)
 
 
-def test_protocol_time_course_with_sensitivities() -> None:
+def test_protocol_time_course_least_squares() -> None:
     protocol = make_protocol([(2.0, {"k1": 0.5}), (4.0, {"k1": 1.0})])
     model = _model()
     data = (
@@ -306,18 +357,16 @@ def test_protocol_time_course_with_sensitivities() -> None:
         data=data,
         protocol=protocol,
         minimizer=LeastSquaresMinimizer(),
-        sensitivities="forward",
     ).unwrap_or_err()
     assert res.best_pars["k2"] == pytest.approx(2.0, rel=1e-3)
 
 
-def test_group_fit_passes_sensitivities() -> None:
+def test_group_fit_with_least_squares() -> None:
     res = fit.group_time_course(
         _model(),
         p0=pd.DataFrame([P0, {"k1": 0.2, "k2": 5.0}]),
         data=_data(),
         minimizer=LeastSquaresMinimizer(),
-        sensitivities="forward",
         parallel=False,
     )
     assert len(res.fits) == 2
@@ -350,7 +399,6 @@ def test_unparsable_model_falls_back_to_finite_differences() -> None:
         p0=P0,
         data=_data(),
         minimizer=LeastSquaresMinimizer(),
-        sensitivities="forward",
     ).unwrap_or_err()
     for k, v in TRUE.items():
         assert res.best_pars[k] == pytest.approx(v, rel=1e-3)
@@ -369,7 +417,7 @@ def test_non_finite_predictions_are_skipped() -> None:
             data=_data(),
             minimizer=minimizer,
             postprocess_fn=drop_one,
-            sensitivities="finite_difference",
+            runner=KineticRunner(derivatives="finite_difference"),
         ).unwrap_or_err()
         for k, v in TRUE.items():
             assert res.best_pars[k] == pytest.approx(v, rel=1e-3)
@@ -384,21 +432,18 @@ def test_replicate_time_points() -> None:
             p0=P0,
             data=data,
             minimizer=minimizer,
-            sensitivities="forward",
         ).unwrap_or_err()
         assert res.best_pars["k2"] == pytest.approx(2.0, rel=2e-2)
-    fw = GradientResidual(
-        time_course_residual, _settings(data=data), sensitivities="forward"
-    )
+    fw = GradientResidual(time_course_residual, _settings(data=data))
     fd = GradientResidual(
-        time_course_residual, _settings(data=data), sensitivities="finite_difference"
+        time_course_residual, _settings(data=data, derivatives="finite_difference")
     )
     np.testing.assert_allclose(fw.jacobian(P0), fd.jacobian(P0), atol=1e-4)
 
 
 def test_loss_matches_residual_function() -> None:
     settings = _settings()
-    residual = GradientResidual(time_course_residual, settings, sensitivities="forward")
+    residual = GradientResidual(time_course_residual, settings)
     assert residual(P0) == pytest.approx(time_course_residual(P0, settings))
     residual.gradient(P0)
     assert residual(P0) == pytest.approx(time_course_residual(P0, settings))
@@ -420,21 +465,18 @@ def test_least_squares_clips_infeasible_start() -> None:
         p0={"k1": 0.0, "k2": 0.7},
         data=_data(),
         minimizer=LeastSquaresMinimizer(),
-        sensitivities="forward",
     ).unwrap_or_err()
     for k, v in TRUE.items():
         assert res.best_pars[k] == pytest.approx(v, rel=1e-3)
 
 
 ###############################################################################
-# Gauss-Newton
+# Gauss-Newton Hessians
 ###############################################################################
 
 
 def test_gauss_newton_hessian_matches_numeric_close_to_optimum() -> None:
-    residual = GradientResidual(
-        time_course_residual, _settings(fit.mean_squared), sensitivities="forward"
-    )
+    residual = GradientResidual(time_course_residual, _settings(fit.mean_squared))
     at = {k: v * 1.0001 for k, v in TRUE.items()}
     numeric = []
     for k, v in at.items():
@@ -448,16 +490,12 @@ def test_gauss_newton_hessian_matches_numeric_close_to_optimum() -> None:
     np.testing.assert_allclose(hessian, np.array(numeric), rtol=1e-3)
     assert np.all(np.linalg.eigvalsh(cast(np.ndarray, residual.hessian(P0))) >= 0)
     # No Gauss-Newton Hessian for other losses
-    mae = GradientResidual(
-        time_course_residual, _settings(fit.mae), sensitivities="forward"
-    )
+    mae = GradientResidual(time_course_residual, _settings(fit.mae))
     assert mae.hessian(P0) is None
 
 
 def test_transformed_hessian_is_gauss_newton_in_log_space() -> None:
-    residual = GradientResidual(
-        time_course_residual, _settings(), sensitivities="forward"
-    )
+    residual = GradientResidual(time_course_residual, _settings())
     wrapped, u, _, _ = transformed(residual, P0, {}, {"k1": "log"})
     assert isinstance(wrapped, _TransformedGradient)
     f = np.array([P0["k1"] * np.log(10), 1.0])
@@ -475,8 +513,7 @@ def test_gauss_newton_fits(method: str, loss_fn: fit.LossFn) -> None:
         p0=P0,
         data=_data(),
         loss_fn=loss_fn,
-        minimizer=GaussNewtonMinimizer(method=method),  # type: ignore[arg-type]
-        sensitivities="forward",
+        minimizer=LocalScipyMinimizer(method=method),  # type: ignore[arg-type]
     ).unwrap_or_err()
     for k, v in TRUE.items():
         assert res.best_pars[k] == pytest.approx(v, rel=1e-6)
@@ -488,8 +525,7 @@ def test_gauss_newton_other_losses_use_bfgs_updates() -> None:
         p0=P0,
         data=_data(),
         loss_fn=fit.mae,
-        minimizer=GaussNewtonMinimizer(),
-        sensitivities="forward",
+        minimizer=LocalScipyMinimizer(method="trust-constr"),
     ).unwrap_or_err()
     for k, v in TRUE.items():
         assert res.best_pars[k] == pytest.approx(v, rel=1e-4)
@@ -499,24 +535,20 @@ def test_gauss_newton_other_losses_use_bfgs_updates() -> None:
             p0=P0,
             data=_data(),
             loss_fn=fit.mae,
-            minimizer=GaussNewtonMinimizer(method="trust-exact"),
-            sensitivities="forward",
+            minimizer=LocalScipyMinimizer(method="trust-exact"),
         )
 
 
-def test_gauss_newton_respects_bounds_and_needs_sensitivities() -> None:
+def test_gauss_newton_respects_bounds() -> None:
     res = fit.time_course(
         _model(),
         p0=P0,
         data=_data(),
         bounds={"k2": (0.1, 1.5)},
-        minimizer=GaussNewtonMinimizer(),
-        sensitivities="forward",
+        minimizer=LocalScipyMinimizer(method="trust-constr"),
     ).unwrap_or_err()
     assert 0.1 <= res.best_pars["k2"] <= 1.5
     assert res.best_pars["k2"] == pytest.approx(1.5, rel=1e-4)
-    with pytest.raises(TypeError, match="sensitivities"):
-        fit.time_course(_model(), p0=P0, data=_data(), minimizer=GaussNewtonMinimizer())
 
 
 def test_gauss_newton_with_log_transform() -> None:
@@ -524,9 +556,13 @@ def test_gauss_newton_with_log_transform() -> None:
         _model(),
         p0={"k1": 5.0, "k2": 0.2},
         data=_data(),
-        minimizer=GaussNewtonMinimizer(),
-        sensitivities="forward",
+        minimizer=LocalScipyMinimizer(method="trust-constr"),
         transform="log",
     ).unwrap_or_err()
     for k, v in TRUE.items():
         assert res.best_pars[k] == pytest.approx(v, rel=1e-5)
+
+
+def test_native_backend_only_implements_lm() -> None:
+    with pytest.raises(ValueError, match="lm"):
+        LeastSquaresMinimizer(backend="native")

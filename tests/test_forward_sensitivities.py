@@ -7,9 +7,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import mxlpy.sensitivities._core
-from mxlpy import KineticModelBuilder, OdeModelBuilder, Simulator, fns, sensitivities
+import mxlpy.forward_sensitivities._core
+from mxlpy import (
+    KineticModelBuilder,
+    OdeModelBuilder,
+    fns,
+    forward_sensitivities,
+)
 from mxlpy.integrators import Scipy
+from mxlpy.runners import KineticRunner, OdeRunner
 from mxlpy.symbolic import jacobian_fn
 from mxlpy.symbolic.jacobian import compile_derivatives
 from mxlpy.types import Derived, InitialAssignment
@@ -88,50 +94,50 @@ def test_compile_derivatives_rejects_unknown_wrt() -> None:
 
 @pytest.mark.parametrize("method", ["forward", "finite_difference"])
 def test_time_course_matches_analytic(method: str) -> None:
-    sens = sensitivities.time_course(
+    sens = forward_sensitivities.time_course(
         _chain(),
         T,
         ["k1", "k2", "x"],
         method=method,  # type: ignore[arg-type]
     ).unwrap_or_err()
     assert sens.method == method
-    assert sens.parameters == ["k1", "k2", "x"]
-    assert list(sens.trajectories.columns) == ["x", "y", "v1", "v2"]
-    np.testing.assert_allclose(sens.trajectories.index, T)
+    assert sens.wrt == ["k1", "k2", "x"]
+    assert list(sens.simulated.columns) == ["x", "y", "v1", "v2"]
+    np.testing.assert_allclose(sens.simulated.index, T)
 
     tol = 1e-6 if method == "forward" else 1e-5
-    s = sens.sensitivities
+    s = sens.derivatives
     np.testing.assert_allclose(s["k1"]["x"], -T * 2.0 * np.exp(-0.5 * T), atol=tol)
     np.testing.assert_allclose(s["x"]["x"], np.exp(-0.5 * T), atol=tol)
     np.testing.assert_allclose(s["k2"]["y"], _y_dk2(T), atol=tol)
     np.testing.assert_allclose(s["k2"]["x"], 0.0, atol=tol)
     # dv1/dk1 = x + k1 dx/dk1
     np.testing.assert_allclose(
-        s["k1"]["v1"], sens.trajectories["x"] + 0.5 * s["k1"]["x"], atol=tol
+        s["k1"]["v1"], sens.simulated["x"] + 0.5 * s["k1"]["x"], atol=tol
     )
     assert sens.to_array().shape == (len(T), 4, 3)
 
 
 def test_time_course_outputs_subset() -> None:
-    sens = sensitivities.time_course(
+    sens = forward_sensitivities.time_course(
         _chain(), T, ["k1"], outputs=["v2"]
     ).unwrap_or_err()
-    assert list(sens.trajectories.columns) == ["x", "y", "v2"]
-    assert list(sens.sensitivities["k1"].columns) == ["x", "y", "v2"]
+    assert list(sens.simulated.columns) == ["x", "y", "v2"]
+    assert list(sens.derivatives["k1"].columns) == ["x", "y", "v2"]
 
 
 def test_steady_state_with_conservation() -> None:
     model = _reversible()
-    fw = sensitivities.steady_state(model, ["kf", "kr", "A"]).unwrap_or_err()
-    fd = sensitivities.steady_state(
+    fw = forward_sensitivities.steady_state(model, ["kf", "kr", "A"]).unwrap_or_err()
+    fd = forward_sensitivities.steady_state(
         model, ["kf", "kr", "A"], method="finite_difference"
     ).unwrap_or_err()
     # A* = kr / (kf + kr) * (A0 + B0)
-    assert fw.sensitivities["kf"]["A"].iloc[0] == pytest.approx(-0.5 / 1.5**2)
-    assert fw.sensitivities["kr"]["A"].iloc[0] == pytest.approx(1.0 / 1.5**2)
-    assert fw.sensitivities["A"]["A"].iloc[0] == pytest.approx(0.5 / 1.5)
-    for k in fw.parameters:
-        np.testing.assert_allclose(fw.sensitivities[k], fd.sensitivities[k], atol=1e-5)
+    assert fw.derivatives["kf"]["A"].iloc[0] == pytest.approx(-0.5 / 1.5**2)
+    assert fw.derivatives["kr"]["A"].iloc[0] == pytest.approx(1.0 / 1.5**2)
+    assert fw.derivatives["A"]["A"].iloc[0] == pytest.approx(0.5 / 1.5)
+    for k in fw.wrt:
+        np.testing.assert_allclose(fw.derivatives[k], fd.derivatives[k], atol=1e-5)
 
 
 def test_initial_assignments_are_differentiated() -> None:
@@ -146,20 +152,18 @@ def test_initial_assignments_are_differentiated() -> None:
             "v", fns.mass_action_1s, args=["x", "k2"], stoichiometry={"x": -1}
         )
     )
-    sens = sensitivities.time_course(model, T, ["k", "s"]).unwrap_or_err()
+    sens = forward_sensitivities.time_course(model, T, ["k", "s"]).unwrap_or_err()
     e = np.exp(-2.0 * T)
-    np.testing.assert_allclose(
-        sens.sensitivities["s"]["x"], 2 * e - 4 * T * e, atol=1e-6
-    )
-    np.testing.assert_allclose(sens.sensitivities["k"]["x"], -8 * T * e, atol=1e-6)
+    np.testing.assert_allclose(sens.derivatives["s"]["x"], 2 * e - 4 * T * e, atol=1e-6)
+    np.testing.assert_allclose(sens.derivatives["k"]["x"], -8 * T * e, atol=1e-6)
 
 
 def test_rejects_derived_and_unknown_parameters() -> None:
     model = _chain().add_parameter("k3", InitialAssignment(fn=fns.twice, args=["k1"]))
     with pytest.raises(ValueError, match="derived"):
-        sensitivities.time_course(model, T, ["k3"])
+        forward_sensitivities.time_course(model, T, ["k3"])
     with pytest.raises(ValueError, match="Unknown"):
-        sensitivities.time_course(model, T, ["nope"])
+        forward_sensitivities.time_course(model, T, ["nope"])
 
 
 def _unparsable(x: float, k: float) -> float:
@@ -173,11 +177,11 @@ def test_falls_back_to_finite_differences() -> None:
         .add_variable("x", 1.0)
         .add_reaction("v", _unparsable, args=["x", "k"], stoichiometry={"x": -1})
     )
-    sens = sensitivities.time_course(model, T, ["k"]).unwrap_or_err()
+    sens = forward_sensitivities.time_course(model, T, ["k"]).unwrap_or_err()
     assert sens.method == "finite_difference"
-    np.testing.assert_allclose(sens.sensitivities["k"]["x"], -T * np.exp(-T), atol=1e-5)
+    np.testing.assert_allclose(sens.derivatives["k"]["x"], -T * np.exp(-T), atol=1e-5)
     with pytest.raises(ValueError, match="parse"):
-        sensitivities.time_course(model, T, ["k"], method="forward")
+        forward_sensitivities.time_course(model, T, ["k"], method="forward")
 
 
 def _total(d: pd.Series) -> float:
@@ -195,64 +199,72 @@ def test_data_constants_stay_symbolic() -> None:
             "v", fns.mass_action_2s, args=["x", "k", "tot"], stoichiometry={"x": -1}
         )
     )
-    sens = sensitivities.time_course(model, T, ["k"]).unwrap_or_err()
+    sens = forward_sensitivities.time_course(model, T, ["k"]).unwrap_or_err()
     assert sens.method == "forward"
-    np.testing.assert_allclose(sens.sensitivities["k"]["x"], -T * np.exp(-T), atol=1e-6)
+    np.testing.assert_allclose(sens.derivatives["k"]["x"], -T * np.exp(-T), atol=1e-6)
 
 
 def _decay(x: float, k: float) -> float:
     return -k * x
 
 
-def test_ode_model_and_simulator_wrappers() -> None:
+def test_ode_model_and_runners() -> None:
     model = (
         OdeModelBuilder()
         .add_parameter("k", 0.5)
         .add_diff_eq("x", 2.0, _decay, args=["x", "k"])
     )
-    sens = Simulator(model).simulate_sensitivities(T, ["k"]).unwrap_or_err()
+    sens = OdeRunner().time_course_sensitivities(model, T, ["k"]).unwrap_or_err()
     assert sens.method == "forward"
     np.testing.assert_allclose(
-        sens.sensitivities["k"]["x"], -T * 2 * np.exp(-0.5 * T), atol=1e-6
+        sens.derivatives["k"]["x"], -T * 2 * np.exp(-0.5 * T), atol=1e-6
     )
 
-    # An explicitly set initial value doesn't follow the model anymore
-    sens = (
-        Simulator(model, integrator=Scipy)
-        .update_variable("x", 3.0)
-        .simulate_sensitivities(T, ["k"])
-        .unwrap_or_err()
-    )
+    # An explicitly given initial value doesn't follow the model
+    sens = forward_sensitivities.time_course(
+        model, T, ["k"], y0={"x": 3.0}, integrator=Scipy
+    ).unwrap_or_err()
     np.testing.assert_allclose(
-        sens.sensitivities["k"]["x"], -T * 3 * np.exp(-0.5 * T), atol=1e-6
+        sens.derivatives["k"]["x"], -T * 3 * np.exp(-0.5 * T), atol=1e-6
     )
 
     ss = (
-        Simulator(_reversible())
-        .simulate_sensitivities_to_steady_state(["kf"])
+        KineticRunner()
+        .steady_state_sensitivities(_reversible(), ["kf"])
         .unwrap_or_err()
     )
-    assert ss.sensitivities["kf"]["A"].iloc[0] == pytest.approx(-0.5 / 1.5**2)
+    assert ss.derivatives["kf"]["A"].iloc[0] == pytest.approx(-0.5 / 1.5**2)
+
+
+def test_runner_chooses_the_method() -> None:
+    runner = KineticRunner(derivatives="finite_difference", displacement=1e-4)
+    sens = runner.time_course_sensitivities(_chain(), T, ["k1"]).unwrap_or_err()
+    assert sens.method == "finite_difference"
+    np.testing.assert_allclose(
+        sens.derivatives["k1"]["x"], -T * 2.0 * np.exp(-0.5 * T), atol=1e-5
+    )
 
 
 def test_sensitivities_leave_model_unchanged() -> None:
     model = _chain()
     before = model.get_parameter_values()
-    sensitivities.time_course(model, T, ["k1", "k2"], method="finite_difference")
+    forward_sensitivities.time_course(
+        model, T, ["k1", "k2"], method="finite_difference"
+    )
     assert model.get_parameter_values() == before
 
 
 def test_readouts_are_differentiated() -> None:
     model = _chain().add_readout("total", fns.add, args=["x", "y"])
-    sens = sensitivities.time_course(model, T, ["k1"]).unwrap_or_err()
+    sens = forward_sensitivities.time_course(model, T, ["k1"]).unwrap_or_err()
     assert sens.method == "forward"
-    s = sens.sensitivities["k1"]
+    s = sens.derivatives["k1"]
     np.testing.assert_allclose(s["total"], s["x"] + s["y"], atol=1e-12)
 
 
 def test_unknown_outputs_are_rejected() -> None:
     with pytest.raises(ValueError, match="Unknown outputs"):
-        sensitivities.time_course(_chain(), T, ["k1"], outputs=["nope"])
+        forward_sensitivities.time_course(_chain(), T, ["k1"], outputs=["nope"])
 
 
 def test_any_compile_error_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -260,11 +272,11 @@ def test_any_compile_error_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
         msg = "boom"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr(mxlpy.sensitivities._core, "compile_derivatives", fail)
-    sens = sensitivities.time_course(_chain(), T, ["k1"]).unwrap_or_err()
+    monkeypatch.setattr(mxlpy.forward_sensitivities._core, "compile_derivatives", fail)
+    sens = forward_sensitivities.time_course(_chain(), T, ["k1"]).unwrap_or_err()
     assert sens.method == "finite_difference"
     with pytest.raises(RuntimeError, match="boom"):
-        sensitivities.time_course(_chain(), T, ["k1"], method="forward")
+        forward_sensitivities.time_course(_chain(), T, ["k1"], method="forward")
 
 
 def test_partial_native_uses_finite_differences() -> None:
@@ -272,12 +284,12 @@ def test_partial_native_uses_finite_differences() -> None:
     if native.problem("llvm") is not None and native.problem("wasm") is not None:
         pytest.skip("No native backend installed")
     integrator = functools.partial(native.Native, rtol=1e-10, atol=1e-10)
-    sens = sensitivities.time_course(
+    sens = forward_sensitivities.time_course(
         _chain(), T, ["k1"], integrator=integrator
     ).unwrap_or_err()
     assert sens.method == "finite_difference"
     with pytest.raises(ValueError, match="Native"):
-        sensitivities.time_course(
+        forward_sensitivities.time_course(
             _chain(), T, ["k1"], integrator=integrator, method="forward"
         )
 
@@ -290,7 +302,9 @@ def test_events_use_finite_differences() -> None:
         assignments={"y": Derived(fn=fns.constant, args=["k2"])},
         direction="falling",
     )
-    sens = sensitivities.time_course(model, T, ["k1"], integrator=Scipy).unwrap_or_err()
+    sens = forward_sensitivities.time_course(
+        model, T, ["k1"], integrator=Scipy
+    ).unwrap_or_err()
     assert sens.method == "finite_difference"
 
 
@@ -307,24 +321,3 @@ def test_jacobian_refreshes_data_constants() -> None:
     model.update_data("d", pd.Series([10.0, 20.0]))
     assert jac(0.0, np.array([1.0]))[0, 0] == pytest.approx(-30.0)
 
-
-def _forced(x: float, k: float, time: float) -> float:
-    return k * x * time
-
-
-def test_simulator_wrapper_respects_time_shift() -> None:
-    model = (
-        KineticModelBuilder()
-        .add_parameter("k", 0.1)
-        .add_variable("x", 1.0)
-        .add_reaction("v", _forced, args=["x", "k", "time"], stoichiometry={"x": -1})
-    )
-    sim = Simulator(model, integrator=Scipy).simulate(1.0).update_variable("x", 2.0)
-    points = np.array([1.5, 2.0, 3.0])
-    sens = sim.simulate_sensitivities(points, ["k"]).unwrap_or_err()
-    np.testing.assert_allclose(sens.trajectories.index, points)
-    np.testing.assert_allclose(sens.sensitivities["k"].index, points)
-    expected = sim.simulate_time_course(points).get_result().unwrap_or_err().variables
-    np.testing.assert_allclose(
-        sens.trajectories["x"], expected.loc[points, "x"], rtol=1e-6
-    )

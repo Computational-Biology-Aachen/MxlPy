@@ -19,7 +19,7 @@ import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import partial
-from typing import TYPE_CHECKING, Any, Literal, Protocol, get_args
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, get_args
 
 import numpy as np
 import pandas as pd
@@ -368,6 +368,8 @@ class Native(AbstractIntegrator):
         Maximal number of solver steps.
 
     """
+
+    compiles_model: ClassVar[bool] = True
 
     rhs: Rhs
     y0: tuple[float, ...]

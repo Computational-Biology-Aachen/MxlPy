@@ -16,7 +16,7 @@ from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit import losses
-from mxlpy.fit._gradient import Sensitivities, Transform
+from mxlpy.fit._gradient import Transform
 from mxlpy.fit._single import _steady_state, protocol_time_course, time_course
 from mxlpy.fit.abstract import Fit, FitResidual, GroupFit, PostprocessFn
 from mxlpy.fit.residuals import (
@@ -49,7 +49,6 @@ def _wrap_steady_state[M: _Model](
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-    sensitivities: Sensitivities | None = None,
     transform: Transform | None = None,
 ) -> Result[Fit[M]]:
     return _steady_state(
@@ -65,7 +64,6 @@ def _wrap_steady_state[M: _Model](
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
-        sensitivities=sensitivities,
         transform=transform,
     )
 
@@ -84,7 +82,6 @@ def _wrap_time_course[M: KineticModelBuilder | OdeModelBuilder](
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-    sensitivities: Sensitivities | None = None,
     transform: Transform | None = None,
 ) -> Result[Fit[M]]:
     return time_course(
@@ -100,7 +97,6 @@ def _wrap_time_course[M: KineticModelBuilder | OdeModelBuilder](
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
-        sensitivities=sensitivities,
         transform=transform,
     )
 
@@ -120,7 +116,6 @@ def _wrap_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     bounds: Bounds | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
-    sensitivities: Sensitivities | None = None,
     transform: Transform | None = None,
 ) -> Result[Fit[M]]:
     return protocol_time_course(
@@ -137,7 +132,6 @@ def _wrap_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         bounds=bounds,
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
-        sensitivities=sensitivities,
         transform=transform,
     )
 
@@ -163,7 +157,6 @@ def group_steady_state[M: (KineticModelBuilder, OdeModelBuilder)](
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
-    sensitivities: Sensitivities | None = None,
     transform: Transform | None = None,
 ) -> GroupFit[M]: ...
 
@@ -183,7 +176,6 @@ def group_steady_state(
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
-    sensitivities: Sensitivities | None = None,
     transform: Transform | None = None,
 ) -> GroupFit[SteadyStateModelBuilder]: ...
 
@@ -203,7 +195,6 @@ def group_steady_state[M: _Model](
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
-    sensitivities: Sensitivities | None = None,
     transform: Transform | None = None,
 ) -> GroupFit[M]:
     """Fit model parameters to steady-state experimental data.
@@ -252,11 +243,6 @@ def group_steady_state[M: _Model](
         Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
-    sensitivities
-        How the minimizer gets derivatives: `forward` (sensitivity equations,
-        see `mxlpy.sensitivities`) or `finite_difference` residual Jacobians.
-        None (default) leaves derivatives to the minimizer. Needs one of the
-        default residual functions
     transform
         Fit `log` (log10) or `linear` values, for all or per name. Defaults
         to linear. Log space suits values spanning orders of magnitude with
@@ -284,7 +270,6 @@ def group_steady_state[M: _Model](
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
-                    sensitivities=sensitivities,
                     transform=transform,
                 ),
                 inputs=list(_iterrows(p0)),
@@ -311,7 +296,6 @@ def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
-    sensitivities: Sensitivities | None = None,
     transform: Transform | None = None,
 ) -> GroupFit[M]:
     """Fit model parameters to time course of experimental data over a carousel.
@@ -362,11 +346,6 @@ def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
         Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
-    sensitivities
-        How the minimizer gets derivatives: `forward` (sensitivity equations,
-        see `mxlpy.sensitivities`) or `finite_difference` residual Jacobians.
-        None (default) leaves derivatives to the minimizer. Needs one of the
-        default residual functions
     transform
         Fit `log` (log10) or `linear` values, for all or per name. Defaults
         to linear. Log space suits values spanning orders of magnitude with
@@ -394,7 +373,6 @@ def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
-                    sensitivities=sensitivities,
                     transform=transform,
                 ),
                 inputs=list(_iterrows(p0)),
@@ -422,7 +400,6 @@ def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     as_deepcopy: bool = True,
     parallel: bool = True,
     timeout: float | None = None,
-    sensitivities: Sensitivities | None = None,
     transform: Transform | None = None,
 ) -> GroupFit[M]:
     """Fit model parameters to time course of experimental data over a protocol.
@@ -474,11 +451,6 @@ def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         Whether to run the fits in parallel (default: True).
     timeout
         Timeout in seconds for each parallel worker
-    sensitivities
-        How the minimizer gets derivatives: `forward` (sensitivity equations,
-        see `mxlpy.sensitivities`) or `finite_difference` residual Jacobians.
-        None (default) leaves derivatives to the minimizer. Needs one of the
-        default residual functions
     transform
         Fit `log` (log10) or `linear` values, for all or per name. Defaults
         to linear. Log space suits values spanning orders of magnitude with
@@ -508,7 +480,6 @@ def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
                     residual_fn=residual_fn,
                     bounds=bounds,
                     as_deepcopy=as_deepcopy,
-                    sensitivities=sensitivities,
                     transform=transform,
                 ),
                 inputs=list(_iterrows(p0)),

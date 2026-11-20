@@ -7,7 +7,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 import numpy as np
 
@@ -42,6 +42,10 @@ class TimePoint:
 
 class AbstractIntegrator(ABC):
     """Protocol for numerical integrators."""
+
+    # Whether the integrator compiles the model's rhs itself, so it can't
+    # integrate other callables, e.g. the augmented forward-sensitivity system
+    compiles_model: ClassVar[bool] = False
 
     @abstractmethod
     def __init__(

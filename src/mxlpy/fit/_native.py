@@ -6,15 +6,18 @@ The model, its forward sensitivities (`dS/dt = J S + df/dtheta`, by forward-mode
 differentiation of the lowered model) and the derived targets with their gradients
 are compiled by the Native integrator's LLVM backend. mxlpy-native's `mxn_fit_*`
 then runs cminpack's `lmder` over them, with one augmented solve per Jacobian.
-Problems the compiled loop can't express fall back to `LeastSquaresMinimizer`.
+Problems the compiled loop can't express fall back to the scipy backend.
+
+The backend of `LeastSquaresMinimizer(method="lm", backend="native")`.
 """
 
 from __future__ import annotations
 
 import ctypes as ct
+import functools
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
@@ -25,7 +28,7 @@ from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy.fit._gradient import GradientResidual, _TransformedGradient
 from mxlpy.fit.residuals import _apply_updates
 from mxlpy.minimizers._scipy import LeastSquaresMinimizer
-from mxlpy.minimizers.abstract import AbstractMinimizer, OptimisationState
+from mxlpy.minimizers.abstract import OptimisationState
 from mxlpy.symbolic.jacobian import all_parameter_values
 from mxlpy.types import FitFailure, Result
 
@@ -34,7 +37,7 @@ if TYPE_CHECKING:
     from mxlpy.minimizers.abstract import Bounds, Residual
     from mxlpy.types import Array
 
-__all__ = ["NativeLeastSquaresMinimizer"]
+__all__ = ["least_squares"]
 
 _LOGGER = logging.getLogger(__name__)
 _WARNED: set[str] = set()
@@ -205,7 +208,7 @@ def _unwrap(residual_fn: Residual) -> tuple[GradientResidual, set[str]]:
         return residual_fn.inner, set(residual_fn.log)
     if isinstance(residual_fn, GradientResidual):
         return residual_fn, set()
-    msg = "NativeLeastSquaresMinimizer needs residual vectors, fit with sensitivities='forward' or 'finite_difference'"
+    msg = "The native backend needs residual vectors, fit with one of the residual functions of mxlpy.fit.residuals"
     raise TypeError(msg)
 
 
@@ -528,81 +531,75 @@ def _run(
 
 
 ###############################################################################
-# Minimizer
+# Entry point
 ###############################################################################
 
 
-@dataclass(kw_only=True, slots=True)
-class NativeLeastSquaresMinimizer(AbstractMinimizer):
-    """Levenberg-Marquardt least squares running entirely in compiled code.
+def _solver_settings(runner: object) -> tuple[int, float, float]:
+    """Solver and tolerances of the runner's Native integrator, else its defaults."""
+    from mxlpy.integrators.int_native import Native  # noqa: PLC0415
 
-    Compiles the model and its forward sensitivities (and derived targets with
-    their gradients) and runs cminpack's `lmder` in mxlpy-native, with one
-    augmented solve per Jacobian. Needs the Native integrator's llvm backend
-    (`mxlpy[native]`) and a fit with `sensitivities` set. Like
-    `LeastSquaresMinimizer(method="lm")` it ignores bounds, so fit positive
-    parameters with `transform="log"`.
+    integrator = getattr(runner, "integrator", None)
+    kwargs: dict[str, Any] = {}
+    while isinstance(integrator, functools.partial):
+        kwargs = integrator.keywords | kwargs
+        integrator = integrator.func
+    method = kwargs.get("method", Native.method)
+    if method not in _SOLVERS:
+        msg = f"the compiled loop supports the methods {list(_SOLVERS)}, not {method!r}"
+        raise _Unsupported(msg)
+    return (
+        _SOLVERS[method],
+        float(kwargs.get("rtol", Native.rtol)),
+        float(kwargs.get("atol", Native.atol)),
+    )
 
-    Fits the compiled loop can't express fall back to `LeastSquaresMinimizer`
-    with a one-time warning: models that don't lower or use arrays, events,
-    a `postprocess_fn`, fitted initial values or initial values depending on
+
+def least_squares(
+    residual_fn: Residual,
+    p0: dict[str, float],
+    bounds: Bounds,
+    *,
+    max_nfev: int,
+) -> Result[OptimisationState]:
+    """Levenberg-Marquardt least squares in compiled code.
+
+    The backend of `LeastSquaresMinimizer(method="lm", backend="native")`.
+    Integrates with the method and tolerances of the runner's `Native`
+    integrator (Radau or LSODA), or Native's defaults for other integrators.
+    Fits the compiled loop can't express fall back to the scipy backend with a
+    one-time warning: models that don't lower or use arrays, events, a
+    `postprocess_fn`, fitted initial values or initial values depending on
     fitted parameters, the wasm backend.
-
-    Parameters
-    ----------
-    method
-        Integrator of the compiled loop
-    rtol, atol
-        Integration tolerances
-    max_nfev
-        Maximal number of residual evaluations
-
-    Examples
-    --------
-        >>> fit.time_course(model, p0=p0, data=data,
-        ...                 minimizer=NativeLeastSquaresMinimizer(),
-        ...                 sensitivities="forward", transform="log")
-
     """
+    residual, log = _unwrap(residual_fn)
+    to_inner = getattr(residual_fn, "to_inner", lambda x: x)
+    values = cast(dict[str, float], to_inner(p0))
+    runner = residual.settings.runner
+    try:
+        solver, rtol, atol = _solver_settings(runner)
+        problem = _build(residual, values, log)
+        info, pars = _run(
+            problem,
+            solver=solver,
+            rtol=rtol,
+            atol=atol,
+            ss_tol=float(getattr(runner, "tolerance", 1e-6)),
+            max_nfev=max_nfev,
+        )
+    except _Unsupported as e:
+        _apply_updates(values, residual.settings)
+        _warn_once(f"Fitting with scipy instead of the compiled loop, as {e}")
+        return LeastSquaresMinimizer(method="lm", max_nfev=max_nfev)(
+            residual_fn, p0, bounds
+        )
 
-    method: Literal["Radau", "LSODA"] = "Radau"
-    rtol: float = 1e-8
-    atol: float = 1e-10
-    max_nfev: int = 1000
-
-    def __call__(
-        self,
-        residual_fn: Residual,
-        p0: dict[str, float],
-        bounds: Bounds,
-    ) -> Result[OptimisationState]:
-        """Minimize the sum of squared residuals in compiled code."""
-        residual, log = _unwrap(residual_fn)
-        to_inner = getattr(residual_fn, "to_inner", lambda x: x)
-        values = cast(dict[str, float], to_inner(p0))
-        try:
-            problem = _build(residual, values, log)
-            info, pars = _run(
-                problem,
-                solver=_SOLVERS[self.method],
-                rtol=self.rtol,
-                atol=self.atol,
-                ss_tol=float(getattr(residual.settings.runner, "tolerance", 1e-6)),
-                max_nfev=self.max_nfev,
-            )
-        except _Unsupported as e:
-            _apply_updates(values, residual.settings)
-            _warn_once(f"Fitting with scipy instead of the compiled loop, as {e}")
-            return LeastSquaresMinimizer(method="lm")(residual_fn, p0, bounds)
-
-        fitted = {k: float(pars[i]) for k, i in zip(values, problem.theta, strict=True)}
-        # Back to the minimizer's (possibly log10) parameters
-        parameters = {
-            k: float(np.log10(v)) if k in log else v for k, v in fitted.items()
-        }
-        loss = residual_fn(parameters)
-        if info not in _CONVERGED or not np.isfinite(loss):
-            msg = f"Compiled least squares stopped with MINPACK info {info}"
-            _LOGGER.warning(msg)
-            return Result(FitFailure(extra_info=[msg]))
-        return Result(OptimisationState(parameters=parameters, residual=float(loss)))
+    fitted = {k: float(pars[i]) for k, i in zip(values, problem.theta, strict=True)}
+    # Back to the minimizer's (possibly log10) parameters
+    parameters = {k: float(np.log10(v)) if k in log else v for k, v in fitted.items()}
+    loss = residual_fn(parameters)
+    if info not in _CONVERGED or not np.isfinite(loss):
+        msg = f"Compiled least squares stopped with MINPACK info {info}"
+        _LOGGER.warning(msg)
+        return Result(FitFailure(extra_info=[msg]))
+    return Result(OptimisationState(parameters=parameters, residual=float(loss)))

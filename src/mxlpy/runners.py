@@ -21,6 +21,12 @@ of its methods, which then applies to every routine.
 Runners return a `Result`, the routine decides what a failure means for it
 (e.g. a NaN row for scans, an infinite residual for fits).
 
+Runners integrating a model (`SensitivityRunner`) also provide the
+derivatives of their results w.r.t. parameters and initial values, which
+gradient-based fits use. `derivatives` chooses how they are computed, see
+`mxlpy.forward_sensitivities`. Fits fall back to finite differences of the
+runner's results for runners without them.
+
 Examples
 --------
     >>> scan.steady_state(model, to_scan=df, runner=KineticRunner(tolerance=1e-8))
@@ -37,6 +43,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Protocol, cast, overload
 
+from mxlpy import forward_sensitivities
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
@@ -50,6 +57,7 @@ if TYPE_CHECKING:
 
     import pandas as pd
 
+    from mxlpy.forward_sensitivities import DerivativeMethod, ForwardSensitivities
     from mxlpy.integrators import IntegratorType
     from mxlpy.types import ArrayLike
 
@@ -58,6 +66,7 @@ __all__ = [
     "EvaluationRunner",
     "KineticRunner",
     "OdeRunner",
+    "SensitivityRunner",
     "SteadyStateRunner",
     "default_runner",
     "precompile",
@@ -99,6 +108,22 @@ class DynamicRunner[M, S](SteadyStateRunner[M, S], Protocol):
         ...
 
 
+class SensitivityRunner[M](Protocol):
+    """Runner that can also differentiate its results."""
+
+    def steady_state_sensitivities(
+        self, model: M, wrt: list[str]
+    ) -> Result[ForwardSensitivities]:
+        """Derivatives of the steady state w.r.t. parameters / initial values."""
+        ...
+
+    def time_course_sensitivities(
+        self, model: M, time_points: ArrayLike, wrt: list[str]
+    ) -> Result[ForwardSensitivities]:
+        """Derivatives of a time course w.r.t. parameters / initial values."""
+        ...
+
+
 @dataclass(kw_only=True, slots=True)
 class _IntegratingRunner[
     Mi: KineticModelBuilder | OdeModelBuilder,
@@ -117,6 +142,13 @@ class _IntegratingRunner[
     oscillation_detector
         Callable for oscillation detection during steady-state calculations.
         Defaults to `no_oscillation_detection` (disabled).
+    derivatives
+        How derivatives are computed: `forward` integrates the sensitivity
+        equations, `finite_difference` perturbs every parameter and simulates
+        again, `auto` uses forward sensitivities unless the model can't be
+        differentiated symbolically
+    displacement
+        Relative step of the finite differences
 
     """
 
@@ -124,6 +156,8 @@ class _IntegratingRunner[
     tolerance: float = 1e-6
     rel_norm: bool = False
     oscillation_detector: OscillationDetector | None = no_oscillation_detection
+    derivatives: DerivativeMethod = "auto"
+    displacement: float = 1e-3
 
     def _run(
         self, model: Mi, simulate: Callable[[Simulator[Mi]], Simulator[Mi]]
@@ -176,6 +210,33 @@ class _IntegratingRunner[
             lambda s: s.simulate_protocol_time_course(
                 protocol=protocol, time_points=time_points
             ),
+        )
+
+    def steady_state_sensitivities(
+        self, model: Mi, wrt: list[str]
+    ) -> Result[ForwardSensitivities]:
+        """Derivatives of the steady state, see `forward_sensitivities`."""
+        return forward_sensitivities.steady_state(
+            model,
+            wrt,
+            integrator=self.integrator,
+            method=self.derivatives,
+            displacement=self.displacement,
+            tolerance=self.tolerance,
+            rel_norm=self.rel_norm,
+        )
+
+    def time_course_sensitivities(
+        self, model: Mi, time_points: ArrayLike, wrt: list[str]
+    ) -> Result[ForwardSensitivities]:
+        """Derivatives of a time course, see `forward_sensitivities`."""
+        return forward_sensitivities.time_course(
+            model,
+            time_points,
+            wrt,
+            integrator=self.integrator,
+            method=self.derivatives,
+            displacement=self.displacement,
         )
 
 

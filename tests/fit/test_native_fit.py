@@ -1,6 +1,7 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
 import logging
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,10 @@ from mxlpy import (
     make_protocol,
 )
 from mxlpy.fit import _native
+from mxlpy.fit.residuals import time_course_residual
+from mxlpy.integrators import Native
 from mxlpy.integrators._native.backends import problem
+from mxlpy.runners import KineticRunner
 
 pytestmark = pytest.mark.skipif(
     problem("llvm") is not None, reason="needs the llvm backend (mxlpy[native])"
@@ -32,6 +36,7 @@ def _reset_warnings() -> None:
 TRUE = {"k1": 0.5, "k2": 2.0}
 P0 = {"k1": 1.5, "k2": 0.7}
 T = np.linspace(0.2, 6.0, 30)
+NATIVE = fit.LeastSquaresMinimizer(method="lm", backend="native")
 
 
 def _model() -> KineticModelBuilder:
@@ -56,8 +61,7 @@ def _data(columns: list[str] | None = None) -> pd.DataFrame:
 def _fit(caplog: pytest.LogCaptureFixture, **kwargs: object) -> fit.Fit:
     defaults: dict[str, object] = {
         "p0": P0,
-        "minimizer": fit.NativeLeastSquaresMinimizer(),
-        "sensitivities": "forward",
+        "minimizer": NATIVE,
     }
     with caplog.at_level(logging.WARNING):
         return fit.time_course(_model(), **(defaults | kwargs)).unwrap_or_err()  # type: ignore[arg-type]
@@ -76,7 +80,7 @@ def test_time_course_with_derived_target(
         caplog,
         data=_data(),
         transform=transform,
-        minimizer=fit.NativeLeastSquaresMinimizer(method=method),  # type: ignore[arg-type]
+        runner=KineticRunner(integrator=partial(Native, method=method)),  # type: ignore[arg-type]
     )
     _assert_native(caplog)
     for k, v in TRUE.items():
@@ -95,8 +99,7 @@ def test_missing_constant_and_replicate_data(caplog: pytest.LogCaptureFixture) -
             _model(),
             p0=P0,
             data=data,
-            minimizer=fit.NativeLeastSquaresMinimizer(),
-            sensitivities="forward",
+            minimizer=NATIVE,
         ).unwrap_or_err()
     _assert_native(caplog)
     for k, v in TRUE.items():
@@ -116,7 +119,6 @@ def test_matches_scipy_least_squares_on_noisy_data(
         p0=P0,
         data=data,
         minimizer=fit.LeastSquaresMinimizer(),
-        sensitivities="forward",
         transform="log",
     ).unwrap_or_err()
     for k in TRUE:
@@ -141,8 +143,7 @@ def test_steady_state(caplog: pytest.LogCaptureFixture) -> None:
             model,
             p0={"kf": 1.0, "kr": 2.0},
             data=pd.Series({"A": 1 / 3, "vf": 2 / 3}),
-            minimizer=fit.NativeLeastSquaresMinimizer(),
-            sensitivities="forward",
+            minimizer=NATIVE,
             standard_scale=False,
             transform="log",
         ).unwrap_or_err()
@@ -167,8 +168,7 @@ def test_protocol_time_course(caplog: pytest.LogCaptureFixture) -> None:
             p0={"k2": 0.7},
             data=data,
             protocol=protocol,
-            minimizer=fit.NativeLeastSquaresMinimizer(),
-            sensitivities="forward",
+            minimizer=NATIVE,
         ).unwrap_or_err()
     _assert_native(caplog)
     assert res.best_pars["k2"] == pytest.approx(2.0, rel=1e-6)
@@ -187,8 +187,7 @@ def test_ode_model_builder(caplog: pytest.LogCaptureFixture) -> None:
             model,
             p0={"k": 1.5},
             data=data,
-            minimizer=fit.NativeLeastSquaresMinimizer(),
-            sensitivities="forward",
+            minimizer=NATIVE,
         ).unwrap_or_err()
     _assert_native(caplog)
     assert res.best_pars["k"] == pytest.approx(0.7, rel=1e-6)
@@ -209,11 +208,27 @@ def test_falls_back_to_scipy(caplog: pytest.LogCaptureFixture) -> None:
     assert res.best_pars["x"] == pytest.approx(2.0, rel=1e-4)
 
 
-def test_needs_sensitivities() -> None:
-    with pytest.raises(TypeError, match="sensitivities"):
+def test_needs_default_residual_fn() -> None:
+    def custom(updates: dict[str, float], settings: object) -> float:
+        return time_course_residual(updates, settings)  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="residual functions"):
         fit.time_course(
-            _model(), p0=P0, data=_data(), minimizer=fit.NativeLeastSquaresMinimizer()
+            _model(), p0=P0, data=_data(), minimizer=NATIVE, residual_fn=custom
         )
+
+
+def test_unsupported_integrator_method_falls_back(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    res = _fit(
+        caplog,
+        data=_data(),
+        runner=KineticRunner(integrator=partial(Native, method="CVODE_BDF")),
+    )
+    assert "instead of the compiled loop" in caplog.text
+    for k, v in TRUE.items():
+        assert res.best_pars[k] == pytest.approx(v, rel=1e-4)
 
 
 def test_steady_state_with_standard_scaling(caplog: pytest.LogCaptureFixture) -> None:
@@ -234,8 +249,7 @@ def test_steady_state_with_standard_scaling(caplog: pytest.LogCaptureFixture) ->
             model,
             p0={"kf": 1.0, "kr": 2.0},
             data=pd.Series({"A": 1 / 3, "vf": 2 / 3}),
-            minimizer=fit.NativeLeastSquaresMinimizer(),
-            sensitivities="forward",
+            minimizer=NATIVE,
             transform="log",
         ).unwrap_or_err()
     _assert_native(caplog)
@@ -269,8 +283,7 @@ def test_abs_and_max_are_differentiated(
             model(),
             p0={"k": 1.0},
             data=data.variables.loc[T],
-            minimizer=fit.NativeLeastSquaresMinimizer(),
-            sensitivities="forward",
+            minimizer=NATIVE,
         ).unwrap_or_err()
     _assert_native(caplog)
     assert res.best_pars["k"] == pytest.approx(0.4, rel=1e-6)
@@ -293,8 +306,7 @@ def test_parameter_assigned_from_fitted_one_falls_back(
             model,
             p0={"ka": 1.0},
             data=data.variables.loc[T],
-            minimizer=fit.NativeLeastSquaresMinimizer(),
-            sensitivities="forward",
+            minimizer=NATIVE,
         ).unwrap_or_err()
     assert "instead of the compiled loop" in caplog.text
     assert res.best_pars["ka"] == pytest.approx(0.5, rel=1e-4)
@@ -331,8 +343,7 @@ def test_protocol_data_after_the_protocol_is_ignored(
             p0={"k2": 0.7},
             data=pd.concat([data, late]),
             protocol=protocol,
-            minimizer=fit.NativeLeastSquaresMinimizer(),
-            sensitivities="forward",
+            minimizer=NATIVE,
         ).unwrap_or_err()
     _assert_native(caplog)
     assert res.best_pars["k2"] == pytest.approx(2.0, rel=1e-6)

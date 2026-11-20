@@ -34,7 +34,8 @@ if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy._steady_state_builder import SteadyStateModelBuilder
-    from mxlpy.fit._gradient import Sensitivities, Transform
+    from mxlpy.fit._gradient import Transform
+    from mxlpy.fit._mcmc import Sigma
     from mxlpy.runners import DynamicRunner
     from mxlpy.simulation import Simulation
     from mxlpy.types import Array
@@ -297,7 +298,7 @@ class FisherInformation:
 
 
 def _sigma_vector(
-    sigma: float | pd.Series | pd.DataFrame,
+    sigma: Sigma,
     data: pd.Series | pd.DataFrame,
     mask: NDArray[np.bool_],
 ) -> Array:
@@ -327,11 +328,10 @@ def fisher_information(
     data: pd.Series | pd.DataFrame,
     parameters: Mapping[str, float] | fit.Fit,
     *,
-    sigma: float | pd.Series | pd.DataFrame | None = None,
+    sigma: Sigma | None = None,
     y0: dict[str, float] | None = None,
     protocol: pd.DataFrame | None = None,
     runner: Any | None = None,
-    sensitivities: Sensitivities = "forward",
     transform: Transform | None = None,
     rtol: float = 1e-6,
 ) -> FisherInformation:
@@ -362,9 +362,7 @@ def fisher_information(
     protocol
         Protocol of a protocol time course
     runner
-        How the model is simulated, see `mxlpy.runners`
-    sensitivities
-        `forward` or `finite_difference`, see `mxlpy.fit.time_course`
+        How the model is simulated and differentiated, see `mxlpy.runners`
     transform
         `log` (or per parameter) to express uncertainties of these
         parameters in log10 units, i.e. relative uncertainties
@@ -407,7 +405,7 @@ def fisher_information(
         standard_scale=False,
         protocol=protocol,
     )
-    residual = GradientResidual(residual_fn, settings, sensitivities=sensitivities)
+    residual = GradientResidual(residual_fn, settings)
     r = residual.residuals(values)
     if not np.isfinite(r).all():
         msg = "Simulation failed at the given parameters"

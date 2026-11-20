@@ -32,46 +32,43 @@ if TYPE_CHECKING:
     from mxlpy.integrators import IntegratorType
     from mxlpy.types import Array, ArrayLike, Rhs
 
-__all__ = ["Sensitivities", "steady_state", "time_course"]
+__all__ = ["DerivativeMethod", "ForwardSensitivities", "steady_state", "time_course"]
 
 _LOGGER = logging.getLogger(__name__)
 _WARNED: set[str] = set()
 
-# Integrators compiling the model themselves, which can't take the augmented rhs
-_NO_CALLABLE_RHS = {"Native", "Diffrax"}
-
-type Method = Literal["auto", "forward", "finite_difference"]
+type DerivativeMethod = Literal["auto", "forward", "finite_difference"]
 type _Model = KineticModelBuilder | OdeModelBuilder
 
 
 @dataclass(slots=True)
-class Sensitivities:
+class ForwardSensitivities:
     """Sensitivities of a simulation.
 
     Attributes
     ----------
-    trajectories
+    simulated
         Simulated values (time x variables, derived quantities and reactions)
-    sensitivities
+    derivatives
         For every parameter / variable initial value, the derivative of
-        `trajectories` w.r.t. it, with the same shape as `trajectories`
+        `simulated` w.r.t. it, with the same shape as `simulated`
     method
-        How the sensitivities were computed
+        How the derivatives were computed
 
     """
 
-    trajectories: pd.DataFrame
-    sensitivities: dict[str, pd.DataFrame]
+    simulated: pd.DataFrame
+    derivatives: dict[str, pd.DataFrame]
     method: Literal["forward", "finite_difference"]
 
     @property
-    def parameters(self) -> list[str]:
+    def wrt(self) -> list[str]:
         """Names of the parameters / variables differentiated w.r.t."""
-        return list(self.sensitivities)
+        return list(self.derivatives)
 
     def to_array(self) -> Array:
-        """Sensitivities as array of shape (time, column, parameter)."""
-        return np.stack([s.to_numpy() for s in self.sensitivities.values()], axis=-1)
+        """Derivatives as array of shape (time, column, parameter)."""
+        return np.stack([s.to_numpy() for s in self.derivatives.values()], axis=-1)
 
 
 ###############################################################################
@@ -153,11 +150,11 @@ def _check_names(model: _Model, wrt: list[str]) -> tuple[list[str], list[str]]:
 
 
 def _parameter_fd(
-    model: _Model, parameter: str, rel_step: float, read: Callable[[], Array]
+    model: _Model, parameter: str, displacement: float, read: Callable[[], Array]
 ) -> Array:
     """Central difference of `read()` w.r.t. a parameter, restoring it after."""
     value = all_parameter_values(model)[parameter]
-    h = _step(value, rel_step)
+    h = _step(value, displacement)
     try:
         model.update_parameter(parameter, value + h)
         up = read()
@@ -246,7 +243,7 @@ def _setup(
     outputs: list[str],
     *,
     y0_from_model: bool,
-    rel_step: float,
+    displacement: float,
 ) -> _Setup:
     """Compile the derivatives and the constant chain-rule factors.
 
@@ -277,7 +274,7 @@ def _setup(
             continue
         chain[compiled.wrt.index(name), j] = 1.0
         if derived or y0_from_model:
-            d = _parameter_fd(model, name, rel_step, read)
+            d = _parameter_fd(model, name, displacement, read)
             chain[len(pars) :, j] = d[: len(derived)]
             if y0_from_model:
                 s0[:, j] = d[len(derived) :]
@@ -361,7 +358,7 @@ def _forward_time_course(
     y0: dict[str, float],
     integrator: IntegratorType,
     setup: _Setup,
-) -> Result[Sensitivities]:
+) -> Result[ForwardSensitivities]:
     n, m = len(setup.var_names), len(wrt)
     rhs = _AugmentedRhs(model, setup)
     z0 = np.concatenate(
@@ -382,9 +379,9 @@ def _forward_time_course(
     s = z[:, n:].reshape(len(time), n, m)
     values = _values(model, pd.DataFrame(x, index=time, columns=setup.var_names))
     return Result(
-        Sensitivities(
-            trajectories=values,
-            sensitivities=_assemble(setup, wrt, values, x, s),
+        ForwardSensitivities(
+            simulated=values,
+            derivatives=_assemble(setup, wrt, values, x, s),
             method="forward",
         )
     )
@@ -399,7 +396,7 @@ def _forward_steady_state(
     *,
     tolerance: float,
     rel_norm: bool,
-) -> Result[Sensitivities]:
+) -> Result[ForwardSensitivities]:
     """Implicit function theorem: J dx*/dtheta = -df/dtheta.
 
     J is singular for models with conserved quantities, whose totals are
@@ -432,9 +429,9 @@ def _forward_steady_state(
 
     values = _values(model, variables)
     return Result(
-        Sensitivities(
-            trajectories=values,
-            sensitivities=_assemble(setup, wrt, values, x[None, :], s[None, :, :]),
+        ForwardSensitivities(
+            simulated=values,
+            derivatives=_assemble(setup, wrt, values, x[None, :], s[None, :, :]),
             method="forward",
         )
     )
@@ -450,8 +447,8 @@ def _fd(
     wrt: list[str],
     y0: dict[str, float] | None,
     simulate: Callable[[dict[str, float]], Result[pd.DataFrame]],
-    rel_step: float,
-) -> Result[Sensitivities]:
+    displacement: float,
+) -> Result[ForwardSensitivities]:
     """Central differences of whole simulations.
 
     `simulate(y0)` returns the values for the current model parameters.
@@ -476,12 +473,12 @@ def _fd(
                 return v.to_numpy(dtype=float)
 
             try:
-                diff = _parameter_fd(model, name, rel_step, read)
+                diff = _parameter_fd(model, name, displacement, read)
             except Exception as e:  # noqa: BLE001
                 return Result(e)
         else:
             x0 = initial()
-            h = _step(x0[name], rel_step)
+            h = _step(x0[name], displacement)
             up = simulate(x0 | {name: x0[name] + h})
             down = simulate(x0 | {name: x0[name] - h})
             if isinstance(u := up.value, Exception):
@@ -492,8 +489,8 @@ def _fd(
         result[name] = pd.DataFrame(diff, index=values.index, columns=values.columns)
 
     return Result(
-        Sensitivities(
-            trajectories=values, sensitivities=result, method="finite_difference"
+        ForwardSensitivities(
+            simulated=values, derivatives=result, method="finite_difference"
         )
     )
 
@@ -516,10 +513,10 @@ def _resolve(
     wrt: list[str],
     outputs: list[str] | None,
     integrator: IntegratorType,
-    method: Method,
+    method: DerivativeMethod,
     *,
     y0_from_model: bool,
-    rel_step: float,
+    displacement: float,
 ) -> tuple[_Setup | None, list[str]]:
     """Validate the inputs, then compile the forward sensitivities if possible.
 
@@ -545,7 +542,7 @@ def _resolve(
         base = base.func
     name = getattr(base, "__name__", type(base).__name__)
     reason = None
-    if name in _NO_CALLABLE_RHS:
+    if getattr(base, "compiles_model", False):
         reason = f"the {name} integrator compiles the model itself"
     elif getattr(model, "_events", None):
         reason = "the model has events"
@@ -557,7 +554,7 @@ def _resolve(
 
     try:
         return _setup(
-            model, wrt, outputs, y0_from_model=y0_from_model, rel_step=rel_step
+            model, wrt, outputs, y0_from_model=y0_from_model, displacement=displacement
         ), outputs
     except Exception as e:
         if method == "forward":
@@ -571,20 +568,20 @@ def _resolve(
 def time_course(
     model: _Model,
     time_points: ArrayLike,
-    parameters: list[str],
+    wrt: list[str],
     *,
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
     outputs: list[str] | None = None,
-    method: Method = "auto",
-    rel_step: float = 1e-3,
-) -> Result[Sensitivities]:
+    method: DerivativeMethod = "auto",
+    displacement: float = 1e-3,
+) -> Result[ForwardSensitivities]:
     """Sensitivities of a time course.
 
     Examples
     --------
-        >>> sens = sensitivities.time_course(model, [1, 2, 5], ["k1", "x"])
-        >>> sens.unwrap_or_err().sensitivities["k1"]
+        >>> sens = forward_sensitivities.time_course(model, [1, 2, 5], ["k1", "x"])
+        >>> sens.unwrap_or_err().derivatives["k1"]
 
     Parameters
     ----------
@@ -592,7 +589,7 @@ def time_course(
         Model to simulate
     time_points
         Time points at which the sensitivities are returned
-    parameters
+    wrt
         Parameters and variables (for their initial values) to differentiate w.r.t.
     y0
         Initial values. If None, they are taken from the model, so initial
@@ -605,13 +602,13 @@ def time_course(
         `forward` integrates the sensitivity equations, `finite_difference`
         perturbs every parameter and simulates again, `auto` uses forward
         sensitivities unless the model can't be differentiated symbolically
-    rel_step
+    displacement
         Relative step for the finite differences. Too small steps amplify the
         integration error, ~ (integrator tolerance) ** (1/3) works well
 
     Returns
     -------
-    Result[Sensitivities]
+    Result[ForwardSensitivities]
         Values and their sensitivities at `time_points`
 
     """
@@ -619,12 +616,12 @@ def time_course(
     integrator = DefaultIntegrator if integrator is None else integrator
     setup, outputs = _resolve(
         model,
-        parameters,
+        wrt,
         outputs,
         integrator,
         method,
         y0_from_model=y0 is None,
-        rel_step=rel_step,
+        displacement=displacement,
     )
     columns = model.get_variable_names() + outputs
 
@@ -633,17 +630,15 @@ def time_course(
         res = _forward_time_course(
             model,
             time_points,
-            wrt=parameters,
+            wrt=wrt,
             y0=start,
             integrator=integrator,
             setup=setup,
         )
         if isinstance(sens := res.value, Exception):
             return res
-        sens.trajectories = sens.trajectories.loc[:, columns]
-        sens.sensitivities = {
-            k: v.loc[:, columns] for k, v in sens.sensitivities.items()
-        }
+        sens.simulated = sens.simulated.loc[:, columns]
+        sens.derivatives = {k: v.loc[:, columns] for k, v in sens.derivatives.items()}
         return res
 
     def simulate(start: dict[str, float]) -> Result[pd.DataFrame]:
@@ -658,33 +653,33 @@ def time_course(
         mask = _select_times(variables.index.to_numpy(dtype=float), time_points)
         return Result(_values(model, variables.loc[mask]).loc[:, columns])
 
-    return _fd(model, parameters, y0, simulate, rel_step)
+    return _fd(model, wrt, y0, simulate, displacement)
 
 
 def steady_state(
     model: _Model,
-    parameters: list[str],
+    wrt: list[str],
     *,
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
     outputs: list[str] | None = None,
-    method: Method = "auto",
-    rel_step: float = 1e-3,
+    method: DerivativeMethod = "auto",
+    displacement: float = 1e-3,
     tolerance: float = 1e-6,
     rel_norm: bool = False,
-) -> Result[Sensitivities]:
+) -> Result[ForwardSensitivities]:
     """Sensitivities of the steady state.
 
     Examples
     --------
-        >>> sens = sensitivities.steady_state(model, ["k1", "k2"])
-        >>> sens.unwrap_or_err().sensitivities["k1"]
+        >>> sens = forward_sensitivities.steady_state(model, ["k1", "k2"])
+        >>> sens.unwrap_or_err().derivatives["k1"]
 
     Parameters
     ----------
     model
         Model to simulate
-    parameters
+    wrt
         Parameters and variables (for their initial values) to differentiate
         w.r.t. Initial values only matter for conserved quantities
     y0
@@ -698,7 +693,7 @@ def steady_state(
         `forward` uses the implicit function theorem, `finite_difference`
         perturbs every parameter and simulates again, `auto` uses forward
         sensitivities unless the model can't be differentiated symbolically
-    rel_step
+    displacement
         Relative step for the finite differences. Too small steps amplify the
         integration error, ~ (integrator tolerance) ** (1/3) works well
     tolerance
@@ -708,19 +703,19 @@ def steady_state(
 
     Returns
     -------
-    Result[Sensitivities]
+    Result[ForwardSensitivities]
         Steady-state values and their sensitivities (a single row)
 
     """
     integrator = DefaultIntegrator if integrator is None else integrator
     setup, outputs = _resolve(
         model,
-        parameters,
+        wrt,
         outputs,
         integrator,
         method,
         y0_from_model=y0 is None,
-        rel_step=rel_step,
+        displacement=displacement,
     )
     columns = model.get_variable_names() + outputs
 
@@ -728,7 +723,7 @@ def steady_state(
         start = model.get_initial_conditions() if y0 is None else y0
         res = _forward_steady_state(
             model,
-            parameters,
+            wrt,
             start,
             integrator,
             setup,
@@ -737,10 +732,8 @@ def steady_state(
         )
         if isinstance(sens := res.value, Exception):
             return res
-        sens.trajectories = sens.trajectories.loc[:, columns]
-        sens.sensitivities = {
-            k: v.loc[:, columns] for k, v in sens.sensitivities.items()
-        }
+        sens.simulated = sens.simulated.loc[:, columns]
+        sens.derivatives = {k: v.loc[:, columns] for k, v in sens.derivatives.items()}
         return res
 
     def simulate(start: dict[str, float]) -> Result[pd.DataFrame]:
@@ -754,4 +747,4 @@ def steady_state(
         variables = _raw_variables(model, sim).iloc[[-1]]
         return Result(_values(model, variables).loc[:, columns])
 
-    return _fd(model, parameters, y0, simulate, rel_step)
+    return _fd(model, wrt, y0, simulate, displacement)

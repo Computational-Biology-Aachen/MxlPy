@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from mxlpy import KineticModelBuilder, Simulator, fit, fns, identify
+from mxlpy.runners import KineticRunner
 
 T = np.linspace(0.25, 5.0, 20)
 A = 2.0
@@ -65,11 +66,10 @@ def test_estimated_sigma_uses_residual_variance() -> None:
         loss_fn=fit.mean_squared,
         standard_scale=False,
         minimizer=fit.LeastSquaresMinimizer(),
-        sensitivities="forward",
     ).unwrap_or_err()
     fim = identify.fisher_information(_decay(), data, res)
     fd = identify.fisher_information(
-        _decay(), data, res, sensitivities="finite_difference"
+        _decay(), data, res, runner=KineticRunner(derivatives="finite_difference")
     )
     s = fim.design.to_numpy()
     raw = fim.residuals.to_numpy() * np.sqrt(fim.residual_variance)
@@ -174,11 +174,15 @@ def test_finite_differences_detect_non_identifiability() -> None:
     res = Simulator(model).simulate_time_course(T).get_result().unwrap_or_err()
     data = res.get_combined().loc[T, ["y"]]
     values = {"a": 1.0, "b": 0.5, "c": 2.0}
-    for sensitivities in ("forward", "finite_difference"):
+    for derivatives in ("forward", "finite_difference"):
         fim = identify.fisher_information(
-            model, data, values, sigma=0.1, sensitivities=sensitivities
+            model,
+            data,
+            values,
+            sigma=0.1,
+            runner=KineticRunner(derivatives=derivatives),
         )
-        assert fim.rank == 2, sensitivities
+        assert fim.rank == 2, derivatives
         assert len(fim.non_identifiable()) == 1
         assert np.isinf(fim.std_errors[["a", "c"]]).all()
         assert np.isfinite(fim.std_errors["b"])

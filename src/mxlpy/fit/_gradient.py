@@ -2,8 +2,10 @@
 
 """Residuals providing residual vectors and derivatives for gradient-based minimizers.
 
-Minimizers detect the optional `residuals`, `jacobian` and `gradient` methods,
-so plain scalar residuals keep working unchanged.
+Minimizers detect the optional `residuals`, `jacobian`, `gradient` and
+`hessian` methods, so plain scalar residuals keep working unchanged. The
+derivatives come from the runner (see `mxlpy.runners.SensitivityRunner`)
+or, for runners without them, from finite differences of its results.
 """
 
 from __future__ import annotations
@@ -15,9 +17,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import pandas as pd
 
-from mxlpy import sensitivities as sens_mod
-from mxlpy._kinetic_builder import KineticModelBuilder
-from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy.fit import losses
 from mxlpy.fit.residuals import (
     _align_time,
@@ -36,12 +35,11 @@ if TYPE_CHECKING:
     from mxlpy.minimizers.abstract import Bounds, Residual
     from mxlpy.types import Array
 
-__all__ = ["GradientResidual", "Sensitivities", "Transform", "transformed"]
+__all__ = ["GradientResidual", "Transform", "transformed"]
 
 _LOGGER = logging.getLogger(__name__)
 _WARNED: set[str] = set()
 
-type Sensitivities = Literal["forward", "finite_difference"]
 type Transform = Literal["log", "linear"] | dict[str, Literal["log", "linear"]]
 
 _DEFAULT_BOUNDS = (1e-6, 1e6)
@@ -95,13 +93,20 @@ def _loss_hessian(
     return None
 
 
+_KINDS = {
+    steady_state_residual: "steady_state",
+    time_course_residual: "time_course",
+    protocol_time_course_residual: "protocol_time_course",
+}
+
+
 class GradientResidual:
     """Residual of a single fit, additionally providing derivatives.
 
     The residual vector is the (standard-scaled, if enabled) prediction minus
     the data, flattened, without missing data. Its Jacobian comes from the
-    forward sensitivities of the simulation if possible, else from central
-    finite differences of whole simulations.
+    runner's sensitivities if it provides them, else from central finite
+    differences of whole simulations.
 
     Parameters
     ----------
@@ -109,33 +114,19 @@ class GradientResidual:
         One of the default residual functions of `mxlpy.fit.residuals`
     settings
         Settings of the fit
-    sensitivities
-        `forward` or `finite_difference`
-    rel_step
-        Relative step of the finite differences
 
     """
 
-    def __init__(
-        self,
-        residual_fn: FitResidual,
-        settings: _Settings[Any],
-        *,
-        sensitivities: Sensitivities,
-        rel_step: float = 1e-3,
-    ) -> None:
-        kinds = {
-            steady_state_residual: "steady_state",
-            time_course_residual: "time_course",
-            protocol_time_course_residual: "protocol_time_course",
-        }
-        if (kind := kinds.get(cast(Any, residual_fn))) is None:
-            msg = "Sensitivities need one of the residual functions of mxlpy.fit.residuals"
+    def __init__(self, residual_fn: FitResidual, settings: _Settings[Any]) -> None:
+        if (kind := _KINDS.get(cast(Any, residual_fn))) is None:
+            msg = (
+                "Derivatives need one of the residual functions of mxlpy.fit.residuals"
+            )
             raise ValueError(msg)
         self.kind = kind
         self.fn = partial(residual_fn, settings=settings)
         self.settings = settings
-        self.rel_step = rel_step
+        self.displacement = float(getattr(settings.runner, "displacement", 1e-3))
 
         data = settings.data
         self.names: list[str] = list(
@@ -148,29 +139,50 @@ class GradientResidual:
         self.mask = np.isfinite(scaled)
         self.data_vector = scaled[self.mask]
 
-        self.forward = sensitivities == "forward"
-        if self.forward and (reason := self._forward_problem()) is not None:
-            _warn_once(
-                f"Using finite-difference sensitivities for fitting, as {reason}"
-            )
-            self.forward = False
+        self.forward = (reason := self._forward_problem()) is None
+        if reason is not None:
+            self._fall_back(reason)
 
         self._key: tuple[tuple[str, float], ...] | None = None
         self._prediction: pd.DataFrame | pd.Series | None = None
         self._jac_key: tuple[tuple[str, float], ...] | None = None
         self._jac: Array | None = None
 
+    @staticmethod
+    def supports(residual_fn: FitResidual) -> bool:
+        """Whether `residual_fn` is one of the residuals derivatives exist for."""
+        return cast(Any, residual_fn) in _KINDS
+
     def _forward_problem(self) -> str | None:
+        """Why the runner's sensitivities can't be used, if they can't."""
         s = self.settings
-        if not isinstance(s.model, (KineticModelBuilder, OdeModelBuilder)):
-            return "the model has no dynamics"
+        method = (
+            "steady_state_sensitivities"
+            if self.kind == "steady_state"
+            else "time_course_sensitivities"
+        )
+        if not callable(getattr(s.runner, method, None)):
+            return "the runner doesn't provide sensitivities"
+        if getattr(s.runner, "derivatives", None) == "finite_difference":
+            return "the runner uses finite differences"
         if self.kind == "protocol_time_course":
             return "protocol fits don't support forward sensitivities yet"
         if s.postprocess_fn is not None:
             return "a postprocess_fn can't be differentiated"
-        if not hasattr(s.runner, "integrator"):
-            return "the runner doesn't expose its integrator"
         return None
+
+    def _fall_back(self, reason: str) -> None:
+        """Use finite differences of the runner's results from now on.
+
+        Only warns if the runner was explicitly asked for forward
+        sensitivities, as finite differences are the documented fallback.
+        """
+        self.forward = False
+        msg = f"Using finite-difference derivatives for fitting, as {reason}"
+        if getattr(self.settings.runner, "derivatives", None) == "forward":
+            _warn_once(msg)
+        else:
+            _LOGGER.debug(msg)
 
     def _scale(self, values: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
         s = self.settings
@@ -224,14 +236,12 @@ class GradientResidual:
     ###########################################################################
 
     def __call__(self, updates: dict[str, float]) -> float:
-        """Scalar loss, the same as the wrapped residual function.
+        """Scalar loss of the wrapped residual function.
 
-        Goes through the prediction cache, so a following `gradient` or
-        `jacobian` call at the same point doesn't simulate again.
+        Calls it directly, so fits not using derivatives behave exactly as
+        without this wrapper.
         """
-        if (prediction := self._predict(updates)) is None:
-            return np.inf
-        return float(self.settings.loss(prediction))
+        return self.fn(updates)
 
     def residuals(self, updates: dict[str, float]) -> Array:
         """Residual vector, all `nan` if the simulation failed.
@@ -272,11 +282,12 @@ class GradientResidual:
         Positive semi-definite and shares the sensitivities with `gradient`.
         None for losses other than `mean_squared` and `rmse`.
         """
+        # Checked before simulating, so asking whether there is one is cheap
+        if _loss_hessian(self.settings.loss_fn, 1) is None:
+            return None
         r = self._vector(self._predict(updates))
         valid = np.isfinite(r)
-        fn = _loss_hessian(self.settings.loss_fn, int(valid.sum()))
-        if fn is None:
-            return None
+        fn = cast("Callable", _loss_hessian(self.settings.loss_fn, int(valid.sum())))
         if self._prediction is None or not valid.any():
             return np.full((len(updates), len(updates)), np.nan)
         return fn(r[valid], self.jacobian(updates)[valid])
@@ -311,7 +322,7 @@ class GradientResidual:
 
         out = np.empty_like(r)
         for i in range(len(r)):
-            h = self.rel_step * max(1.0, abs(r[i]))
+            h = self.displacement * max(1.0, abs(r[i]))
             up, down = r.copy(), r.copy()
             up[i] += h
             down[i] -= h
@@ -325,28 +336,16 @@ class GradientResidual:
         wrt = list(updates)
         try:
             if self.kind == "steady_state":
-                res = sens_mod.steady_state(
-                    s.model,
-                    wrt,
-                    integrator=runner.integrator,
-                    method="forward",
-                    tolerance=runner.tolerance,
-                    rel_norm=runner.rel_norm,
-                )
+                res = runner.steady_state_sensitivities(s.model, wrt)
             else:
                 # Replicates share time points, which the integrators reject
-                res = sens_mod.time_course(
-                    s.model,
-                    np.unique(np.asarray(s.data.index, dtype=float)),
-                    wrt,
-                    integrator=runner.integrator,
-                    method="forward",
+                res = runner.time_course_sensitivities(
+                    s.model, np.unique(np.asarray(s.data.index, dtype=float)), wrt
                 )
         except Exception as e:  # noqa: BLE001
-            # Models the sensitivity codegen can't handle (events, Native,
-            # unparsable functions, ...)
-            _warn_once(f"Using finite-difference sensitivities for fitting, as {e}")
-            self.forward = False
+            # Models the sensitivity codegen can't handle with
+            # derivatives="forward" (events, Native, unparsable functions, ...)
+            self._fall_back(str(e))
             return None
         if isinstance(sens := res.value, Exception):
             return None
@@ -354,7 +353,7 @@ class GradientResidual:
         # as the augmented solve differs within the integration tolerance
         columns = []
         for name in wrt:
-            d = sens.sensitivities[name].loc[:, self.names]
+            d = sens.derivatives[name].loc[:, self.names]
             d = (
                 d.iloc[-1]
                 if self.kind == "steady_state"
@@ -369,7 +368,7 @@ class GradientResidual:
         base = self._vector(self._predict(updates))
         columns = []
         for name, value in updates.items():
-            h = self.rel_step * abs(value) if value != 0 else self.rel_step
+            h = self.displacement * abs(value) if value != 0 else self.displacement
             up = self._vector(self._simulate(updates | {name: value + h}))
             down = self._vector(self._simulate(updates | {name: value - h}))
             column = (up - down) / (2 * h)
