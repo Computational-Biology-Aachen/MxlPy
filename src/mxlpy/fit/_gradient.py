@@ -71,6 +71,30 @@ def _loss_derivative(
     return None
 
 
+def _loss_hessian(
+    loss_fn: Callable[..., float], n: int
+) -> Callable[[Array, Array], Array] | None:
+    """Gauss-Newton Hessian for the least-squares losses, else None.
+
+    Takes the residual vector and its Jacobian. For `mean_squared` this is
+    2 JᵀJ / n. For `rmse` = sqrt(mean_squared) it is JᵀJ / (n rmse), leaving
+    out the negative rank-one term of the square root: that term makes the
+    Hessian singular along the Gauss-Newton step whenever the residual lies
+    in the range of the Jacobian (e.g. close to a fit of noise-free data),
+    while without it the Newton step is exactly the Gauss-Newton step.
+    """
+    if loss_fn is losses.mean_squared:
+        return lambda _, jac: 2 * jac.T @ jac / n
+    if loss_fn is losses.rmse:
+
+        def h_rmse(r: Array, jac: Array) -> Array:
+            value = max(float(np.sqrt(np.mean(np.square(r)))), np.finfo(float).tiny)
+            return jac.T @ jac / (n * value)
+
+        return h_rmse
+    return None
+
+
 class GradientResidual:
     """Residual of a single fit, additionally providing derivatives.
 
@@ -242,6 +266,21 @@ class GradientResidual:
         jac = self.jacobian(updates)
         return self._d_loss(r[valid], valid) @ jac[valid]
 
+    def hessian(self, updates: dict[str, float]) -> Array | None:
+        """Gauss-Newton approximation of the loss Hessian.
+
+        Positive semi-definite and shares the sensitivities with `gradient`.
+        None for losses other than `mean_squared` and `rmse`.
+        """
+        r = self._vector(self._predict(updates))
+        valid = np.isfinite(r)
+        fn = _loss_hessian(self.settings.loss_fn, int(valid.sum()))
+        if fn is None:
+            return None
+        if self._prediction is None or not valid.any():
+            return np.full((len(updates), len(updates)), np.nan)
+        return fn(r[valid], self.jacobian(updates)[valid])
+
     ###########################################################################
     # Derivatives
     ###########################################################################
@@ -381,6 +420,17 @@ class _TransformedGradient(_Transformed):
     def gradient(self, updates: dict[str, float]) -> Array:
         grad = cast(Any, self.inner).gradient(self.to_inner(updates))
         return grad * self._factors(updates)
+
+    def hessian(self, updates: dict[str, float]) -> Array | None:
+        # The Gauss-Newton Hessian of the transformed residual Jacobian J·f,
+        # which stays positive semi-definite. The exact chain rule would add
+        # the gradient times d²θ/du² along the diagonal, which is indefinite
+        # away from the optimum and vanishes at it.
+        h = cast(Any, self.inner).hessian(self.to_inner(updates))
+        if h is None:
+            return None
+        f = self._factors(updates)
+        return h * np.outer(f, f)
 
 
 def _log_names(p0: dict[str, float], transform: Transform | None) -> set[str]:
