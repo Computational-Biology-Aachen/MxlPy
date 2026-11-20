@@ -26,6 +26,7 @@ import sympy
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy.fit._gradient import GradientResidual, _TransformedGradient
+from mxlpy.fit.penalties import _Penalised
 from mxlpy.fit.residuals import _apply_updates
 from mxlpy.minimizers._scipy import LeastSquaresMinimizer
 from mxlpy.minimizers.abstract import OptimisationState
@@ -374,6 +375,16 @@ def _build(
         # Constant columns are skipped by the losses, so they are missing data here
         values_y[:, ~(np.isfinite(scale) & (scale > 0))] = np.nan
         scale = np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
+    elif isinstance(sigma := getattr(s.loss_fn, "sigma", None), pd.DataFrame):
+        msg = "sigma per data point can't be compiled"
+        raise _Unsupported(msg)
+    elif residual.weights is not None:
+        # GaussianNll: residuals weighted by 1 / sigma per observable
+        scale = (
+            np.asarray(sigma.reindex(names), dtype=float)
+            if isinstance(sigma, pd.Series)
+            else np.full(len(names), float(cast(float, sigma)))
+        )
     else:
         scale = np.ones(len(names))
 
@@ -572,6 +583,15 @@ def least_squares(
     `postprocess_fn`, fitted initial values or initial values depending on
     fitted parameters, the wasm backend.
     """
+    if isinstance(residual_fn, _Penalised) or isinstance(
+        getattr(residual_fn, "inner", None), _Penalised
+    ):
+        _warn_once(
+            "Fitting with scipy instead of the compiled loop, as priors and penalties can't be compiled"
+        )
+        return LeastSquaresMinimizer(method="lm", max_nfev=max_nfev)(
+            residual_fn, p0, bounds
+        )
     residual, log = _unwrap(residual_fn)
     to_inner = getattr(residual_fn, "to_inner", lambda x: x)
     values = cast(dict[str, float], to_inner(p0))

@@ -17,6 +17,7 @@ from wadler_lindig import pformat
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
+from mxlpy.fit.losses import GaussianNll
 from mxlpy.runners import default_runner
 from mxlpy.simulator import _normalise_protocol_index
 
@@ -192,6 +193,15 @@ class _Settings[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuild
     residual_fn: FitResidual | None = None
     postprocess_fn: PostprocessFn | None = None
 
+    @property
+    def scaled(self) -> bool:
+        """Whether data and prediction are compared after standard scaling."""
+        return (
+            self.standard_scale
+            and len(self.data) > 1
+            and not isinstance(self.loss_fn, GaussianNll)
+        )
+
     @cached_property
     def mean(self) -> pd.Series | float:
         return self.data.mean()
@@ -218,19 +228,40 @@ class _Settings[M: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuild
             Loss value computed by the configured loss function.
 
         """
-        # The standard deviation of fewer than two data points is undefined
-        if self.standard_scale and len(self.data) > 1:
+        # The standard deviation of fewer than two data points is undefined.
+        # Likelihoods compare in data units, as their sigma is in data units
+        if self.scaled:
             return self.loss_fn(self.data_scaled, (prediction - self.mean) / self.scale)
         return self.loss_fn(self.data, prediction)
 
 
 @dataclass
 class Fit(Generic[M]):
-    """Result of a fit operation."""
+    """Result of a fit operation.
+
+    Attributes
+    ----------
+    model
+        The fitted model (a copy, unless fitted with `as_deepcopy=False`)
+    best_pars
+        Fitted parameters and initial values
+    loss
+        Loss of the data at `best_pars`, without the penalties
+    penalty
+        Sum of the priors' and penalties' terms at `best_pars`, so the
+        minimized objective is `loss + penalty`
+
+    """
 
     model: M
     best_pars: dict[str, float]
     loss: float
+    penalty: float = 0.0
+
+    @property
+    def objective(self) -> float:
+        """The minimized objective, `loss + penalty`."""
+        return self.loss + self.penalty
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -248,12 +279,16 @@ class GroupFit(Generic[M]):
         return pformat(self)
 
     def get_losses(self) -> pd.Series:
-        """Get losses of all fits."""
+        """Get losses of all fits, without their penalties."""
         return pd.Series({i: f.loss for i, f in enumerate(self.fits)})
 
+    def get_objectives(self) -> pd.Series:
+        """Get the minimized objectives (loss + penalty) of all fits."""
+        return pd.Series({i: f.objective for i, f in enumerate(self.fits)})
+
     def get_best_fit(self) -> Fit[M]:
-        """Get the best fit from the carousel."""
-        return min(self.fits, key=lambda x: x.loss)
+        """Get the fit with the lowest objective (loss + penalty)."""
+        return min(self.fits, key=lambda x: x.objective)
 
 
 @dataclass
@@ -267,16 +302,33 @@ class EnsembleFit(Generic[M]):
         return pformat(self)
 
     def get_best_fit(self) -> Fit[M]:
-        """Get the best fit from the carousel."""
-        return min(self.fits, key=lambda x: x.loss)
+        """Get the fit with the lowest objective (loss + penalty)."""
+        return min(self.fits, key=lambda x: x.objective)
 
 
 @dataclass
 class JointFit:
-    """Result of joint fit operation."""
+    """Result of joint fit operation.
+
+    Attributes
+    ----------
+    best_pars
+        Fitted parameters and initial values
+    loss
+        Summed loss of all data at `best_pars`, without the penalties
+    penalty
+        Sum of the priors' and penalties' terms at `best_pars`
+
+    """
 
     best_pars: dict[str, float]
     loss: float
+    penalty: float = 0.0
+
+    @property
+    def objective(self) -> float:
+        """The minimized objective, `loss + penalty`."""
+        return self.loss + self.penalty
 
     def __repr__(self) -> str:
         """Return default representation."""

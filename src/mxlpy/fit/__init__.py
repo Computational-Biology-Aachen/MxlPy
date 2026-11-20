@@ -58,9 +58,19 @@ per parameter, e.g. for credible intervals.
 
 Samplers: `AdaptiveMetropolis`
 
+Priors and penalties (MAP estimation, regularisation)
+-----------------------------------------------------
+All point-estimate fits take `prior={name: distribution}` (the same mapping
+as `mcmc_*`) and further `penalty=` terms (`Penalty`, `PriorPenalty`), and
+minimise `loss + penalty`. With the `GaussianNll` loss this is a
+maximum-a-posteriori estimate. `Fit.loss` is the loss of the data alone,
+`Fit.penalty` the penalty at the optimum.
+
 Loss functions
 --------------
-- rmse
+- rmse, mean_squared, mae, ... (heuristic, compared after standard scaling)
+- GaussianNll: negative log-likelihood of Gaussian noise with known sigma,
+  making fits maximum-likelihood (or, with a `prior`, MAP) estimates
 
 """
 
@@ -97,7 +107,6 @@ from ._mcmc import (
     McmcChain,
     McmcResult,
     McmcSampler,
-    Sigma,
     mcmc_protocol_time_course,
     mcmc_steady_state,
     mcmc_time_course,
@@ -111,6 +120,8 @@ from .abstract import (
     MixedSettings,
 )
 from .losses import (
+    GaussianNll,
+    Sigma,
     cosine_similarity,
     mae,
     mean,
@@ -119,6 +130,7 @@ from .losses import (
     mean_squared_logarithmic,
     rmse,
 )
+from .penalties import Penalty, PriorPenalty
 from .residuals import (
     protocol_time_course_residual,
     steady_state_residual,
@@ -132,6 +144,7 @@ __all__: list[str] = [
     "Fit",
     "FitSettings",
     "FixedNMinimizer",
+    "GaussianNll",
     "GlobalScipyMinimizer",
     "JointFit",
     "LeastSquaresMinimizer",
@@ -142,6 +155,8 @@ __all__: list[str] = [
     "McmcSampler",
     "MixedSettings",
     "OptimisationState",
+    "Penalty",
+    "PriorPenalty",
     "Residual",
     "Sigma",
     "carousel_protocol_time_course",

@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from mxlpy.fit import losses
+from mxlpy.fit.losses import GaussianNll, _sigma_array
 from mxlpy.fit.residuals import (
     _apply_updates,
     protocol_time_course_residual,
@@ -54,7 +55,12 @@ def _warn_once(msg: str) -> None:
 def _loss_derivative(
     loss_fn: Callable[..., float], n: int
 ) -> Callable[[Array], Array] | None:
-    """Analytic d loss / d residual for the built-in losses, else None."""
+    """Analytic d loss / d residual for the built-in losses, else None.
+
+    The residuals of a `GaussianNll` are already weighted by `1 / sigma`.
+    """
+    if isinstance(loss_fn, GaussianNll):
+        return lambda r: r
     if loss_fn is losses.mean_squared:
         return lambda r: 2 * r / n
     if loss_fn is losses.rmse:
@@ -81,6 +87,8 @@ def _loss_hessian(
     in the range of the Jacobian (e.g. close to a fit of noise-free data),
     while without it the Newton step is exactly the Gauss-Newton step.
     """
+    if isinstance(loss_fn, GaussianNll):
+        return lambda _, jac: jac.T @ jac
     if loss_fn is losses.mean_squared:
         return lambda _, jac: 2 * jac.T @ jac / n
     if loss_fn is losses.rmse:
@@ -104,7 +112,8 @@ class GradientResidual:
     """Residual of a single fit, additionally providing derivatives.
 
     The residual vector is the (standard-scaled, if enabled) prediction minus
-    the data, flattened, without missing data. Its Jacobian comes from the
+    the data, flattened, without missing data. For a `GaussianNll` loss it is
+    weighted by `1 / sigma` instead, so its sum of squares is twice the loss. Its Jacobian comes from the
     runner's sensitivities if it provides them, else from central finite
     differences of whole simulations.
 
@@ -132,12 +141,18 @@ class GradientResidual:
         self.names: list[str] = list(
             data.index if isinstance(data, pd.Series) else data.columns
         )
-        self.scaled = settings.standard_scale and len(data) > 1
+        self.scaled = settings.scaled
         # Missing data and constant columns (zero std, so NaN when scaled) are
         # left out, as the scalar losses skip them as well
         scaled = np.asarray(self._scale(data), dtype=float).ravel()
         self.mask = np.isfinite(scaled)
         self.data_vector = scaled[self.mask]
+        loss_fn = settings.loss_fn
+        self.weights: Array | None = (
+            1 / _sigma_array(loss_fn.sigma, data).ravel()[self.mask]
+            if isinstance(loss_fn, GaussianNll)
+            else None
+        )
 
         self.forward = (reason := self._forward_problem()) is None
         if reason is not None:
@@ -219,10 +234,11 @@ class GradientResidual:
     def _vector(self, prediction: pd.DataFrame | pd.Series | None) -> Array:
         if prediction is None:
             return np.full(int(self.mask.sum()), np.nan)
-        return (
+        r = (
             np.asarray(self._scale(prediction), dtype=float).ravel()[self.mask]
             - self.data_vector
         )
+        return r if self.weights is None else r * self.weights
 
     def _predict(self, updates: dict[str, float]) -> pd.DataFrame | pd.Series | None:
         key = tuple(updates.items())
@@ -275,6 +291,17 @@ class GradientResidual:
             return np.full(len(updates), np.nan)
         jac = self.jacobian(updates)
         return self._d_loss(r[valid], valid) @ jac[valid]
+
+    def squares_factor(self) -> float | None:
+        """`c` with loss = `c Σr² / 2` of the residual vector, None if it isn't one.
+
+        Least squares needs it to weight priors and penalties like the loss.
+        """
+        if isinstance(self.settings.loss_fn, GaussianNll):
+            return 1.0
+        if self.settings.loss_fn is losses.mean_squared:
+            return 2 / max(int(self.mask.sum()), 1)
+        return None
 
     def hessian(self, updates: dict[str, float]) -> Array | None:
         """Gauss-Newton approximation of the loss Hessian.
@@ -362,7 +389,8 @@ class GradientResidual:
             if self.scaled:
                 d = d / s.scale
             columns.append(np.asarray(d, dtype=float).ravel()[self.mask])
-        return np.column_stack(columns)
+        jac = np.column_stack(columns)
+        return jac if self.weights is None else jac * self.weights[:, None]
 
     def _finite_difference(self, updates: dict[str, float]) -> Array:
         base = self._vector(self._predict(updates))

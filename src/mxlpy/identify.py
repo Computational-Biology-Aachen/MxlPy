@@ -15,9 +15,10 @@ from scipy import stats
 from tqdm import tqdm
 
 from mxlpy import fit
-from mxlpy.distributions import LogNormal, sample
+from mxlpy.distributions import LogNormal, prior_penalty, sample
 from mxlpy.fit._gradient import GradientResidual, _log_names
 from mxlpy.fit.abstract import _Settings, _split_p0
+from mxlpy.fit.losses import _sigma_array
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
     steady_state_residual,
@@ -34,8 +35,9 @@ if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy._steady_state_builder import SteadyStateModelBuilder
+    from mxlpy.distributions import Prior
     from mxlpy.fit._gradient import Transform
-    from mxlpy.fit._mcmc import Sigma
+    from mxlpy.fit.losses import Sigma
     from mxlpy.runners import DynamicRunner
     from mxlpy.simulation import Simulation
     from mxlpy.types import Array
@@ -53,6 +55,7 @@ def _mc_fit_time_course_worker(
     data: pd.DataFrame,
     loss_fn: fit.LossFn,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None,
+    prior: Mapping[str, Prior] | None = None,
 ) -> float:
     fit_result = fit.time_course(
         model=model,
@@ -61,10 +64,11 @@ def _mc_fit_time_course_worker(
         loss_fn=loss_fn,
         minimizer=fit.LocalScipyMinimizer(),
         runner=runner,
+        prior=prior,
     )
     match fit_result.value:
-        case fit.Fit(_, _, loss):
-            return loss
+        case fit.Fit() as res:
+            return res.objective
         case _:
             return np.inf
 
@@ -78,6 +82,7 @@ def profile_likelihood(
     loss_fn: fit.LossFn = fit.rmse,
     *,
     runner: DynamicRunner[KineticModelBuilder, Simulation] | None = None,
+    prior: Mapping[str, Prior] | None = None,
 ) -> pd.Series:
     """Estimate the profile likelihood of model parameters given data.
 
@@ -98,6 +103,10 @@ def profile_likelihood(
     runner
         How the model is simulated, see `mxlpy.runners`.
         Defaults to `KineticRunner()`.
+    prior
+        Priors of the parameters, added to the objective as in the fit
+        functions. The prior of the profiled parameter is added to the
+        profile at each of its values
 
     """
     parameter_distributions = sample(
@@ -111,6 +120,8 @@ def profile_likelihood(
     model = deepcopy(model)
     runner = default_runner(model) if runner is None else runner
     precompile(runner, model)
+    others = {k: v for k, v in (prior or {}).items() if k != parameter_name}
+    own = (prior or {}).get(parameter_name)
     res = {}
     for value in tqdm(parameter_values, desc=parameter_name):
         model.update_parameter(parameter_name, value)
@@ -122,6 +133,7 @@ def profile_likelihood(
                     data=data,
                     loss_fn=loss_fn,
                     runner=runner,
+                    prior=others or None,
                 ),
                 inputs=list(
                     parameter_distributions.drop(columns=parameter_name).iterrows()
@@ -130,6 +142,8 @@ def profile_likelihood(
             )
         )
     errors = pd.DataFrame(res, dtype=float).T.abs().mean(axis=1)
+    if own is not None:
+        errors += [prior_penalty(own, float(v)) for v in errors.index]
     errors.index.name = "fitting error"
     return errors
 
@@ -302,25 +316,7 @@ def _sigma_vector(
     data: pd.Series | pd.DataFrame,
     mask: NDArray[np.bool_],
 ) -> Array:
-    if isinstance(sigma, pd.DataFrame):
-        if not isinstance(data, pd.DataFrame):
-            msg = "sigma per data point needs DataFrame data, use a Series for steady states"
-            raise ValueError(msg)  # noqa: TRY004
-        full = sigma.reindex(index=data.index, columns=data.columns).to_numpy()
-    elif isinstance(sigma, pd.Series):
-        if isinstance(data, pd.DataFrame):
-            full = np.broadcast_to(
-                sigma.reindex(data.columns).to_numpy(dtype=float), data.shape
-            )
-        else:
-            full = sigma.reindex(data.index).to_numpy(dtype=float)
-    else:
-        full = np.full(data.shape, float(sigma))
-    vector = np.asarray(full, dtype=float).ravel()[mask]
-    if not (np.isfinite(vector).all() and (vector > 0).all()):
-        msg = "sigma must be positive and given for every data point"
-        raise ValueError(msg)
-    return vector
+    return _sigma_array(sigma, data).ravel()[mask]
 
 
 def fisher_information(

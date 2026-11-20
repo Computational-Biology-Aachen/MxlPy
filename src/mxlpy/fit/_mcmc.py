@@ -27,6 +27,7 @@ from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit import losses
 from mxlpy.fit._single import _check_y0
 from mxlpy.fit.abstract import _Settings, _split_p0
+from mxlpy.fit.losses import Sigma, _sigma_array
 from mxlpy.fit.residuals import _apply_updates
 from mxlpy.parallel import parallelise
 from mxlpy.runners import DynamicRunner, SteadyStateRunner, default_runner
@@ -55,10 +56,6 @@ __all__ = [
 ]
 
 type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
-
-# Noise standard deviation: one for all data, per column (time courses) or
-# entry (steady states), or per data point
-type Sigma = float | pd.Series | pd.DataFrame
 
 # Relative spread of the chains' starting points around x0
 _START_JITTER = 0.1
@@ -354,26 +351,6 @@ class McmcResult:
 ###############################################################################
 # Posterior
 ###############################################################################
-
-
-def _sigma_array(sigma: Sigma, data: pd.Series | pd.DataFrame) -> Array:
-    """`sigma` broadcast to the shape of `data`."""
-    if isinstance(sigma, pd.DataFrame):
-        if isinstance(data, pd.Series):
-            msg = "sigma per data point (a DataFrame) needs time course data"
-            raise ValueError(msg)  # noqa: TRY004, invalid input like the others
-        values = sigma.reindex(index=data.index, columns=data.columns).to_numpy()
-    elif isinstance(sigma, pd.Series):
-        keys = data.index if isinstance(data, pd.Series) else data.columns
-        values = np.broadcast_to(sigma.reindex(keys).to_numpy(), data.shape)
-    else:
-        values = np.full(data.shape, float(sigma))
-    values = np.asarray(values, dtype=float)
-    observed = np.isfinite(data.to_numpy(dtype=float))
-    if not (np.isfinite(values[observed]).all() and (values[observed] > 0).all()):
-        msg = "sigma has to be positive and finite for every observed data point"
-        raise ValueError(msg)
-    return values
 
 
 @dataclass
