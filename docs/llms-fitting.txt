@@ -79,7 +79,7 @@ fit.joint_mixed(
 
 ### Minimizers, loss functions, injection
 
-- Minimizers: `fit.LeastSquaresMinimizer()` (needs `sensitivities=`, see below), `fit.LocalScipyMinimizer(tol=..., method="Nelder-Mead"|"L-BFGS-B"|...)` (default `method=None`: Nelder-Mead for a single parameter, L-BFGS-B otherwise), `fit.GlobalScipyMinimizer(bounds=fit.Bounds(lower={...}, upper={...}))` (basin hopping / dual annealing).
+- Minimizers: `fit.LeastSquaresMinimizer()` / `fit.GaussNewtonMinimizer()` (need `sensitivities=`, see below), `fit.LocalScipyMinimizer(tol=..., method="Nelder-Mead"|"L-BFGS-B"|...)` (default `method=None`: Nelder-Mead for a single parameter, L-BFGS-B otherwise), `fit.GlobalScipyMinimizer(bounds=fit.Bounds(lower={...}, upper={...}))` (basin hopping / dual annealing).
 - Loss functions (pass `loss_fn=`): `fit.rmse`, `fit.mae`, `fit.mean_squared`, `fit.mean_absolute_percentage`, `fit.mean_squared_logarithmic`, `fit.cosine_similarity`, or any `(pred, data) -> float`.
 - The call tree is `minimizer → residual_fn → (runner, postprocess_fn, loss_fn)`; override any of `minimizer`, `loss_fn`, `runner` (e.g. `runner=KineticRunner(integrator=partial(Scipy, rtol=1e-6, atol=1e-6))`).
 - `postprocess_fn=` (every fit routine, and per model on `FitSettings`/`MixedSettings`): a `(pd.DataFrame) -> pd.DataFrame` applied to the combined simulation result at the data's time points before the loss, for quantities derived from the whole time course (e.g. NPQ normalised by the first pulse: `lambda df: ((df["Fm"].iloc[0] - df["Fm"]) / df["Fm"]).to_frame("NPQ")`). Its output must contain the data columns; exceptions it raises propagate.
@@ -97,7 +97,7 @@ res = fit.time_course(
 ```
 
 - `sensitivities=` on `fit.steady_state` / `time_course` / `protocol_time_course` and their `group_*` variants (not yet ensemble/joint/mixed/carousel) gives the minimizer the residual vector, its Jacobian and the exact loss gradient. `"forward"` solves the forward sensitivity ODEs (implicit function theorem at steady state) and falls back to finite differences with a one-time warning for protocols, `postprocess_fn`, surrogates/unparsable functions, events, Native/Diffrax and `SteadyStateModelBuilder`.
-- Gradient methods of `LocalScipyMinimizer` (L-BFGS-B, BFGS, TNC, SLSQP, ...) and `FixedNMinimizer` then get `jac=`. `fit.LeastSquaresMinimizer` needs `sensitivities=` (raises `TypeError` otherwise); `"lm"` ignores bounds. Only the built-in residual functions are supported (custom `residual_fn` raises `ValueError`).
+- Gradient methods of `LocalScipyMinimizer` (L-BFGS-B, BFGS, TNC, SLSQP, ...) and `FixedNMinimizer` then get `jac=`. `fit.LeastSquaresMinimizer` needs `sensitivities=` (raises `TypeError` otherwise); `"lm"` ignores bounds. `fit.GaussNewtonMinimizer(method="trust-constr"|"trust-exact")` minimizes the loss itself with a trust region, exact gradient and Gauss-Newton Hessian (`rmse` / `mean_squared`; other losses fall back to BFGS updates with `trust-constr`); also needs `sensitivities=`. `trust-exact` ignores bounds. Only the built-in residual functions are supported (custom `residual_fn` raises `ValueError`).
 - `transform="log"` fits in log10 space (p0 must be positive; unbounded log parameters get bounds `(1e-6, 1e6)`). Results are reported in linear space. Opt-in because L-BFGS-B can overshoot on its first log-space step; least squares works well with it.
 - The residual vector is the standard-scaled prediction minus data; missing data and constant (zero-std) columns are left out, matching the scalar losses.
 

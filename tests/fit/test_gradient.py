@@ -1,5 +1,7 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
+from typing import cast
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -12,8 +14,8 @@ from mxlpy import (
     fns,
     make_protocol,
 )
-from mxlpy.fit import LeastSquaresMinimizer, LocalScipyMinimizer
-from mxlpy.fit._gradient import GradientResidual, transformed
+from mxlpy.fit import GaussNewtonMinimizer, LeastSquaresMinimizer, LocalScipyMinimizer
+from mxlpy.fit._gradient import GradientResidual, _TransformedGradient, transformed
 from mxlpy.fit.abstract import _Settings
 from mxlpy.fit.residuals import steady_state_residual, time_course_residual
 from mxlpy.minimizers import FixedNMinimizer, GlobalScipyMinimizer
@@ -422,3 +424,109 @@ def test_least_squares_clips_infeasible_start() -> None:
     ).unwrap_or_err()
     for k, v in TRUE.items():
         assert res.best_pars[k] == pytest.approx(v, rel=1e-3)
+
+
+###############################################################################
+# Gauss-Newton
+###############################################################################
+
+
+def test_gauss_newton_hessian_matches_numeric_close_to_optimum() -> None:
+    residual = GradientResidual(
+        time_course_residual, _settings(fit.mean_squared), sensitivities="forward"
+    )
+    at = {k: v * 1.0001 for k, v in TRUE.items()}
+    numeric = []
+    for k, v in at.items():
+        h = 1e-5 * v
+        numeric.append(
+            (residual.gradient(at | {k: v + h}) - residual.gradient(at | {k: v - h}))
+            / (2 * h)
+        )
+    hessian = residual.hessian(at)
+    assert hessian is not None
+    np.testing.assert_allclose(hessian, np.array(numeric), rtol=1e-3)
+    assert np.all(np.linalg.eigvalsh(cast(np.ndarray, residual.hessian(P0))) >= 0)
+    # No Gauss-Newton Hessian for other losses
+    mae = GradientResidual(
+        time_course_residual, _settings(fit.mae), sensitivities="forward"
+    )
+    assert mae.hessian(P0) is None
+
+
+def test_transformed_hessian_is_gauss_newton_in_log_space() -> None:
+    residual = GradientResidual(
+        time_course_residual, _settings(), sensitivities="forward"
+    )
+    wrapped, u, _, _ = transformed(residual, P0, {}, {"k1": "log"})
+    assert isinstance(wrapped, _TransformedGradient)
+    f = np.array([P0["k1"] * np.log(10), 1.0])
+    expected = cast(np.ndarray, residual.hessian(P0)) * np.outer(f, f)
+    hessian = cast(np.ndarray, wrapped.hessian(u))
+    np.testing.assert_allclose(hessian, expected)
+    assert np.all(np.linalg.eigvalsh(hessian) >= 0)
+
+
+@pytest.mark.parametrize("method", ["trust-constr", "trust-exact"])
+@pytest.mark.parametrize("loss_fn", [fit.rmse, fit.mean_squared])
+def test_gauss_newton_fits(method: str, loss_fn: fit.LossFn) -> None:
+    res = fit.time_course(
+        _model(),
+        p0=P0,
+        data=_data(),
+        loss_fn=loss_fn,
+        minimizer=GaussNewtonMinimizer(method=method),  # type: ignore[arg-type]
+        sensitivities="forward",
+    ).unwrap_or_err()
+    for k, v in TRUE.items():
+        assert res.best_pars[k] == pytest.approx(v, rel=1e-6)
+
+
+def test_gauss_newton_other_losses_use_bfgs_updates() -> None:
+    res = fit.time_course(
+        _model(),
+        p0=P0,
+        data=_data(),
+        loss_fn=fit.mae,
+        minimizer=GaussNewtonMinimizer(),
+        sensitivities="forward",
+    ).unwrap_or_err()
+    for k, v in TRUE.items():
+        assert res.best_pars[k] == pytest.approx(v, rel=1e-4)
+    with pytest.raises(ValueError, match="trust-constr"):
+        fit.time_course(
+            _model(),
+            p0=P0,
+            data=_data(),
+            loss_fn=fit.mae,
+            minimizer=GaussNewtonMinimizer(method="trust-exact"),
+            sensitivities="forward",
+        )
+
+
+def test_gauss_newton_respects_bounds_and_needs_sensitivities() -> None:
+    res = fit.time_course(
+        _model(),
+        p0=P0,
+        data=_data(),
+        bounds={"k2": (0.1, 1.5)},
+        minimizer=GaussNewtonMinimizer(),
+        sensitivities="forward",
+    ).unwrap_or_err()
+    assert 0.1 <= res.best_pars["k2"] <= 1.5
+    assert res.best_pars["k2"] == pytest.approx(1.5, rel=1e-4)
+    with pytest.raises(TypeError, match="sensitivities"):
+        fit.time_course(_model(), p0=P0, data=_data(), minimizer=GaussNewtonMinimizer())
+
+
+def test_gauss_newton_with_log_transform() -> None:
+    res = fit.time_course(
+        _model(),
+        p0={"k1": 5.0, "k2": 0.2},
+        data=_data(),
+        minimizer=GaussNewtonMinimizer(),
+        sensitivities="forward",
+        transform="log",
+    ).unwrap_or_err()
+    for k, v in TRUE.items():
+        assert res.best_pars[k] == pytest.approx(v, rel=1e-5)
