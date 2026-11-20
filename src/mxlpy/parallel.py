@@ -15,7 +15,6 @@ Functions:
 
 from __future__ import annotations
 
-import multiprocessing
 import pickle
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
@@ -23,7 +22,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from loky import ProcessPoolExecutor
+from loky import ProcessPoolExecutor, cpu_count
 from tqdm import tqdm
 
 if TYPE_CHECKING:
@@ -54,14 +53,78 @@ def _install_worker_state(states: list[tuple[Callable[[Any], None], Any]]) -> No
         install(state)
 
 
-def _pool(max_workers: int | None) -> ProcessPoolExecutor:
+# Rough memory of a worker: importing mxlpy alone takes ~120 MiB, plus the
+# model and its results
+_WORKER_MEMORY = 256 * 2**20
+
+
+def _cgroup_headroom() -> int | None:
+    """Memory left before the tightest cgroup v2 limit of this process (Linux).
+
+    Limits can be set on any ancestor, e.g. a systemd slice of the session.
+    """
+    try:
+        with open("/proc/self/cgroup") as f:  # noqa: PTH123
+            path = next(
+                line.split(":", 2)[2].strip() for line in f if line.startswith("0::")
+            )
+    except (OSError, StopIteration):
+        return None
+    root = Path("/sys/fs/cgroup")
+    headroom = None
+    for directory in [root / path.lstrip("/"), *(root / path.lstrip("/")).parents]:
+        if directory == root.parent:
+            break
+        try:
+            limit = (directory / "memory.max").read_text().strip()
+            current = int((directory / "memory.current").read_text())
+        except (OSError, ValueError):
+            continue
+        if limit != "max":
+            left = int(limit) - current
+            headroom = left if headroom is None else min(headroom, left)
+    return headroom
+
+
+def _available_memory() -> int | None:
+    """Memory available for new processes (Linux), None if unknown."""
+    available = None
+    try:
+        with open("/proc/meminfo") as f:  # noqa: PTH123
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    available = int(line.split()[1]) * 1024
+                    break
+    except OSError:
+        pass
+    if (headroom := _cgroup_headroom()) is not None:
+        available = headroom if available is None else min(available, headroom)
+    return available
+
+
+def _n_workers(max_workers: int | None, n_inputs: int) -> int:
+    """Number of workers for `n_inputs` inputs.
+
+    Without `max_workers`, as many as there are inputs, CPUs available to
+    this process (affinity, cgroup CPU quotas and the LOKY_MAX_CPU_COUNT
+    environment variable, see `loky.cpu_count`) and workers fitting into the
+    available memory (Linux), whichever is smallest.
+    """
+    if max_workers is None:
+        max_workers = cpu_count()
+        if (memory := _available_memory()) is not None:
+            max_workers = min(max_workers, memory // _WORKER_MEMORY)
+    return max(1, min(max_workers, n_inputs))
+
+
+def _pool(max_workers: int | None, n_inputs: int) -> ProcessPoolExecutor:
     states = [
         (install, state)
         for export, install in _WORKER_STATE
         if (state := export()) is not None
     ]
     return ProcessPoolExecutor(
-        max_workers=multiprocessing.cpu_count() if max_workers is None else max_workers,
+        max_workers=_n_workers(max_workers, n_inputs),
         initializer=_install_worker_state if states else None,
         initargs=(states,),
     )
@@ -167,7 +230,8 @@ def parallelise[K: Hashable, Tin, Tout](
     parallel
         Whether to execute in parallel (default: True).
     max_workers
-        Maximum number of worker processes (default: None, uses all available CPUs).
+        Maximum number of worker processes. By default as many as there are
+        inputs, available CPUs and workers fitting into the available memory.
     timeout
         Maximum time (in seconds) to wait for each worker to complete (default: None).
     disable_tqdm
@@ -193,7 +257,7 @@ def parallelise[K: Hashable, Tin, Tout](
     results: list[tuple[K, Tout]]
     if parallel:
         results = []
-        pool = _pool(max_workers)
+        pool = _pool(max_workers, len(inputs))
         with tqdm(
             total=len(inputs),
             disable=disable_tqdm,
@@ -250,7 +314,8 @@ def parallelise_keyless[Tin, Tout](
     parallel
         Whether to execute in parallel (default: True).
     max_workers
-        Maximum number of worker processes (default: None, uses all available CPUs).
+        Maximum number of worker processes. By default as many as there are
+        inputs, available CPUs and workers fitting into the available memory.
     timeout
         Maximum time (in seconds) to wait for each worker to complete (default: None).
     disable_tqdm
@@ -267,7 +332,7 @@ def parallelise_keyless[Tin, Tout](
     results: list[Tout]
     if parallel:
         results = []
-        pool = _pool(max_workers)
+        pool = _pool(max_workers, len(inputs))
         with tqdm(
             total=len(inputs),
             disable=disable_tqdm,

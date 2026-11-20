@@ -130,7 +130,7 @@ strict = []
 
 [tool.pytest.ini_options]
 timeout = 60
-addopts = ["-n", "auto", "--dist", "worksteal"]
+addopts = ["-n", "auto", "--maxprocesses", "8", "--dist", "worksteal"]
 markers = [
     "all_versions: test each case against every available SBML version file (default: preferred version only)",
 ]

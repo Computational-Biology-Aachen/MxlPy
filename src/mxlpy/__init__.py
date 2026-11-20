@@ -48,30 +48,32 @@ import pandas as pd
 if TYPE_CHECKING:
     from mxlpy.types import ArrayLike
 
-    from . import nn, npe, sbml, surrogates
+    from . import (
+        compare,
+        databases,
+        distributions,
+        experimental,
+        fit,
+        forward_sensitivities,
+        fuzzy,
+        mc,
+        mca,
+        nn,
+        npe,
+        plot,
+        qa,
+        report,
+        sbml,
+        scan,
+        sensitivity,
+        surrogates,
+        symbolic,
+        units,
+    )
     from .integrators import Diffrax, Native
 
 # dsl imported after fns and model to avoid circular-import ordering issues
-from . import (
-    compare,
-    databases,
-    distributions,
-    dsl,
-    experimental,
-    fit,
-    fns,
-    fuzzy,
-    mc,
-    mca,
-    plot,
-    qa,
-    report,
-    runners,
-    forward_sensitivities,
-    scan,
-    sensitivity,
-    units,
-)
+from . import dsl, fns, runners
 from ._kinetic_builder import KineticModelBuilder
 from ._ode_builder import OdeModelBuilder
 from ._steady_state_builder import SteadyStateModelBuilder
@@ -81,9 +83,9 @@ from .integrators import DefaultIntegrator, Scipy
 from .integrators.abstract import AbstractIntegrator, IntegratorProtocol
 from .label_map import LabelMapper
 from .linear_label_map import LinearLabelMapper
-from .mc import Cache
 from .minimizers.abstract import AbstractMinimizer, MinimizerProtocol
 from .npe.abstract import AbstractEstimator, EstimatorProtocol
+from .parallel import Cache
 from .runners import EvaluationRunner, KineticRunner, OdeRunner
 from .serialize import load, save
 from .simulation import Simulation
@@ -112,9 +114,38 @@ with contextlib.suppress(ImportError):
 Model = KineticModelBuilder
 
 
+# Analysis subpackages, imported on first access. Simulating a model doesn't
+# need them, and every worker process of a parallel routine imports mxlpy, so
+# loading them (and matplotlib, networkx, symbtools, requests, SALib) eagerly
+# would cost every worker memory and start-up time
+_LAZY_SUBPACKAGES = frozenset(
+    {
+        "compare",
+        "databases",
+        "distributions",
+        "experimental",
+        "fit",
+        "forward_sensitivities",
+        "fuzzy",
+        "mc",
+        "mca",
+        "nn",
+        "npe",
+        "plot",
+        "qa",
+        "report",
+        "sbml",
+        "scan",
+        "sensitivity",
+        "surrogates",
+        "symbolic",
+        "units",
+    }
+)
+
+
 def __getattr__(name: str) -> object:
-    # Subpackages only needed by some users, imported on first access
-    if name in {"nn", "npe", "sbml", "surrogates"}:
+    if name in _LAZY_SUBPACKAGES:
         return importlib.import_module(f"{__name__}.{name}")
     # Resolved lazily, see mxlpy.integrators.__getattr__
     if name in {"Diffrax", "Native"}:
@@ -189,8 +220,8 @@ __all__ = [
     "runners",
     "save",
     "sbml",
-    "forward_sensitivities",
     "scan",
+    "forward_sensitivities",
     "sensitivity",
     "surrogates",
     "symbolic",

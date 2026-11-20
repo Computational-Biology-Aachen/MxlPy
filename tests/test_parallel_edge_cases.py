@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from mxlpy import parallel
 from mxlpy.parallel import Cache, parallelise
 
 
@@ -96,3 +97,30 @@ def test_parallelise_sequential_correctness() -> None:
     values = dict(result)
     for i, x in inputs:
         assert values[i] == pytest.approx(x * x)
+
+
+def test_workers_are_capped_by_inputs_cpus_and_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(parallel, "cpu_count", lambda: 8)
+    monkeypatch.setattr(parallel, "_available_memory", lambda: None)
+    assert parallel._n_workers(None, 3) == 3
+    assert parallel._n_workers(None, 100) == 8
+    assert parallel._n_workers(None, 0) == 1
+    monkeypatch.setattr(
+        parallel, "_available_memory", lambda: 5 * parallel._WORKER_MEMORY
+    )
+    assert parallel._n_workers(None, 100) == 5
+    monkeypatch.setattr(parallel, "_available_memory", lambda: 0)
+    assert parallel._n_workers(None, 100) == 1
+
+
+def test_explicit_max_workers_is_only_capped_by_inputs() -> None:
+    assert parallel._n_workers(50, 100) == 50
+    assert parallel._n_workers(50, 2) == 2
+
+
+def test_loky_max_cpu_count_is_respected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOKY_MAX_CPU_COUNT", "2")
+    monkeypatch.setattr(parallel, "_available_memory", lambda: None)
+    assert parallel._n_workers(None, 100) == 2

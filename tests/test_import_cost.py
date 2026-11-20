@@ -14,14 +14,19 @@ import pytest
 import mxlpy
 
 HEAVY_MODULES = (
+    "SALib",
     "diffrax",
     "equinox",
     "jax",
     "keras",
     "libsbml",
     "llvmlite",
+    "matplotlib",
     "mxlpy_native",
+    "networkx",
+    "requests",
     "seaborn",
+    "symbtools",
     "tensorflow",
     "torch",
     "wasmtime",
@@ -51,3 +56,13 @@ def test_lazy_diffrax_resolves() -> None:
 
 def test_lazy_sbml_resolves() -> None:
     assert callable(mxlpy.sbml.read)
+
+
+def test_lazy_subpackages_resolve() -> None:
+    from mxlpy import plot, symbolic  # noqa: PLC0415
+
+    assert mxlpy.plot is plot
+    assert callable(mxlpy.fit.time_course)
+    assert callable(symbolic.check_identifiability)
+    with pytest.raises(AttributeError, match="no attribute"):
+        _ = mxlpy.does_not_exist
