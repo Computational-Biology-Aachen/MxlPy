@@ -512,3 +512,55 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         penalty=penalty,
         transform=transform,
     )
+
+
+###############################################################################
+# Dispatch on the kind of data, for routines fitting any of them
+###############################################################################
+
+
+def _fit_data(
+    model: _Model,
+    data: pd.Series | pd.DataFrame,
+    protocol: pd.DataFrame | None,
+    **kwargs: Any,
+) -> Result[Fit[Any]]:
+    """Fit a steady state (Series), time course (DataFrame) or protocol time course."""
+    if protocol is not None:
+        return protocol_time_course(model, data=data, protocol=protocol, **kwargs)  # type: ignore[arg-type]
+    if isinstance(data, pd.Series):
+        return _steady_state(model, data=data, **kwargs)
+    return time_course(model, data=data, **kwargs)  # type: ignore[arg-type]
+
+
+def _evaluate_loss(
+    model: _Model,
+    data: pd.Series | pd.DataFrame,
+    protocol: pd.DataFrame | None,
+    *,
+    y0: dict[str, float] | None,
+    runner: Any,
+    loss_fn: LossFn,
+    postprocess_fn: PostprocessFn | None,
+    standard_scale: bool,
+) -> float:
+    """Loss of a model with nothing to fit, for any kind of data."""
+    if protocol is not None:
+        fn: FitResidual = protocol_time_course_residual
+    elif isinstance(data, pd.Series):
+        fn = steady_state_residual
+    else:
+        fn = time_course_residual
+    settings = _Settings(
+        model=model,
+        data=data,
+        y0=y0,
+        runner=default_runner(model) if runner is None else runner,
+        loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
+        p_names=[],
+        v_names=[],
+        standard_scale=standard_scale,
+        protocol=_normalise_protocol_index(protocol) if protocol is not None else None,
+    )
+    return float(fn({}, settings=settings))

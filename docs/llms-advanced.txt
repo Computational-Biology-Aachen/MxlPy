@@ -2,7 +2,7 @@
 
 [← back to index](llms.txt)
 
-Symbolic analysis, identifiability, stability visualisation, units, and parallel execution / caching.
+Symbolic analysis, identifiability, model selection, stability visualisation, units, and parallel execution / caching.
 
 ## Symbolic analysis (`mxlpy.symbolic`)
 
@@ -76,6 +76,51 @@ fim.non_identifiable()       # null-space combinations (rows), empty if all iden
 fim.matrix, fim.design, fim.rank, fim.chi2
 plot.heatmap(fim.correlation, annotate=True)
 ```
+
+## Model selection (`mxlpy.select`)
+
+Compare candidate model structures by the log-likelihood of their best multistart fit and their number of estimated parameters `k` (AIC `2k − 2LL`, AICc `AIC + 2k(k+1)/(n−k−1)`, BIC `k ln n − 2LL`, `n` = finite data points), or by likelihood-ratio tests of nested models. Needs a likelihood loss (`fit.GaussianNll`); `LL = −loss` up to a constant shared by all candidates.
+
+```python
+from mxlpy import fit, plot, select
+from mxlpy.distributions import LogUniform
+
+space = select.ModelSpace(
+    base=model,                                   # all switches off; never modified
+    switches={
+        "feedback": select.free_parameter("k_fb", fixed_value=0.0),  # estimated when on, fixed when off (nested)
+        "degradation": lambda m: m.add_parameter("kd", 0.1).add_reaction("deg", ...),  # applied when on
+        # select.Switch(on=fn, off=fn, fix_on={...}, fix_off={...}) for the general case
+    },
+    # allowed=lambda on: len(on & {"mm", "hill"}) <= 1,   # exclude combinations
+)
+selection = select.run(
+    space,
+    data,                    # Series: steady state, DataFrame: time course (+ protocol=...)
+    {"k1": LogUniform(1e-2, 1e2), "k_fb": LogUniform(1e-3, 1e1), "kd": 0.1},  # p0: estimated params (+ initial values) with start distribution or fixed start; each candidate fits those its model has and doesn't fix; unknown names raise
+    loss_fn=fit.GaussianNll(sigma=0.05),
+    criterion="aicc",        # "aic" | "aicc" | "bic" | "lrt" (significance=0.05)
+    method="adaptive",       # "forward" | "backward" | "adaptive" (forward/backward/swap, FAMoS-like) | "brute_force"
+    n_starts=10,             # random starts per candidate, plus one warm start from the parent's optimum
+    # start=None (forward/adaptive: all off, backward: all on), minimizer=None (LeastSquaresMinimizer),
+    # y0, protocol, runner, bounds, prior (MAP fits; criteria use the data likelihood), penalty, transform, postprocess_fn,
+    # min_improvement=0.0, max_candidates=None (budget; stops with selection.complete False),
+    # reuse=previous_selection (don't refit known candidates), seed=0, parallel=True, max_workers, timeout
+)
+selection.table              # per candidate: k, n, log_likelihood, aic, aicc, bic, delta, weight, converged, n_failed, parent, one bool column per switch
+selection.best_id, selection.best_model, selection.path   # selected model (fitted values set), search path
+selection["feedback"].best_pars                            # CandidateFit: best_pars, fixed, loss, penalty, objectives (per start), converged(), model
+selection.lrt("base", "feedback")                          # LikelihoodRatio(statistic, df, p_value).rejects(significance=0.05)
+fig, ax = plot.model_selection(selection)                  # Δ criterion bars with weights
+
+# Explicit variants instead of a space
+select.compare({"base": m0, "+feedback": m1}, data, p0, loss_fn=nll, criterion="bic", n_starts=10)
+
+# Criteria on their own (e.g. for other fits)
+select.aic(ll, k), select.aicc(ll, k, n), select.bic(ll, k, n), select.model_weights(series), select.lrt(ll_null, ll_alt, df)
+```
+
+Search: each step fits all neighbours (one switch on / off / exchanged) of the current model in parallel, all starts at once, and moves to the best if it lowers the criterion by more than `min_improvement` (LRT: forward if significantly better, backward if not significantly worse). Each candidate is warm-started from the optimum of the model it neighbours; with `free_parameter` the new parameter starts at its fixed value, so the warm start reproduces the parent's fit. Random starts are seeded per candidate.
 
 ## Stability visualisation
 

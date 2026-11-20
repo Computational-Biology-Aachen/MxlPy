@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.identify import ProfileLikelihood
     from mxlpy.linear_label_map import LinearLabelMapper
+    from mxlpy.select import InformationCriterion, Selection
     from mxlpy.types import Array, ArrayLike
 
 
@@ -83,6 +84,7 @@ __all__ = [
     "lines",
     "lines_grouped",
     "lines_mean_std_from_2d_idx",
+    "model_selection",
     "network",
     "one_axes",
     "profile_likelihood",
@@ -1714,6 +1716,91 @@ def profile_likelihood(
         if i % n_cols == 0:
             ax.set_ylabel("Δ objective")
     return fig, axs
+
+
+def model_selection(
+    selection: Selection,
+    *,
+    criterion: InformationCriterion | None = None,
+    n_max: int | None = 20,
+    ax: Axes | None = None,
+    grid: bool = True,
+) -> FigAx:
+    """Plot the criterion differences of the candidates of a model selection.
+
+    One horizontal bar per candidate shows its difference to the best
+    candidate's criterion (best at the top), annotated with its weight. The
+    selected model's label is bold. Differences above 2 count as some, above
+    10 as strong evidence against a model (dotted lines). The x-axis is
+    logarithmic above 10 if a difference exceeds 100.
+
+    Parameters
+    ----------
+    selection
+        Result of `mxlpy.select.run` or `mxlpy.select.compare`
+    criterion
+        Information criterion to plot, by default the selection's (AICc for
+        likelihood-ratio tests)
+    n_max
+        Maximum number of candidates to show, the best ones
+    ax
+        Axes to draw on, a new figure by default
+    grid
+        Whether to add a grid
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
+    from mxlpy.select import model_weights  # noqa: PLC0415
+
+    if criterion is None:
+        criterion = "aicc" if selection.criterion == "lrt" else selection.criterion
+    values = pd.Series(
+        {k: c.criterion(criterion) for k, c in selection.candidates.items()}
+    )
+    values = values.loc[np.isfinite(values.to_numpy(dtype=float))]
+    values = values.sort_values(kind="stable")
+    names = [str(k) for k in values.index]
+    x = values.to_numpy(dtype=float)
+    delta = x - x.min() if len(x) else x
+    # Weights among all candidates, before truncating to n_max
+    weights = model_weights(values).to_numpy(dtype=float)
+    if n_max is not None:
+        names, delta, weights = names[:n_max], delta[:n_max], weights[:n_max]
+    new_figure = ax is None
+    fig, ax = _default_fig_ax(
+        ax=ax,
+        grid=grid,
+        figsize=(6, max(2.0, 0.35 * len(delta) + 1)),
+    )
+    y = np.arange(len(delta))
+    ax.barh(y, delta, color="C0")
+    for yi, (d, w) in enumerate(zip(delta, weights, strict=True)):
+        ax.annotate(
+            f"{w:.2f}",
+            (d, yi),
+            xytext=(3, 0),
+            textcoords="offset points",
+            va="center",
+            fontsize="small",
+        )
+    for level in (2, 10):
+        ax.axvline(level, color="0.4", linestyle="dotted", linewidth=1)
+    ax.set_yticks(y, names)
+    for label in ax.get_yticklabels():
+        if label.get_text() == selection.best_id:
+            label.set_fontweight("bold")
+    if len(delta) and delta.max() > 100:  # noqa: PLR2004
+        ax.set_xscale("symlog", linthresh=10)
+    ax.set_xlim(left=0)
+    ax.invert_yaxis()
+    ax.set(xlabel=f"Δ {criterion.upper()} (labels: weights)")
+    if new_figure:
+        fig.tight_layout()
+    return fig, ax
 
 
 ##########################################################################
