@@ -103,8 +103,8 @@ class Simulator(Generic[M]):
     _integrator_type: IntegratorType
     _time_shift: float | None
     _errors: list[Exception]
-    # Compiled jacobian (None if unsupported) and the model cache it was built
-    # for: valid until the model changes, which replaces its cache
+    # Compiled jacobian (None if unsupported) and the model structure it was
+    # built for: valid until the structure changes, see `StructureToken`
     _jacobian: tuple[object, Callable | None] | None
 
     def __repr__(self) -> str:
@@ -218,9 +218,10 @@ class Simulator(Generic[M]):
     def _get_jacobian(
         self, model: KineticModelBuilder | OdeModelBuilder
     ) -> Callable | None:
-        model.get_parameter_values()  # (re)creates the cache
-        cache = model._cache  # noqa: SLF001
-        if self._jacobian is not None and self._jacobian[0] is cache:
+        # The compiled Jacobian reads the current values itself, so it stays
+        # valid until the structure of the model changes
+        structure = model._structure  # noqa: SLF001
+        if self._jacobian is not None and self._jacobian[0] is structure:
             return self._jacobian[1]
         jac_fn = None
         try:
@@ -229,7 +230,7 @@ class Simulator(Generic[M]):
             _LOGGER.warning(
                 "Not using a jacobian, as it couldn't be compiled: %s", e, stacklevel=3
             )
-        self._jacobian = (cache, jac_fn)
+        self._jacobian = (structure, jac_fn)
         return jac_fn
 
     def clear_results(self) -> None:

@@ -5,8 +5,9 @@
 from __future__ import annotations
 
 import functools
+import weakref
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import sympy
@@ -30,6 +31,26 @@ if TYPE_CHECKING:
     from mxlpy.types import Array
 
 __all__ = ["jacobian_fn"]
+
+# Code generated from a model's structure, per structure token (see
+# `mxlpy.types.StructureToken`). Parameter values, data constants and initial
+# values are runtime inputs, so entries stay valid across value updates, and
+# they're dropped with the token, i.e. once the structure changes or the
+# model is garbage collected.
+_GENERATED: weakref.WeakKeyDictionary[object, dict[tuple, Any]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _generated[T](
+    model: KineticModelBuilder | OdeModelBuilder, key: tuple, build: Callable[[], T]
+) -> T:
+    """`build()` for the model's current structure, generated only once."""
+    entries = _GENERATED.setdefault(model._structure, {})  # noqa: SLF001
+    if key not in entries:
+        entries[key] = build()
+    return entries[key]
+
 
 type _RawJacobian = Callable[[float, Array, Array], tuple[float, ...]]
 type _RawDerivatives = Callable[[float, Array, Array, Array], tuple[float, ...]]
@@ -77,7 +98,9 @@ def jacobian_fn(
         fn = compiled.fn
         constant_names = compiled.constant_names
     elif isinstance(model, KineticModelBuilder):
-        expanded, nonzero = _expanded(model)
+        expanded, nonzero = _generated(
+            model, ("expanded_jacobian",), lambda: _expanded(model)
+        )
         fn = functools.partial(_without_constants, expanded)
     else:
         msg = "The expanded method only supports KineticModelBuilder"
@@ -209,8 +232,8 @@ class CompiledDerivatives:
         Derived quantities computed only from model data. They can't be
         differentiated, but are constant, so their values are runtime inputs
     constants
-        Values of `constant_names` at compile time, see `constant_values`
-        for refreshing them after the model data changed
+        Values of `constant_names` when first compiled for this structure,
+        see `constant_values` for the current ones
 
     """
 
@@ -263,6 +286,28 @@ def _data_constants(model: KineticModelBuilder | OdeModelBuilder) -> list[str]:
 
 
 def compile_derivatives(
+    model: KineticModelBuilder | OdeModelBuilder,
+    *,
+    wrt: list[str] | None = None,
+    outputs: list[str] | None = None,
+) -> CompiledDerivatives:
+    """Generate forward-mode code propagating derivatives through the graph.
+
+    Generated once per model structure and `wrt` / `outputs`, so repeated
+    calls (e.g. one per Jacobian of a fit) after only parameter or variable
+    values changed reuse the code. See `_compile_derivatives`.
+    """
+    key = (
+        "derivatives",
+        None if wrt is None else tuple(wrt),
+        None if outputs is None else tuple(outputs),
+    )
+    return _generated(
+        model, key, lambda: _compile_derivatives(model, wrt=wrt, outputs=outputs)
+    )
+
+
+def _compile_derivatives(
     model: KineticModelBuilder | OdeModelBuilder,
     *,
     wrt: list[str] | None = None,

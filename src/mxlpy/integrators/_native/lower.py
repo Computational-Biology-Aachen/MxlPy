@@ -40,6 +40,7 @@ from mxlpy.meta.array_fns import (
     simpson_weights,
 )
 from mxlpy.meta.source_tools import replace_symbols
+from mxlpy.types import StructureToken
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Hashable
@@ -221,6 +222,7 @@ def lower(model: Any) -> Lowered:
     without_readouts = copy.copy(model)
     without_readouts._readouts = {}  # noqa: SLF001
     without_readouts._cache = None  # noqa: SLF001
+    without_readouts._structure = StructureToken()  # noqa: SLF001
     try:
         nsm = _normalized_symbolic_model(without_readouts, par_names, None, {})
     except Exception as e:

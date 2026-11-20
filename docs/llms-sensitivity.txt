@@ -103,5 +103,6 @@ KineticRunner().steady_state_sensitivities(model, ["k1"])
 - `method="forward"` raises if symbolic differentiation isn't possible; `displacement` (default `1e-3`) is the relative finite-difference step — smaller steps amplify integrator noise.
 - Integrators compiling the model themselves (`compiles_model = True`: `Native`, `Diffrax`) always use finite differences.
 - Returns `Result[ForwardSensitivities]`; integration failures are values, call `.unwrap_or_err()`.
+- Generated code is cached per model structure: parameter/variable value updates reuse it, structural changes (adding/removing/redefining components, initial assignments) regenerate it. Copies and pickled models share it.
 - `Simulator(model, use_jacobian=True)` now also compiles the analytic Jacobian for `OdeModelBuilder`.
 

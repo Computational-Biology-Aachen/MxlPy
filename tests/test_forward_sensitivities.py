@@ -1,7 +1,9 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
+import copy
 import functools
 import math
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -321,3 +323,76 @@ def test_jacobian_refreshes_data_constants() -> None:
     model.update_data("d", pd.Series([10.0, 20.0]))
     assert jac(0.0, np.array([1.0]))[0, 0] == pytest.approx(-30.0)
 
+
+###############################################################################
+# Caching of the generated code
+###############################################################################
+
+
+def _count_compiles(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    calls: list[int] = []
+    original = mxlpy.symbolic.jacobian._compile_derivatives
+
+    def counting(*args: object, **kwargs: object) -> object:
+        calls.append(1)
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(mxlpy.symbolic.jacobian, "_compile_derivatives", counting)
+    return calls
+
+
+def test_compiled_derivatives_survive_value_updates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _count_compiles(monkeypatch)
+    model = _chain()
+    forward_sensitivities.time_course(model, T, ["k1"]).unwrap_or_err()
+    model.update_parameter("k1", 0.7).update_variable("x", 3.0)
+    sens = forward_sensitivities.time_course(model, T, ["k1"]).unwrap_or_err()
+    assert len(calls) == 1
+    # The reused code reads the new values: x(t) = 3 exp(-0.7 t)
+    np.testing.assert_allclose(
+        sens.derivatives["k1"]["x"], -T * 3.0 * np.exp(-0.7 * T), atol=1e-6
+    )
+
+
+def test_structural_changes_recompile(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _count_compiles(monkeypatch)
+    model = _chain()
+    forward_sensitivities.time_course(model, T, ["k1"]).unwrap_or_err()
+    model.add_reaction(
+        "v3", fns.mass_action_1s, args=["y", "k1"], stoichiometry={"y": -1}
+    )
+    forward_sensitivities.time_course(model, T, ["k1"]).unwrap_or_err()
+    assert len(calls) == 2
+    # Initial assignments are part of the structure
+    model.add_parameter("k3", 1.0)
+    model.update_parameter("k3", InitialAssignment(fn=fns.twice, args=["k1"]))
+    forward_sensitivities.time_course(model, T, ["k1"]).unwrap_or_err()
+    assert len(calls) == 3
+    # Different wrt is a different compilation
+    forward_sensitivities.time_course(model, T, ["k2"]).unwrap_or_err()
+    assert len(calls) == 4
+
+
+def test_copies_share_the_compilation_until_they_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _count_compiles(monkeypatch)
+    model = _chain()
+    forward_sensitivities.time_course(model, T, ["k1"]).unwrap_or_err()
+    # Copies and pickled models (parallel workers) reuse the code
+    for clone in (copy.deepcopy(model), pickle.loads(pickle.dumps(model))):
+        forward_sensitivities.time_course(clone, T, ["k1"]).unwrap_or_err()
+    assert len(calls) == 1
+    # A copy changing its structure gets its own, the original keeps its own
+    clone = copy.deepcopy(model)
+    clone.add_reaction(
+        "v3", fns.mass_action_1s, args=["x", "k2"], stoichiometry={"x": -1}
+    )
+    forward_sensitivities.time_course(clone, T, ["k1"]).unwrap_or_err()
+    sens = forward_sensitivities.time_course(model, T, ["k1"]).unwrap_or_err()
+    assert len(calls) == 2
+    np.testing.assert_allclose(
+        sens.derivatives["k1"]["x"], -T * 2.0 * np.exp(-0.5 * T), atol=1e-6
+    )

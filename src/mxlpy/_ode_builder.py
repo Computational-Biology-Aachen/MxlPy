@@ -37,6 +37,7 @@ from mxlpy.types import (
     Parameter,
     Readout,
     Slider,
+    StructureToken,
 )
 from mxlpy.unit_inference import (
     MdText,
@@ -204,6 +205,26 @@ def _invalidate_cache(method: Callable[Param, RetType]) -> Callable[Param, RetTy
     ) -> RetType:
         self = cast(OdeModelBuilder, args[0])
         self._cache = None
+        self._structure = StructureToken()
+        return method(*args, **kwargs)
+
+    return wrapper  # type: ignore
+
+
+def _invalidate_values(method: Callable[Param, RetType]) -> Callable[Param, RetType]:
+    """Like `_invalidate_cache`, for methods only changing values.
+
+    Keeps the structure token, so code generated from the structure stays
+    valid. Methods that can also change the structure (e.g. setting an
+    initial assignment) replace it themselves.
+    """
+
+    def wrapper(
+        *args: Param.args,
+        **kwargs: Param.kwargs,
+    ) -> RetType:
+        self = cast(OdeModelBuilder, args[0])
+        self._cache = None
         return method(*args, **kwargs)
 
     return wrapper  # type: ignore
@@ -296,6 +317,9 @@ class OdeModelBuilder:
 
     _ids: dict[str, str] = field(default_factory=dict, repr=False)
     _cache: ModelCache | None = field(default=None, repr=False)
+    _structure: StructureToken = field(
+        default_factory=StructureToken, repr=False, compare=False
+    )
     _diff_eqs: dict[str, DiffEq] = field(default_factory=dict)
     _parameters: dict[str, Parameter] = field(default_factory=dict)
     _derived: dict[str, Derived] = field(default_factory=dict)
@@ -811,7 +835,7 @@ class OdeModelBuilder:
     # Parameters - update
     #####################################
 
-    @_invalidate_cache
+    @_invalidate_values
     def update_parameter(
         self,
         name: str,
@@ -866,6 +890,11 @@ class OdeModelBuilder:
 
         parameter = self._parameters[name]
         if value is not None:
+            if isinstance(value, InitialAssignment) or isinstance(
+                parameter.value, InitialAssignment
+            ):
+                # Initial assignments are part of the structure
+                self._structure = StructureToken()
             parameter.value = value
         if unit is not None:
             parameter.unit = unit
@@ -1366,7 +1395,7 @@ class OdeModelBuilder:
             cache = self._create_cache()
         return cache.initial_conditions
 
-    @_invalidate_cache
+    @_invalidate_values
     def update_variable(
         self,
         name: str,
@@ -1394,6 +1423,11 @@ class OdeModelBuilder:
         if name not in self._diff_eqs:
             msg = f"Variable {name!r} not found. Available variables: {sorted(self._diff_eqs)}"
             raise KeyError(msg)
+        if isinstance(initial_value, InitialAssignment) or isinstance(
+            self._diff_eqs[name].initial_value, InitialAssignment
+        ):
+            # Initial assignments are part of the structure
+            self._structure = StructureToken()
         self._diff_eqs[name].initial_value = initial_value
         return self
 

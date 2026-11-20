@@ -18,6 +18,8 @@ Classes:
 
 from __future__ import annotations
 
+import uuid
+import weakref
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import (
@@ -57,6 +59,7 @@ __all__ = [
     "Rhs",
     "SerializationError",
     "Slider",
+    "StructureToken",
     "Variable",
 ]
 
@@ -79,6 +82,51 @@ if TYPE_CHECKING:
     import sympy
 
     from mxlpy._kinetic_builder import KineticModelBuilder
+
+
+class StructureToken:
+    """Identity of a model builder's structure.
+
+    Builders replace their token on every structural change (adding, removing
+    or redefining components), but not when only parameter or variable values
+    change. Code generated from the structure alone, like compiled
+    derivatives, is cached per token.
+
+    Tokens are never mutated, only replaced, so copies of a model can share
+    one: copying keeps it, and unpickling (e.g. in the workers of a parallel
+    scan) resolves to the same token within a process. A copy changing its
+    structure gets a new token.
+    """
+
+    __slots__ = ("__weakref__", "key")
+
+    def __init__(self, key: str | None = None) -> None:
+        self.key = uuid.uuid4().hex if key is None else key
+        _STRUCTURE_TOKENS[self.key] = self
+
+    def __reduce__(self) -> tuple[Callable[[str], StructureToken], tuple[str]]:
+        """Unpickle to this process's token with the same key."""
+        return _structure_token, (self.key,)
+
+    def __copy__(self) -> StructureToken:
+        """Share the token, it's immutable."""
+        return self
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> StructureToken:
+        """Share the token, it's immutable."""
+        return self
+
+
+_STRUCTURE_TOKENS: weakref.WeakValueDictionary[str, StructureToken] = (
+    weakref.WeakValueDictionary()
+)
+
+
+def _structure_token(key: str) -> StructureToken:
+    """The token with `key` in this process, created if there is none yet."""
+    if (token := _STRUCTURE_TOKENS.get(key)) is None:
+        token = StructureToken(key)
+    return token
 
 
 class IntegrationFailure(Exception):
