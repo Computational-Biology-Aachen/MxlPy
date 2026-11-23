@@ -14,27 +14,28 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
-from mxlpy import fit
-from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit._gradient import _log_names
-from mxlpy.fit._single import _evaluate_loss, _fit_data
-from mxlpy.fit.abstract import _split_p0
-from mxlpy.fit.losses import _is_likelihood
-from mxlpy.fit.penalties import collect_penalties, fix_penalties
+from mxlpy.identify._problem import (
+    BETTER_OPTIMUM,
+    _Problem,
+    check_threshold,
+    likelihood_threshold,
+    refit,
+    setup_problem,
+    start_values,
+)
 from mxlpy.parallel import parallelise
-from mxlpy.runners import default_runner, precompile
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy._ode_builder import OdeModelBuilder
+    from mxlpy import fit
     from mxlpy.distributions import Prior
     from mxlpy.fit._gradient import Transform
     from mxlpy.fit.abstract import PostprocessFn
     from mxlpy.fit.penalties import Penalty
+    from mxlpy.identify._problem import _Model
     from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
 
 __all__ = [
@@ -56,8 +57,6 @@ type Identifiability = Literal[
 type SideStatus = Literal["threshold", "bound", "max_steps", "failed"]
 """Why a profile stopped on one side: it crossed the threshold, reached the
 end of the profiled range, ran out of steps or the fits failed."""
-
-type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
 
 # Profiles whose largest increase stays below this fraction of the threshold
 # count as flat
@@ -184,6 +183,9 @@ class ProfileLikelihood:
     alpha
         Confidence level the threshold was computed from, None if the
         threshold was given
+    log_parameters
+        Fitted parameters with a `log` transform, whose profiles step in
+        log10 space
     better_optimum
         Best parameters found on a profile, if they improve on `optimum`.
         Then the fit the profiles started from was a local optimum: refit
@@ -196,6 +198,7 @@ class ProfileLikelihood:
     objective: float
     threshold: float
     alpha: float | None
+    log_parameters: list[str]
     better_optimum: dict[str, float] | None = None
 
     def __getitem__(self, name: str) -> Profile:
@@ -219,92 +222,6 @@ class ProfileLikelihood:
             },
             index=pd.Index(list(self.profiles), name="parameter"),
         )
-
-
-###############################################################################
-# Constrained fits
-###############################################################################
-
-
-@dataclass(kw_only=True)
-class _Problem:
-    """A fit with some of its parameters held fixed."""
-
-    model: _Model
-    data: pd.Series | pd.DataFrame
-    loss_fn: LossFn
-    minimizer: MinimizerProtocol
-    y0: dict[str, float] | None
-    protocol: pd.DataFrame | None
-    runner: Any
-    bounds: Bounds
-    penalties: list[Penalty]
-    transform: Transform | None
-    postprocess_fn: PostprocessFn | None
-    standard_scale: bool
-
-    def _subset(self, names: Sequence[str]) -> tuple[Bounds, Transform | None]:
-        bounds = {k: v for k, v in self.bounds.items() if k in names}
-        if isinstance(self.transform, dict):
-            return bounds, {k: v for k, v in self.transform.items() if k in names}
-        return bounds, self.transform
-
-    def _evaluate(self, model: _Model, y0: dict[str, float] | None) -> float:
-        """Loss without free parameters, there is nothing to fit."""
-        return _evaluate_loss(
-            model,
-            self.data,
-            self.protocol,
-            y0=y0,
-            runner=self.runner,
-            loss_fn=self.loss_fn,
-            postprocess_fn=self.postprocess_fn,
-            standard_scale=self.standard_scale,
-        )
-
-    def fit(
-        self,
-        model: _Model,
-        fixed: dict[str, float],
-        p0: dict[str, float],
-    ) -> tuple[float, dict[str, float]] | None:
-        """Objective and parameters of the best fit with `fixed` values.
-
-        `model` is modified, pass a copy owned by the caller.
-        """
-        fixed_p, fixed_v = _split_p0(model, fixed)
-        for k in fixed_p:
-            model.update_parameter(k, fixed[k])
-        y0 = self.y0
-        if fixed_v:
-            y0 = {**(self.y0 or {}), **{k: fixed[k] for k in fixed_v}}
-        penalties, constant = fix_penalties(self.penalties, fixed)
-        if constant == math.inf:
-            # Outside the support of a prior of a fixed parameter
-            return math.inf, {**p0, **fixed}
-        if not p0:
-            loss = self._evaluate(model, y0)
-            return (loss + constant, dict(fixed)) if math.isfinite(loss) else None
-
-        bounds, transform = self._subset(list(p0))
-        kwargs: dict[str, Any] = {
-            "p0": p0,
-            "minimizer": self.minimizer,
-            "y0": y0,
-            "runner": self.runner,
-            "loss_fn": self.loss_fn,
-            "postprocess_fn": self.postprocess_fn,
-            "standard_scale": self.standard_scale,
-            "bounds": bounds,
-            "penalty": penalties,
-            "transform": transform,
-            "as_deepcopy": False,
-        }
-        match _fit_data(model, self.data, self.protocol, **kwargs).value:
-            case fit.Fit() as best if math.isfinite(best.objective):
-                return best.objective + constant, {**best.best_pars, **fixed}
-            case _:
-                return None
 
 
 ###############################################################################
@@ -557,64 +474,38 @@ def profile_likelihood(
         >>> plot.profile_likelihood(profiles)
 
     """
-    if isinstance(parameters, fit.Fit):
-        parameters = parameters.best_pars
-    start = {k: float(v) for k, v in parameters.items()}
+    start = start_values(parameters)
     names = list(start) if names is None else list(names)
     if unknown := sorted(set(names) - set(start)):
         msg = f"Profiled parameters have to be fitted ones, not {unknown}"
-        raise ValueError(msg)
-    p_names, v_names = _split_p0(model, start)
-    if unknown := sorted(set(start) - set(p_names) - set(v_names)):
-        msg = f"Unknown parameters or variables: {unknown}"
         raise ValueError(msg)
     if max_steps < 1:
         msg = f"max_steps has to be positive, got {max_steps}"
         raise ValueError(msg)
     if threshold is None:
-        if not _is_likelihood(loss_fn):
-            msg = (
-                "Confidence thresholds need a likelihood loss like fit.GaussianNll, "
-                "pass threshold= for other losses"
-            )
-            raise ValueError(msg)
-        if not 0 < alpha < 1:
-            msg = f"alpha has to be between 0 and 1, got {alpha}"
-            raise ValueError(msg)
-        threshold = float(stats.chi2.ppf(alpha, df=1) / 2)
+        threshold = likelihood_threshold(loss_fn, alpha, "Confidence thresholds")
         used_alpha: float | None = alpha
     else:
-        if not (math.isfinite(threshold) and threshold > 0):
-            msg = f"threshold has to be positive, got {threshold}"
-            raise ValueError(msg)
+        threshold = check_threshold(threshold)
         used_alpha = None
-    if isinstance(model, SteadyStateModelBuilder) and y0 is not None:
-        msg = "A SteadyStateModelBuilder has no variables, so y0 doesn't apply"
-        raise TypeError(msg)
-
-    model = deepcopy(model)
-    runner = default_runner(model) if runner is None else runner
-    precompile(runner, model)
-    log = _log_names(start, transform)
-    problem = _Problem(
-        model=model,
-        data=data,
+    problem = setup_problem(
+        model,
+        data,
+        start,
         loss_fn=loss_fn,
-        minimizer=fit.LeastSquaresMinimizer() if minimizer is None else minimizer,
+        minimizer=minimizer,
         y0=y0,
         protocol=protocol,
         runner=runner,
-        bounds={} if bounds is None else dict(bounds),
-        penalties=collect_penalties(prior, penalty, list(start)),
+        bounds=bounds,
+        prior=prior,
+        penalty=penalty,
         transform=transform,
         postprocess_fn=postprocess_fn,
         standard_scale=standard_scale,
     )
-
-    if (best := problem.fit(deepcopy(model), {}, start)) is None:
-        msg = "Refitting the optimum failed"
-        raise ValueError(msg)
-    objective, start = best
+    log = _log_names(start, transform)
+    objective, start = refit(problem, start)
 
     coordinates = {}
     for k in names:
@@ -642,7 +533,7 @@ def profile_likelihood(
     )
 
     profiles = {}
-    best_delta, better = -_FLAT * threshold, None
+    best_delta, better = -BETTER_OPTIMUM * threshold, None
     for k in names:
         lower, lower_status = walks[(k, -1)]
         upper, upper_status = walks[(k, 1)]
@@ -675,5 +566,6 @@ def profile_likelihood(
         objective=objective,
         threshold=threshold,
         alpha=used_alpha,
+        log_parameters=sorted(log),
         better_optimum=better,
     )

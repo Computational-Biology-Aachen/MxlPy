@@ -49,10 +49,47 @@ profiles.ci                  # DataFrame: value, lower, upper, identifiability (
 profiles["k1"].delta         # Δ objective indexed by the profiled values
 profiles["k1"].parameters    # all fitted values along the profile (which parameters compensate)
 profiles.better_optimum      # set (with a warning) if a profile found a better fit: refit + profile again
+profiles.log_parameters      # parameters profiled in log10 steps
 fig, axs = plot.profile_likelihood(profiles)
 ```
 
 Identifiability: `identifiable` (threshold crossed on both sides), `practically_non_identifiable` (a side reaches the end of the range without crossing), `structurally_non_identifiable` (flat, < 1% of the threshold, over the whole range), `inconclusive` (a side ran out of steps or its fits failed). The profiled parameter's prior stays in the objective at its fixed values; the edge of its support (e.g. `Uniform`) ends the profile like a bound.
+
+### Fast identifiability test (`identify.identifiability_test`)
+
+Cheap numerical check for flat directions ("pulling" test, D2D's `arIdentifiablityTest`): refits `n_fits` times from random points in a ball around the (refitted) optimum with a penalty `w·(‖u − u*‖ − radius)²` pulling the parameters to distance `radius`. A fit that reaches ≥ 90% of the radius without increasing the objective by more than `threshold` is *flat*; parameters that moved by ≥ `min_displacement·radius` in a flat fit are non-identifiable. Distances: log10 units for log-transformed parameters (default `transform="log"`, so `radius=1` = one decade), `θ/|θ*|` for linear ones. Costs `n_fits` fits regardless of the number of parameters; a check, not a proof (follow up with profiles of the flagged parameters).
+
+```python
+test = identify.identifiability_test(
+    model, data, res,        # same inputs as profile_likelihood (fit.Fit or {name: value}, refitted first)
+    loss_fn=nll,
+    # radius=1.0, n_fits=10, recursive=False, seed=0,
+    # threshold=None (likelihood: chi2.ppf(alpha, 1) / 2; else threshold_rtol * objective, threshold_rtol=0.05; raises for ~0 objective)
+    # min_displacement=0.1, transform="log" (non-positive parameters need "linear"),
+    # minimizer=None (LeastSquaresMinimizer: needs GaussianNll / mean_squared, else LocalScipyMinimizer),
+    # y0, protocol, runner, bounds, prior, penalty, postprocess_fn, standard_scale, parallel=True, max_workers
+)
+test.is_identifiable         # no flat direction in the first round
+test.non_identifiable        # parameters moving along a flat direction (any round)
+test.displacement            # Series: max |Δu| per parameter (over flat fits), descending
+test.fixed                   # recursive=True: parameters fixed (most displaced first) until a round passes
+test.rounds[0].fits          # DataFrame per pulled fit: delta, distance, reached, flat (NaN delta = failed)
+test.rounds[0].n_blocked     # fits short of the radius within the threshold (bounds) -> warning, inconclusive
+test.rounds[0].displacement, test.rounds[0].parameters
+test.better_optimum          # set (with a warning) if a pulled fit improved on the optimum
+fig, axs = plot.identifiability_test(test)   # displacement bars + Δ objective vs distance
+```
+
+`identify.related_parameters(profiles, *, names=None, r2=0.95, min_change=1e-3)` finds identifiable combinations (MOTA-like) from `profile_likelihood` results: per non-identifiable profile (default), greedy forward regression of the profiled coordinate on the other parameters' paths (points within the threshold) until `R² ≥ r2`. Coordinates: log10 for `profiles.log_parameters`, else `θ/|θ*|`.
+
+```python
+related = identify.related_parameters(profiles)
+related.groups               # [["beta", "c"]], relations sharing parameters merged
+rel = related.relations[0]   # ParameterRelation: profile, coefficients (Series, profiled = 1), collinear, r2
+print(rel)                   # "1·log10(beta) +1·log10(c) ≈ const" -> beta·c is identifiable
+```
+
+Parameters moving in lockstep along a profile (multi-dimensional flat directions) can't be separated by one path: one gets the coefficient, the others are listed in `collinear` (still in `groups`); use `fisher_information(...).non_identifiable()` for exact combinations.
 
 ### Fisher information (`identify.fisher_information`)
 
