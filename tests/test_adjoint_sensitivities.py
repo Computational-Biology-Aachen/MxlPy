@@ -18,6 +18,7 @@ from mxlpy import (
     fit,
     fns,
     forward_sensitivities,
+    make_protocol,
 )
 from mxlpy.adjoint_sensitivities import _native as native_adjoint
 from mxlpy.distributions import Normal
@@ -414,18 +415,33 @@ def test_compiled_adjoint_initial_assignments() -> None:
     assert cast(float, res.gradient["k"]) == pytest.approx(np.sum(-8 * t * e), rel=1e-6)
 
 
-def test_wasm_backend_uses_the_python_adjoint() -> None:
-    integrator = _native(backend="wasm")
-    w = _cotangents(["x", "y"], T)
-    adj = adjoint_sensitivities.time_course(
-        _chain(), w, ["k1", "k2"], method="adjoint", integrator=integrator
-    ).unwrap_or_err()
-    fwd = adjoint_sensitivities.time_course(
-        _chain(), w, ["k1", "k2"], method="forward"
-    ).unwrap_or_err()
-    assert adj.adjoint is not None
-    assert len(adj.adjoint) > 1
-    np.testing.assert_allclose(adj.gradient, fwd.gradient, rtol=RTOL)
+@pytest.mark.parametrize("method", ["Radau", "LSODA"])
+def test_compiled_adjoint_wasm(method: str) -> None:
+    integrator = _native(backend="wasm", method=method)
+    for protocol in (None, _PROTOCOL):
+        model = _with_input()
+        w = _cotangents(["x", "y", "v1"], T)
+        wrt = ["k1", "k2", "x"]
+        if protocol is None:
+            adj = adjoint_sensitivities.time_course(
+                model, w, wrt, method="adjoint", integrator=integrator
+            ).unwrap_or_err()
+            ref = adjoint_sensitivities.time_course(
+                model, w, wrt, method="forward"
+            ).unwrap_or_err()
+        else:
+            adj = adjoint_sensitivities.protocol_time_course(
+                model, protocol, w, wrt, method="adjoint", integrator=integrator
+            ).unwrap_or_err()
+            ref = adjoint_sensitivities.protocol_time_course(
+                model, protocol, w, wrt, method="adjoint"
+            ).unwrap_or_err()
+        # Compiled: only λ(0)
+        assert adj.adjoint is not None
+        assert list(adj.adjoint.index) == [0.0]
+        np.testing.assert_allclose(
+            adj.gradient, ref.gradient, rtol=1e-6, atol=1e-6 * ref.gradient.abs().max()
+        )
 
 
 def test_native_always_uses_adjoints() -> None:
@@ -433,9 +449,8 @@ def test_native_always_uses_adjoints() -> None:
     assert adjoint_sensitivities.uses_adjoint(_chain(), 1, integrator)
     # Not where the compiled adjoint can't run
     native = pytest.importorskip("mxlpy.integrators.int_native")
-    for kwargs in ({"backend": "wasm"}, {"method": "CVODE_BDF"}):
-        other = functools.partial(native.Native, **kwargs)
-        assert not adjoint_sensitivities.uses_adjoint(_chain(), 1, other)
+    other = functools.partial(native.Native, method="CVODE_BDF")
+    assert not adjoint_sensitivities.uses_adjoint(_chain(), 1, other)
     res = adjoint_sensitivities.time_course(
         _chain(), _cotangents(["x"], T), ["k1"], integrator=integrator
     ).unwrap_or_err()
@@ -683,4 +698,159 @@ def test_max_abs_min_are_differentiated() -> None:
         assert res.method == method
         np.testing.assert_allclose(
             res.gradient, fd.gradient, rtol=1e-4, atol=1e-4 * fd.gradient.abs().max()
+        )
+
+
+###############################################################################
+# Protocols
+###############################################################################
+
+
+def _with_input() -> KineticModelBuilder:
+    return (
+        _chain()
+        .add_parameter("u", 0.0)
+        .add_reaction("vin", fns.constant, args=["u"], stoichiometry={"x": 1})
+    )
+
+
+_PROTOCOL = make_protocol([(1.0, {"u": 0.5}), (1.5, {"u": 2.0}), (2.0, {"u": 0.0})])
+# 1.0 is on a step boundary, 5.0 after the protocol's end (4.5)
+_PROTOCOL_TIMES = [0.5, 1.0, 1.7, 2.5, 4.4, 5.0]
+
+
+@pytest.mark.parametrize("compiled", [False, True], ids=["python", "native"])
+def test_protocol_matches_finite_differences(compiled: bool) -> None:  # noqa: FBT001
+    kwargs = {"integrator": _native()} if compiled else {}
+    model = _with_input()
+    w = _cotangents(["x", "y", "v1"], _PROTOCOL_TIMES)
+    wrt = ["k1", "k2", "x"]
+    tight = functools.partial(Scipy, rtol=1e-12, atol=1e-14, method="LSODA")
+    fd = adjoint_sensitivities.protocol_time_course(
+        model,
+        _PROTOCOL,
+        w,
+        wrt,
+        method="finite_difference",
+        integrator=tight,
+        displacement=1e-5,
+    ).unwrap_or_err()
+    adj = adjoint_sensitivities.protocol_time_course(
+        model, _PROTOCOL, w, wrt, method="adjoint", **kwargs
+    ).unwrap_or_err()
+    assert adj.method == "adjoint"
+    np.testing.assert_allclose(adj.gradient, fd.gradient, rtol=1e-6)
+    # The time point after the protocol is ignored, as in the simulation
+    assert list(adj.simulated.index) == _PROTOCOL_TIMES[:-1]
+    np.testing.assert_allclose(adj.simulated, fd.simulated, rtol=1e-6, atol=1e-9)
+    assert model.get_parameter_values()["u"] == 0.0
+
+
+def test_protocol_invalid_inputs() -> None:
+    model = _with_input()
+    w = _cotangents(["x"], _PROTOCOL_TIMES)
+    with pytest.raises(ValueError, match="Forward"):
+        adjoint_sensitivities.protocol_time_course(
+            model, _PROTOCOL, w, ["k1"], method="forward"
+        )
+    with pytest.raises(ValueError, match="protocol sets"):
+        adjoint_sensitivities.protocol_time_course(model, _PROTOCOL, w, ["u"])
+
+
+def test_protocol_assignments_depending_on_it() -> None:
+    model = _with_input().add_parameter(
+        "k3", InitialAssignment(fn=fns.mul, args=["u", "k1"])
+    )
+    w = _cotangents(["x"], _PROTOCOL_TIMES)
+    with pytest.raises(ValueError, match="depend on the protocol"):
+        adjoint_sensitivities.protocol_time_course(
+            model, _PROTOCOL, w, ["k1"], method="adjoint"
+        )
+    res = adjoint_sensitivities.protocol_time_course(
+        model, _PROTOCOL, w, ["k1", "k2", "x"]
+    ).unwrap_or_err()
+    assert res.method == "finite_difference"
+
+
+def test_protocol_auto_threshold() -> None:
+    model = _with_input()
+    n = adjoint_sensitivities.PROTOCOL_ADJOINT_THRESHOLD
+    assert adjoint_sensitivities.uses_adjoint(model, n, protocol=True)
+    assert not adjoint_sensitivities.uses_adjoint(model, n - 1, protocol=True)
+
+
+def test_protocol_loss_gradient() -> None:
+    model = _with_input()
+    data = (
+        Simulator(model)
+        .simulate_protocol_time_course(_PROTOCOL, np.linspace(0.5, 4.5, 9))
+        .get_result()
+        .unwrap_or_err()
+        .get_variables()
+        .loc[:, ["x", "y"]]
+    )
+    p = {"k1": 0.6, "k2": 1.7}
+    adj = fit.loss_gradient(
+        model,
+        data,
+        p,
+        protocol=_PROTOCOL,
+        runner=KineticRunner(derivatives="adjoint"),
+    )
+    fd = fit.loss_gradient(
+        model,
+        data,
+        p,
+        protocol=_PROTOCOL,
+        runner=KineticRunner(derivatives="finite_difference"),
+    )
+    np.testing.assert_allclose(adj, fd, rtol=1e-4)
+
+
+def test_protocol_outputs_use_each_steps_parameters() -> None:
+    # vin depends on the protocol's u
+    model = _with_input()
+    w = _cotangents(["x", "vin"], _PROTOCOL_TIMES)
+    sim = (
+        Simulator(model)
+        .simulate_protocol_time_course(_PROTOCOL, _PROTOCOL_TIMES[:-1])
+        .get_result()
+        .unwrap_or_err()
+        .get_combined()
+    )
+    model.update_parameter("u", 0.0)
+    expected = sim.loc[_PROTOCOL_TIMES[:-1], "vin"].to_numpy()
+    results = {}
+    for method in ("adjoint", "finite_difference"):
+        res = adjoint_sensitivities.protocol_time_course(
+            model, _PROTOCOL, w, ["k1", "k2"], method=method
+        ).unwrap_or_err()
+        np.testing.assert_allclose(res.simulated["vin"], expected, atol=1e-12)
+        results[method] = res.gradient
+    # d/dk2 is 0: x and vin don't depend on it
+    np.testing.assert_allclose(
+        results["adjoint"], results["finite_difference"], rtol=1e-4, atol=1e-5
+    )
+
+
+def test_protocol_without_time_points() -> None:
+    w = _cotangents(["x"], [6.0, 7.0])
+    with pytest.raises(ValueError, match="within the protocol"):
+        adjoint_sensitivities.protocol_time_course(_with_input(), _PROTOCOL, w, ["k1"])
+
+
+def test_protocol_with_nan_is_not_compiled() -> None:
+    model = _with_input().add_parameter("k4", 1.0)
+    protocol = make_protocol(
+        [(1.0, {"u": 0.5, "k4": np.nan}), (2.0, {"u": 1.0, "k4": 2.0})]
+    )
+    w = _cotangents(["x"], [0.5, 1.5])
+    with pytest.raises(native_adjoint.NativeUnsupported, match="NaN"):
+        native_adjoint.vjp(
+            model,
+            w,
+            ["k1"],
+            x0=np.array([2.0, 0.0]),
+            integrator=_native(),
+            protocol=protocol,
         )

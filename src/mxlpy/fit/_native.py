@@ -174,13 +174,23 @@ def _check_gradients(
 
 
 def _compile_derived(
-    model: Any, derived: list[str], theta: list[int], *, n: int, pars: Array, y0: Array
+    model: Any,
+    derived: list[str],
+    theta: list[int],
+    *,
+    n: int,
+    pars: Array,
+    y0: Array,
+    backend: Any = None,
 ) -> tuple[Any, Any]:
     """Compile derived targets and their gradients [d/dy, d/dtheta], checked numerically.
 
     Shared by the compiled least-squares loop and the compiled adjoint.
+    `backend` is the backend module, the LLVM one by default.
     """
     from mxlpy.integrators._native import llvm_backend  # noqa: PLC0415
+
+    backend = llvm_backend if backend is None else backend
     from mxlpy.integrators._native.lower import (  # noqa: PLC0415
         NativeLoweringError,
         lower_outputs,
@@ -194,10 +204,8 @@ def _compile_derived(
         msg = "derived targets use arrays or data"
         raise _Unsupported(msg)
     try:
-        derived_fn = llvm_backend.compile_model(outputs)
-        gradient_fn = llvm_backend.compile_model(
-            differentiate.gradients(outputs, theta)
-        )
+        derived_fn = backend.compile_model(outputs)
+        gradient_fn = backend.compile_model(differentiate.gradients(outputs, theta))
     except Exception as e:
         msg = f"the derived targets can't be compiled ({e})"
         raise _Unsupported(msg) from e
@@ -502,7 +510,18 @@ def least_squares(
         return LeastSquaresMinimizer(method="lm", max_nfev=max_nfev)(
             residual_fn, p0, bounds
         )
-    residual, log = _unwrap(residual_fn)
+    try:
+        residual, log = _unwrap(residual_fn)
+    except TypeError:
+        if not callable(getattr(residual_fn, "residuals", None)):
+            raise
+        # e.g. joint fits, whose residual vectors span several models
+        _warn_once(
+            "Fitting with scipy instead of the compiled loop, as it only runs single fits"
+        )
+        return LeastSquaresMinimizer(method="lm", max_nfev=max_nfev)(
+            residual_fn, p0, bounds
+        )
     to_inner = getattr(residual_fn, "to_inner", lambda x: x)
     values = cast(dict[str, float], to_inner(p0))
     runner = residual.settings.runner

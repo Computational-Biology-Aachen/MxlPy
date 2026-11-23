@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
@@ -15,15 +16,20 @@ import pandas as pd
 from mxlpy import forward_sensitivities
 from mxlpy.adjoint_sensitivities import _native
 from mxlpy.forward_sensitivities._core import (
+    _assigned_parameters,
     _chain_factors,
     _check_names,
+    _computed_from,
+    _fd,
     _left_null_space,
     _output_names,
+    _raw_variables,
+    _select_times,
     _unwrap,
     _values,
 )
 from mxlpy.integrators import DefaultIntegrator
-from mxlpy.simulator import Simulator
+from mxlpy.simulator import Simulator, _normalise_protocol_index
 from mxlpy.symbolic.jacobian import (
     all_parameter_values,
     compile_rhs,
@@ -34,7 +40,7 @@ from mxlpy.symbolic.jacobian import (
 from mxlpy.types import Result
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
@@ -46,7 +52,9 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ADJOINT_THRESHOLD",
+    "PROTOCOL_ADJOINT_THRESHOLD",
     "AdjointSensitivities",
+    "protocol_time_course",
     "steady_state",
     "time_course",
     "uses_adjoint",
@@ -61,6 +69,12 @@ _LOGGER = logging.getLogger(__name__)
 # is at n m ~ 1000 for n = 3, 10 and 30 (e.g. n = 10: 115 parameters 0.17 s vs
 # 0.21 s, 430 parameters 0.49 s vs 4.6 s)
 ADJOINT_THRESHOLD = 1000
+# From this many parameters / initial values on, `auto` uses adjoints for
+# protocol time courses instead of finite differences (2 simulations per
+# parameter). Measured on chains with 3 and 10 states over a 6-step protocol:
+# the adjoint costs 65-110 ms for any number of parameters, finite differences
+# 23-48 ms for one parameter and 85-142 ms for four
+PROTOCOL_ADJOINT_THRESHOLD = 3
 
 # Refinement rounds of the interpolation grids
 _MAX_REFINEMENTS = 8
@@ -225,12 +239,81 @@ def _merge(grid: Array, new: Array) -> Array:
 
 
 @dataclass
+class _Segment:
+    """A stretch (start, end] of constant parameters, e.g. a protocol step."""
+
+    start: float
+    end: float
+    overrides: dict[str, float]
+    p: Array
+    c: Array
+    f_constants: Array
+
+
+@contextlib.contextmanager
+def _overridden(model: _Model, overrides: dict[str, float]) -> Iterator[None]:
+    """Apply parameter overrides, restoring the previous values afterwards."""
+    if not overrides:
+        yield
+        return
+    values = model.get_parameter_values()
+    previous = {k: values[k] for k in overrides}
+    model.update_parameters(overrides)
+    try:
+        yield
+    finally:
+        model.update_parameters(previous)
+
+
+def _segments(
+    model: _Model,
+    protocol: pd.DataFrame | None,
+    end: float,
+    constant_names: list[str],
+    f_constant_names: list[str],
+) -> list[_Segment]:
+    """Parameter values per protocol step, or one segment up to `end`.
+
+    Like `Simulator.simulate_protocol_time_course`, every step applies its
+    row of the protocol, and a time point on a step's end belongs to it.
+    Steps of zero length change nothing and are left out, and the last one
+    ends at `end`, the last time point.
+    """
+    names = model.get_parameter_names()
+
+    def segment(start: float, stop: float, overrides: dict[str, float]) -> _Segment:
+        with _overridden(model, overrides):
+            values = all_parameter_values(model)
+            return _Segment(
+                start=start,
+                end=stop,
+                overrides=overrides,
+                p=np.array([values[k] for k in names], dtype=float),
+                c=constant_values(model, constant_names),
+                f_constants=constant_values(model, f_constant_names),
+            )
+
+    if protocol is None:
+        return [segment(0.0, end, {})]
+    out = []
+    start = 0.0
+    ends = cast(pd.TimedeltaIndex, protocol.index).total_seconds()
+    for stop, (_, row) in zip(ends, protocol.iterrows(), strict=True):
+        if start >= end:
+            break
+        if stop > start:
+            clipped = min(float(stop), end)
+            out.append(segment(start, clipped, cast(dict, row.to_dict())))
+            start = clipped
+    return out
+
+
+@dataclass
 class _Problem:
     model: _Model
     integrator: IntegratorType
     backward_integrator: IntegratorType
-    p: Array
-    c: Array
+    segments: list[_Segment]
     vjp_x: CompiledVjp
     vjp_p: CompiledVjp
     vjp_out: CompiledVjp | None
@@ -239,49 +322,89 @@ class _Problem:
     atol: float
     compiled_integrator: bool
     f: Callable[[float, Array, Array, Array], Array]
-    f_constants: Array
+    seg: _Segment = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.seg = self.segments[0]
+
+    def segment_of(self, t: float) -> int:
+        """The segment a time point belongs to (the earlier one at a boundary)."""
+        ends = [s.end for s in self.segments]
+        return min(int(np.searchsorted(ends, t, side="left")), len(ends) - 1)
 
     def rhs(self, t: float, x: Array) -> Array:
-        return self.f(t, x, self.p, self.f_constants)
+        return self.f(t, x, self.seg.p, self.seg.f_constants)
 
     def x_bar(self, t: float, x: Array, lam: Array) -> Array:
-        return self.vjp_x.fn(t, x, self.p, self.c, lam, np.empty(0))[0]
+        return self.vjp_x.fn(t, x, self.seg.p, self.seg.c, lam, np.empty(0))[0]
 
     def p_bar(self, t: float, x: Array, lam: Array) -> Array:
-        return self.vjp_p.fn(t, x, self.p, self.c, lam, np.empty(0))[1]
+        return self.vjp_p.fn(t, x, self.seg.p, self.seg.c, lam, np.empty(0))[1]
 
 
-def _forward(prob: _Problem, x0: Array, times: Array) -> _Hermite | Exception:
-    """Forward solve on a grid fine enough for Hermite interpolation."""
-    end = float(times[-1])
-    grid = _merge(
+def _forward(prob: _Problem, x0: Array, times: Array) -> list[_Hermite] | Exception:
+    """Forward solve on grids fine enough for Hermite interpolation, per segment.
+
+    One integrator continues through all segments, as in a protocol
+    simulation. The model's parameters only matter (and are overridden per
+    segment) for integrators compiling the model, the compiled rhs takes them
+    as arguments.
+    """
+    segments = prob.segments
+    end = segments[-1].end
+    starts = np.array([s.start for s in segments])
+    lengths = np.array([s.end - s.start for s in segments])
+    base = _merge(
         np.linspace(0.0, end, _N_UNIFORM + 1),
-        np.concatenate([times, end * _GEOMETRIC]),
+        np.concatenate(
+            [
+                times,
+                starts + lengths,
+                *(a + h * _GEOMETRIC for a, h in zip(starts, lengths, strict=True)),
+            ]
+        ),
     )
-    traj: _Hermite | None = None
-    accepted: set[tuple[float, float]] = set()
+    grids = [
+        _merge(np.array([s.start, s.end]), base[(base > s.start) & (base < s.end)])
+        for s in segments
+    ]
+    accepted: list[set[tuple[float, float]]] = [set() for _ in segments]
+    trajs: list[_Hermite] = []
+    # The compiled rhs is faster than the model, unless the integrator
+    # compiles the model itself
+    rhs = prob.model if prob.compiled_integrator else cast("Rhs", prob.rhs)
     for _ in range(_MAX_REFINEMENTS):
-        # The compiled rhs is faster than the model, unless the integrator
-        # compiles the model itself
-        rhs = prob.model if prob.compiled_integrator else cast("Rhs", prob.rhs)
-        res = prob.integrator(rhs, tuple(x0), None).integrate_time_course(
-            time_points=grid
-        )
-        if isinstance(tc := res.value, Exception):
-            return tc
-        t = np.asarray(tc.time, dtype=float)
-        x = np.asarray(tc.values, dtype=float)
-        if len(t) != len(grid) or not np.isfinite(x).all():
-            return ValueError("Forward solve didn't reach all time points")
-        traj = _Hermite(
-            t, x, np.array([prob.rhs(ti, xi) for ti, xi in zip(t, x, strict=True)])
-        )
-        new = traj.refinement(prob.rhs, prob.rtol, prob.atol, accepted)
-        if len(new) == 0:
-            return traj
-        grid = _merge(grid, new)
-    _LOGGER.debug("Forward interpolation grid not converged with %d nodes", len(grid))
-    return cast(_Hermite, traj)
+        integrator = prob.integrator(rhs, tuple(x0), None)
+        trajs = []
+        for g, segment in enumerate(segments):
+            prob.seg = segment
+            overrides = segment.overrides if prob.compiled_integrator else {}
+            with _overridden(prob.model, overrides):
+                res = integrator.integrate_time_course(time_points=grids[g])
+            if isinstance(tc := res.value, Exception):
+                return tc
+            t = np.asarray(tc.time, dtype=float)
+            x = np.asarray(tc.values, dtype=float)
+            if len(t) != len(grids[g]) or not np.isfinite(x).all():
+                return ValueError("Forward solve didn't reach all time points")
+            trajs.append(
+                _Hermite(
+                    t,
+                    x,
+                    np.array([prob.rhs(ti, xi) for ti, xi in zip(t, x, strict=True)]),
+                )
+            )
+        refined = False
+        for g, segment in enumerate(segments):
+            prob.seg = segment
+            new = trajs[g].refinement(prob.rhs, prob.rtol, prob.atol, accepted[g])
+            if len(new) > 0:
+                grids[g] = _merge(grids[g], new)
+                refined = True
+        if not refined:
+            return trajs
+    _LOGGER.debug("Forward interpolation grids not converged")
+    return trajs
 
 
 def _backward(
@@ -350,6 +473,7 @@ def _adjoint_time_course(
     cotangents: pd.DataFrame,
     wrt: list[str],
     *,
+    protocol: pd.DataFrame | None,
     y0: dict[str, float] | None,
     integrator: IntegratorType,
     displacement: float,
@@ -367,6 +491,7 @@ def _adjoint_time_course(
         model,
         cotangents / scale,
         wrt,
+        protocol=protocol,
         y0=y0,
         integrator=integrator,
         displacement=displacement,
@@ -384,6 +509,7 @@ def _scaled_adjoint_time_course(
     cotangents: pd.DataFrame,
     wrt: list[str],
     *,
+    protocol: pd.DataFrame | None,
     y0: dict[str, float] | None,
     integrator: IntegratorType,
     displacement: float,
@@ -401,7 +527,12 @@ def _scaled_adjoint_time_course(
     if compiled_integrator and times[-1] > 0:
         try:
             res = _native.vjp(
-                model, cotangents, compiled_wrt, x0=x0, integrator=integrator
+                model,
+                cotangents,
+                compiled_wrt,
+                x0=x0,
+                integrator=integrator,
+                protocol=protocol,
             )
         except _native.NativeUnsupported as e:
             _LOGGER.debug("Using the Python adjoint, as %s", e)
@@ -422,7 +553,6 @@ def _scaled_adjoint_time_course(
 
     vjp_out = compile_vjp(model, wrt=compiled_wrt, outputs=outputs) if outputs else None
     vjp_p = compile_vjp(model, wrt=compiled_wrt)
-    values = all_parameter_values(model)
     rtol, atol = _tolerances(integrator)
     backward_integrator = (
         functools.partial(DefaultIntegrator, rtol=rtol, atol=atol)
@@ -430,12 +560,18 @@ def _scaled_adjoint_time_course(
         else integrator
     )
     f, f_constant_names = compile_rhs(model)
+    segments = _segments(
+        model,
+        protocol if times[-1] > 0 else None,
+        float(times[-1]),
+        vjp_p.constant_names,
+        f_constant_names,
+    )
     prob = _Problem(
         model=model,
         integrator=integrator,
         backward_integrator=backward_integrator,
-        p=np.array([values[k] for k in model.get_parameter_names()], dtype=float),
-        c=constant_values(model, vjp_p.constant_names),
+        segments=segments,
         vjp_x=compile_vjp(model, wrt=[]),
         vjp_p=vjp_p,
         vjp_out=vjp_out,
@@ -444,15 +580,17 @@ def _scaled_adjoint_time_course(
         atol=atol,
         compiled_integrator=compiled_integrator,
         f=f,
-        f_constants=constant_values(model, f_constant_names),
     )
 
     if times[-1] > 0:
-        if isinstance(x := _forward(prob, x0, times), Exception):
-            return Result(x)
+        if isinstance(res := _forward(prob, x0, times), Exception):
+            return Result(res)
+        trajs = res
     else:
         # Only the initial values: nothing to integrate
-        x = _Hermite(np.array([0.0, 1.0]), np.vstack([x0, x0]), np.zeros((2, len(x0))))
+        trajs = [
+            _Hermite(np.array([0.0, 1.0]), np.vstack([x0, x0]), np.zeros((2, len(x0))))
+        ]
 
     w = cotangents.reindex(columns=var_names, fill_value=0.0).to_numpy(dtype=float)
     w_out = cotangents.loc[:, outputs].to_numpy(dtype=float)
@@ -460,25 +598,52 @@ def _scaled_adjoint_time_course(
     lam = np.zeros(n)
     theta_bar = np.zeros(len(compiled_wrt))
     pieces: list[pd.DataFrame] = []
+
+    def piece(g: int, t_hi: float, t_lo: float) -> Exception | None:
+        """λ from t_hi down to t_lo within segment g, adding its quadrature."""
+        nonlocal lam, theta_bar
+        if not t_hi > t_lo:
+            return None
+        prob.seg = segments[g]
+        if isinstance(res := _backward(prob, trajs[g], t_lo, t_hi, lam), Exception):
+            return res
+        traj, quadrature = res
+        theta_bar = theta_bar + quadrature
+        lam = traj.y[0].copy()
+        pieces.append(pd.DataFrame(traj.y, index=traj.t, columns=var_names))
+        return None
+
+    # From the last time point down to 0, stopping at every time point (its
+    # jump) and segment boundary (λ is continuous there)
     t_hi = float(times[-1])
-    for i in range(len(times), -1, -1):
-        t_lo = float(times[i - 1]) if i > 0 else 0.0
-        if t_hi > t_lo:
-            if isinstance(res := _backward(prob, x, t_lo, t_hi, lam), Exception):
-                return Result(res)
-            traj, quadrature = res
-            theta_bar += quadrature
-            lam = traj.y[0].copy()
-            pieces.append(pd.DataFrame(traj.y, index=traj.t, columns=var_names))
-        if i > 0:
-            lam = lam + w[i - 1]
-            if vjp_out is not None:
-                x_bar, p_bar = vjp_out.fn(
-                    t_lo, x(t_lo), prob.p, prob.c, np.zeros(n), w_out[i - 1]
-                )
-                lam = lam + x_bar
-                theta_bar += p_bar
-        t_hi = t_lo
+    g = prob.segment_of(t_hi)
+    for i in range(len(times) - 1, -1, -1):
+        t_i = float(times[i])
+        while g > prob.segment_of(t_i):
+            if (err := piece(g, t_hi, segments[g].start)) is not None:
+                return Result(err)
+            t_hi = segments[g].start
+            g -= 1
+        if (err := piece(g, t_hi, t_i)) is not None:
+            return Result(err)
+        t_hi = t_i
+        lam = lam + w[i]
+        if vjp_out is not None:
+            x_bar, p_bar = vjp_out.fn(
+                t_i,
+                trajs[g](t_i),
+                segments[g].p,
+                segments[g].c,
+                np.zeros(n),
+                w_out[i],
+            )
+            lam = lam + x_bar
+            theta_bar = theta_bar + p_bar
+    while g >= 0:
+        if (err := piece(g, t_hi, segments[g].start)) is not None:
+            return Result(err)
+        t_hi = segments[g].start
+        g -= 1
 
     gradient = chain.T @ theta_bar + s0.T @ lam
     # At data times the value after their jump, i.e. the limit from below
@@ -489,13 +654,23 @@ def _scaled_adjoint_time_course(
     )
     adjoint.loc[0.0] = lam
     adjoint = adjoint.sort_index()
-    states = pd.DataFrame(
-        np.array([x(t) for t in times]), index=times, columns=var_names
-    )
-    simulated = _values(model, states).loc[:, list(cotangents.columns)]
+
+    # Outputs depend on the parameters of each time point's segment
+    blocks = []
+    which = np.array([prob.segment_of(float(t)) for t in times])
+    for g, segment in enumerate(segments):
+        if not (mask := which == g).any():
+            continue
+        states = pd.DataFrame(
+            np.array([trajs[g](float(t)) for t in times[mask]]),
+            index=times[mask],
+            columns=var_names,
+        )
+        with _overridden(model, segment.overrides):
+            blocks.append(_values(model, states).loc[:, list(cotangents.columns)])
     return Result(
         AdjointSensitivities(
-            simulated=simulated,
+            simulated=pd.concat(blocks),
             gradient=pd.Series(gradient, index=wrt),
             method="adjoint",
             adjoint=adjoint,
@@ -549,17 +724,25 @@ def _contract(
 
 
 def uses_adjoint(
-    model: _Model, n_wrt: int, integrator: IntegratorType | None = None
+    model: _Model,
+    n_wrt: int,
+    integrator: IntegratorType | None = None,
+    *,
+    protocol: bool = False,
 ) -> bool:
     """Whether `method="auto"` uses adjoints for a time course.
 
-    Always with compiled adjoints (`Native`, LLVM backend, Radau or LSODA),
+    Always with compiled adjoints (`Native` with Radau or LSODA),
     which can't integrate forward sensitivities either, so these would fall
     back to finite differences. Otherwise from `ADJOINT_THRESHOLD` variables x
-    parameters / initial values on.
+    parameters / initial values on, and for protocols (whose alternative is
+    finite differences, 2 simulations per parameter) from
+    `PROTOCOL_ADJOINT_THRESHOLD` parameters / initial values on.
     """
     if integrator is not None and _native.supports(integrator):
         return True
+    if protocol:
+        return n_wrt >= PROTOCOL_ADJOINT_THRESHOLD
     return len(model.get_variable_names()) * n_wrt >= ADJOINT_THRESHOLD
 
 
@@ -598,10 +781,9 @@ def time_course(
         Initial values. If None, they are taken from the model, so initial
         assignments depending on the parameters are differentiated, too
     integrator
-        Integrator, defaults to the default integrator. `Native` (LLVM
-        backend, Radau or LSODA) runs both solves in compiled code; for models
-        it can't compile, or the wasm backend, it solves the forward pass and
-        the default integrator the backward one
+        Integrator, defaults to the default integrator. `Native` (Radau or
+        LSODA) runs both solves in compiled code; for models it can't compile
+        it solves the forward pass and the default integrator the backward one
     method
         `adjoint` solves the adjoint equations backwards in time, `forward`
         and `finite_difference` contract forward sensitivities (see
@@ -617,6 +799,107 @@ def time_course(
         Gradient and the simulated values at the cotangents' time points
 
     """
+    return _time_course(
+        model,
+        cotangents,
+        wrt,
+        protocol=None,
+        y0=y0,
+        integrator=integrator,
+        method=method,
+        displacement=displacement,
+    )
+
+
+def protocol_time_course(
+    model: _Model,
+    protocol: pd.DataFrame,
+    cotangents: pd.DataFrame,
+    wrt: list[str],
+    *,
+    y0: dict[str, float] | None = None,
+    integrator: IntegratorType | None = None,
+    method: DerivativeMethod = "auto",
+    displacement: float = 1e-3,
+) -> Result[AdjointSensitivities]:
+    """Gradient of `sum(cotangents * y(t))` over a protocol.
+
+    As `time_course`, for a simulation with
+    `Simulator.simulate_protocol_time_course`: every protocol step sets its
+    parameters, and a time point on a step's end belongs to that step. The
+    adjoint runs backwards through the steps, with each step's parameters.
+
+    Examples
+    --------
+        >>> protocol = make_protocol([(1, {"k_in": 1.0}), (2, {"k_in": 0.0})])
+        >>> w = pd.DataFrame({"x": [1.0, -1.0]}, index=[0.5, 2.0])
+        >>> adjoint_sensitivities.protocol_time_course(model, protocol, w, ["k1"])
+
+    Parameters
+    ----------
+    model
+        Model to simulate
+    protocol
+        Parameter values per step (index: step end times)
+    cotangents
+        Weight of every simulated value, as for `time_course`. Time points
+        after the protocol's end are ignored, as in the simulation
+    wrt
+        Parameters and variables (for their initial values) to differentiate
+        w.r.t., not the parameters the protocol sets
+    y0
+        Initial values, as for `time_course`
+    integrator
+        Integrator, as for `time_course`
+    method
+        `adjoint` solves the adjoint equations, `finite_difference` perturbs
+        every parameter and simulates again (forward sensitivities don't
+        support protocols), `auto` uses adjoints where they are cheaper (see
+        `uses_adjoint`) and finite differences otherwise
+    displacement
+        Relative step of the finite differences
+
+    Returns
+    -------
+    Result[AdjointSensitivities]
+        Gradient and the simulated values at the cotangents' time points
+
+    """
+    if method == "forward":
+        msg = "Forward sensitivities don't support protocols, use adjoint or finite_difference"
+        raise ValueError(msg)
+    protocol = _normalise_protocol_index(protocol)
+    if overridden := sorted(set(wrt) & set(protocol.columns)):
+        msg = f"Can't differentiate w.r.t. parameters the protocol sets: {overridden}"
+        raise ValueError(msg)
+    end = float(cast(pd.TimedeltaIndex, protocol.index).total_seconds()[-1])
+    cotangents = cotangents.loc[cotangents.index.to_numpy(dtype=float) <= end]
+    if cotangents.empty:
+        msg = f"No cotangent time points within the protocol (ending at {end})"
+        raise ValueError(msg)
+    return _time_course(
+        model,
+        cotangents,
+        wrt,
+        protocol=protocol,
+        y0=y0,
+        integrator=integrator,
+        method=method,
+        displacement=displacement,
+    )
+
+
+def _time_course(
+    model: _Model,
+    cotangents: pd.DataFrame,
+    wrt: list[str],
+    *,
+    protocol: pd.DataFrame | None,
+    y0: dict[str, float] | None,
+    integrator: IntegratorType | None,
+    method: DerivativeMethod,
+    displacement: float,
+) -> Result[AdjointSensitivities]:
     integrator = DefaultIntegrator if integrator is None else integrator
     _check_names(model, wrt)
     _check_columns(model, list(cotangents.columns))
@@ -627,7 +910,8 @@ def time_course(
         raise ValueError(msg)
 
     adjoint = method == "adjoint" or (
-        method == "auto" and uses_adjoint(model, len(wrt), integrator)
+        method == "auto"
+        and uses_adjoint(model, len(wrt), integrator, protocol=protocol is not None)
     )
     if adjoint and getattr(model, "_events", None):
         if method == "adjoint":
@@ -636,10 +920,13 @@ def time_course(
         adjoint = False
     if adjoint:
         try:
+            if protocol is not None:
+                _check_protocol(model, protocol)
             return _adjoint_time_course(
                 model,
                 cotangents,
                 wrt,
+                protocol=protocol,
                 y0=y0,
                 integrator=integrator,
                 displacement=displacement,
@@ -647,8 +934,18 @@ def time_course(
         except Exception as e:
             if method == "adjoint":
                 raise
-            _LOGGER.debug("Using forward sensitivities instead of adjoints: %s", e)
+            _LOGGER.debug("Using sensitivities instead of adjoints: %s", e)
 
+    if protocol is not None:
+        return _protocol_finite_difference(
+            model,
+            protocol,
+            cotangents,
+            wrt,
+            y0=y0,
+            integrator=integrator,
+            displacement=displacement,
+        )
     outputs = [c for c in cotangents.columns if c not in model.get_variable_names()]
     res = forward_sensitivities.time_course(
         model,
@@ -660,6 +957,69 @@ def time_course(
         method="auto" if method in ("auto", "adjoint") else method,
         displacement=displacement,
     )
+    if isinstance(sens := res.value, Exception):
+        return Result(sens)
+    return Result(_contract(sens, cotangents, wrt))
+
+
+def _check_protocol(model: _Model, protocol: pd.DataFrame) -> None:
+    """Raise if initial assignments depend on parameters the protocol sets.
+
+    Their chain-rule factors would then differ between the steps.
+    """
+    columns = set(protocol.columns)
+    sources = _computed_from(model)
+    if bad := sorted(
+        k for k in _assigned_parameters(model) if columns & {k, *sources[k]}
+    ):
+        msg = f"Parameters set by initial assignments depend on the protocol: {bad}"
+        raise ValueError(msg)
+
+
+def _protocol_finite_difference(
+    model: _Model,
+    protocol: pd.DataFrame,
+    cotangents: pd.DataFrame,
+    wrt: list[str],
+    *,
+    y0: dict[str, float] | None,
+    integrator: IntegratorType,
+    displacement: float,
+) -> Result[AdjointSensitivities]:
+    times = cotangents.index.to_numpy(dtype=float)
+    columns = list(cotangents.columns)
+    restore = {k: model.get_parameter_values()[k] for k in protocol.columns}
+    steps = _segments(model, protocol, float(times[-1]), [], [])
+
+    def simulate(start: dict[str, float]) -> Result[pd.DataFrame]:
+        try:
+            res = (
+                Simulator(model, y0=start, integrator=integrator)
+                .simulate_protocol_time_course(protocol, times)
+                .get_result()
+            )
+        finally:
+            # The simulation leaves the last step's parameters in the model
+            model.update_parameters(restore)
+        if isinstance(sim := res.value, Exception):
+            return Result(sim)
+        variables = _raw_variables(model, sim)
+        variables = variables.loc[
+            _select_times(variables.index.to_numpy(dtype=float), times)
+        ]
+        # Outputs with each step's parameters, as in the simulation
+        t = variables.index.to_numpy(dtype=float)
+        blocks = []
+        for segment in steps:
+            mask = (t > segment.start) & (t <= segment.end)
+            if segment.start == 0:
+                mask |= t == 0
+            if mask.any():
+                with _overridden(model, segment.overrides):
+                    blocks.append(_values(model, variables.loc[mask]))
+        return Result(pd.concat(blocks).loc[:, columns])
+
+    res = _fd(model, wrt, y0, simulate, displacement)
     if isinstance(sens := res.value, Exception):
         return Result(sens)
     return Result(_contract(sens, cotangents, wrt))

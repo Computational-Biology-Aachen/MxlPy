@@ -121,15 +121,18 @@ res.simulated     # values at w's time points / columns
 res.method        # "adjoint" | "forward" | "finite_difference"
 res.adjoint       # lambda(t) (time x variables), lambda(0) = gradient w.r.t. initial values
 adjoint_sensitivities.steady_state(model, pd.Series({"A": 1.0}), ["kf"])
+adjoint_sensitivities.protocol_time_course(model, protocol, w, ["k1"])  # steps set parameters; wrt can't be protocol columns
 
 # method: "auto" (default) | "adjoint" | "forward" | "finite_difference"
 adjoint_sensitivities.uses_adjoint(model, n_wrt, integrator)  # auto's choice
 KineticRunner(derivatives="adjoint").time_course_vjp(model, w, ["k1"])
 KineticRunner().steady_state_vjp(model, pd.Series({"A": 1.0}), ["kf"])
+KineticRunner().protocol_time_course_vjp(model, protocol, w, ["k1"])
 ```
 
-- `auto` uses adjoints for time courses from `ADJOINT_THRESHOLD` (1000) variables x parameters on (measured crossover), and always with the compiled adjoint (`Native`, llvm backend, Radau/LSODA; Native can't integrate forward sensitivities); steady states always use the adjoint IFT. Cotangents are scaled to max |w| = 1 internally (lambda shares the states' atol), NaN cotangents mean no weight.
-- `Native` (llvm backend, Radau/LSODA) runs forward + backward solve and the quadrature compiled (mxlpy-native `mxn_adjoint_vjp`, ~100x the Python adjoint); non-lowerable models / arrays / data / wasm fall back to the Python adjoint with Native's forward pass. Then `adjoint` only holds `lambda(0)`.
+- `auto` uses adjoints for time courses from `ADJOINT_THRESHOLD` (1000) variables x parameters on (measured crossover), and always with the compiled adjoint (`Native` with Radau/LSODA, llvm or wasm backend; Native can't integrate forward sensitivities); steady states always use the adjoint IFT. Cotangents are scaled to max |w| = 1 internally (lambda shares the states' atol), NaN cotangents mean no weight.
+- `Native` (llvm or wasm backend, Radau/LSODA) runs forward + backward solve and the quadrature compiled (`mxn_adjoint_vjp`, ~35-100x the Python adjoint; wasm ~ llvm speed); non-lowerable models / arrays / data / CVODE fall back to the Python adjoint with Native's forward pass. Then `adjoint` only holds `lambda(0)`.
+- Protocols: the adjoint runs backwards through the steps (lambda continuous at step ends, each step's parameters); time points after the protocol are ignored. No forward sensitivities for protocols, so `method="forward"` raises and `auto` uses adjoints from `PROTOCOL_ADJOINT_THRESHOLD` (3) parameters, finite differences below. Parameters set by initial assignments depending on protocol columns: adjoint raises, auto uses finite differences.
 - Models with events: `method="adjoint"` raises, `auto` uses forward/finite differences. Unparsable functions: `adjoint` raises, `auto` falls back.
 - Initial assignments (parameters, initial values) are differentiated through constant chain-rule factors, as for forward sensitivities.
 

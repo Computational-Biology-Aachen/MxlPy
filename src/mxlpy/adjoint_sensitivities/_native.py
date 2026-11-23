@@ -4,9 +4,10 @@
 
 The model, its adjoint function (reverse-mode differentiation of the lowered
 model) and the derived targets with their gradients are compiled by Native's
-LLVM backend. mxlpy-native's `mxn_adjoint_vjp` then runs the forward and the
-backward solve, with the parameter quadrature, in C. Problems it can't express
-raise `NativeUnsupported`, and the caller falls back to the Python adjoint.
+LLVM or wasm backend. `mxn_adjoint_vjp` (mxlpy-native or solvers.wasm) then
+runs the forward and the backward solve, with the parameter quadrature, in C.
+Problems it can't express raise `NativeUnsupported`, and the caller falls back
+to the Python adjoint.
 """
 
 from __future__ import annotations
@@ -16,14 +17,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+import pandas as pd
 
 from mxlpy.forward_sensitivities._core import _unwrap
 from mxlpy.symbolic.jacobian import _generated, all_parameter_values
 from mxlpy.types import IntegrationFailure
 
 if TYPE_CHECKING:
-    import pandas as pd
-
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy.integrators import IntegratorType
@@ -35,8 +35,6 @@ if TYPE_CHECKING:
 __all__ = ["NativeUnsupported", "supports", "vjp"]
 
 _DP = ct.POINTER(ct.c_double)
-_IP = ct.POINTER(ct.c_int)
-_ADJOINT_FN = ct.CFUNCTYPE(None, ct.c_int, ct.c_double, _DP, _DP, _DP, _DP, _DP)
 _TARGET_STATE, _TARGET_DERIVED = 0, 1
 _TIME_COURSE = 0
 _CHECK_RTOL = 1e-5
@@ -67,30 +65,51 @@ class _Compiled:
     pointers: list[int] = field(default_factory=list)
 
 
-def _settings(integrator: IntegratorType) -> tuple[int, float, float]:
-    """Solver and tolerances of a Native integrator using the LLVM backend."""
+@dataclass(frozen=True)
+class _Settings:
+    backend: str
+    solver: int
+    rtol: float
+    atol: float
+
+
+def _settings(integrator: IntegratorType) -> _Settings:
+    """Backend, solver and tolerances of a Native integrator."""
     from mxlpy.fit._native import _SOLVERS  # noqa: PLC0415
     from mxlpy.integrators._native.backends import problem  # noqa: PLC0415
-    from mxlpy.integrators.int_native import Native  # noqa: PLC0415
+    from mxlpy.integrators.int_native import Native, _pick_backend  # noqa: PLC0415
 
     base, kwargs = _unwrap(integrator)
     if not (isinstance(base, type) and issubclass(base, Native)):
         msg = "the integrator isn't Native"
         raise NativeUnsupported(msg)
-    if kwargs.get("backend", getattr(base, "backend", "auto")) == "wasm":
-        msg = "the wasm backend has no compiled adjoint"
-        raise NativeUnsupported(msg)
-    if (reason := problem("llvm")) is not None:
-        raise NativeUnsupported(reason)
     method = kwargs.get("method", getattr(base, "method", None))
     if method not in _SOLVERS:
         msg = f"the compiled adjoint supports the methods {list(_SOLVERS)}, not {method!r}"
         raise NativeUnsupported(msg)
-    return (
-        _SOLVERS[str(method)],
-        float(cast(float, kwargs.get("rtol", getattr(base, "rtol", 1e-8)))),
-        float(cast(float, kwargs.get("atol", getattr(base, "atol", 1e-8)))),
+    backend = str(kwargs.get("backend", getattr(base, "backend", "auto")))
+    try:
+        backend = _pick_backend() if backend == "auto" else backend
+    except ImportError as e:
+        raise NativeUnsupported(str(e)) from e
+    if (reason := problem(backend)) is not None:
+        raise NativeUnsupported(reason)
+    return _Settings(
+        backend=backend,
+        solver=_SOLVERS[str(method)],
+        rtol=float(cast(float, kwargs.get("rtol", getattr(base, "rtol", 1e-8)))),
+        atol=float(cast(float, kwargs.get("atol", getattr(base, "atol", 1e-8)))),
     )
+
+
+def _backend(name: str) -> Any:
+    if name == "wasm":
+        from mxlpy.integrators._native import wasm_backend  # noqa: PLC0415
+
+        return wasm_backend
+    from mxlpy.integrators._native import llvm_backend  # noqa: PLC0415
+
+    return llvm_backend
 
 
 def supports(integrator: IntegratorType) -> bool:
@@ -109,12 +128,7 @@ def _check_adjoint(adjoint: Any, plain: Any, low: Lowered, theta: list[int]) -> 
     pars = rng.uniform(0.5, 1.5, max(len(low.par_names), 1))
     y = rng.uniform(0.5, 1.5, n)
     lam = rng.uniform(-1, 1, n)
-    dlam, dtheta = np.empty(n), np.empty(max(len(theta), 1))
-    fn = _ADJOINT_FN(adjoint.address)
-    fn(
-        n, 0.0, y.ctypes.data_as(_DP), lam.ctypes.data_as(_DP), pars.ctypes.data_as(_DP),
-        dlam.ctypes.data_as(_DP), dtheta.ctypes.data_as(_DP),
-    )  # fmt: skip
+    dlam, dtheta = adjoint.adjoint(0.0, y, lam, pars, len(theta))
 
     def directional(dy: Array, dp: Array) -> float:
         h = 1e-6 * max(1.0, float(np.abs(y @ dy) + np.abs(pars @ dp)))
@@ -131,9 +145,11 @@ def _check_adjoint(adjoint: Any, plain: Any, low: Lowered, theta: list[int]) -> 
         raise NativeUnsupported(msg)
 
 
-def _compile(model: _Model, wrt: list[str], outputs: list[str]) -> _Compiled:
+def _compile(
+    model: _Model, wrt: list[str], outputs: list[str], backend_name: str
+) -> _Compiled:
     from mxlpy.fit._native import _compile_derived, _Unsupported  # noqa: PLC0415
-    from mxlpy.integrators._native import differentiate, llvm_backend  # noqa: PLC0415
+    from mxlpy.integrators._native import differentiate  # noqa: PLC0415
     from mxlpy.integrators._native.lower import (  # noqa: PLC0415
         NativeLoweringError,
         lower,
@@ -156,9 +172,10 @@ def _compile(model: _Model, wrt: list[str], outputs: list[str]) -> _Compiled:
     var_names = list(model.get_variable_names())
     derived = [c for c in outputs if c not in var_names]
 
+    backend = _backend(backend_name)
     try:
-        plain = llvm_backend.compile_model(low)
-        adjoint = llvm_backend.compile_model(
+        plain = backend.compile_model(low)
+        adjoint = backend.compile_model(
             differentiate.adjoint(low, theta), adjoint=low.n
         )
     except Exception as e:
@@ -188,6 +205,7 @@ def _compile(model: _Model, wrt: list[str], outputs: list[str]) -> _Compiled:
                 n=low.n,
                 pars=rng.uniform(0.5, 1.5, max(len(low.par_names), 1)),
                 y0=rng.uniform(0.5, 1.5, low.n),
+                backend=backend,
             )
         except _Unsupported as e:
             raise NativeUnsupported(str(e)) from e
@@ -197,34 +215,69 @@ def _compile(model: _Model, wrt: list[str], outputs: list[str]) -> _Compiled:
 
 
 def _try_compile(
-    model: _Model, wrt: list[str], outputs: list[str]
+    model: _Model, wrt: list[str], outputs: list[str], backend: str
 ) -> _Compiled | NativeUnsupported:
     try:
-        return _compile(model, wrt, outputs)
+        return _compile(model, wrt, outputs, backend)
     except NativeUnsupported as e:
         return e
 
 
-def _library() -> ct.CDLL:
+# mxn_adjoint_vjp's arguments: ("i", int), ("d", float), ("ints", list[int]),
+# ("doubles", array) or ("out", array) for outputs written by the solver
+type _Arg = tuple[str, Any]
+
+
+def _run_llvm(pointers: list[int], args: list[_Arg]) -> int:
     import mxlpy_native  # noqa: PLC0415
 
     lib = mxlpy_native.load()
     lib.mxn_adjoint_set_fns.argtypes = [ct.c_void_p] * 4
     lib.mxn_adjoint_set_fns.restype = None
-    d = ct.c_double
     lib.mxn_adjoint_vjp.restype = ct.c_int
-    lib.mxn_adjoint_vjp.argtypes = [
-        ct.c_int, _DP, ct.c_int, _DP, ct.c_int, _IP,
-        ct.c_int, _IP, _IP, ct.c_int, _IP,
-        ct.c_int, _IP, _IP, _IP, ct.c_int, _DP, _DP,
-        ct.c_int, _DP, _DP, ct.c_int, ct.c_int, d, d, d, d,
-        _DP, _DP, _DP,
-    ]  # fmt: skip
-    return lib
+    values: list[Any] = []
+    for kind, value in args:
+        if kind == "i":
+            values.append(ct.c_int(value))
+        elif kind == "d":
+            values.append(ct.c_double(value))
+        elif kind == "ints":
+            values.append((ct.c_int * max(len(value), 1))(*value))
+        else:
+            values.append(value.ctypes.data_as(_DP))
+    lib.mxn_adjoint_set_fns(*pointers)
+    return int(lib.mxn_adjoint_vjp(*values))
 
 
-def _ints(values: list[int]) -> Any:
-    return (ct.c_int * max(len(values), 1))(*values)
+def _run_wasm(pointers: list[int], args: list[_Arg]) -> int:
+    import wasmtime as wt  # noqa: PLC0415
+
+    from mxlpy.integrators._native.wasm_backend import _runtime  # noqa: PLC0415
+
+    rt = _runtime()
+    values: list[Any] = []
+    buffers: list[int] = []
+    outputs: list[tuple[int, Any]] = []
+    for kind, value in args:
+        if kind in ("i", "d"):
+            values.append(value)
+            continue
+        ptr = rt.write_ints(value) if kind == "ints" else rt.write(value)
+        buffers.append(ptr)
+        values.append(ptr)
+        if kind == "out":
+            outputs.append((ptr, value))
+    try:
+        rt.solver["mxn_adjoint_set_fns"](rt.store, *pointers)
+        rc = int(rt.solver["mxn_adjoint_vjp"](rt.store, *values))
+        for ptr, out in outputs:
+            out[:] = rt.view(ptr, len(out))
+    except wt.Trap:
+        # e.g. a trap in a compiled function
+        rc = -9
+    finally:
+        rt.free(*buffers)
+    return rc
 
 
 def vjp(
@@ -234,24 +287,29 @@ def vjp(
     *,
     x0: Array,
     integrator: IntegratorType,
+    protocol: pd.DataFrame | None = None,
 ) -> tuple[Array, Array, Array] | Exception:
     """Compiled gradient of `sum(cotangents * y(t))` w.r.t. parameters `wrt` and x0.
 
     `wrt` are parameters (including those set by initial assignments, whose
-    chain rule the caller applies). Returns the simulated values (time x
-    cotangent columns), the gradient w.r.t. `wrt` and w.r.t. `x0`, or the
-    solver's failure. Raises `NativeUnsupported` for problems it can't run.
+    chain rule the caller applies). A protocol (TimedeltaIndex of step ends)
+    becomes mxl-solvers' segments with parameter overrides. Returns the
+    simulated values (time x cotangent columns), the gradient w.r.t. `wrt` and
+    w.r.t. `x0`, or the solver's failure. Raises `NativeUnsupported` for
+    problems it can't run.
     """
     from mxlpy.integrators.int_native import _LOCK  # noqa: PLC0415
 
-    solver, rtol, atol = _settings(integrator)
+    settings = _settings(integrator)
     outputs = [str(c) for c in cotangents.columns]
-    # Failures are cached too, so a fit doesn't retry them for every gradient
-    c = _generated(
-        model,
-        ("native_adjoint", tuple(wrt), tuple(outputs)),
-        lambda: _try_compile(model, wrt, outputs),
-    )
+    # Failures are cached too, so a fit doesn't retry them for every gradient.
+    # Compiling for wasm uses the process-wide store, like Native's own calls
+    with _LOCK:
+        c = _generated(
+            model,
+            ("native_adjoint", settings.backend, tuple(wrt), tuple(outputs)),
+            lambda: _try_compile(model, wrt, outputs, settings.backend),
+        )
     if isinstance(c, NativeUnsupported):
         raise c
     values = all_parameter_values(model)
@@ -260,24 +318,40 @@ def vjp(
     n_targets, n_points, n_y = len(outputs), len(times), len(x0)
     # Target-major: all time points of the first target, then the second, ...
     cot = np.ascontiguousarray(cotangents.to_numpy(dtype=float).T.ravel())
-    y0 = np.ascontiguousarray(x0, dtype=float)
     pred = np.empty(max(n_targets * n_points, 1))
     grad = np.empty(max(len(wrt), 1))
     lam0 = np.empty(max(n_y, 1))
-    seg_t_end = np.array([times[-1]])
-    lib = _library()
+    if protocol is None:
+        seg_t_end, ovr_idx, seg_ovr = np.array([times[-1]]), [], np.zeros(1)
+    else:
+        if protocol.isna().to_numpy().any():
+            # The solvers keep the previous value for NaN, simulations set it
+            msg = "the protocol contains NaN"
+            raise NativeUnsupported(msg)
+        if unknown := [k for k in protocol.columns if k not in c.low.par_names]:
+            msg = f"protocol columns {unknown} aren't model parameters"
+            raise NativeUnsupported(msg)
+        seg_t_end = np.asarray(
+            cast(pd.TimedeltaIndex, protocol.index).total_seconds(), dtype=float
+        )
+        ovr_idx = [c.low.par_names.index(k) for k in protocol.columns]
+        seg_ovr = protocol.to_numpy(dtype=float).ravel()
+    args: list[_Arg] = [
+        ("i", n_y), ("doubles", np.ascontiguousarray(x0, dtype=float)),
+        ("i", len(pars)), ("doubles", pars), ("i", len(c.theta)), ("ints", c.theta),
+        ("i", n_targets), ("ints", c.target_kind), ("ints", c.target_index),
+        ("i", len(ovr_idx)), ("ints", ovr_idx),
+        ("i", 1), ("ints", [_TIME_COURSE]), ("ints", [len(seg_t_end)]),
+        ("ints", [n_points]), ("i", len(seg_t_end)), ("doubles", seg_t_end),
+        ("doubles", np.ascontiguousarray(seg_ovr, dtype=float)),
+        ("i", n_points), ("doubles", np.ascontiguousarray(times)), ("doubles", cot),
+        ("i", c.n_derived), ("i", settings.solver), ("d", settings.rtol),
+        ("d", settings.atol), ("d", 1e-6), ("d", 1e6),
+        ("out", pred), ("out", grad), ("out", lam0),
+    ]  # fmt: skip
+    run = _run_wasm if settings.backend == "wasm" else _run_llvm
     with _LOCK:
-        lib.mxn_adjoint_set_fns(*c.pointers)
-        rc = lib.mxn_adjoint_vjp(
-            n_y, y0.ctypes.data_as(_DP), len(pars), pars.ctypes.data_as(_DP),
-            len(c.theta), _ints(c.theta),
-            n_targets, _ints(c.target_kind), _ints(c.target_index), 0, _ints([]),
-            1, _ints([_TIME_COURSE]), _ints([1]), _ints([n_points]), 1,
-            seg_t_end.ctypes.data_as(_DP), np.zeros(1).ctypes.data_as(_DP),
-            n_points, np.ascontiguousarray(times).ctypes.data_as(_DP),
-            cot.ctypes.data_as(_DP), c.n_derived, solver, rtol, atol, 1e-6, 1e6,
-            pred.ctypes.data_as(_DP), grad.ctypes.data_as(_DP), lam0.ctypes.data_as(_DP),
-        )  # fmt: skip
+        rc = run(c.pointers, args)
     if rc in _SETUP_ERRORS:
         msg = f"the compiled adjoint couldn't start ({_SETUP_ERRORS[rc]})"
         raise NativeUnsupported(msg)

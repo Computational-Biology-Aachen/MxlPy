@@ -27,6 +27,7 @@ __all__ = ["compile_model", "load"]
 
 _DP = ct.POINTER(ct.c_double)
 _MODEL_FN = ct.CFUNCTYPE(None, ct.c_int, ct.c_double, _DP, _DP, _DP)
+_ADJOINT_FN = ct.CFUNCTYPE(None, ct.c_int, ct.c_double, _DP, _DP, _DP, _DP, _DP)
 _CMP = {"gt": "ogt", "ge": "oge", "lt": "olt", "le": "ole", "eq": "oeq", "ne": "one"}
 _BINARY = {"add": "fadd", "mul": "fmul", "div": "fdiv"}
 
@@ -258,6 +259,18 @@ class _Compiled:
         """Address of the compiled function, valid while this object is alive."""
         return self._ptr
 
+    def adjoint(
+        self, t: float, y: np.ndarray, lam: np.ndarray, pars: np.ndarray, n_theta: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Evaluate an adjoint function (compiled with `adjoint=n`)."""
+        y, lam = np.array(y, dtype=float), np.array(lam, dtype=float)
+        dlam, dtheta = np.empty(len(y)), np.empty(max(n_theta, 1))
+        _ADJOINT_FN(self._ptr)(
+            len(y), t, y.ctypes.data_as(_DP), lam.ctypes.data_as(_DP),
+            pars.ctypes.data_as(_DP), dlam.ctypes.data_as(_DP), dtheta.ctypes.data_as(_DP),
+        )  # fmt: skip
+        return dlam, dtheta[:n_theta]
+
     def rhs(self, t: float, y: np.ndarray, pars: np.ndarray) -> np.ndarray:
         y, dydt = np.array(y, dtype=float), np.empty(len(y))
         self._fn(
@@ -316,7 +329,7 @@ class _Compiled:
 def compile_model(low: Lowered, *, adjoint: int | None = None) -> _Compiled:
     """Compile a lowered model to machine code, see `to_llvm_ir` for `adjoint`.
 
-    Only `address` applies to adjoint functions, which have another signature.
+    Adjoint functions have another signature: use `adjoint`, not `rhs`.
     """
     tm = _target_machine()
     mod = llvm.parse_assembly(to_llvm_ir(low, adjoint=adjoint))
