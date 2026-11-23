@@ -142,8 +142,14 @@ class _Emit(ExprEmitter):
         return nexts
 
 
-def to_llvm_ir(low: Lowered) -> str:
-    """Emit `void fcn(int n, double t, double *y, double *dydt, double *pars)` as LLVM IR."""
+def to_llvm_ir(low: Lowered, *, adjoint: int | None = None) -> str:
+    """Emit `void fcn(int n, double t, double *y, double *dydt, double *pars)` as LLVM IR.
+
+    With `adjoint=n`, emit mxl-solvers' adjoint signature `void fcn(int n, double t,
+    double *y, double *lam, double *pars, double *dlam, double *dtheta)` instead: inputs
+    `y0..y{n-1}` come from `y` and `y{n}..` from `lam`, the first n outputs go to `dlam`
+    and the rest to `dtheta`.
+    """
     em = _Emit(low)
     em.env["t"] = "%t"
 
@@ -153,7 +159,10 @@ def to_llvm_ir(low: Lowered) -> str:
         em.env[name] = f"%{name}"
 
     for i in range(low.n):
-        load("%y", i, f"y{i}")
+        if adjoint is None or i < adjoint:
+            load("%y", i, f"y{i}")
+        else:
+            load("%lam", i - adjoint, f"y{i}")
     for i in range(len(low.par_names)):
         load("%pars", i, f"p{i}")
     for name, expr in low.assignments:
@@ -164,13 +173,23 @@ def to_llvm_ir(low: Lowered) -> str:
         em.memo.clear()
     for i, expr in enumerate(low.dydt):
         v = em.value(expr)
-        em.lines.append(f"  %out{i} = getelementptr double, ptr %dydt, i64 {i}")
+        if adjoint is None:
+            out, j = "%dydt", i
+        else:
+            out, j = ("%dlam", i) if i < adjoint else ("%dtheta", i - adjoint)
+        em.lines.append(f"  %out{i} = getelementptr double, ptr {out}, i64 {j}")
         em.lines.append(f"  store double {v}, ptr %out{i}")
+    signature = (
+        "define void @fcn(i32 %n, double %t, ptr %y, ptr %dydt, ptr %pars) {"
+        if adjoint is None
+        else "define void @fcn(i32 %n, double %t, ptr %y, ptr %lam, ptr %pars, "
+        "ptr %dlam, ptr %dtheta) {"
+    )
     return "\n".join(
         [
             *sorted(em.decls),
             *em.globals,
-            "define void @fcn(i32 %n, double %t, ptr %y, ptr %dydt, ptr %pars) {",
+            signature,
             "entry:",
             *em.allocas,
             *em.lines,
@@ -294,10 +313,13 @@ class _Compiled:
         return int(idid), out
 
 
-def compile_model(low: Lowered) -> _Compiled:
-    """Compile a lowered model to machine code."""
+def compile_model(low: Lowered, *, adjoint: int | None = None) -> _Compiled:
+    """Compile a lowered model to machine code, see `to_llvm_ir` for `adjoint`.
+
+    Only `address` applies to adjoint functions, which have another signature.
+    """
     tm = _target_machine()
-    mod = llvm.parse_assembly(to_llvm_ir(low))
+    mod = llvm.parse_assembly(to_llvm_ir(low, adjoint=adjoint))
     mod.verify()
     pto = llvm.create_pipeline_tuning_options(speed_level=2)
     pb = llvm.create_pass_builder(tm, pto)

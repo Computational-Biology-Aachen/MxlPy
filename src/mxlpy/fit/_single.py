@@ -37,7 +37,7 @@ from mxlpy.simulation import Evaluation, OdeSimulation, Simulation
 from mxlpy.simulator import _normalise_protocol_index
 from mxlpy.types import Result
 
-__all__ = ["protocol_time_course", "steady_state", "time_course"]
+__all__ = ["loss_gradient", "protocol_time_course", "steady_state", "time_course"]
 
 
 type _Model = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
@@ -533,6 +533,44 @@ def _fit_data(
     return time_course(model, data=data, **kwargs)  # type: ignore[arg-type]
 
 
+def _settings_for(
+    model: _Model,
+    data: pd.Series | pd.DataFrame,
+    protocol: pd.DataFrame | None,
+    *,
+    y0: dict[str, float] | None,
+    runner: SteadyStateRunner[Any, Any] | None,
+    loss_fn: LossFn,
+    postprocess_fn: PostprocessFn | None,
+    standard_scale: bool,
+    names: list[str],
+) -> tuple[FitResidual, _Settings[Any]]:
+    """Residual function and settings for any kind of data, fitting `names`."""
+    if protocol is not None:
+        fn: FitResidual = protocol_time_course_residual
+    elif isinstance(data, pd.Series):
+        fn = steady_state_residual
+    else:
+        fn = time_course_residual
+    p_names, v_names = _split_p0(model, dict.fromkeys(names, 0.0))
+    if unknown := [k for k in names if k not in p_names + v_names]:
+        msg = f"Unknown parameters / variables {unknown}"
+        raise ValueError(msg)
+    settings = _Settings(
+        model=model,
+        data=data,
+        y0=y0,
+        runner=default_runner(model) if runner is None else runner,
+        loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
+        p_names=p_names,
+        v_names=v_names,
+        standard_scale=standard_scale,
+        protocol=_normalise_protocol_index(protocol) if protocol is not None else None,
+    )
+    return fn, settings
+
+
 def _evaluate_loss(
     model: _Model,
     data: pd.Series | pd.DataFrame,
@@ -545,22 +583,93 @@ def _evaluate_loss(
     standard_scale: bool,
 ) -> float:
     """Loss of a model with nothing to fit, for any kind of data."""
-    if protocol is not None:
-        fn: FitResidual = protocol_time_course_residual
-    elif isinstance(data, pd.Series):
-        fn = steady_state_residual
-    else:
-        fn = time_course_residual
-    settings = _Settings(
-        model=model,
-        data=data,
+    fn, settings = _settings_for(
+        model,
+        data,
+        protocol,
         y0=y0,
-        runner=default_runner(model) if runner is None else runner,
+        runner=runner,
         loss_fn=loss_fn,
         postprocess_fn=postprocess_fn,
-        p_names=[],
-        v_names=[],
         standard_scale=standard_scale,
-        protocol=_normalise_protocol_index(protocol) if protocol is not None else None,
+        names=[],
     )
     return float(fn({}, settings=settings))
+
+
+def loss_gradient(
+    model: _Model,
+    data: pd.Series | pd.DataFrame,
+    parameters: dict[str, float],
+    *,
+    protocol: pd.DataFrame | None = None,
+    y0: dict[str, float] | None = None,
+    runner: SteadyStateRunner[Any, Any] | None = None,
+    loss_fn: LossFn = losses.rmse,
+    postprocess_fn: PostprocessFn | None = None,
+    standard_scale: bool = True,
+    prior: Mapping[str, Prior] | None = None,
+    penalty: Penalty | Sequence[Penalty] | None = None,
+) -> pd.Series:
+    """Gradient of a fit's objective w.r.t. parameters and initial values.
+
+    The gradient gradient-based minimizers see, in the untransformed values.
+    The runner computes it (see `mxlpy.runners`): with
+    `derivatives="adjoint"` (or `"auto"` for large time courses) by one
+    forward and one backward solve, else from the sensitivities.
+
+    Examples
+    --------
+        >>> fit.loss_gradient(model, data, {"k1": 1.0, "k2": 0.5})
+        k1    0.12
+        k2   -0.03
+        dtype: float64
+
+    Parameters
+    ----------
+    model
+        Model to evaluate, not changed
+    data
+        Steady-state (Series) or time-course (DataFrame) data
+    parameters
+        Values of the parameters / variable initial values to differentiate
+        w.r.t.
+    protocol
+        Protocol of a protocol time course
+    y0
+        Initial conditions as {species_name: value}
+    runner
+        How the model is simulated and differentiated, see `mxlpy.runners`
+    loss_fn
+        Loss function, as for the fits
+    postprocess_fn
+        Function applied to the simulation before the loss, as for the fits
+    standard_scale
+        Whether to apply standard scale to data and prediction
+    prior
+        Priors whose negative log densities are added, as for the fits
+    penalty
+        Further penalties added, as for the fits
+
+    Returns
+    -------
+    pd.Series
+        Gradient per name of `parameters`, NaN if the simulation failed
+
+    """
+    _check_y0(model, y0)
+    residual_fn, settings = _settings_for(
+        deepcopy(model),
+        data,
+        protocol,
+        y0=y0,
+        runner=runner,
+        loss_fn=loss_fn,
+        postprocess_fn=postprocess_fn,
+        standard_scale=standard_scale,
+        names=list(parameters),
+    )
+    residual: Any = GradientResidual(residual_fn, settings)
+    if penalties := collect_penalties(prior, penalty, list(parameters)):
+        residual = penalised(residual, penalties)
+    return pd.Series(residual.gradient(dict(parameters)), index=list(parameters))

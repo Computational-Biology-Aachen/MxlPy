@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     from mxlpy.types import ArrayLike
 
     from . import (
+        adjoint_sensitivities,
         compare,
         databases,
         distributions,
@@ -122,6 +123,7 @@ Model = KineticModelBuilder
 # would cost every worker memory and start-up time
 _LAZY_SUBPACKAGES = frozenset(
     {
+        "adjoint_sensitivities",
         "compare",
         "databases",
         "distributions",
@@ -227,6 +229,7 @@ __all__ = [
     "sbml",
     "scan",
     "select",
+    "adjoint_sensitivities",
     "forward_sensitivities",
     "sensitivity",
     "surrogates",

@@ -66,6 +66,14 @@ minimise `loss + penalty`. With the `GaussianNll` loss this is a
 maximum-a-posteriori estimate. `Fit.loss` is the loss of the data alone,
 `Fit.penalty` the penalty at the optimum.
 
+Gradients
+---------
+`loss_gradient` evaluates the gradient of a fit's objective, as the
+gradient-based minimizers see it. The runner chooses how (see
+`mxlpy.runners`): adjoints (`derivatives="adjoint"`, automatic for large
+time courses) cost one forward and one backward solve for any number of
+parameters.
+
 Loss functions
 --------------
 - rmse, mean_squared, mae, ... (heuristic, compared after standard scaling)
@@ -111,7 +119,7 @@ from ._mcmc import (
     mcmc_steady_state,
     mcmc_time_course,
 )
-from ._single import protocol_time_course, steady_state, time_course
+from ._single import loss_gradient, protocol_time_course, steady_state, time_course
 from .abstract import (
     EnsembleFit,
     Fit,
@@ -173,6 +181,7 @@ __all__: list[str] = [
     "joint_protocol_time_course",
     "joint_steady_state",
     "joint_time_course",
+    "loss_gradient",
     "mae",
     "mcmc_protocol_time_course",
     "mcmc_steady_state",

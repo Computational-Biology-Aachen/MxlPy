@@ -40,6 +40,7 @@ __all__ = [
     "Annotation",
     "Array",
     "ArrayLike",
+    "DerivativeMethod",
     "Derived",
     "DiffEq",
     "Event",
@@ -64,6 +65,8 @@ __all__ = [
 ]
 
 type RateFn = Callable[..., float]
+# How runners compute derivatives of their results, see `mxlpy.runners`
+type DerivativeMethod = Literal["auto", "forward", "adjoint", "finite_difference"]
 type Array = NDArray[np.floating[Any]]
 type ArrayLike = NDArray[np.floating[Any]] | pd.Index | list[float]
 type Rhs = Callable[

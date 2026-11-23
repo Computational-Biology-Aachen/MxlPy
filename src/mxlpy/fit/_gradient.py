@@ -6,6 +6,8 @@ Minimizers detect the optional `residuals`, `jacobian`, `gradient` and
 `hessian` methods, so plain scalar residuals keep working unchanged. The
 derivatives come from the runner (see `mxlpy.runners.SensitivityRunner`)
 or, for runners without them, from finite differences of its results.
+Loss gradients come from the runner's vector-Jacobian products (adjoints)
+instead of the residual Jacobian if the runner chooses adjoints.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import pandas as pd
 
+from mxlpy.adjoint_sensitivities import uses_adjoint
 from mxlpy.fit import losses
 from mxlpy.fit.losses import GaussianNll, _sigma_array
 from mxlpy.fit.residuals import (
@@ -162,6 +165,7 @@ class GradientResidual:
         self._prediction: pd.DataFrame | pd.Series | None = None
         self._jac_key: tuple[tuple[str, float], ...] | None = None
         self._jac: Array | None = None
+        self._adjoint_failed = False
 
     @staticmethod
     def supports(residual_fn: FitResidual) -> bool:
@@ -284,13 +288,26 @@ class GradientResidual:
         return jac
 
     def gradient(self, updates: dict[str, float]) -> Array:
-        """Derivative of the scalar loss w.r.t. the parameters."""
+        """Derivative of the scalar loss w.r.t. the parameters.
+
+        From the runner's vector-Jacobian product if it uses adjoints, else
+        from the residual Jacobian.
+        """
         r = self._vector(self._predict(updates))
         valid = np.isfinite(r)
         if self._prediction is None or not valid.any():
             return np.full(len(updates), np.nan)
-        jac = self.jacobian(updates)
-        return self._d_loss(r[valid], valid) @ jac[valid]
+        d_loss = self._d_loss(r[valid], valid)
+        # A Jacobian computed for this point anyway (e.g. for the Hessian)
+        # gives the gradient for free
+        cached = tuple(updates.items()) == self._jac_key and self._jac is not None
+        if (
+            not cached
+            and self._uses_adjoint(len(updates))
+            and (grad := self._adjoint(updates, d_loss, valid)) is not None
+        ):
+            return grad
+        return d_loss @ self.jacobian(updates)[valid]
 
     def squares_factor(self) -> float | None:
         """`c` with loss = `c Σr² / 2` of the residual vector, None if it isn't one.
@@ -355,6 +372,86 @@ class GradientResidual:
             down[i] -= h
             out[i] = (loss_at(up) - loss_at(down)) / (2 * h)
         return out
+
+    def _uses_adjoint(self, n_wrt: int) -> bool:
+        """Whether loss gradients come from the runner's adjoints."""
+        s = self.settings
+        method = (
+            "steady_state_vjp" if self.kind == "steady_state" else "time_course_vjp"
+        )
+        if (
+            self._adjoint_failed
+            or not callable(getattr(s.runner, method, None))
+            or self.kind == "protocol_time_course"
+            or s.postprocess_fn is not None
+        ):
+            return False
+        derivatives = getattr(s.runner, "derivatives", None)
+        if derivatives == "adjoint":
+            return True
+        # Steady-state sensitivities cost one linear solve, shared with the
+        # Gauss-Newton Hessian, so only time courses switch
+        return (
+            derivatives == "auto"
+            and self.kind == "time_course"
+            and uses_adjoint(
+                cast(Any, s.model), n_wrt, getattr(s.runner, "integrator", None)
+            )
+        )
+
+    def _cotangents(
+        self, d_loss: Array, valid: NDArray[np.bool_]
+    ) -> pd.DataFrame | pd.Series:
+        """D loss / d prediction, from d loss / d (valid) residuals.
+
+        Replicates share time points, so their entries are summed.
+        """
+        s = self.settings
+        full = np.zeros(self.mask.shape)
+        positions = np.flatnonzero(self.mask)[valid]
+        full[positions] = (
+            d_loss if self.weights is None else d_loss * self.weights[valid]
+        )
+        data = s.data
+        if isinstance(data, pd.Series):
+            out: pd.DataFrame | pd.Series = pd.Series(full, index=self.names)
+        else:
+            frame = pd.DataFrame(
+                full.reshape(data.shape),
+                index=np.asarray(data.index, dtype=float),
+                columns=self.names,
+            )
+            out = cast(pd.DataFrame, frame.groupby(level=0).sum())
+        if self.scaled:
+            out = cast(pd.DataFrame | pd.Series, out / s.scale)
+        return out.fillna(0.0)
+
+    def _adjoint(
+        self, updates: dict[str, float], d_loss: Array, valid: NDArray[np.bool_]
+    ) -> Array | None:
+        """Loss gradient from the runner's vector-Jacobian product."""
+        s = self.settings
+        _apply_updates(updates, s)
+        runner = cast(Any, s.runner)
+        wrt = list(updates)
+        cotangents = self._cotangents(d_loss, valid)
+        try:
+            if self.kind == "steady_state":
+                res = runner.steady_state_vjp(s.model, cotangents, wrt)
+            else:
+                res = runner.time_course_vjp(s.model, cotangents, wrt)
+        except Exception as e:  # noqa: BLE001
+            # Models the adjoint codegen can't handle with derivatives="adjoint"
+            self._adjoint_failed = True
+            msg = f"Using sensitivities for loss gradients, as adjoints failed: {e}"
+            if getattr(s.runner, "derivatives", None) == "adjoint":
+                _warn_once(msg)
+            else:
+                _LOGGER.debug(msg)
+            return None
+        if isinstance(val := res.value, Exception):
+            return None
+        return val.gradient.loc[wrt].to_numpy(dtype=float)
 
     def _forward(self, updates: dict[str, float]) -> Array | None:
         s = self.settings
