@@ -141,13 +141,19 @@ class _Emit(ExprEmitter):
         return accs
 
 
-def to_wat(low: Lowered) -> str:
-    """Emit a module exporting `fcn(n, t, y, dydt, pars)`, sharing the solver's memory."""
+def to_wat(low: Lowered, *, adjoint: int | None = None) -> str:
+    """Emit a module exporting `fcn(n, t, y, dydt, pars)`, sharing the solver's memory.
+
+    With `adjoint=n`, `fcn(n, t, y, lam, pars, dlam, dtheta)` instead, as
+    `llvm_backend.to_llvm_ir`: inputs `y{n}..` come from `lam`, the first n
+    outputs go to `dlam` and the rest to `dtheta`.
+    """
     em = _Emit(low)
     em.env["t"] = "(local.get $t)"
     for i in range(low.n):
+        ptr, j = ("$y", i) if adjoint is None or i < adjoint else ("$lam", i - adjoint)
         em.env[f"y{i}"] = em.set_local(
-            f"y{i}", "f64", f"(f64.load offset={i * _DOUBLE} (local.get $y))"
+            f"y{i}", "f64", f"(f64.load offset={j * _DOUBLE} (local.get {ptr}))"
         )
     for i in range(len(low.par_names)):
         em.env[f"p{i}"] = em.set_local(
@@ -160,8 +166,12 @@ def to_wat(low: Lowered) -> str:
             em.env[name] = em.value(expr)
         em.memo.clear()
     for i, expr in enumerate(low.dydt):
+        if adjoint is None:
+            out, j = "$dydt", i
+        else:
+            out, j = ("$dlam", i) if i < adjoint else ("$dtheta", i - adjoint)
         em.body.append(
-            f"(f64.store offset={i * _DOUBLE} (local.get $dydt) {em.value(expr)})"
+            f"(f64.store offset={j * _DOUBLE} (local.get {out}) {em.value(expr)})"
         )
     imports = [
         f'(import "math" "{fn}" (func ${fn} (param {" ".join(["f64"] * nargs)}) (result f64)))'
@@ -181,7 +191,9 @@ def to_wat(low: Lowered) -> str:
             '(import "env" "memory" (memory 1))',
             *imports,
             *arrays,
-            '(func (export "fcn") (param $n i32) (param $t f64) (param $y i32) (param $dydt i32) (param $pars i32)',
+            '(func (export "fcn") (param $n i32) (param $t f64) (param $y i32) (param $dydt i32) (param $pars i32)'
+            if adjoint is None
+            else '(func (export "fcn") (param $n i32) (param $t f64) (param $y i32) (param $lam i32) (param $pars i32) (param $dlam i32) (param $dtheta i32)',
             *em.locals,
             *em.body,
             "))",
@@ -215,6 +227,21 @@ class _Runtime:
     def free(self, *ptrs: int) -> None:
         for ptr in ptrs:
             self.solver["free"](self.store, ptr)
+
+    def write(self, values: np.ndarray) -> int:
+        """Copy doubles into solver memory, returning the pointer."""
+        ptr = self.malloc(len(values))
+        if len(values):
+            self.view(ptr, len(values))[:] = values
+        return ptr
+
+    def write_ints(self, values: list[int]) -> int:
+        """Copy 32-bit integers into solver memory, returning the pointer."""
+        ptr = self.solver["malloc"](self.store, max(len(values), 1) * 4)
+        if values:
+            base = ct.addressof(self.memory.data_ptr(self.store).contents)
+            (ct.c_int32 * len(values)).from_address(base + ptr)[:] = values
+        return ptr
 
     def view(self, ptr: int, n_doubles: int) -> np.ndarray:
         # Memory can move when it grows, so this must not be kept across solver calls.
@@ -252,11 +279,28 @@ class _Compiled:
         self._fcn: Any = wt.Instance(rt.store, module, imports).exports(rt.store)["fcn"]
         self._index = rt.table.grow(rt.store, 1, self._fcn)
 
+    @property
+    def address(self) -> int:
+        """Index of the compiled function in the solver's function table."""
+        return self._index
+
     def _write(self, values: np.ndarray) -> int:
-        ptr = self._rt.malloc(len(values))
-        if len(values):
-            self._rt.view(ptr, len(values))[:] = values
-        return ptr
+        return self._rt.write(values)
+
+    def adjoint(
+        self, t: float, y: np.ndarray, lam: np.ndarray, pars: np.ndarray, n_theta: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Evaluate an adjoint function (compiled with `adjoint=n`)."""
+        rt, n = self._rt, len(y)
+        py, pl, pp = self._write(y), self._write(lam), self._write(pars)
+        pdl, pdt = rt.malloc(n), rt.malloc(n_theta)
+        try:
+            self._fcn(rt.store, n, float(t), py, pl, pp, pdl, pdt)
+            return rt.view(pdl, n).copy(), rt.view(pdt, max(n_theta, 1))[
+                :n_theta
+            ].copy()
+        finally:
+            rt.free(py, pl, pp, pdl, pdt)
 
     def rhs(self, t: float, y: np.ndarray, pars: np.ndarray) -> np.ndarray:
         rt, n = self._rt, len(y)
@@ -323,9 +367,9 @@ class _Compiled:
         return int(idid), out
 
 
-def compile_model(low: Lowered) -> _Compiled:
-    """Compile a lowered model to WASM."""
-    return _Compiled(wt.Module(_runtime().engine, to_wat(low)))
+def compile_model(low: Lowered, *, adjoint: int | None = None) -> _Compiled:
+    """Compile a lowered model to WASM, see `to_wat` for `adjoint`."""
+    return _Compiled(wt.Module(_runtime().engine, to_wat(low, adjoint=adjoint)))
 
 
 def load(blob: bytes) -> _Compiled:

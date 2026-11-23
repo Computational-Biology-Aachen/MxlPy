@@ -376,13 +376,9 @@ class GradientResidual:
     def _uses_adjoint(self, n_wrt: int) -> bool:
         """Whether loss gradients come from the runner's adjoints."""
         s = self.settings
-        method = (
-            "steady_state_vjp" if self.kind == "steady_state" else "time_course_vjp"
-        )
         if (
             self._adjoint_failed
-            or not callable(getattr(s.runner, method, None))
-            or self.kind == "protocol_time_course"
+            or not callable(getattr(s.runner, f"{self.kind}_vjp", None))
             or s.postprocess_fn is not None
         ):
             return False
@@ -393,9 +389,12 @@ class GradientResidual:
         # Gauss-Newton Hessian, so only time courses switch
         return (
             derivatives == "auto"
-            and self.kind == "time_course"
+            and self.kind != "steady_state"
             and uses_adjoint(
-                cast(Any, s.model), n_wrt, getattr(s.runner, "integrator", None)
+                cast(Any, s.model),
+                n_wrt,
+                getattr(s.runner, "integrator", None),
+                protocol=self.kind == "protocol_time_course",
             )
         )
 
@@ -438,8 +437,12 @@ class GradientResidual:
         try:
             if self.kind == "steady_state":
                 res = runner.steady_state_vjp(s.model, cotangents, wrt)
-            else:
+            elif self.kind == "time_course":
                 res = runner.time_course_vjp(s.model, cotangents, wrt)
+            else:
+                res = runner.protocol_time_course_vjp(
+                    s.model, s.protocol, cotangents, wrt
+                )
         except Exception as e:  # noqa: BLE001
             # Models the adjoint codegen can't handle with derivatives="adjoint"
             self._adjoint_failed = True

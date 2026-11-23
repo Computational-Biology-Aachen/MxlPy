@@ -138,6 +138,12 @@ class SensitivityRunner[M](Protocol):
         """Gradient of `sum(cotangents * time course)` at the cotangents' times."""
         ...
 
+    def protocol_time_course_vjp(
+        self, model: M, protocol: pd.DataFrame, cotangents: pd.DataFrame, wrt: list[str]
+    ) -> Result[AdjointSensitivities]:
+        """Gradient of `sum(cotangents * protocol time course)`."""
+        ...
+
 
 @dataclass(kw_only=True, slots=True)
 class _IntegratingRunner[
@@ -283,6 +289,27 @@ class _IntegratingRunner[
             wrt,
             integrator=self.integrator,
             method=self.derivatives,
+            displacement=self.displacement,
+        )
+
+    def protocol_time_course_vjp(
+        self,
+        model: Mi,
+        protocol: pd.DataFrame,
+        cotangents: pd.DataFrame,
+        wrt: list[str],
+    ) -> Result[AdjointSensitivities]:
+        """Gradient of `sum(cotangents * protocol time course)`, see `adjoint_sensitivities`."""
+        return adjoint_sensitivities.protocol_time_course(
+            model,
+            protocol,
+            cotangents,
+            wrt,
+            integrator=self.integrator,
+            # Forward sensitivities don't support protocols
+            method="finite_difference"
+            if self.derivatives == "forward"
+            else self.derivatives,
             displacement=self.displacement,
         )
 

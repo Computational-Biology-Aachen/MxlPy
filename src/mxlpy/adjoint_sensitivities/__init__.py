@@ -33,7 +33,9 @@ from __future__ import annotations
 
 from ._core import (
     ADJOINT_THRESHOLD,
+    PROTOCOL_ADJOINT_THRESHOLD,
     AdjointSensitivities,
+    protocol_time_course,
     steady_state,
     time_course,
     uses_adjoint,
@@ -41,7 +43,9 @@ from ._core import (
 
 __all__ = [
     "ADJOINT_THRESHOLD",
+    "PROTOCOL_ADJOINT_THRESHOLD",
     "AdjointSensitivities",
+    "protocol_time_course",
     "steady_state",
     "time_course",
     "uses_adjoint",
