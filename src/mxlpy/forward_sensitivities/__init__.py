@@ -23,10 +23,10 @@ Examples
 
 from __future__ import annotations
 
-from ._core import DerivativeMethod, ForwardSensitivities, steady_state, time_course
+from ._core import ForwardMethod, ForwardSensitivities, steady_state, time_course
 
 __all__ = [
-    "DerivativeMethod",
+    "ForwardMethod",
     "ForwardSensitivities",
     "steady_state",
     "time_course",

@@ -285,6 +285,304 @@ def _data_constants(model: KineticModelBuilder | OdeModelBuilder) -> list[str]:
     return found
 
 
+def _rhs_key(variable: str) -> str:
+    return f"__rhs_{variable}"
+
+
+@dataclass(slots=True)
+class _Graph:
+    """A model's derived quantities, reactions and diff eqs in evaluation order.
+
+    `nodes` holds every needed (name, expression), the diff eq of variable `v`
+    under `_rhs_key(v)`, after everything it depends on.
+    """
+
+    var_names: list[str]
+    par_names: list[str]
+    constant_names: list[str]
+    nodes: list[tuple[str, sympy.Expr]]
+
+
+def _model_graph(
+    model: KineticModelBuilder | OdeModelBuilder, wrt: list[str], outputs: list[str]
+) -> _Graph:
+    var_names = model.get_variable_names()
+    par_names = model.get_parameter_names()
+    if unknown := set(wrt) - set(par_names):
+        msg = f"Can only differentiate w.r.t. parameters, not {sorted(unknown)}"
+        raise ValueError(msg)
+
+    constant_names = _data_constants(model)
+    sr = model_to_symbolic_repr(
+        model,
+        only_warn=False,
+        custom_fns=dict.fromkeys(constant_names, sympy.Float(0)),
+    )
+    rsr = sr.reduce()
+    diff_eq_symbols = {
+        s.name
+        for expr in rsr.diffeqs.values()
+        for s in expr.free_symbols
+        if isinstance(s, sympy.Symbol)
+    }
+    deps = _get_dependencies_and_leaves(model, diff_eq_symbols | set(outputs))
+
+    nodes: list[tuple[str, sympy.Expr]] = []
+    seen = set(var_names) | set(par_names) | set(constant_names) | {"time"}
+
+    def component(name: str) -> None:
+        if name in seen or name not in deps:
+            return
+        fn = rsr.derived.get(name) or rsr.reactions.get(name)
+        if fn is None:
+            return
+        if isinstance(fn, (SymbolicDerived, SymbolicReaction, SymbolicReadout)):
+            fn = fn.fn
+        seen.add(name)
+        nodes.append((name, fn.expr))
+
+    for name in _get_order(model):
+        if (srg := sr.surrogates.get(name)) is not None:
+            for output in srg.outputs:
+                component(output)
+        else:
+            component(name)
+    nodes.extend((_rhs_key(name), rsr.diffeqs[name]) for name in var_names)
+    if missing := [o for o in outputs if o not in seen]:
+        msg = f"Can't differentiate output '{missing[0]}'"
+        raise ValueError(msg)
+    return _Graph(var_names, par_names, constant_names, nodes)
+
+
+def _arguments(expr: sympy.Expr, ident: dict[str, str]) -> list[str]:
+    """Names `expr` depends on, raising for those that can't be compiled."""
+    names = {s.name for s in expr.free_symbols if isinstance(s, sympy.Symbol)}
+    if unsupported := names - ident.keys():
+        msg = f"Jacobian depends on unsupported symbols: {sorted(unsupported)}"
+        raise ValueError(msg)
+    return sorted(names)
+
+
+def piecewise_extrema(expr: Any) -> Any:
+    """Abs, Max and Min as Piecewise, whose derivatives the codegen can compile.
+
+    Differentiating them directly gives Heaviside and, for symbols that aren't
+    declared real, re / im terms.
+    """
+    if not isinstance(expr, sympy.Basic):
+        return expr
+    expr = expr.replace(
+        lambda e: isinstance(e, sympy.Abs),
+        lambda e: sympy.Piecewise((e.args[0], e.args[0] >= 0), (-e.args[0], True)),
+    )
+    for cls, cmp in ((sympy.Max, sympy.Ge), (sympy.Min, sympy.Le)):
+
+        def nested(e: Any, cmp: Any = cmp) -> Any:
+            first, *rest = e.args
+            out = first
+            for arg in rest:
+                out = sympy.Piecewise((out, cmp(out, arg)), (arg, True))
+            return out
+
+        expr = expr.replace(lambda e, cls=cls: isinstance(e, cls), nested)
+    return expr
+
+
+def _local_partials(
+    lines: list[str],
+    printer: _ScalarNumpyPrinter,
+    ident: dict[str, str],
+    expr: sympy.Expr,
+    active: list[str],
+    *,
+    prefix: str,
+) -> tuple[str, list[sympy.Expr]]:
+    """Emit the common subexpressions of `expr` and its partials w.r.t. `active`.
+
+    Returns the code of the value and the partials, in terms of the emitted
+    subexpressions.
+    """
+    rename = {
+        sympy.Symbol(a): sympy.Symbol(ident[a])
+        for a in _arguments(expr, ident)
+        if a != "time"
+    }
+    smooth = piecewise_extrema(expr) if active else expr
+    exprs = [expr, *(smooth.diff(sympy.Symbol(a)) for a in active)]
+    repl, (value, *partials) = sympy.cse(
+        [e.xreplace(rename) for e in exprs], symbols=sympy.numbered_symbols(prefix)
+    )
+    lines.extend(f"    {s} = {printer.doprint(e)}" for s, e in repl)
+    return cast(str, printer.doprint(value)), cast(list[sympy.Expr], partials)
+
+
+def compile_rhs(
+    model: KineticModelBuilder | OdeModelBuilder,
+) -> tuple[Callable[[float, Array, Array, Array], Array], list[str]]:
+    """Generate the model's right-hand side as one flat function.
+
+    Faster than calling the model, as it skips assembling the arguments of
+    every function. Returns `rhs(time, x, p, c)` (arguments as for
+    `CompiledDerivatives.fn`) and the names of the constants `c`.
+    """
+    return _generated(model, ("rhs",), lambda: _compile_rhs(model))
+
+
+def _compile_rhs(
+    model: KineticModelBuilder | OdeModelBuilder,
+) -> tuple[Callable[[float, Array, Array, Array], Array], list[str]]:
+    graph = _model_graph(model, [], [])
+    printer = _ScalarNumpyPrinter({"fully_qualified_modules": True})
+    lines = ["def _rhs(time, x, p, c):"]
+    ident: dict[str, str] = {"time": "time"}
+    for prefix, names, arg in (
+        ("x", graph.var_names, "x"),
+        ("p", graph.par_names, "p"),
+        ("q", graph.constant_names, "c"),
+    ):
+        for i, name in enumerate(names):
+            ident[name] = f"{prefix}{i}"
+            lines.append(f"    {prefix}{i} = {arg}[{i}]")
+    for key, expr in graph.nodes:
+        idx = len(lines)
+        value, _ = _local_partials(lines, printer, ident, expr, [], prefix=f"c{idx}_")
+        ident[key] = f"n{idx}"
+        lines.append(f"    n{idx} = {value}")
+    values = ", ".join(ident[_rhs_key(k)] for k in graph.var_names)
+    lines.append(f"    return numpy.array([{values}], dtype=float)")
+    namespace: dict[str, object] = {"numpy": np}
+    exec(compile("\n".join(lines), "<mxlpy-rhs>", "exec"), namespace)  # noqa: S102
+    return namespace["_rhs"], graph.constant_names  # type: ignore[return-value]
+
+
+@dataclass(slots=True)
+class CompiledVjp:
+    """Reverse-mode derivatives (vector-Jacobian products) of a model.
+
+    Attributes
+    ----------
+    fn
+        `fn(time, x, p, c, lam, w)` returning `(x_bar, p_bar)` with
+        `x_bar = lamᵀ d rhs / d x + wᵀ d outputs / d x` and `p_bar` the same
+        w.r.t. the parameters in `wrt`. `p` and `c` as for
+        `CompiledDerivatives.fn`. Never forms a Jacobian, so its cost doesn't
+        grow with the number of parameters
+    wrt
+        Parameters with an entry in `p_bar`
+    outputs
+        Derived quantities and reactions with an entry in `w`
+    constant_names
+        See `CompiledDerivatives`
+
+    """
+
+    fn: Callable[[float, Array, Array, Array, Array, Array], tuple[Array, Array]]
+    wrt: list[str]
+    outputs: list[str]
+    constant_names: list[str]
+
+
+def compile_vjp(
+    model: KineticModelBuilder | OdeModelBuilder,
+    *,
+    wrt: list[str],
+    outputs: list[str] | None = None,
+) -> CompiledVjp:
+    """Generate reverse-mode code for vector-Jacobian products of the model.
+
+    Generated once per model structure and `wrt` / `outputs`, like
+    `compile_derivatives`. The forward sweep evaluates every node and its
+    partials w.r.t. its direct arguments, the reverse sweep accumulates the
+    adjoint of every node from its consumers.
+
+    Raises
+    ------
+    ValueError
+        If the derivatives depend on something that can't be compiled
+
+    """
+    outputs = [] if outputs is None else list(outputs)
+    key = ("vjp", tuple(wrt), tuple(outputs))
+    return _generated(model, key, lambda: _compile_vjp(model, list(wrt), outputs))
+
+
+def _compile_vjp(
+    model: KineticModelBuilder | OdeModelBuilder, wrt: list[str], outputs: list[str]
+) -> CompiledVjp:
+    graph = _model_graph(model, wrt, outputs)
+    printer = _ScalarNumpyPrinter({"fully_qualified_modules": True})
+    lines = ["def _vjp(time, x, p, c, lam, w):"]
+    ident: dict[str, str] = {"time": "time"}
+    # Whether a name depends on the variables or the parameters in `wrt`
+    active: set[str] = set()
+    for i, name in enumerate(graph.var_names):
+        ident[name] = f"x{i}"
+        active.add(name)
+        lines.append(f"    x{i} = x[{i}]")
+    wrt_set = set(wrt)
+    for i, name in enumerate(graph.par_names):
+        ident[name] = f"p{i}"
+        if name in wrt_set:
+            active.add(name)
+        lines.append(f"    p{i} = p[{i}]")
+    for i, name in enumerate(graph.constant_names):
+        ident[name] = f"q{i}"
+        lines.append(f"    q{i} = c[{i}]")
+
+    # Forward sweep: values and partials (identifier per argument) of every node
+    partials: list[tuple[str, list[tuple[str, str]]]] = []
+    for key, expr in graph.nodes:
+        idx = len(lines)
+        args = [a for a in _arguments(expr, ident) if a in active]
+        value, exprs = _local_partials(
+            lines, printer, ident, expr, args, prefix=f"c{idx}_"
+        )
+        ident[key] = f"n{idx}"
+        lines.append(f"    n{idx} = {value}")
+        node: list[tuple[str, str]] = []
+        for i, (arg, partial) in enumerate(zip(args, exprs, strict=True)):
+            if partial == 0:
+                continue
+            lines.append(f"    d{idx}_{i} = {printer.doprint(partial)}")
+            node.append((arg, f"d{idx}_{i}"))
+        if node:
+            active.add(key)
+        partials.append((key, node))
+
+    # Reverse sweep: every node's consumers come after it, so its adjoint is
+    # complete once the sweep reaches it
+    terms: dict[str, list[str]] = {}
+    for i, name in enumerate(graph.var_names):
+        terms.setdefault(_rhs_key(name), []).append(f"lam[{i}]")
+    for o, name in enumerate(outputs):
+        terms.setdefault(name, []).append(f"w[{o}]")
+    for key, node in reversed(partials):
+        if not node or not (ts := terms.get(key)):
+            continue
+        bar = f"b{ident[key]}"
+        lines.append(f"    {bar} = {' + '.join(ts)}")
+        for arg, d in node:
+            terms.setdefault(arg, []).append(f"{d} * {bar}")
+
+    def total(name: str) -> str:
+        return " + ".join(terms[name]) if name in terms else "0.0"
+
+    x_bar = ", ".join(total(k) for k in graph.var_names)
+    p_bar = ", ".join(total(k) for k in wrt)
+    lines.append(
+        f"    return numpy.array([{x_bar}], dtype=float), "
+        f"numpy.array([{p_bar}], dtype=float)"
+    )
+    namespace: dict[str, object] = {"numpy": np}
+    exec(compile("\n".join(lines), "<mxlpy-vjp>", "exec"), namespace)  # noqa: S102
+    return CompiledVjp(
+        fn=namespace["_vjp"],  # type: ignore[arg-type]
+        wrt=wrt,
+        outputs=outputs,
+        constant_names=graph.constant_names,
+    )
+
+
 def compile_derivatives(
     model: KineticModelBuilder | OdeModelBuilder,
     *,
@@ -343,19 +641,9 @@ def _compile_derivatives(
     """
     wrt = [] if wrt is None else list(wrt)
     outputs = [] if outputs is None else list(outputs)
-    var_names = model.get_variable_names()
-    par_names = model.get_parameter_names()
-    if unknown := set(wrt) - set(par_names):
-        msg = f"Can only differentiate w.r.t. parameters, not {sorted(unknown)}"
-        raise ValueError(msg)
-
-    constant_names = _data_constants(model)
-    sr = model_to_symbolic_repr(
-        model,
-        only_warn=False,
-        custom_fns=dict.fromkeys(constant_names, sympy.Float(0)),
-    )
-    rsr = sr.reduce()
+    graph = _model_graph(model, wrt, outputs)
+    var_names, par_names = graph.var_names, graph.par_names
+    constant_names = graph.constant_names
     printer = _ScalarNumpyPrinter({"fully_qualified_modules": True})
     n = len(var_names)
 
@@ -380,20 +668,12 @@ def _compile_derivatives(
 
     def emit(key: str, expr: sympy.Expr) -> None:
         idx = len(lines)
-        names = {s.name for s in expr.free_symbols if isinstance(s, sympy.Symbol)}
-        if unsupported := names - ident.keys():
-            msg = f"Jacobian depends on unsupported symbols: {sorted(unsupported)}"
-            raise ValueError(msg)
-        active = [a for a in sorted(names) if grad[a]]
-        rename = {sympy.Symbol(a): sympy.Symbol(ident[a]) for a in names}
-        exprs = [expr, *(expr.diff(sympy.Symbol(a)) for a in active)]
-        repl, (value, *partials) = sympy.cse(
-            [e.xreplace(rename) for e in exprs],
-            symbols=sympy.numbered_symbols(f"c{idx}_"),
+        active = [a for a in _arguments(expr, ident) if grad[a]]
+        value, partials = _local_partials(
+            lines, printer, ident, expr, active, prefix=f"c{idx}_"
         )
-        lines.extend(f"    {s} = {printer.doprint(e)}" for s, e in repl)
         ident[key] = f"n{idx}"
-        lines.append(f"    n{idx} = {printer.doprint(value)}")
+        lines.append(f"    n{idx} = {value}")
 
         terms: dict[int, list[str]] = {}
         for i, (arg, partial) in enumerate(zip(active, partials, strict=True)):
@@ -409,37 +689,13 @@ def _compile_derivatives(
             lines.append(f"    g{idx}_{k} = {' + '.join(ts)}")
             grad[key][k] = f"g{idx}_{k}"
 
-    diff_eq_symbols = {
-        s.name
-        for expr in rsr.diffeqs.values()
-        for s in expr.free_symbols
-        if isinstance(s, sympy.Symbol)
-    }
-    deps = _get_dependencies_and_leaves(model, diff_eq_symbols | set(outputs))
-
-    def emit_component(name: str) -> None:
-        if name in grad or name not in deps:
-            return
-        fn = rsr.derived.get(name) or rsr.reactions.get(name)
-        if fn is None:
-            return
-        if isinstance(fn, (SymbolicDerived, SymbolicReaction, SymbolicReadout)):
-            fn = fn.fn
-        emit(name, fn.expr)
-
-    for name in _get_order(model):
-        if (srg := sr.surrogates.get(name)) is not None:
-            for output in srg.outputs:
-                emit_component(output)
-        else:
-            emit_component(name)
+    for key, expr in graph.nodes:
+        emit(key, expr)
 
     rhs_nonzero: list[tuple[int, int]] = []
     values: list[str] = []
     for i, name in enumerate(var_names):
-        key = f"__rhs_{name}"
-        emit(key, rsr.diffeqs[name])
-        for k, code in grad[key].items():
+        for k, code in grad[_rhs_key(name)].items():
             rhs_nonzero.append((i, k))
             values.append(code)
 

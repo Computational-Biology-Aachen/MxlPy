@@ -21,13 +21,13 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
-import sympy
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy.fit._gradient import GradientResidual, _TransformedGradient
 from mxlpy.fit.penalties import _Penalised
 from mxlpy.fit.residuals import _apply_updates
+from mxlpy.integrators._native import differentiate
 from mxlpy.minimizers._scipy import LeastSquaresMinimizer
 from mxlpy.minimizers.abstract import OptimisationState
 from mxlpy.symbolic.jacobian import all_parameter_values
@@ -63,116 +63,6 @@ def _warn_once(msg: str) -> None:
     if msg not in _WARNED:
         _WARNED.add(msg)
         _LOGGER.warning(msg)
-
-
-###############################################################################
-# Forward-mode differentiation of lowered models
-###############################################################################
-
-
-type _Seed = dict[sympy.Symbol, Any]
-
-
-def _piecewise(expr: Any) -> Any:
-    """Abs, Max and Min as Piecewise, whose derivatives the codegen can compile.
-
-    Differentiating them directly gives Heaviside and, for symbols that aren't
-    declared real, re / im terms.
-    """
-    if not isinstance(expr, sympy.Basic):
-        return expr
-    expr = expr.replace(
-        lambda e: isinstance(e, sympy.Abs),
-        lambda e: sympy.Piecewise((e.args[0], e.args[0] >= 0), (-e.args[0], True)),
-    )
-    for cls, cmp in ((sympy.Max, sympy.Ge), (sympy.Min, sympy.Le)):
-
-        def nested(e: Any, cmp: Any = cmp) -> Any:
-            first, *rest = e.args
-            out = first
-            for arg in rest:
-                out = sympy.Piecewise((out, cmp(out, arg)), (arg, True))
-            return out
-
-        expr = expr.replace(lambda e, cls=cls: isinstance(e, cls), nested)
-    return expr
-
-
-def _differentiate(
-    low: Lowered, seeds: list[_Seed], outputs: list[Any]
-) -> tuple[list[tuple[str, Any]], list[list[Any]]]:
-    """Directional derivatives of `outputs` along each seed.
-
-    A seed maps input symbols (`y0`, `p0`, ...) to their derivative along that
-    direction. Returns the assignments with their derivatives interleaved and
-    the derivative of every output along every seed.
-    """
-    assignments: list[tuple[str, Any]] = []
-    tangents = [dict(seed) for seed in seeds]
-    counter = len(low.assignments)
-
-    def tangent(expr: Any, t: _Seed) -> Any:
-        expr = _piecewise(expr)
-        terms = [
-            sympy.diff(expr, s) * t[s]
-            for s in getattr(expr, "free_symbols", set())
-            if t.get(s, 0) != 0
-        ]
-        return sympy.Add(*terms) if terms else sympy.Integer(0)
-
-    for name, expr in low.assignments:
-        assignments.append((name, expr))
-        symbol = sympy.Symbol(name)
-        for t in tangents:
-            d = tangent(expr, t)
-            if d == 0:
-                continue
-            new = sympy.Symbol(f"a{counter}")
-            counter += 1
-            assignments.append((new.name, d))
-            t[symbol] = new
-    return assignments, [[tangent(out, t) for t in tangents] for out in outputs]
-
-
-def _augmented(low: Lowered, theta: list[int]) -> Lowered:
-    """States and their sensitivities to the parameters `theta` (indices into pars).
-
-    The sensitivities are inputs `y{n}`, ... and outputs after the states,
-    parameter-major, as mxl-solvers' jacobian_wrapper.c reads them.
-    """
-    from mxlpy.integrators._native.lower import Lowered  # noqa: PLC0415
-
-    n = low.n
-    seeds: list[_Seed] = [
-        {sympy.Symbol(f"y{i}"): sympy.Symbol(f"y{n + j * n + i}") for i in range(n)}
-        | {sympy.Symbol(f"p{k}"): sympy.Integer(1)}
-        for j, k in enumerate(theta)
-    ]
-    assignments, d = _differentiate(low, seeds, low.dydt)
-    sens = [d[i][j] for j in range(len(theta)) for i in range(n)]
-    return Lowered(
-        n=n * (1 + len(theta)),
-        par_names=low.par_names,
-        assignments=assignments,
-        dydt=[*low.dydt, *sens],
-    )
-
-
-def _gradients(low: Lowered, theta: list[int]) -> Lowered:
-    """Per output: its derivatives to every state, then to the parameters `theta`."""
-    from mxlpy.integrators._native.lower import Lowered  # noqa: PLC0415
-
-    seeds: list[_Seed] = [
-        {sympy.Symbol(f"y{i}"): sympy.Integer(1)} for i in range(low.n)
-    ]
-    seeds += [{sympy.Symbol(f"p{k}"): sympy.Integer(1)} for k in theta]
-    assignments, d = _differentiate(low, seeds, low.dydt)
-    return Lowered(
-        n=low.n,
-        par_names=low.par_names,
-        assignments=assignments,
-        dydt=[g for row in d for g in row],
-    )
 
 
 ###############################################################################
@@ -283,6 +173,46 @@ def _check_gradients(
             raise _Unsupported(msg)
 
 
+def _compile_derived(
+    model: Any, derived: list[str], theta: list[int], *, n: int, pars: Array, y0: Array
+) -> tuple[Any, Any]:
+    """Compile derived targets and their gradients [d/dy, d/dtheta], checked numerically.
+
+    Shared by the compiled least-squares loop and the compiled adjoint.
+    """
+    from mxlpy.integrators._native import llvm_backend  # noqa: PLC0415
+    from mxlpy.integrators._native.lower import (  # noqa: PLC0415
+        NativeLoweringError,
+        lower_outputs,
+    )
+
+    try:
+        outputs = lower_outputs(model, derived)
+    except NativeLoweringError as e:
+        raise _Unsupported(str(e)) from e
+    if outputs.arrays or outputs.data:
+        msg = "derived targets use arrays or data"
+        raise _Unsupported(msg)
+    try:
+        derived_fn = llvm_backend.compile_model(outputs)
+        gradient_fn = llvm_backend.compile_model(
+            differentiate.gradients(outputs, theta)
+        )
+    except Exception as e:
+        msg = f"the derived targets can't be compiled ({e})"
+        raise _Unsupported(msg) from e
+    _check_gradients(
+        gradient_fn,
+        derived_fn,
+        n=n,
+        n_derived=len(derived),
+        theta=theta,
+        pars=pars,
+        y0=y0,
+    )
+    return derived_fn, gradient_fn
+
+
 def _build(
     residual: GradientResidual, values: dict[str, float], log: set[str]
 ) -> _Problem:
@@ -294,7 +224,6 @@ def _build(
     from mxlpy.integrators._native.lower import (  # noqa: PLC0415
         NativeLoweringError,
         lower,
-        lower_outputs,
     )
 
     s = residual.settings
@@ -420,7 +349,7 @@ def _build(
 
     try:
         plain = llvm_backend.compile_model(low)
-        augmented = llvm_backend.compile_model(_augmented(low, theta))
+        augmented = llvm_backend.compile_model(differentiate.augmented(low, theta))
     except Exception as e:
         msg = f"the sensitivities can't be compiled ({e})"
         raise _Unsupported(msg) from e
@@ -428,27 +357,8 @@ def _build(
     compiled = [plain, augmented]
     pointers = [plain.address, augmented.address, 0, 0]
     if derived:
-        try:
-            outputs = lower_outputs(model, derived)
-        except NativeLoweringError as e:
-            raise _Unsupported(str(e)) from e
-        if outputs.arrays or outputs.data:
-            msg = "derived targets use arrays or data"
-            raise _Unsupported(msg)
-        try:
-            derived_fn = llvm_backend.compile_model(outputs)
-            gradient_fn = llvm_backend.compile_model(_gradients(outputs, theta))
-        except Exception as e:
-            msg = f"the derived targets can't be compiled ({e})"
-            raise _Unsupported(msg) from e
-        _check_gradients(
-            gradient_fn,
-            derived_fn,
-            n=low.n,
-            n_derived=len(derived),
-            theta=theta,
-            pars=pars,
-            y0=y0,
+        derived_fn, gradient_fn = _compile_derived(
+            model, derived, theta, n=low.n, pars=pars, y0=y0
         )
         compiled += [derived_fn, gradient_fn]
         pointers[2:] = [derived_fn.address, gradient_fn.address]

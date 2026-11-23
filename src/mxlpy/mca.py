@@ -175,7 +175,7 @@ def _forward_response_coefficients(
         or derivatives == "finite_difference"
     ):
         return None
-    if derivatives == "auto" and dataclasses.is_dataclass(runner):
+    if derivatives in ("auto", "adjoint") and dataclasses.is_dataclass(runner):
         # Fail instead of silently using serial finite differences, which the
         # caller computes in parallel
         runner = dataclasses.replace(runner, derivatives="forward")  # type: ignore[type-var]

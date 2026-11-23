@@ -33,12 +33,12 @@ if TYPE_CHECKING:
     from mxlpy.integrators import IntegratorType
     from mxlpy.types import Array, ArrayLike, Rhs
 
-__all__ = ["DerivativeMethod", "ForwardSensitivities", "steady_state", "time_course"]
+__all__ = ["ForwardMethod", "ForwardSensitivities", "steady_state", "time_course"]
 
 _LOGGER = logging.getLogger(__name__)
 _WARNED: set[str] = set()
 
-type DerivativeMethod = Literal["auto", "forward", "finite_difference"]
+type ForwardMethod = Literal["auto", "forward", "finite_difference"]
 type _Model = KineticModelBuilder | OdeModelBuilder
 type _AnyModel = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
 
@@ -289,27 +289,67 @@ class _Setup:
     outputs: list[str]
 
 
-def _setup(
+def _raw_initial_values(model: _Model) -> dict[str, float | InitialAssignment]:
+    if isinstance(model, KineticModelBuilder):
+        return {
+            k: v.initial_value
+            for k, v in model.get_raw_variables(as_copy=False).items()
+        }
+    return {
+        k: v.initial_value for k, v in model.get_raw_diff_eqs(as_copy=False).items()
+    }
+
+
+def _initial_sources(model: _Model, *, y0_from_model: bool) -> set[str] | None:
+    """Free parameters initial assignments depend on, None if unknown.
+
+    Of parameters and, if the initial values come from the model, of
+    variables. Only these need the (numerical) chain-rule factors.
+    """
+    sources = _computed_from(model)
+    out: set[str] = set()
+    for k in _assigned_parameters(model):
+        out |= set(sources[k])
+    if not y0_from_model:
+        return out
+    free = set(_free_parameters(model))
+    for v in _raw_initial_values(model).values():
+        if not isinstance(v, InitialAssignment):
+            continue
+        for a in v.args:
+            if a in free:
+                out.add(a)
+            elif a in sources:
+                out |= set(sources[a])
+            else:
+                return None
+    return out
+
+
+def _chain_factors(
     model: _Model,
     wrt: list[str],
-    outputs: list[str],
     *,
     y0_from_model: bool,
     displacement: float,
-) -> _Setup:
-    """Compile the derivatives and the constant chain-rule factors.
+) -> tuple[list[str], Array, Array]:
+    """Constant chain-rule factors of the requested parameters / initial values.
 
     Initial assignments of parameters and variables are computed once from
     the parameters, so their derivatives are constant and taken numerically.
+    Returns the parameters to compile derivatives for (the requested ones,
+    then those set by initial assignments), d (compiled) / d (requested) and
+    d x0 / d (requested).
     """
     pars, vars_ = _check_names(model, wrt)
     var_names = model.get_variable_names()
     derived = _assigned_parameters(model)
-    compiled = compile_derivatives(model, wrt=pars + derived, outputs=outputs)
+    compiled_wrt = pars + derived
 
     m = len(wrt)
-    chain = np.zeros((len(compiled.wrt), m))
+    chain = np.zeros((len(compiled_wrt), m))
     s0 = np.zeros((len(var_names), m))
+    sources = _initial_sources(model, y0_from_model=y0_from_model)
 
     def read() -> Array:
         values = all_parameter_values(model)
@@ -324,18 +364,33 @@ def _setup(
         if name in vars_:
             s0[var_names.index(name), j] = 1.0
             continue
-        chain[compiled.wrt.index(name), j] = 1.0
-        if derived or y0_from_model:
+        chain[compiled_wrt.index(name), j] = 1.0
+        if sources is None or name in sources:
             d = _parameter_fd(model, name, displacement, read)
             chain[len(pars) :, j] = d[: len(derived)]
             if y0_from_model:
                 s0[:, j] = d[len(derived) :]
+    return compiled_wrt, chain, s0
 
+
+def _setup(
+    model: _Model,
+    wrt: list[str],
+    outputs: list[str],
+    *,
+    y0_from_model: bool,
+    displacement: float,
+) -> _Setup:
+    """Compile the derivatives and the constant chain-rule factors."""
+    compiled_wrt, chain, s0 = _chain_factors(
+        model, wrt, y0_from_model=y0_from_model, displacement=displacement
+    )
+    compiled = compile_derivatives(model, wrt=compiled_wrt, outputs=outputs)
     return _Setup(
         derivs=_Derivatives(model, compiled),
         chain=chain,
         s0=s0,
-        var_names=var_names,
+        var_names=model.get_variable_names(),
         outputs=outputs,
     )
 
@@ -472,9 +527,7 @@ def _forward_steady_state(
     x = variables.to_numpy(dtype=float)[0]
 
     jac, dfdp = setup.derivs.rhs(t, x)
-    u, sv, _ = np.linalg.svd(jac)
-    tol = max(jac.shape) * np.finfo(float).eps * (sv.max() if sv.size else 0.0)
-    left_null = u[:, sv <= max(tol, 1e-12)].T
+    left_null = _left_null_space(jac)
     a = np.vstack([jac, left_null])
     b = np.vstack([-dfdp @ setup.chain, left_null @ setup.s0])
     s = np.linalg.lstsq(a, b, rcond=None)[0]
@@ -560,12 +613,53 @@ def _raw_variables(model: _Model, sim: object) -> pd.DataFrame:
 ###############################################################################
 
 
+def _output_names(model: _Model) -> list[str]:
+    """Derived quantities and reactions sensitivities can be computed for."""
+    names = model.get_variable_names()
+    y0 = model.get_initial_conditions()
+    frame = pd.DataFrame([[y0[k] for k in names]], index=[0.0], columns=names)
+    return [c for c in _values(model, frame).columns if c not in names]
+
+
+def _unwrap(integrator: IntegratorType) -> tuple[object, dict[str, object]]:
+    """The integrator class and the keywords of e.g. functools.partial(Native, rtol=...)."""
+    base: object = integrator
+    kwargs: dict[str, object] = {}
+    while isinstance(base, functools.partial):
+        kwargs = base.keywords | kwargs
+        base = base.func
+    return base, kwargs
+
+
+def _base_integrator(integrator: IntegratorType) -> object:
+    """The integrator class, unwrapping e.g. functools.partial(Native, rtol=...)."""
+    return _unwrap(integrator)[0]
+
+
+def _left_null_space(jac: Array) -> Array:
+    """Rows spanning the left null space of the Jacobian (the conserved quantities)."""
+    u, sv, _ = np.linalg.svd(jac)
+    tol = max(jac.shape) * np.finfo(float).eps * (sv.max() if sv.size else 0.0)
+    return u[:, sv <= max(tol, 1e-12)].T
+
+
+def _unsupported(model: _Model, integrator: IntegratorType) -> str | None:
+    """Why the integrator can't solve the augmented system, if it can't."""
+    base = _base_integrator(integrator)
+    name = getattr(base, "__name__", type(base).__name__)
+    if getattr(base, "compiles_model", False):
+        return f"the {name} integrator compiles the model itself"
+    if getattr(model, "_events", None):
+        return "the model has events"
+    return None
+
+
 def _resolve(
     model: _Model,
     wrt: list[str],
     outputs: list[str] | None,
     integrator: IntegratorType,
-    method: DerivativeMethod,
+    method: ForwardMethod,
     *,
     y0_from_model: bool,
     displacement: float,
@@ -575,10 +669,7 @@ def _resolve(
     Returns no setup if finite differences are needed instead.
     """
     _check_names(model, wrt)
-    names = model.get_variable_names()
-    y0 = model.get_initial_conditions()
-    frame = pd.DataFrame([[y0[k] for k in names]], index=[0.0], columns=names)
-    available = [c for c in _values(model, frame).columns if c not in names]
+    available = _output_names(model)
     if outputs is None:
         outputs = available
     elif unknown := [k for k in outputs if k not in available]:
@@ -588,17 +679,7 @@ def _resolve(
     if method == "finite_difference":
         return None, outputs
 
-    # Unwrap e.g. functools.partial(Native, rtol=...)
-    base = integrator
-    while isinstance(base, functools.partial):
-        base = base.func
-    name = getattr(base, "__name__", type(base).__name__)
-    reason = None
-    if getattr(base, "compiles_model", False):
-        reason = f"the {name} integrator compiles the model itself"
-    elif getattr(model, "_events", None):
-        reason = "the model has events"
-    if reason is not None:
+    if (reason := _unsupported(model, integrator)) is not None:
         if method == "forward":
             msg = f"Forward sensitivities aren't supported, as {reason}"
             raise ValueError(msg)
@@ -625,7 +706,7 @@ def time_course(
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
     outputs: list[str] | None = None,
-    method: DerivativeMethod = "auto",
+    method: ForwardMethod = "auto",
     displacement: float = 1e-3,
 ) -> Result[ForwardSensitivities]:
     """Sensitivities of a time course.
@@ -715,7 +796,7 @@ def steady_state(
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
     outputs: list[str] | None = None,
-    method: DerivativeMethod = "auto",
+    method: ForwardMethod = "auto",
     displacement: float = 1e-3,
     tolerance: float = 1e-6,
     rel_norm: bool = False,
