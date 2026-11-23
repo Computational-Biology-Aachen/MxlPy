@@ -2,7 +2,7 @@
 
 [← back to index](llms.txt)
 
-Symbolic analysis, identifiability, stability visualisation, units, and parallel execution / caching.
+Symbolic analysis, identifiability, model selection, stability visualisation, units, and parallel execution / caching.
 
 ## Symbolic analysis (`mxlpy.symbolic`)
 
@@ -27,24 +27,69 @@ print(res.summary())
 
 ## Numerical (practical) identifiability (`mxlpy.identify`)
 
-`profile_likelihood` asks whether a parameter is *practically* identifiable from data: for each fixed value of the parameter of interest it refits the remaining parameters (from `n_random` random starts) and records the best error. A clear minimum around the true value ⟹ identifiable; a flat profile ⟹ not.
+`profile_likelihood` gives likelihood-ratio confidence intervals and classifies identifiability. For each parameter it steps away from the optimum in both directions, fixing the parameter and refitting all others (warm-started), with steps adapting to the profile; a side stops when the objective has increased by the threshold, at the end of the profiled range or after `max_steps` fits; without bounds the range is a factor 1000 either way for log10 steps, else ±1000·max(|value|, 1). Both sides of all parameters run in parallel.
 
 ```python
-import numpy as np
-from mxlpy import plot
-from mxlpy.identify import profile_likelihood
+from mxlpy import fit, identify, plot
 
-errors = profile_likelihood(            # -> pd.Series indexed by parameter value
+nll = fit.GaussianNll(sigma=0.01)               # likelihood loss -> threshold chi2.ppf(alpha, 1) / 2
+res = fit.time_course(model, p0=p0, data=data, loss_fn=nll,
+                      minimizer=fit.LeastSquaresMinimizer()).unwrap_or_err()
+profiles = identify.profile_likelihood(
     model,
-    data=data,                          # pd.DataFrame
-    parameter_name="beta",
-    parameter_values=np.linspace(0.1, 0.3, 10),
-    n_random=10,                         # random starts for the nuisance parameters
-    # loss_fn=fit.rmse                   # optional
+    data,                    # Series: steady state, DataFrame: time course (+ protocol=...)
+    res,                     # parameters: fit.Fit or {name: value} (as fisher_information); refitted first; variables = fitted initial values
+    loss_fn=nll,             # same loss as the fit; other losses need threshold=
+    # names=["k1"],          # parameters to profile, default: all fitted
+    # alpha=0.95, threshold=None (simultaneous for n params: chi2.ppf(alpha, n) / 2)
+    # minimizer=None (LeastSquaresMinimizer), y0, protocol, runner, bounds, prior, penalty,
+    # transform="log" (profile in log10 steps), postprocess_fn, standard_scale, max_steps=100, parallel=True, max_workers
 )
-fig, ax = plot.lines(errors, legend=False)
-ax.set(xlabel="parameter value", ylabel="abs(error)")
+profiles.ci                  # DataFrame: value, lower, upper, identifiability (bounds ±inf if not crossed)
+profiles["k1"].delta         # Δ objective indexed by the profiled values
+profiles["k1"].parameters    # all fitted values along the profile (which parameters compensate)
+profiles.better_optimum      # set (with a warning) if a profile found a better fit: refit + profile again
+profiles.log_parameters      # parameters profiled in log10 steps
+fig, axs = plot.profile_likelihood(profiles)
 ```
+
+Identifiability: `identifiable` (threshold crossed on both sides), `practically_non_identifiable` (a side reaches the end of the range without crossing), `structurally_non_identifiable` (flat, < 1% of the threshold, over the whole range), `inconclusive` (a side ran out of steps or its fits failed). The profiled parameter's prior stays in the objective at its fixed values; the edge of its support (e.g. `Uniform`) ends the profile like a bound.
+
+### Fast identifiability test (`identify.identifiability_test`)
+
+Cheap numerical check for flat directions ("pulling" test, D2D's `arIdentifiablityTest`): refits `n_fits` times from random points in a ball around the (refitted) optimum with a penalty `w·(‖u − u*‖ − radius)²` pulling the parameters to distance `radius`. A fit that reaches ≥ 90% of the radius without increasing the objective by more than `threshold` is *flat*; parameters that moved by ≥ `min_displacement·radius` in a flat fit are non-identifiable. Distances: log10 units for log-transformed parameters (default `transform="log"`, so `radius=1` = one decade), `θ/|θ*|` for linear ones. Costs `n_fits` fits regardless of the number of parameters; a check, not a proof (follow up with profiles of the flagged parameters).
+
+```python
+test = identify.identifiability_test(
+    model, data, res,        # same inputs as profile_likelihood (fit.Fit or {name: value}, refitted first)
+    loss_fn=nll,
+    # radius=1.0, n_fits=10, recursive=False, seed=0,
+    # threshold=None (likelihood: chi2.ppf(alpha, 1) / 2; else threshold_rtol * objective, threshold_rtol=0.05; raises for ~0 objective)
+    # min_displacement=0.1, transform="log" (non-positive parameters need "linear"),
+    # minimizer=None (LeastSquaresMinimizer: needs GaussianNll / mean_squared, else LocalScipyMinimizer),
+    # y0, protocol, runner, bounds, prior, penalty, postprocess_fn, standard_scale, parallel=True, max_workers
+)
+test.is_identifiable         # no flat direction in the first round
+test.non_identifiable        # parameters moving along a flat direction (any round)
+test.displacement            # Series: max |Δu| per parameter (over flat fits), descending
+test.fixed                   # recursive=True: parameters fixed (most displaced first) until a round passes
+test.rounds[0].fits          # DataFrame per pulled fit: delta, distance, reached, flat (NaN delta = failed)
+test.rounds[0].n_blocked     # fits short of the radius within the threshold (bounds) -> warning, inconclusive
+test.rounds[0].displacement, test.rounds[0].parameters
+test.better_optimum          # set (with a warning) if a pulled fit improved on the optimum
+fig, axs = plot.identifiability_test(test)   # displacement bars + Δ objective vs distance
+```
+
+`identify.related_parameters(profiles, *, names=None, r2=0.95, min_change=1e-3)` finds identifiable combinations (MOTA-like) from `profile_likelihood` results: per non-identifiable profile (default), greedy forward regression of the profiled coordinate on the other parameters' paths (points within the threshold) until `R² ≥ r2`. Coordinates: log10 for `profiles.log_parameters`, else `θ/|θ*|`.
+
+```python
+related = identify.related_parameters(profiles)
+related.groups               # [["beta", "c"]], relations sharing parameters merged
+rel = related.relations[0]   # ParameterRelation: profile, coefficients (Series, profiled = 1), collinear, r2
+print(rel)                   # "1·log10(beta) +1·log10(c) ≈ const" -> beta·c is identifiable
+```
+
+Parameters moving in lockstep along a profile (multi-dimensional flat directions) can't be separated by one path: one gets the coefficient, the others are listed in `collinear` (still in `groups`); use `fisher_information(...).non_identifiable()` for exact combinations.
 
 ### Fisher information (`identify.fisher_information`)
 
@@ -68,6 +113,51 @@ fim.non_identifiable()       # null-space combinations (rows), empty if all iden
 fim.matrix, fim.design, fim.rank, fim.chi2
 plot.heatmap(fim.correlation, annotate=True)
 ```
+
+## Model selection (`mxlpy.select`)
+
+Compare candidate model structures by the log-likelihood of their best multistart fit and their number of estimated parameters `k` (AIC `2k − 2LL`, AICc `AIC + 2k(k+1)/(n−k−1)`, BIC `k ln n − 2LL`, `n` = finite data points), or by likelihood-ratio tests of nested models. Needs a likelihood loss (`fit.GaussianNll`); `LL = −loss` up to a constant shared by all candidates.
+
+```python
+from mxlpy import fit, plot, select
+from mxlpy.distributions import LogUniform
+
+space = select.ModelSpace(
+    base=model,                                   # all switches off; never modified
+    switches={
+        "feedback": select.free_parameter("k_fb", fixed_value=0.0),  # estimated when on, fixed when off (nested)
+        "degradation": lambda m: m.add_parameter("kd", 0.1).add_reaction("deg", ...),  # applied when on
+        # select.Switch(on=fn, off=fn, fix_on={...}, fix_off={...}) for the general case
+    },
+    # allowed=lambda on: len(on & {"mm", "hill"}) <= 1,   # exclude combinations
+)
+selection = select.run(
+    space,
+    data,                    # Series: steady state, DataFrame: time course (+ protocol=...)
+    {"k1": LogUniform(1e-2, 1e2), "k_fb": LogUniform(1e-3, 1e1), "kd": 0.1},  # p0: estimated params (+ initial values) with start distribution or fixed start; each candidate fits those its model has and doesn't fix; unknown names raise
+    loss_fn=fit.GaussianNll(sigma=0.05),
+    criterion="aicc",        # "aic" | "aicc" | "bic" | "lrt" (significance=0.05)
+    method="adaptive",       # "forward" | "backward" | "adaptive" (forward/backward/swap, FAMoS-like) | "brute_force"
+    n_starts=10,             # random starts per candidate, plus one warm start from the parent's optimum
+    # start=None (forward/adaptive: all off, backward: all on), minimizer=None (LeastSquaresMinimizer),
+    # y0, protocol, runner, bounds, prior (MAP fits; criteria use the data likelihood), penalty, transform, postprocess_fn,
+    # min_improvement=0.0, max_candidates=None (budget; stops with selection.complete False),
+    # reuse=previous_selection (don't refit known candidates), seed=0, parallel=True, max_workers, timeout
+)
+selection.table              # per candidate: k, n, log_likelihood, aic, aicc, bic, delta, weight, converged, n_failed, parent, one bool column per switch
+selection.best_id, selection.best_model, selection.path   # selected model (fitted values set), search path
+selection["feedback"].best_pars                            # CandidateFit: best_pars, fixed, loss, penalty, objectives (per start), converged(), model
+selection.lrt("base", "feedback")                          # LikelihoodRatio(statistic, df, p_value).rejects(significance=0.05)
+fig, ax = plot.model_selection(selection)                  # Δ criterion bars with weights
+
+# Explicit variants instead of a space
+select.compare({"base": m0, "+feedback": m1}, data, p0, loss_fn=nll, criterion="bic", n_starts=10)
+
+# Criteria on their own (e.g. for other fits)
+select.aic(ll, k), select.aicc(ll, k, n), select.bic(ll, k, n), select.model_weights(series), select.lrt(ll_null, ll_alt, df)
+```
+
+Search: each step fits all neighbours (one switch on / off / exchanged) of the current model in parallel, all starts at once, and moves to the best if it lowers the criterion by more than `min_improvement` (LRT: forward if significantly better, backward if not significantly worse). Each candidate is warm-started from the optimum of the model it neighbours; with `free_parameter` the new parameter starts at its fixed value, so the warm start reproduces the parent's fit. Random starts are seeded per candidate.
 
 ## Stability visualisation
 

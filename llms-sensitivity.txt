@@ -101,9 +101,38 @@ KineticRunner().steady_state_sensitivities(model, ["k1"])
 - Variable names in `wrt` give sensitivities w.r.t. their initial values. Derived parameters / initial-assignment parameters are rejected (differentiate w.r.t. the parameters they're computed from).
 - Without `y0`, initial values come from the model, so parameter-dependent initial assignments are differentiated too.
 - `method="forward"` raises if symbolic differentiation isn't possible; `displacement` (default `1e-3`) is the relative finite-difference step — smaller steps amplify integrator noise.
-- Integrators compiling the model themselves (`compiles_model = True`: `Native`, `Diffrax`) always use finite differences.
+- Integrators compiling the model themselves (`compiles_model = True`: `Native`, `Diffrax`) always use finite differences (use adjoint gradients with `Native` for loss gradients).
 - Returns `Result[ForwardSensitivities]`; integration failures are values, call `.unwrap_or_err()`.
 - Generated code is cached per model structure: parameter/variable value updates reuse it, structural changes (adding/removing/redefining components, initial assignments) regenerate it. Copies and pickled models share it.
 - `mca.response_coefficients` and gradient-based fits use the runner's sensitivities.
 - `Simulator(model, use_jacobian=True)` now also compiles the analytic Jacobian for `OdeModelBuilder`.
+
+## Adjoint gradients (vector-Jacobian products)
+
+`mxlpy.adjoint_sensitivities` computes `d/dtheta sum(w(t) * y(t))` for given cotangents `w` (e.g. `d loss / d y`), i.e. the gradient of a scalar, by one forward and one backward solve regardless of the number of parameters (forward sensitivities integrate n per parameter). Adjoint `dlambda/dt = -J^T lambda`, jumps by `w` at every time point, `dL/dtheta = int lambda^T df/dtheta dt + lambda(0)^T dx0/dtheta`; both products are generated symbolically in reverse mode (no Jacobians w.r.t. parameters). The backward pass Hermite-interpolates the forward trajectory (grids refined by an ODE defect test), never integrates the model backwards. Steady states: adjoint of the implicit function theorem (one linear solve, conserved totals handled).
+
+```python
+from mxlpy import adjoint_sensitivities
+
+w = pd.DataFrame({"x": [1.0, -1.0], "v1": [0.5, 0.0]}, index=[1.0, 2.0])  # ascending, distinct, >= 0
+res = adjoint_sensitivities.time_course(model, w, ["k1", "k2", "x"]).unwrap_or_err()
+res.gradient      # Series per wrt name (variables = initial values)
+res.simulated     # values at w's time points / columns
+res.method        # "adjoint" | "forward" | "finite_difference"
+res.adjoint       # lambda(t) (time x variables), lambda(0) = gradient w.r.t. initial values
+adjoint_sensitivities.steady_state(model, pd.Series({"A": 1.0}), ["kf"])
+adjoint_sensitivities.protocol_time_course(model, protocol, w, ["k1"])  # steps set parameters; wrt can't be protocol columns
+
+# method: "auto" (default) | "adjoint" | "forward" | "finite_difference"
+adjoint_sensitivities.uses_adjoint(model, n_wrt, integrator)  # auto's choice
+KineticRunner(derivatives="adjoint").time_course_vjp(model, w, ["k1"])
+KineticRunner().steady_state_vjp(model, pd.Series({"A": 1.0}), ["kf"])
+KineticRunner().protocol_time_course_vjp(model, protocol, w, ["k1"])
+```
+
+- `auto` uses adjoints for time courses from `ADJOINT_THRESHOLD` (1000) variables x parameters on (measured crossover), and always with the compiled adjoint (`Native` with Radau/LSODA, llvm or wasm backend; Native can't integrate forward sensitivities); steady states always use the adjoint IFT. Cotangents are scaled to max |w| = 1 internally (lambda shares the states' atol), NaN cotangents mean no weight.
+- `Native` (llvm or wasm backend, Radau/LSODA) runs forward + backward solve and the quadrature compiled (`mxn_adjoint_vjp`, ~35-100x the Python adjoint; wasm ~ llvm speed); non-lowerable models / arrays / data / CVODE fall back to the Python adjoint with Native's forward pass. Then `adjoint` only holds `lambda(0)`.
+- Protocols: the adjoint runs backwards through the steps (lambda continuous at step ends, each step's parameters); time points after the protocol are ignored. No forward sensitivities for protocols, so `method="forward"` raises and `auto` uses adjoints from `PROTOCOL_ADJOINT_THRESHOLD` (3) parameters, finite differences below. Parameters set by initial assignments depending on protocol columns: adjoint raises, auto uses finite differences.
+- Models with events: `method="adjoint"` raises, `auto` uses forward/finite differences. Unparsable functions: `adjoint` raises, `auto` falls back.
+- Initial assignments (parameters, initial values) are differentiated through constant chain-rule factors, as for forward sensitivities.
 

@@ -91,16 +91,43 @@ fit.joint_mixed(
 res = fit.time_course(
     model, p0={"k1": 1.0, "k2": 0.5}, data=data,
     minimizer=fit.LeastSquaresMinimizer(),  # scipy least_squares, method="trf"|"dogbox"|"lm"
-    runner=KineticRunner(derivatives="auto"),  # default; or "forward" | "finite_difference"
+    runner=KineticRunner(derivatives="auto"),  # default; or "forward" | "adjoint" | "finite_difference"
     transform="log",                        # or {"k1": "log"}; default linear
 ).unwrap_or_err()
 ```
 
-- With the built-in residual functions, fits give minimizers the residual vector, its Jacobian, the exact loss gradient and a Gauss-Newton Hessian, computed lazily when a minimizer asks for them. The runner computes them (`KineticRunner`/`OdeRunner(derivatives=..., displacement=1e-3)`, see `forward_sensitivities`): `"auto"` solves the forward sensitivity ODEs (implicit function theorem at steady state) and falls back to finite differences for surrogates/unparsable functions, events and Native/Diffrax. Protocols, `postprocess_fn`, `SteadyStateModelBuilder` and custom runners without `*_sensitivities` methods use finite differences of the runner's results. Works for single, group, ensemble and carousel fits (not joint/mixed).
+- With the built-in residual functions, fits give minimizers the residual vector, its Jacobian, the exact loss gradient and a Gauss-Newton Hessian, computed lazily when a minimizer asks for them. The runner computes them (`KineticRunner`/`OdeRunner(derivatives=..., displacement=1e-3)`, see `forward_sensitivities`): `"auto"` solves the forward sensitivity ODEs (implicit function theorem at steady state) and falls back to finite differences for surrogates/unparsable functions, events and Native/Diffrax. Protocols, `postprocess_fn`, `SteadyStateModelBuilder` and custom runners without `*_sensitivities` methods use finite differences of the runner's results. Works for single, group, ensemble and carousel fits, and joint/mixed fits: their gradient and Gauss-Newton Hessian sum the parts' (each w.r.t. its own model's parameters); their residual vector stacks the parts' scaled by sqrt(squares_factor), so least squares needs sum-of-squares losses (`mean_squared`, `GaussianNll`; `TypeError` for `rmse`). Gradients of joint fits are evaluated serially, losses in parallel if requested. `LeastSquaresMinimizer(backend="native")` falls back to scipy for joint fits.
+- Loss gradients (L-BFGS-B etc.) come from adjoints (`mxlpy.adjoint_sensitivities`, one forward + one backward solve for any number of parameters) with `derivatives="adjoint"`, and with `"auto"` for time courses with variables x parameters >= 1000 or a `Native` integrator that runs the compiled adjoint (Radau/LSODA). Residual Jacobians / Gauss-Newton Hessians (least squares) still use forward sensitivities; a Jacobian already computed for the point is reused for the gradient. Cotangents include standard scaling, replicates and `GaussianNll` weights. Protocol fits get loss gradients from adjoints (from 3 parameters with `auto`, or `"adjoint"`), residual Jacobians by finite differences; `postprocess_fn` uses finite differences.
+- `fit.loss_gradient(model, data, {"k1": 1.0}, runner=..., loss_fn=..., prior=..., penalty=..., protocol=None, y0=None)` -> Series: the objective gradient a minimizer sees (untransformed values).
 - Gradient methods of `LocalScipyMinimizer` (L-BFGS-B, BFGS, TNC, SLSQP, trust-*, ...) and `FixedNMinimizer` get `jac=`. Hessian methods (`trust-constr`, `trust-exact`, `trust-ncg`, `trust-krylov`, `dogleg`, `Newton-CG`) also get the Gauss-Newton Hessian (`rmse` / `mean_squared`; other losses: BFGS updates with `trust-constr`, `ValueError` for methods needing a Hessian). These minimize the loss itself; `trust-exact` ignores bounds.
 - `fit.LeastSquaresMinimizer` minimizes the sum of squared residuals; `"lm"` ignores bounds. `LeastSquaresMinimizer(method="lm", backend="native")` runs the whole Levenberg-Marquardt fit compiled (model, forward sensitivities, derived targets with gradients, cminpack `lmder` in mxlpy-native; needs `mxlpy[native]`'s llvm backend), several times faster; it integrates with the method/tolerances of the runner's `Native` integrator (Radau or LSODA) or Native's defaults; ignores bounds (use `transform="log"`); falls back to the scipy backend with a one-time warning for `postprocess_fn`, fitted initial values, initial values depending on fitted parameters, events, array/data models, non-lowerable models or the wasm backend. Custom `residual_fn`s give no residual vectors (`TypeError` from least squares).
 - `transform="log"` fits in log10 space (p0 must be positive; unbounded log parameters get bounds `(1e-6, 1e6)`). Results are reported in linear space. Opt-in because L-BFGS-B can overshoot on its first log-space step; least squares works well with it.
 - The residual vector is the standard-scaled prediction minus data; missing data and constant (zero-std) columns are left out, matching the scalar losses.
+
+### Priors, MAP estimation and penalties (`prior=`, `penalty=`, `fit.GaussianNll`)
+
+```python
+from mxlpy.distributions import Laplace, LogNormal, Normal, SoftBounds
+
+res = fit.time_course(
+    model, p0=p0, data=data,
+    minimizer=fit.LeastSquaresMinimizer(),
+    loss_fn=fit.GaussianNll(sigma=0.05),   # scalar | Series per observable | DataFrame per point
+    prior={                                 # same mapping as fit.mcmc_*
+        "km": LogNormal(mean=np.log(0.5), sigma=0.2),
+        "vmax": SoftBounds(lower=1e-2, upper=1e2, scale=0.2, log=True),  # scale in decades
+        "k_deg": Normal(loc=0.1, scale=0.02),
+    },
+).unwrap_or_err()
+res.loss, res.penalty, res.objective   # data loss, prior term, loss + penalty
+```
+
+- Every point fit (single, group, ensemble, carousel, joint, joint_mixed) and `identify.profile_likelihood` take `prior=` and minimise `loss + Σ penalty`; parameters without a prior are unpenalised. Prior names must be in `p0` (`ValueError` otherwise).
+- Penalty = negative log density on the distribution's own scale: `log(θ)` for `LogNormal`, `LogUniform`, `SoftBounds(log=True)` (so `LogNormal(log 0.5, s)` pulls to 0.5, `LogUniform` is flat), shifted to 0 at its minimum (`mxlpy.distributions.prior_penalty`). `SoftBounds`: flat inside, Gaussian tails outside. `Laplace`: L1. Independent of `transform`.
+- Proper MAP only with a likelihood loss: `fit.GaussianNll(sigma)` = Σ((pred - data)/sigma)²/2 (chi²/2, ignores `standard_scale`, least squares weights residuals by 1/sigma; native LM supports scalar/per-observable sigma). With heuristic losses (`rmse`, ...) priors regularise; weight them with `penalty=fit.PriorPenalty(prior, weight=w)`. Likelihood losses carry `is_likelihood = True` (class attribute, set it on custom likelihood losses): fits never standard-scale them and `identify.profile_likelihood` uses it for its chi² threshold.
+- `LeastSquaresMinimizer` appends prior pseudo-residuals `r` (r²/2 = penalty, distributions' `penalty_residual`), scaled so it minimizes exactly `loss + penalty`; this needs a sum-of-squares loss (`GaussianNll` or `mean_squared`, `TypeError` for `rmse`/`mae`/custom losses: use `LocalScipyMinimizer` there); gradients and Gauss-Newton Hessians include the priors. The native backend falls back to scipy when priors/penalties are present.
+- Custom penalties: objects with `names` and `__call__(values) -> float` (`fit.Penalty`), optionally `residuals(values)` (Σr²/2 == value) and `jacobian(values)` for least squares / Newton methods; pass via `penalty=` (one or a sequence).
+- `Fit.loss`/`JointFit.loss` exclude the penalty; `GroupFit.get_best_fit()` / `EnsembleFit.get_best_fit()` use `objective`, `GroupFit.get_objectives()` lists them.
 
 ## Bayesian posterior sampling (`fit.mcmc_*`)
 

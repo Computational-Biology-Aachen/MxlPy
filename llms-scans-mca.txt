@@ -80,6 +80,8 @@ elas = mca.parameter_elasticities(model, to_scan=["k1", "k2"], variables={"GLC":
 plot.heatmap(elas)
 ```
 
+`to_scan=None` (parameter elasticities and response coefficients) scans every parameter except those set by an `InitialAssignment`: perturbing them would replace the assignment by a constant. Scanning one explicitly (or a derived parameter; also in the `mc` variants) raises a `ValueError` naming the parameters it is computed from; scan those instead, their effect through the assignment is included.
+
 ### Response coefficients (at steady state)
 
 Sensitivity of steady-state outputs to a parameter. Runs in parallel by default. Returns a `ResponseCoefficients` object: `.combined` (outputs × parameters), `.variables` (concentration RCs), `.fluxes` (flux RCs), unpackable as `(crcs, frcs)`. Also works for `OdeModelBuilder` (no `.fluxes`) and `SteadyStateModelBuilder` (only `.combined`, the normalised derivatives of the derived values). Elasticities are flux-based and therefore `Model`-only.
@@ -109,7 +111,7 @@ elas.xs("v1", level=1)       # time x variables of one reaction
 ```
 
 - Response coefficients: one integration of the forward sensitivity equations for all parameters; parallel central finite differences of two time courses per parameter for runners with `derivatives="finite_difference"` or models that can't be differentiated. `KineticModelBuilder` and `OdeModelBuilder` only.
-- Elasticities: one simulation, then exact derivatives of the rates at every state from the compiled model (finite differences with `displacement` as fallback). `time=` (single state) and `time_points=` are mutually exclusive; `runner=` only applies with `time_points` (simulation, and `derivatives="finite_difference"` forces finite differences with the elasticity's own `displacement`). Duplicate time points are rejected.
+- Elasticities: one simulation, then exact derivatives of the rates at every state from the compiled model, through initial assignments of other parameters by the chain rule (finite differences with `displacement` as fallback). `time=` (single state) and `time_points=` are mutually exclusive; `runner=` only applies with `time_points` (simulation, and `derivatives="finite_difference"` forces finite differences with the elasticity's own `displacement`). Duplicate time points are rejected.
 
 ### Steady-state stability
 
