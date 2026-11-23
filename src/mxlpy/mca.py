@@ -34,7 +34,13 @@ from wadler_lindig import pformat
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
-from mxlpy.forward_sensitivities._core import _assigned_parameters, _Derivatives, _step
+from mxlpy.forward_sensitivities._core import (
+    _check_parameters,
+    _Derivatives,
+    _free_parameters,
+    _setup,
+    _step,
+)
 from mxlpy.parallel import parallelise
 from mxlpy.plot import _default_fig_ax, _default_fig_axs
 from mxlpy.runners import (
@@ -205,6 +211,14 @@ def _forward_response_coefficients(
     return resp
 
 
+def _parameters_to_scan(model: _Model, to_scan: list[str] | None) -> list[str]:
+    """Default to all parameters not computed from others, reject computed ones."""
+    if to_scan is None:
+        return _free_parameters(model)
+    _check_parameters(model, to_scan)
+    return to_scan
+
+
 def _ordered(model: _Model, combined: pd.DataFrame) -> pd.DataFrame:
     """Rows ordered like `get_combined`, fluxes last (per time point)."""
     names = list(dict.fromkeys(combined.index.get_level_values(-1)))
@@ -326,6 +340,7 @@ def _exact_elasticities(
     states: pd.DataFrame,
     fluxes: pd.DataFrame,
     normalized: bool,
+    displacement: float,
 ) -> pd.DataFrame | None:
     """Elasticities along a trajectory from the compiled derivatives.
 
@@ -336,21 +351,24 @@ def _exact_elasticities(
     """
     reactions = list(fluxes.columns)
     var_names = model.get_variable_names()
-    # Parameters can also act through initial assignments of other parameters,
-    # which the compiled derivatives don't propagate
-    if of_parameters and _assigned_parameters(model):
-        return None
     try:
-        compiled = compile_derivatives(
-            model, wrt=to_scan if of_parameters else [], outputs=reactions
-        )
-        derivatives = _Derivatives(model, compiled)
-        columns = (
-            [len(var_names) + compiled.wrt.index(k) for k in to_scan]
-            if of_parameters
-            else [var_names.index(k) for k in to_scan]
-        )
-        rows = [compiled.outputs.index(k) for k in reactions]
+        if of_parameters:
+            # Parameters also act through initial assignments of other
+            # parameters, which `chain` propagates
+            setup = _setup(
+                model,
+                wrt=to_scan,
+                outputs=reactions,
+                y0_from_model=False,
+                displacement=displacement,
+            )
+            derivatives, chain, columns = setup.derivs, setup.chain, []
+        else:
+            derivatives = _Derivatives(
+                model, compile_derivatives(model, wrt=[], outputs=reactions)
+            )
+            chain, columns = None, [var_names.index(k) for k in to_scan]
+        rows = [derivatives.compiled.outputs.index(k) for k in reactions]
     except Exception as e:  # noqa: BLE001
         _LOGGER.debug("Elasticities by finite differences, as %s", e)
         return None
@@ -360,8 +378,8 @@ def _exact_elasticities(
         states.index, states.loc[:, var_names].to_numpy(dtype=float), strict=True
     ):
         gx, gp = derivatives.outputs(float(t), x)
-        full = np.hstack([gx, gp])[np.ix_(rows, columns)]
-        frames[t] = pd.DataFrame(full, index=reactions, columns=to_scan)
+        full = gx[:, columns] if chain is None else gp @ chain
+        frames[t] = pd.DataFrame(full[rows], index=reactions, columns=to_scan)
     elasticities = pd.concat(frames, names=["time", None])
     if normalized:
         if of_parameters:
@@ -418,6 +436,7 @@ def _elasticities_over_time(
                 states=states,
                 fluxes=fluxes,
                 normalized=normalized,
+                displacement=displacement,
             )
         )
         is not None
@@ -564,7 +583,9 @@ def parameter_elasticities(
     model
         Metabolic model instance
     to_scan
-        List of parameters to analyze. Uses all if None
+        List of parameters to analyze. Defaults to all parameters except
+        those set by initial assignments, which can't be perturbed (a
+        ValueError names the parameters they are computed from)
     variables
         Custom variable values. Defaults to initial conditions. With
         `time_points`, the initial values of the trajectory
@@ -574,13 +595,15 @@ def parameter_elasticities(
         Whether to normalize coefficients
     displacement
         Relative perturbation size of the finite differences (absolute for
-        values at 0). The runner's `displacement` doesn't apply
+        values at 0), also used for the (constant) derivatives of initial
+        assignments with `time_points`. The runner's `displacement` doesn't apply
     time_points
         Simulate the time course from `variables` and compute the
         elasticities at every time point. Rows are then indexed by
         (time, reaction). These are exact, from the compiled derivatives of
-        the model, unless it can't be differentiated symbolically or the
-        runner uses `derivatives="finite_difference"`
+        the model (effects through initial assignments of other parameters
+        by the chain rule), unless it can't be differentiated symbolically
+        or the runner uses `derivatives="finite_difference"`
     runner
         How the trajectory of `time_points` is simulated, see `mxlpy.runners`.
         `derivatives="finite_difference"` forces finite differences
@@ -591,7 +614,7 @@ def parameter_elasticities(
 
     """
     time = _check_time_args(time, time_points, runner)
-    to_scan = model.get_parameter_names() if to_scan is None else to_scan
+    to_scan = _parameters_to_scan(model, to_scan)
     if time_points is not None:
         return _elasticities_over_time(
             model,
@@ -757,7 +780,9 @@ def response_coefficients(
     model
         Metabolic model instance
     to_scan
-        Parameters to analyze. Uses all if None
+        Parameters to analyze. Defaults to all parameters except those set
+        by initial assignments, which can't be perturbed (a ValueError names
+        the parameters they are computed from)
     variables
         Custom variable values. Defaults to initial conditions.
     normalized
@@ -823,7 +848,7 @@ def _response_coefficients(
         msg = "A SteadyStateModelBuilder has no dynamics, so time_points don't apply"
         raise TypeError(msg)
     times = None if time_points is None else _unique_times(time_points)
-    to_scan = model.get_parameter_names() if to_scan is None else to_scan
+    to_scan = _parameters_to_scan(model, to_scan)
     model = _copy_with_y0(model, variables)
     runner = default_runner(model) if runner is None else runner
     if times is not None and not callable(getattr(runner, "time_course", None)):
