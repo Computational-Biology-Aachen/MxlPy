@@ -11,13 +11,14 @@ import multiprocessing
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import partial
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from loky import ProcessPoolExecutor
 
 from mxlpy.distributions import Prior
 from mxlpy.fit import losses
+from mxlpy.fit._gradient import GradientResidual
 from mxlpy.fit.abstract import (
     FitResidual,
     FitSettings,
@@ -40,7 +41,7 @@ from mxlpy.minimizers.abstract import (
     Residual,
 )
 from mxlpy.runners import DynamicRunner, SteadyStateRunner
-from mxlpy.types import Result
+from mxlpy.types import Array, Result
 
 __all__ = ["joint_protocol_time_course", "joint_steady_state", "joint_time_course"]
 
@@ -69,9 +70,101 @@ def _sum_of_residuals(
     return error
 
 
+class _JointGradient:
+    """Summed residual of a joint fit, with the derivatives of its parts.
+
+    The loss is the sum of the losses of all settings (`loss`, evaluated in
+    parallel if requested), so its gradient and Hessian are the sums of
+    theirs, each w.r.t. the parameters of its own model. The residual vector
+    stacks the parts' vectors scaled by sqrt(c), c their `squares_factor`, so
+    its sum of squares / 2 is the loss, which needs sum-of-squares losses.
+    """
+
+    def __init__(
+        self, loss: Residual, parts: list[GradientResidual], p0: dict[str, float]
+    ) -> None:
+        self.loss = loss
+        self.parts = parts
+        names = list(p0)
+        # Per part: the names it fits and their positions in the updates
+        self.names = [
+            [
+                k
+                for k in names
+                if k in set(part.settings.p_names + part.settings.v_names)
+            ]
+            for part in parts
+        ]
+        self.columns = [[names.index(k) for k in n] for n in self.names]
+
+    def __call__(self, updates: dict[str, float]) -> float:
+        return self.loss(updates)
+
+    def _sub(self, i: int, updates: dict[str, float]) -> dict[str, float]:
+        return {k: updates[k] for k in self.names[i]}
+
+    def gradient(self, updates: dict[str, float]) -> Array:
+        out = np.zeros(len(updates))
+        for i, part in enumerate(self.parts):
+            out[self.columns[i]] += part.gradient(self._sub(i, updates))
+        return out
+
+    def _factors(self) -> list[float]:
+        factors = [part.squares_factor() for part in self.parts]
+        if any(c is None for c in factors):
+            msg = "Residual vectors of joint fits need sum-of-squares losses (mean_squared or GaussianNll)"
+            raise TypeError(msg)
+        return cast(list[float], factors)
+
+    def squares_factor(self) -> float | None:
+        if any(part.squares_factor() is None for part in self.parts):
+            return None
+        return 1.0
+
+    def residuals(self, updates: dict[str, float]) -> Array:
+        return np.concatenate(
+            [
+                np.sqrt(c) * part.residuals(self._sub(i, updates))
+                for i, (part, c) in enumerate(
+                    zip(self.parts, self._factors(), strict=True)
+                )
+            ]
+        )
+
+    def jacobian(self, updates: dict[str, float]) -> Array:
+        blocks = []
+        for i, (part, c) in enumerate(zip(self.parts, self._factors(), strict=True)):
+            jac = part.jacobian(self._sub(i, updates))
+            block = np.zeros((jac.shape[0], len(updates)))
+            block[:, self.columns[i]] = np.sqrt(c) * jac
+            blocks.append(block)
+        return np.vstack(blocks)
+
+    def hessian(self, updates: dict[str, float]) -> Array | None:
+        out = np.zeros((len(updates), len(updates)))
+        for i, part in enumerate(self.parts):
+            if (h := part.hessian(self._sub(i, updates))) is None:
+                return None
+            out[np.ix_(self.columns[i], self.columns[i])] += h
+        return out
+
+
+def _with_derivatives(
+    loss: Residual, parts: list[tuple[FitResidual, _Settings]], p0: dict[str, float]
+) -> Residual:
+    """The joint loss with derivatives, if all its parts provide them."""
+    if not all(GradientResidual.supports(fn) for fn, _ in parts):
+        return loss
+    return cast(
+        "Residual",
+        _JointGradient(loss, [GradientResidual(fn, s) for fn, s in parts], p0),
+    )
+
+
 def _minimize_joint(
     residual: Residual,
     *,
+    parts: list[tuple[FitResidual, _Settings]],
     p0: dict[str, float],
     minimizer: MinimizerProtocol,
     bounds: Bounds | None,
@@ -79,6 +172,7 @@ def _minimize_joint(
     penalty: Penalty | Sequence[Penalty] | None,
 ) -> Result[JointFit]:
     """Minimize the summed residual of a joint fit plus its penalties."""
+    residual = _with_derivatives(residual, parts, p0)
     with_penalty = None
     if penalties := collect_penalties(prior, penalty, list(p0)):
         residual = with_penalty = penalised(residual, penalties)
@@ -209,6 +303,7 @@ def joint_steady_state(
                 fits=full_settings,
                 pool=pool,
             ),
+            parts=[(steady_state_residual, i) for i in full_settings],
             p0=p0,
             minimizer=minimizer,
             bounds=bounds,
@@ -311,6 +406,7 @@ def joint_time_course(
                 fits=full_settings,
                 pool=pool,
             ),
+            parts=[(time_course_residual, i) for i in full_settings],
             p0=p0,
             minimizer=minimizer,
             bounds=bounds,
@@ -413,6 +509,7 @@ def joint_protocol_time_course(
                 fits=full_settings,
                 pool=pool,
             ),
+            parts=[(protocol_time_course_residual, i) for i in full_settings],
             p0=p0,
             minimizer=minimizer,
             bounds=bounds,

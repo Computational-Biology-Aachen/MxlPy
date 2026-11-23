@@ -170,6 +170,7 @@ def joint_mixed(
                 fits=full_settings,
                 pool=pool,
             ),
+            parts=[(cast(FitResidual, i.residual_fn), i) for i in full_settings],
             p0=p0,
             minimizer=minimizer,
             bounds=bounds,
