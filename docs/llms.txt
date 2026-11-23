@@ -26,7 +26,7 @@ Each file is a self-contained reference for one topic area:
 - [mechanistic learning](llms-mxl.txt) — neural-network surrogates, neural posterior estimation (`npe`), universal differential equations (UDEs), reaction carousels
 - [visualization](llms-visualization.txt) — the `plot` module and model-comparison `report`s
 - [import/export](llms-io.txt) — SBML read/write (+ MIRIAM annotations), native `.mxl.json` format, code/LaTeX generation (`meta`)
-- [advanced](llms-advanced.txt) — symbolic analysis, structural & numerical identifiability (profile likelihood, Fisher information), model selection (AIC/AICc/BIC, LRT, structure search), stability, units, parallel execution & caching
+- [advanced](llms-advanced.txt) — symbolic analysis, structural & numerical identifiability (profile likelihood, Fisher information, fast pulling test, related parameter combinations), model selection (AIC/AICc/BIC, LRT, structure search), stability, units, parallel execution & caching
 
 ## Installation
 

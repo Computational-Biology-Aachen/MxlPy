@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy.identify import ProfileLikelihood
+    from mxlpy.identify import IdentifiabilityTest, ProfileLikelihood
     from mxlpy.linear_label_map import LinearLabelMapper
     from mxlpy.select import InformationCriterion, Selection
     from mxlpy.types import Array, ArrayLike
@@ -79,6 +79,7 @@ __all__ = [
     "heatmap",
     "heatmap_from_2d_idx",
     "heatmaps_from_2d_idx",
+    "identifiability_test",
     "line_autogrouped",
     "line_mean_std",
     "lines",
@@ -1715,6 +1716,79 @@ def profile_likelihood(
         ax.set(xlabel=name, title=profile.identifiability.replace("_", " "))
         if i % n_cols == 0:
             ax.set_ylabel("Δ objective")
+    return fig, axs
+
+
+def identifiability_test(
+    test: IdentifiabilityTest,
+    *,
+    round_index: int = 0,
+    figsize: tuple[float, float] | None = None,
+    grid: bool = True,
+) -> FigAxs:
+    """Plot the pulled fits of an identifiability test.
+
+    The left axes shows the largest displacement per parameter (over the
+    flat fits if there are any, else over all), non-identifiable ones in
+    red, with the displacement needed to count as moved (dashed). The right
+    axes shows each fit's increase of the objective against its distance
+    from the optimum, flat fits in red and blocked ones (short of the radius
+    within the threshold, e.g. by bounds) in orange, with the threshold and
+    the distance needed to count as reaching the radius (dashed).
+
+    Parameters
+    ----------
+    test
+        Result of `mxlpy.identify.identifiability_test`
+    round_index
+        Round to plot, with `recursive` there can be several
+    figsize
+        Size of the figure
+    grid
+        Whether to add a grid to each axis
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
+    from mxlpy.identify._pulling import _REACHED  # noqa: PLC0415
+
+    rnd = test.rounds[round_index]
+    fig, axs = _default_fig_axs(
+        ncols=2,
+        nrows=1,
+        figsize=(8, 3) if figsize is None else figsize,
+        grid=grid,
+        sharex=False,
+        sharey=False,
+    )
+    ax1, ax2 = list(axs)
+
+    disp = rnd.max_displacement
+    colors = ["C3" if k in rnd.non_identifiable else "C0" for k in disp.index]
+    ax1.bar(list(disp.index), disp.to_numpy(), color=colors)
+    ax1.axhline(test.min_displacement * test.radius, color="0.4", linestyle="dashed")
+    ax1.set(ylabel="|Δ| (max)", title="displacement")
+    ax1.tick_params(axis="x", labelrotation=90)
+
+    fits = rnd.fits.dropna(subset=["delta"])
+    flat = fits["flat"].to_numpy(dtype=bool)
+    blocked = ~fits["reached"].to_numpy(dtype=bool) & (
+        fits["delta"].to_numpy(dtype=float) < test.threshold
+    )
+    colors = np.where(flat, "C3", np.where(blocked, "C1", "C0"))
+    ax2.scatter(fits["distance"], fits["delta"], color=list(colors))
+    ax2.axhline(test.threshold, color="0.4", linestyle="dashed")
+    ax2.axvline(_REACHED * test.radius, color="0.4", linestyle="dashed")
+    ax2.set_yscale("symlog", linthresh=test.threshold)
+    ax2.set_xlim(0, 1.05 * max(test.radius, float(fits["distance"].max())))
+    ax2.set(
+        xlabel="distance",
+        ylabel="Δ objective",
+        title="identifiable" if rnd.is_identifiable else "flat direction found",
+    )
     return fig, axs
 
 

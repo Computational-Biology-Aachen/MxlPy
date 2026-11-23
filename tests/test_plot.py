@@ -318,3 +318,30 @@ def test_profile_likelihood() -> None:
     assert axes[0].get_xlabel() == "p"
     assert axes[1].get_xscale() == "log"
     plt.close(fig)
+
+
+def test_identifiability_test() -> None:
+    from mxlpy import KineticModelBuilder, fit, fns, identify  # noqa: PLC0415
+    from mxlpy.plot import identifiability_test  # noqa: PLC0415
+
+    model = (
+        KineticModelBuilder()
+        .add_parameters({"p": 3.0, "k": 1.0})
+        .add_variables({"x": 1.0})
+        .add_reaction("vin", fns.constant, args=["p"], stoichiometry={"x": 1})
+        .add_reaction(
+            "vout", fns.mass_action_1s, args=["x", "k"], stoichiometry={"x": -1}
+        )
+    )
+    test = identify.identifiability_test(
+        model,
+        pd.Series({"x": 2.0}),
+        {"p": 2.5, "k": 1.0},
+        loss_fn=fit.GaussianNll(1.0),
+        n_fits=3,
+        parallel=False,
+    )
+    fig, axs = identifiability_test(test)
+    assert len(axs) == 2
+    assert list(axs)[1].get_title() == "flat direction found"
+    plt.close(fig)

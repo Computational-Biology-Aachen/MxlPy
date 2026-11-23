@@ -473,7 +473,10 @@ def _log_names(p0: dict[str, float], transform: Transform | None) -> set[str]:
         raise ValueError(msg)
     log = {k for k, v in transform.items() if v == "log"}
     if bad := sorted(k for k in log if p0[k] <= 0):
-        msg = f"Log transform needs positive initial values, not for {bad}"
+        msg = (
+            f"Log transform needs positive initial values, not for {bad}; "
+            "pass transform per parameter, e.g. {name: 'linear'}, for these"
+        )
         raise ValueError(msg)
     return log
 
