@@ -1,0 +1,2683 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://cpbl.rwth-aachen.de/MxlPy/0.74.0/time-dependent-inputs.html">
+      
+      
+        <link rel="prev" href="fitting.html">
+      
+      
+        <link rel="next" href="fuzzy_fitting.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Time-dependent inputs - mxlpy docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="stylesheets/extra.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#time-dependent-inputs" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="mxlpy docs" class="md-header__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mxlpy docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Time-dependent inputs
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="mxlpy docs" class="md-nav__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mxlpy docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ODE features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="basics.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="composition.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model composition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scans.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scans
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mca.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sensitivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sensitivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="forward-sensitivities.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parameter sensitivities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="adjoint-sensitivities.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adjoint gradients
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Time-dependent inputs
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="time-dependent-inputs.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Time-dependent inputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#shapes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shapes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#estimating-an-unknown-stimulus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estimating an unknown stimulus
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-many-knots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How many knots?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fuzzy_fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzy fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="bayesian-inference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bayesian inference (MCMC)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="monte-carlo.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monte Carlo methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="label-models.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Label models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="comparisons.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparing models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parameterise.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model parameterisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="stability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stability analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parameter_identifiability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Identifiability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="model-selection.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model selection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="symbolic.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Symbolic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="integrators.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrator configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="compartmentalisation.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartmentalisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mechanistic learning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Mechanistic learning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-ude.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UDEs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-surrogates.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Surrogates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-npe.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neural Posterior Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="carousel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reaction carousel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="metaprogramming.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metaprogramming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="serialization.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Serialization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="examples.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="report.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reporting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Other model builders
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Other model builders
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="ode-model-builder.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="steady-state-model-builder.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Steady-state models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tips
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tips
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tips.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    General
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parallel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel execution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="citing.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How to cite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#shapes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shapes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#estimating-an-unknown-stimulus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estimating an unknown stimulus
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-many-knots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How many knots?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<script>
+(function (global, factory) {
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global = global || self, global.ClipboardCopyElement = factory());
+  }(this, function () { 'use strict';
+
+    function createNode(text) {
+      const node = document.createElement('pre');
+      node.style.width = '1px';
+      node.style.height = '1px';
+      node.style.position = 'fixed';
+      node.style.top = '5px';
+      node.textContent = text;
+      return node;
+    }
+
+    function copyNode(node) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(node.textContent);
+      }
+
+      const selection = getSelection();
+
+      if (selection == null) {
+        return Promise.reject(new Error());
+      }
+
+      selection.removeAllRanges();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      selection.addRange(range);
+      document.execCommand('copy');
+      selection.removeAllRanges();
+      return Promise.resolve();
+    }
+    function copyText(text) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(text);
+      }
+
+      const body = document.body;
+
+      if (!body) {
+        return Promise.reject(new Error());
+      }
+
+      const node = createNode(text);
+      body.appendChild(node);
+      copyNode(node);
+      body.removeChild(node);
+      return Promise.resolve();
+    }
+
+    function copy(button) {
+      const id = button.getAttribute('for');
+      const text = button.getAttribute('value');
+
+      function trigger() {
+        button.dispatchEvent(new CustomEvent('clipboard-copy', {
+          bubbles: true
+        }));
+      }
+
+      if (text) {
+        copyText(text).then(trigger);
+      } else if (id) {
+        const root = 'getRootNode' in Element.prototype ? button.getRootNode() : button.ownerDocument;
+        if (!(root instanceof Document || 'ShadowRoot' in window && root instanceof ShadowRoot)) return;
+        const node = root.getElementById(id);
+        if (node) copyTarget(node).then(trigger);
+      }
+    }
+
+    function copyTarget(content) {
+      if (content instanceof HTMLInputElement || content instanceof HTMLTextAreaElement) {
+        return copyText(content.value);
+      } else if (content instanceof HTMLAnchorElement && content.hasAttribute('href')) {
+        return copyText(content.href);
+      } else {
+        return copyNode(content);
+      }
+    }
+
+    function clicked(event) {
+      const button = event.currentTarget;
+
+      if (button instanceof HTMLElement) {
+        copy(button);
+      }
+    }
+
+    function keydown(event) {
+      if (event.key === ' ' || event.key === 'Enter') {
+        const button = event.currentTarget;
+
+        if (button instanceof HTMLElement) {
+          event.preventDefault();
+          copy(button);
+        }
+      }
+    }
+
+    function focused(event) {
+      event.currentTarget.addEventListener('keydown', keydown);
+    }
+
+    function blurred(event) {
+      event.currentTarget.removeEventListener('keydown', keydown);
+    }
+
+    class ClipboardCopyElement extends HTMLElement {
+      constructor() {
+        super();
+        this.addEventListener('click', clicked);
+        this.addEventListener('focus', focused);
+        this.addEventListener('blur', blurred);
+      }
+
+      connectedCallback() {
+        if (!this.hasAttribute('tabindex')) {
+          this.setAttribute('tabindex', '0');
+        }
+
+        if (!this.hasAttribute('role')) {
+          this.setAttribute('role', 'button');
+        }
+      }
+
+      get value() {
+        return this.getAttribute('value') || '';
+      }
+
+      set value(text) {
+        this.setAttribute('value', text);
+      }
+
+    }
+
+    if (!window.customElements.get('clipboard-copy')) {
+      window.ClipboardCopyElement = ClipboardCopyElement;
+      window.customElements.define('clipboard-copy', ClipboardCopyElement);
+    }
+
+    return ClipboardCopyElement;
+
+  }));
+</script>
+<script>
+      document.addEventListener('clipboard-copy', function(event) {
+        const notice = event.target.querySelector('.notice')
+        notice.hidden = false
+        setTimeout(function() {
+          notice.hidden = true
+        }, 1000)
+      })
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
+<style type="text/css">
+    pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }
+.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }
+.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */
+.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */
+.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */
+.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */
+.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */
+.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */
+.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */
+.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */
+.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */
+.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */
+.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */
+.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */
+.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */
+.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */
+.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */
+.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */
+.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */
+.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */
+.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */
+.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */
+.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */
+.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */
+.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */
+.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */
+.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */
+.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */
+.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */
+.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */
+.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */
+.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */
+.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */
+.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */
+.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */
+.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */
+.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */
+.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */
+.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */
+.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */
+.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */
+.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */
+.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */
+  </style>
+<link rel="stylesheet" href="assets/jupyter-b81bd4b389ab.css">
+<style type="text/css">
+.jupyter-wrapper{--jp-shadow-base-lightness: 0;--jp-shadow-umbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .2 );--jp-shadow-penumbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .14 );--jp-shadow-ambient-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .12 );--jp-elevation-z0: none;--jp-elevation-z1: 0px 2px 1px -1px var(--jp-shadow-umbra-color), 0px 1px 1px 0px var(--jp-shadow-penumbra-color), 0px 1px 3px 0px var(--jp-shadow-ambient-color);--jp-elevation-z2: 0px 3px 1px -2px var(--jp-shadow-umbra-color), 0px 2px 2px 0px var(--jp-shadow-penumbra-color), 0px 1px 5px 0px var(--jp-shadow-ambient-color);--jp-elevation-z4: 0px 2px 4px -1px var(--jp-shadow-umbra-color), 0px 4px 5px 0px var(--jp-shadow-penumbra-color), 0px 1px 10px 0px var(--jp-shadow-ambient-color);--jp-elevation-z6: 0px 3px 5px -1px var(--jp-shadow-umbra-color), 0px 6px 10px 0px var(--jp-shadow-penumbra-color), 0px 1px 18px 0px var(--jp-shadow-ambient-color);--jp-elevation-z8: 0px 5px 5px -3px var(--jp-shadow-umbra-color), 0px 8px 10px 1px var(--jp-shadow-penumbra-color), 0px 3px 14px 2px var(--jp-shadow-ambient-color);--jp-elevation-z12: 0px 7px 8px -4px var(--jp-shadow-umbra-color), 0px 12px 17px 2px var(--jp-shadow-penumbra-color), 0px 5px 22px 4px var(--jp-shadow-ambient-color);--jp-elevation-z16: 0px 8px 10px -5px var(--jp-shadow-umbra-color), 0px 16px 24px 2px var(--jp-shadow-penumbra-color), 0px 6px 30px 5px var(--jp-shadow-ambient-color);--jp-elevation-z20: 0px 10px 13px -6px var(--jp-shadow-umbra-color), 0px 20px 31px 3px var(--jp-shadow-penumbra-color), 0px 8px 38px 7px var(--jp-shadow-ambient-color);--jp-elevation-z24: 0px 11px 15px -7px var(--jp-shadow-umbra-color), 0px 24px 38px 3px var(--jp-shadow-penumbra-color), 0px 9px 46px 8px var(--jp-shadow-ambient-color);--jp-border-width: 1px;--jp-border-color0: var(--md-grey-400);--jp-border-color1: var(--md-grey-400);--jp-border-color2: var(--md-grey-300);--jp-border-color3: var(--md-grey-200);--jp-inverse-border-color: var(--md-grey-600);--jp-border-radius: 2px;--jp-ui-font-scale-factor: 1.2;--jp-ui-font-size0: .83333em;--jp-ui-font-size1: 13px;--jp-ui-font-size2: 1.2em;--jp-ui-font-size3: 1.44em;--jp-ui-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-ui-font-color0: rgba(0, 0, 0, 1);--jp-ui-font-color1: rgba(0, 0, 0, .87);--jp-ui-font-color2: rgba(0, 0, 0, .54);--jp-ui-font-color3: rgba(0, 0, 0, .38);--jp-ui-inverse-font-color0: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color1: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color2: rgba(255, 255, 255, .7);--jp-ui-inverse-font-color3: rgba(255, 255, 255, .5);--jp-content-line-height: 1.6;--jp-content-font-scale-factor: 1.2;--jp-content-font-size0: .83333em;--jp-content-font-size1: 14px;--jp-content-font-size2: 1.2em;--jp-content-font-size3: 1.44em;--jp-content-font-size4: 1.728em;--jp-content-font-size5: 2.0736em;--jp-content-presentation-font-size1: 17px;--jp-content-heading-line-height: 1;--jp-content-heading-margin-top: 1.2em;--jp-content-heading-margin-bottom: .8em;--jp-content-heading-font-weight: 500;--jp-content-font-color0: rgba(0, 0, 0, 1);--jp-content-font-color1: rgba(0, 0, 0, .87);--jp-content-font-color2: rgba(0, 0, 0, .54);--jp-content-font-color3: rgba(0, 0, 0, .38);--jp-content-link-color: var(--md-blue-700);--jp-content-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-code-font-size: 13px;--jp-code-line-height: 1.3077;--jp-code-padding: 5px;--jp-code-font-family-default: Menlo, Consolas, "DejaVu Sans Mono", monospace;--jp-code-font-family: var(--jp-code-font-family-default);--jp-code-presentation-font-size: 16px;--jp-code-cursor-width0: 1.4px;--jp-code-cursor-width1: 2px;--jp-code-cursor-width2: 4px;--jp-layout-color0: white;--jp-layout-color1: white;--jp-layout-color2: var(--md-grey-200);--jp-layout-color3: var(--md-grey-400);--jp-layout-color4: var(--md-grey-600);--jp-inverse-layout-color0: #111111;--jp-inverse-layout-color1: var(--md-grey-900);--jp-inverse-layout-color2: var(--md-grey-800);--jp-inverse-layout-color3: var(--md-grey-700);--jp-inverse-layout-color4: var(--md-grey-600);--jp-brand-color0: var(--md-blue-900);--jp-brand-color1: var(--md-blue-700);--jp-brand-color2: var(--md-blue-300);--jp-brand-color3: var(--md-blue-100);--jp-brand-color4: var(--md-blue-50);--jp-accent-color0: var(--md-green-900);--jp-accent-color1: var(--md-green-700);--jp-accent-color2: var(--md-green-300);--jp-accent-color3: var(--md-green-100);--jp-warn-color0: var(--md-orange-900);--jp-warn-color1: var(--md-orange-700);--jp-warn-color2: var(--md-orange-300);--jp-warn-color3: var(--md-orange-100);--jp-error-color0: var(--md-red-900);--jp-error-color1: var(--md-red-700);--jp-error-color2: var(--md-red-300);--jp-error-color3: var(--md-red-100);--jp-success-color0: var(--md-green-900);--jp-success-color1: var(--md-green-700);--jp-success-color2: var(--md-green-300);--jp-success-color3: var(--md-green-100);--jp-info-color0: var(--md-cyan-900);--jp-info-color1: var(--md-cyan-700);--jp-info-color2: var(--md-cyan-300);--jp-info-color3: var(--md-cyan-100);--jp-cell-padding: 5px;--jp-cell-collapser-width: 8px;--jp-cell-collapser-min-height: 20px;--jp-cell-collapser-not-active-hover-opacity: .6;--jp-cell-editor-background: var(--md-grey-100);--jp-cell-editor-border-color: var(--md-grey-300);--jp-cell-editor-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-cell-editor-active-background: var(--jp-layout-color0);--jp-cell-editor-active-border-color: var(--jp-brand-color1);--jp-cell-prompt-width: 64px;--jp-cell-prompt-font-family: var(--jp-code-font-family-default);--jp-cell-prompt-letter-spacing: 0px;--jp-cell-prompt-opacity: 1;--jp-cell-prompt-not-active-opacity: .5;--jp-cell-prompt-not-active-font-color: var(--md-grey-700);--jp-cell-inprompt-font-color: #307fc1;--jp-cell-outprompt-font-color: #bf5b3d;--jp-notebook-padding: 10px;--jp-notebook-select-background: var(--jp-layout-color1);--jp-notebook-multiselected-color: var(--md-blue-50);--jp-notebook-scroll-padding: calc( 100% - var(--jp-code-font-size) * var(--jp-code-line-height) - var(--jp-code-padding) - var(--jp-cell-padding) - 1px );--jp-rendermime-error-background: #fdd;--jp-rendermime-table-row-background: var(--md-grey-100);--jp-rendermime-table-row-hover-background: var(--md-light-blue-50);--jp-dialog-background: rgba(0, 0, 0, .25);--jp-console-padding: 10px;--jp-toolbar-border-color: var(--jp-border-color1);--jp-toolbar-micro-height: 8px;--jp-toolbar-background: var(--jp-layout-color1);--jp-toolbar-box-shadow: 0px 0px 2px 0px rgba(0, 0, 0, .24);--jp-toolbar-header-margin: 4px 4px 0px 4px;--jp-toolbar-active-background: var(--md-grey-300);--jp-statusbar-height: 24px;--jp-input-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-input-active-background: var(--jp-layout-color1);--jp-input-hover-background: var(--jp-layout-color1);--jp-input-background: var(--md-grey-100);--jp-input-border-color: var(--jp-inverse-border-color);--jp-input-active-border-color: var(--jp-brand-color1);--jp-input-active-box-shadow-color: rgba(19, 124, 189, .3);--jp-editor-selected-background: #d9d9d9;--jp-editor-selected-focused-background: #d7d4f0;--jp-editor-cursor-color: var(--jp-ui-font-color0);--jp-mirror-editor-keyword-color: #008000;--jp-mirror-editor-atom-color: #88f;--jp-mirror-editor-number-color: #080;--jp-mirror-editor-def-color: #00f;--jp-mirror-editor-variable-color: var(--md-grey-900);--jp-mirror-editor-variable-2-color: #05a;--jp-mirror-editor-variable-3-color: #085;--jp-mirror-editor-punctuation-color: #05a;--jp-mirror-editor-property-color: #05a;--jp-mirror-editor-operator-color: #aa22ff;--jp-mirror-editor-comment-color: #408080;--jp-mirror-editor-string-color: #ba2121;--jp-mirror-editor-string-2-color: #708;--jp-mirror-editor-meta-color: #aa22ff;--jp-mirror-editor-qualifier-color: #555;--jp-mirror-editor-builtin-color: #008000;--jp-mirror-editor-bracket-color: #997;--jp-mirror-editor-tag-color: #170;--jp-mirror-editor-attribute-color: #00c;--jp-mirror-editor-header-color: blue;--jp-mirror-editor-quote-color: #090;--jp-mirror-editor-link-color: #00c;--jp-mirror-editor-error-color: #f00;--jp-mirror-editor-hr-color: #999;--jp-collaborator-color1: #ffad8e;--jp-collaborator-color2: #dac83d;--jp-collaborator-color3: #72dd76;--jp-collaborator-color4: #00e4d0;--jp-collaborator-color5: #45d4ff;--jp-collaborator-color6: #e2b1ff;--jp-collaborator-color7: #ff9de6;--jp-vega-background: white;--jp-sidebar-min-width: 250px;--jp-search-toggle-off-opacity: .5;--jp-search-toggle-hover-opacity: .8;--jp-search-toggle-on-opacity: 1;--jp-search-selected-match-background-color: rgb(245, 200, 0);--jp-search-selected-match-color: black;--jp-search-unselected-match-background-color: var( --jp-inverse-layout-color0 );--jp-search-unselected-match-color: var(--jp-ui-inverse-font-color0);--jp-icon-contrast-color0: var(--md-purple-600);--jp-icon-contrast-color1: var(--md-green-600);--jp-icon-contrast-color2: var(--md-pink-600);--jp-icon-contrast-color3: var(--md-blue-600);--jp-jupyter-icon-color: #f37626;--jp-notebook-icon-color: #f37626;--jp-json-icon-color: var(--md-orange-700);--jp-console-icon-background-color: var(--md-blue-700);--jp-console-icon-color: white;--jp-terminal-icon-background-color: var(--md-grey-800);--jp-terminal-icon-color: var(--md-grey-200);--jp-text-editor-icon-color: var(--md-grey-700);--jp-inspector-icon-color: var(--md-grey-700);--jp-switch-color: var(--md-grey-400);--jp-switch-true-position-color: var(--md-orange-900)}
+</style>
+<div class="jupyter-wrapper">
+<div class="jp-Notebook" data-jp-theme-light="true" data-jp-theme-name="JupyterLab Light">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=7fb27b941602401d91542211134fc71a">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h1 id="time-dependent-inputs">Time-dependent inputs<a class="anchor-link" href="#time-dependent-inputs">¶</a></h1><p>Models are often driven by an external signal: a ligand added to the medium, light, a drug dose, or an upstream species that isn't part of the model.
+<code>mxlpy.fns_input</code> provides parameterised shapes for such inputs.
+Their parameters are ordinary model parameters, so they can be fitted together with the kinetic ones.
+This lets you estimate an unknown input from downstream measurements ("input estimation").</p>
+<p>Unlike <a href="basics.ipynb">protocols</a>, which change parameters between integrations, inputs are model functions of <code>time</code>.
+They work with fitting, forward sensitivities, symbolic analysis, serialisation and code generation.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=acae54e37e7d407bbb7b55eff062a284">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [1]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-1">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">fns</span><span class="p">,</span> <span class="n">select</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">fns_input</span> <span class="k">as</span> <span class="n">inp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy.distributions</span><span class="w"> </span><span class="kn">import</span> <span class="n">LogUniform</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-1">import matplotlib.pyplot as plt
+import numpy as np
+
+from mxlpy import Model, Simulator, fit, fns, select
+from mxlpy import fns_input as inp
+from mxlpy.distributions import LogUniform</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=9a63283cbaf04dbcab1f6479b197f3a8">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="shapes">Shapes<a class="anchor-link" href="#shapes">¶</a></h2><p>All inputs are used as derived values with <code>"time"</code> as the first argument.</p>
+<ul>
+<li><code>smooth_step(t, level1, switch_time, level2, steepness)</code>: logistic switch</li>
+<li><code>step(t, level1, switch_time, level2)</code>: hard switch. It is discontinuous, so prefer <code>smooth_step</code>, or a protocol if the levels aren't fitted</li>
+<li><code>periodic_step(t, low, high, period, on_fraction, sharpness)</code>: smooth periodic switching, e.g. day and night</li>
+<li><code>bolus(t, area, peak_time, width)</code>: Gaussian pulse with a given total area, e.g. an injected dose</li>
+<li><code>multi_step(switch_times, steepness=...)</code>: factory for several switches at fixed times with fitted levels (<code>steepness=None</code> for hard switches)</li>
+<li><code>cubic_spline(knots, positive=False, monotone=False, initial_slope=None)</code>: factory for a spline through fitted values at fixed knot times</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=8dd0d8092fe74a7c96281538738b07e2">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [2]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-2">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">48</span><span class="p">,</span> <span class="mi">481</span><span class="p">)</span>
+<span class="n">spline</span> <span class="o">=</span> <span class="n">inp</span><span class="o">.</span><span class="n">cubic_spline</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">24</span><span class="p">,</span> <span class="mi">36</span><span class="p">,</span> <span class="mi">48</span><span class="p">])</span>
+<span class="n">shapes</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"smooth_step"</span><span class="p">:</span> <span class="p">[</span><span class="n">inp</span><span class="o">.</span><span class="n">smooth_step</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">12.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">t</span><span class="p">],</span>
+    <span class="s2">"periodic_step"</span><span class="p">:</span> <span class="p">[</span><span class="n">inp</span><span class="o">.</span><span class="n">periodic_step</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">24.0</span><span class="p">,</span> <span class="mi">2</span> <span class="o">/</span> <span class="mi">3</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">t</span><span class="p">],</span>
+    <span class="s2">"bolus"</span><span class="p">:</span> <span class="p">[</span><span class="n">inp</span><span class="o">.</span><span class="n">bolus</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">t</span><span class="p">],</span>
+    <span class="s2">"multi_step"</span><span class="p">:</span> <span class="p">[</span>
+        <span class="n">inp</span><span class="o">.</span><span class="n">multi_step</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">30</span><span class="p">],</span> <span class="n">steepness</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)(</span><span class="n">x</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">t</span>
+    <span class="p">],</span>
+    <span class="s2">"cubic_spline"</span><span class="p">:</span> <span class="p">[</span><span class="n">spline</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">t</span><span class="p">],</span>
+<span class="p">}</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">shapes</span><span class="p">),</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">15</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">),</span> <span class="n">sharey</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">axs</span><span class="p">,</span> <span class="n">shapes</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="n">xlabel</span><span class="o">=</span><span class="s2">"time"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-2">t = np.linspace(0, 48, 481)
+spline = inp.cubic_spline([0, 12, 24, 36, 48])
+shapes = {
+    "smooth_step": [inp.smooth_step(x, 0.0, 12.0, 1.0, 1.0) for x in t],
+    "periodic_step": [inp.periodic_step(x, 0.0, 1.0, 24.0, 2 / 3, 20.0) for x in t],
+    "bolus": [inp.bolus(x, 5.0, 20.0, 3.0) for x in t],
+    "multi_step": [
+        inp.multi_step([10, 30], steepness=2.0)(x, 0.2, 1.0, 0.5) for x in t
+    ],
+    "cubic_spline": [spline(x, 0.2, 1.0, 0.4, 0.8, 0.6) for x in t],
+}
+fig, axs = plt.subplots(1, len(shapes), figsize=(15, 2.5), sharey=True)
+for ax, (name, values) in zip(axs, shapes.items(), strict=True):
+    ax.plot(t, values)
+    ax.set(title=name, xlabel="time")
+plt.show()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedImage jp-OutputArea-output" tabindex="0">
+<img alt="No description has been provided for this image" class="" src="data:image/webp;base64,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"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=72eea5119410473aa328ad9291626812">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="estimating-an-unknown-stimulus">Estimating an unknown stimulus<a class="anchor-link" href="#estimating-an-unknown-stimulus">¶</a></h2><p>As an example, a species <span class="arithmatex">\(x\)</span> is produced in response to a stimulus <span class="arithmatex">\(u(t)\)</span> and degraded with rate constant <span class="arithmatex">\(k\)</span>:</p>
+<p><div class="arithmatex">\[\frac{dx}{dt} = u(t) - k\,x\]</div></p>
+<p>We only measure <span class="arithmatex">\(x\)</span>, and we know <span class="arithmatex">\(k\)</span> from a separate experiment (e.g. the decay after washing the stimulus out).
+The stimulus, unknown to us, is a pulse on top of a baseline.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=8edb47106e1a46a883d545849b8ab81b">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [3]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-3">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">true_stimulus</span><span class="p">(</span><span class="n">t</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">baseline</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">area</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">baseline</span> <span class="o">+</span> <span class="n">inp</span><span class="o">.</span><span class="n">bolus</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">area</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">)</span>
+
+
+<span class="n">truth</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">Model</span><span class="p">()</span>
+    <span class="o">.</span><span class="n">add_parameters</span><span class="p">({</span><span class="s2">"k"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span> <span class="s2">"baseline"</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">,</span> <span class="s2">"area"</span><span class="p">:</span> <span class="mf">5.0</span><span class="p">})</span>
+    <span class="o">.</span><span class="n">add_variables</span><span class="p">({</span><span class="s2">"x"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">})</span>
+    <span class="o">.</span><span class="n">add_derived</span><span class="p">(</span><span class="s2">"u"</span><span class="p">,</span> <span class="n">true_stimulus</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"time"</span><span class="p">,</span> <span class="s2">"baseline"</span><span class="p">,</span> <span class="s2">"area"</span><span class="p">])</span>
+    <span class="o">.</span><span class="n">add_reaction</span><span class="p">(</span><span class="s2">"production"</span><span class="p">,</span> <span class="n">fns</span><span class="o">.</span><span class="n">constant</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"u"</span><span class="p">],</span> <span class="n">stoichiometry</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
+    <span class="o">.</span><span class="n">add_reaction</span><span class="p">(</span>
+        <span class="s2">"degradation"</span><span class="p">,</span> <span class="n">fns</span><span class="o">.</span><span class="n">mass_action_1s</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"k"</span><span class="p">],</span> <span class="n">stoichiometry</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">}</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+<span class="n">sigma</span> <span class="o">=</span> <span class="mf">0.02</span>
+<span class="n">times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">41</span><span class="p">)</span>
+<span class="n">res</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">truth</span><span class="p">)</span><span class="o">.</span><span class="n">simulate_time_course</span><span class="p">(</span><span class="n">times</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">times</span><span class="p">,</span> <span class="p">[</span><span class="s2">"x"</span><span class="p">]]</span>
+<span class="n">data</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-3">def true_stimulus(t: float, baseline: float, area: float) -&gt; float:
+    return baseline + inp.bolus(t, area, 10.0, 3.0)
+
+
+truth = (
+    Model()
+    .add_parameters({"k": 0.3, "baseline": 0.2, "area": 5.0})
+    .add_variables({"x": 0.5})
+    .add_derived("u", true_stimulus, args=["time", "baseline", "area"])
+    .add_reaction("production", fns.constant, args=["u"], stoichiometry={"x": 1})
+    .add_reaction(
+        "degradation", fns.mass_action_1s, args=["x", "k"], stoichiometry={"x": -1}
+    )
+)
+sigma = 0.02
+times = np.linspace(0, 40, 41)
+res = Simulator(truth).simulate_time_course(times).get_result().unwrap_or_err()
+data = res.variables.loc[times, ["x"]]
+data += np.random.default_rng(0).normal(0, sigma, data.shape)</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=10185d26023b46108eb7d9f57d49d2b3">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>We replace the unknown stimulus with a spline.
+<code>add_spline_input</code> adds one parameter per knot (<code>u_0</code>, <code>u_1</code>, ...) and the derived value <code>u</code>.
+With <code>positive=True</code> the spline interpolates the logarithms of the knot values, so the stimulus can't become negative.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=8763a12b2bbd4a93a75aff182afb95dc">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [4]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-4">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">model</span><span class="p">(</span><span class="n">n_knots</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">Model</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">add_parameters</span><span class="p">({</span><span class="s2">"k"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">})</span>
+        <span class="o">.</span><span class="n">add_variables</span><span class="p">({</span><span class="s2">"x"</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">})</span>
+        <span class="o">.</span><span class="n">add_spline_input</span><span class="p">(</span>
+            <span class="s2">"u"</span><span class="p">,</span> <span class="n">knots</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="n">n_knots</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">positive</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">add_reaction</span><span class="p">(</span><span class="s2">"production"</span><span class="p">,</span> <span class="n">fns</span><span class="o">.</span><span class="n">constant</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"u"</span><span class="p">],</span> <span class="n">stoichiometry</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
+        <span class="o">.</span><span class="n">add_reaction</span><span class="p">(</span>
+            <span class="s2">"degradation"</span><span class="p">,</span> <span class="n">fns</span><span class="o">.</span><span class="n">mass_action_1s</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"k"</span><span class="p">],</span> <span class="n">stoichiometry</span><span class="o">=</span><span class="p">{</span><span class="s2">"x"</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">}</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-4">def model(n_knots: int) -&gt; Model:
+    return (
+        Model()
+        .add_parameters({"k": 0.3})
+        .add_variables({"x": 0.5})
+        .add_spline_input(
+            "u", knots=np.linspace(0, 40, n_knots), initial=0.5, positive=True
+        )
+        .add_reaction("production", fns.constant, args=["u"], stoichiometry={"x": 1})
+        .add_reaction(
+            "degradation", fns.mass_action_1s, args=["x", "k"], stoichiometry={"x": -1}
+        )
+    )</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=7623eae2785240b9bd12b16a66d81610">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="how-many-knots">How many knots?<a class="anchor-link" href="#how-many-knots">¶</a></h2><p>Too few knots can't follow the pulse, and too many fit the noise.
+We fit the knot values for several knot counts and compare the fits with <code>select.compare</code>, which ranks models by an information criterion (here BIC, see <a href="model-selection.ipynb">model selection</a>).</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=7cdc8c89c7104fffa095e18ddfef8986">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [5]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-5">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">knot_counts</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">11</span><span class="p">]</span>
+<span class="n">p0</span> <span class="o">=</span> <span class="p">{</span><span class="sa">f</span><span class="s2">"u_</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span> <span class="n">LogUniform</span><span class="p">(</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">knot_counts</span><span class="p">))}</span>
+<span class="n">selection</span> <span class="o">=</span> <span class="n">select</span><span class="o">.</span><span class="n">compare</span><span class="p">(</span>
+    <span class="p">{</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2"> knots"</span><span class="p">:</span> <span class="n">model</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">knot_counts</span><span class="p">},</span>
+    <span class="n">data</span><span class="p">,</span>
+    <span class="n">p0</span><span class="p">,</span>
+    <span class="n">loss_fn</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">GaussianNll</span><span class="p">(</span><span class="n">sigma</span><span class="p">),</span>
+    <span class="n">criterion</span><span class="o">=</span><span class="s2">"bic"</span><span class="p">,</span>
+    <span class="n">n_starts</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+    <span class="n">transform</span><span class="o">=</span><span class="s2">"log"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">selection</span><span class="o">.</span><span class="n">table</span><span class="p">[[</span><span class="s2">"k"</span><span class="p">,</span> <span class="s2">"log_likelihood"</span><span class="p">,</span> <span class="s2">"bic"</span><span class="p">,</span> <span class="s2">"delta"</span><span class="p">,</span> <span class="s2">"weight"</span><span class="p">]]</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-5">knot_counts = [3, 5, 7, 9, 11]
+p0 = {f"u_{i}": LogUniform(0.05, 2.0) for i in range(max(knot_counts))}
+selection = select.compare(
+    {f"{n} knots": model(n) for n in knot_counts},
+    data,
+    p0,
+    loss_fn=fit.GaussianNll(sigma),
+    criterion="bic",
+    n_starts=5,
+    transform="log",
+)
+selection.table[["k", "log_likelihood", "bic", "delta", "weight"]]</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:   0%|          | 0/30 [00:00&lt;?, ?it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:   3%|▎         | 1/30 [00:02&lt;01:12,  2.51s/it]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  17%|█▋        | 5/30 [00:03&lt;00:11,  2.09it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  23%|██▎       | 7/30 [00:03&lt;00:08,  2.84it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  30%|███       | 9/30 [00:03&lt;00:06,  3.23it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  37%|███▋      | 11/30 [00:03&lt;00:04,  4.21it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  43%|████▎     | 13/30 [00:04&lt;00:05,  3.36it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  50%|█████     | 15/30 [00:05&lt;00:03,  4.09it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  53%|█████▎    | 16/30 [00:05&lt;00:03,  4.54it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  57%|█████▋    | 17/30 [00:05&lt;00:04,  2.90it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  63%|██████▎   | 19/30 [00:06&lt;00:03,  2.82it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  67%|██████▋   | 20/30 [00:06&lt;00:03,  3.11it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  70%|███████   | 21/30 [00:07&lt;00:03,  2.37it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  77%|███████▋  | 23/30 [00:08&lt;00:02,  2.50it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  80%|████████  | 24/30 [00:08&lt;00:02,  2.88it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  83%|████████▎ | 25/30 [00:09&lt;00:02,  1.79it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  87%|████████▋ | 26/30 [00:10&lt;00:02,  1.83it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  90%|█████████ | 27/30 [00:10&lt;00:01,  2.01it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  93%|█████████▎| 28/30 [00:10&lt;00:00,  2.49it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits:  97%|█████████▋| 29/30 [00:11&lt;00:00,  2.09it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits: 100%|██████████| 30/30 [00:11&lt;00:00,  2.28it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>fits: 100%|██████████| 30/30 [00:11&lt;00:00,  2.54it/s]</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="application/vnd.jupyter.stderr" tabindex="0">
+<pre>
+</pre>
+</div>
+</div>
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[5]:</div>
+<div class="jp-RenderedHTMLCommon jp-RenderedHTML jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/html" tabindex="0">
+<div>
+<style scoped="">
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+<thead>
+<tr style="text-align: right;">
+<th></th>
+<th>k</th>
+<th>log_likelihood</th>
+<th>bic</th>
+<th>delta</th>
+<th>weight</th>
+</tr>
+<tr>
+<th>model</th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th>9 knots</th>
+<td>9</td>
+<td>-11.148129</td>
+<td>55.718407</td>
+<td>0.000000</td>
+<td>7.744168e-01</td>
+</tr>
+<tr>
+<th>11 knots</th>
+<td>11</td>
+<td>-8.667978</td>
+<td>58.185248</td>
+<td>2.466842</td>
+<td>2.255832e-01</td>
+</tr>
+<tr>
+<th>7 knots</th>
+<td>7</td>
+<td>-154.903645</td>
+<td>335.802294</td>
+<td>280.083887</td>
+<td>1.173631e-61</td>
+</tr>
+<tr>
+<th>5 knots</th>
+<td>5</td>
+<td>-166.188112</td>
+<td>350.944083</td>
+<td>295.225677</td>
+<td>6.046911e-65</td>
+</tr>
+<tr>
+<th>3 knots</th>
+<td>3</td>
+<td>-6664.330573</td>
+<td>13339.801862</td>
+<td>13284.083456</td>
+<td>0.000000e+00</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=b118ea5561624da68c537baed56e602f">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [6]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-6">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fig</span><span class="p">,</span> <span class="p">(</span><span class="n">ax1</span><span class="p">,</span> <span class="n">ax2</span><span class="p">)</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">11</span><span class="p">,</span> <span class="mf">3.5</span><span class="p">))</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">401</span><span class="p">)</span>
+<span class="n">ax1</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+    <span class="n">t</span><span class="p">,</span>
+    <span class="p">[</span><span class="n">true_stimulus</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">t</span><span class="p">],</span>
+    <span class="n">color</span><span class="o">=</span><span class="s2">"black"</span><span class="p">,</span>
+    <span class="n">linestyle</span><span class="o">=</span><span class="s2">"--"</span><span class="p">,</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">"true"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"3 knots"</span><span class="p">,</span> <span class="n">selection</span><span class="o">.</span><span class="n">best_id</span><span class="p">]:</span>
+    <span class="n">candidate</span> <span class="o">=</span> <span class="n">selection</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+    <span class="n">fitted</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">Simulator</span><span class="p">(</span><span class="n">candidate</span><span class="o">.</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate_time_course</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="n">ax1</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">fitted</span><span class="o">.</span><span class="n">get_combined</span><span class="p">()[</span><span class="s2">"u"</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+    <span class="n">ax2</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">fitted</span><span class="o">.</span><span class="n">variables</span><span class="p">[</span><span class="s2">"x"</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+<span class="n">ax2</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="s2">"x"</span><span class="p">],</span> <span class="s2">"o"</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"black"</span><span class="p">,</span> <span class="n">markersize</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"data"</span><span class="p">)</span>
+<span class="n">ax1</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"time"</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"stimulus u"</span><span class="p">)</span>
+<span class="n">ax2</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"time"</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"x"</span><span class="p">)</span>
+<span class="n">ax1</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">ax2</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-6">fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 3.5))
+t = np.linspace(0, 40, 401)
+ax1.plot(
+    t,
+    [true_stimulus(x, 0.2, 5.0) for x in t],
+    color="black",
+    linestyle="--",
+    label="true",
+)
+for name in ["3 knots", selection.best_id]:
+    candidate = selection[name]
+    fitted = (
+        Simulator(candidate.model).simulate_time_course(t).get_result().unwrap_or_err()
+    )
+    ax1.plot(t, fitted.get_combined()["u"], label=name)
+    ax2.plot(t, fitted.variables["x"], label=name)
+ax2.plot(data.index, data["x"], "o", color="black", markersize=3, label="data")
+ax1.set(xlabel="time", ylabel="stimulus u")
+ax2.set(xlabel="time", ylabel="x")
+ax1.legend()
+ax2.legend()
+plt.show()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedImage jp-OutputArea-output" tabindex="0">
+<img alt="No description has been provided for this image" class="" src="data:image/webp;base64,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"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=938c804e27f84196a10c8828c723f798">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>The best spline recovers the timing and size of the pulse from measurements of <span class="arithmatex">\(x\)</span> alone.</p>
+<p>Why did we fix <span class="arithmatex">\(k\)</span>? A flexible input can absorb any degradation constant: for every <span class="arithmatex">\(k\)</span>, the input <span class="arithmatex">\(u(t) = \frac{dx}{dt} + k\,x\)</span> reproduces the same <span class="arithmatex">\(x(t)\)</span>.
+So <span class="arithmatex">\(k\)</span> and the input can't be estimated together from <span class="arithmatex">\(x\)</span> alone, and fitting both would give an arbitrary <span class="arithmatex">\(k\)</span> with a matching input.
+Inputs are identifiable only together with enough independent information about the rest of the model.
+For a confidence band of the estimated stimulus, profile the knot values with <code>identify.profile_likelihood</code>.</p>
+<p>Other options of the spline:</p>
+<ul>
+<li><code>monotone=True</code> uses a monotone cubic, which doesn't overshoot between knots</li>
+<li><code>initial_slope=0.0</code> fixes the slope at the first knot, e.g. for an input that starts at steady state</li>
+</ul>
+<p>Splines are piecewise polynomials whose expression grows roughly quadratically with the number of knots, so up to about 20 knots are cheap.</p>
+</div>
+</div>
+</div>
+</div>
+</div> <!-- jp-Notebook -->
+</div> <!-- jupyter-wrapper -->
+
+        <style>
+        ['pre { line-height: 125%; }\ntd.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\nspan.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\ntd.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\nspan.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\n.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }\n.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }\n.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */\n.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */\n.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */\n.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */\n.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */\n.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */\n.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */\n.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */\n.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */\n.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */\n.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */\n.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */\n.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */\n.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */\n.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */\n.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */\n.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */\n.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */\n.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */\n.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */\n.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */\n.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */\n.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */\n.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */\n.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */\n.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */\n.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */\n.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */\n.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */\n.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */\n.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */\n.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */\n.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */\n.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */\n.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */\n.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */\n.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */\n.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */\n.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */\n.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */\n.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */']
+        </style>
+        
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["content.code.copy", "content.code.annotate", "search.suggest", "search.highlight", "search.share", "navigation.instant", "navigation.instant.prefetch"], "search": "assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+    
+    
+      <script src="assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  <script data-mkdocs-jupyter-mathjax="{&quot;url&quot;: &quot;https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS_CHTML-full,Safe&quot;, &quot;version&quot;: 4}">
+/* Shared by full pages and Material's instant navigation. */
+(() => {
+  const config = JSON.parse(document.currentScript.dataset.mkdocsJupyterMathjax);
+  if (window.mkdocsJupyterMathJax) return;
+
+  let loading;
+  let queue = Promise.resolve();
+  let previous = [];
+
+  const ready = async () => {
+    if (!loading) {
+      loading = (async () => {
+        let math = window.MathJax;
+        if (!math?.typesetPromise) {
+          const url = new URL(config.url, document.baseURI).href;
+          const existing = Array.from(document.scripts).find(script =>
+            script.src && (script.src === url || script.id === 'MathJax-script' ||
+              (/mathjax/i.test(script.src) &&
+               /\/(?:MathJax|latest|(?:tex|mml)(?:-mml)?-(?:chtml|svg))\.js(?:[?#]|$)/i.test(script.src))));
+          if (existing) {
+            if (!math?.startup?.promise) {
+              await new Promise((resolve, reject) => {
+                existing.addEventListener('load', resolve, { once: true });
+                existing.addEventListener('error', reject, { once: true });
+              });
+            }
+          } else {
+            // Keep site macros, delimiters and startup hooks when supplied.
+            const options = math || {};
+            window.MathJax = {
+              ...options,
+              loader: {
+                ...options.loader,
+                load: Array.from(new Set(['ui/safe', ...(options.loader?.load || [])]))
+              },
+              startup: { typeset: false, ...options.startup },
+              tex: {
+                tags: 'ams',
+                useLabelIds: true,
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true,
+                ...options.tex
+              }
+            };
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = config.url;
+              script.id = 'MathJax-script';
+              script.async = true;
+              script.onload = resolve;
+              script.onerror = reject;
+              document.head.appendChild(script);
+            });
+          }
+        }
+        math = window.MathJax;
+        await math.startup.promise;
+        return math;
+      })();
+    }
+    const math = await loading;
+    // A site owner can extend the v3 queue again on each navigation.
+    await math.startup.promise;
+    return math;
+  };
+
+  const unrendered = node => {
+    if (node.matches('mjx-container')) return [];
+    if (!node.querySelector('mjx-container')) return [node];
+    // In v3, scanning generated assistive MathML again produces nested output.
+    return Array.from(node.children).flatMap(unrendered);
+  };
+
+  const refresh = () => {
+    // A separate chain also serializes v3, without changing v4's startup promise.
+    queue = queue.then(async () => {
+      const notebooks = Array.from(document.querySelectorAll('.jupyter-wrapper'));
+      if (!notebooks.length && !previous.length) return;
+      if (notebooks.length === previous.length &&
+          notebooks.every((node, index) => node === previous[index])) return;
+      const math = await ready();
+      if (previous.length) {
+        math.typesetClear(previous);
+        math.texReset();
+      }
+      previous = notebooks.filter(node => node.isConnected);
+      const pending = previous.flatMap(unrendered);
+      if (pending.length) await math.typesetPromise(pending);
+    }).catch(error => console.error('mkdocs-jupyter: MathJax rendering failed', error));
+    return queue;
+  };
+
+  window.mkdocsJupyterMathJax = { refresh };
+  const start = () => {
+    if (typeof document$ !== 'undefined') document$.subscribe(refresh);
+    else refresh();
+  };
+  // Theme bundles and user-provided MathJax scripts can follow notebook content.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else start();
+})();
+
+</script>
+</body>
+</html>
