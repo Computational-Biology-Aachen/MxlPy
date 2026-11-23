@@ -21,6 +21,7 @@ nav:
       - MCA: mca.ipynb
       - Sensitivity analysis: sensitivity.ipynb
       - Parameter sensitivities: forward-sensitivities.ipynb
+      - Adjoint gradients: adjoint-sensitivities.ipynb
       - Fitting: fitting.ipynb
       - Time-dependent inputs: time-dependent-inputs.ipynb
       - Fuzzy fitting: fuzzy_fitting.ipynb
