@@ -19,6 +19,7 @@ from mxlpy import (
     Simulator,
     SteadyStateModelBuilder,
     fns,
+    mca,
 )
 from mxlpy.mca import (
     RateCharacteristics,
@@ -327,6 +328,95 @@ def test_parameter_elasticities_over_time_follow_initial_assignments() -> None:
     np.testing.assert_allclose(
         exact["k1"], 10 * np.exp(-2 * np.array(times)), rtol=1e-4
     )
+
+
+def test_exact_elasticities_propagate_initial_assignments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> None:
+        msg = "fell back to finite differences"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(mca, "_fd_parameter_elasticities", fail)
+    times = [0.0, 1.0]
+    exact = parameter_elasticities(
+        _assigned_rate_model(), time_points=times, normalized=False
+    )
+    np.testing.assert_allclose(
+        exact["k1"], 10 * np.exp(-2 * np.array(times)), rtol=1e-4
+    )
+
+
+@pytest.mark.parametrize("derivatives", ["forward", "finite_difference"])
+def test_assigned_parameters_are_not_scanned_by_default(derivatives: str) -> None:
+    model = _assigned_rate_model()
+    runner = KineticRunner(derivatives=derivatives)  # type: ignore[arg-type]
+    times = np.array([0.0, 0.5, 1.0])
+    analytic = 10 * np.exp(-2 * times)
+
+    elas = parameter_elasticities(model, normalized=False)
+    assert list(elas.columns) == ["k1"]
+    np.testing.assert_allclose(elas.loc["v1", "k1"], 10.0, rtol=1e-6)
+
+    elas_t = parameter_elasticities(
+        model, time_points=times, normalized=False, runner=runner
+    )
+    assert list(elas_t.columns) == ["k1"]
+    np.testing.assert_allclose(elas_t["k1"], analytic, rtol=1e-4)
+
+    resp_t = response_coefficients(
+        model, time_points=times, normalized=False, runner=runner, parallel=False
+    )
+    assert list(resp_t.combined.columns) == ["k1"]
+    np.testing.assert_allclose(
+        resp_t.fluxes["k1"].to_numpy(), analytic * (1 - 2 * times), rtol=1e-3, atol=1e-5
+    )
+    resp = response_coefficients(model, normalized=False, runner=runner, parallel=False)
+    assert list(resp.combined.columns) == ["k1"]
+    np.testing.assert_allclose(resp.variables["k1"], 0.0, atol=1e-6)
+
+
+def test_assigned_parameters_can_be_scanned_explicitly_through_sources() -> None:
+    elas = parameter_elasticities(_assigned_rate_model(), to_scan=["k1"])
+    np.testing.assert_allclose(elas.loc["v1", "k1"], 1.0, rtol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda m: parameter_elasticities(m, to_scan=["k3"]),
+        lambda m: parameter_elasticities(m, to_scan=["k3"], time_points=[0, 1]),
+        lambda m: response_coefficients(m, to_scan=["k3"], parallel=False),
+        lambda m: response_coefficients(
+            m, to_scan=["k1", "k3"], time_points=[0, 1], parallel=False
+        ),
+    ],
+)
+def test_scanning_assigned_parameters_raises(
+    call: Callable[[KineticModelBuilder], object],
+) -> None:
+    with pytest.raises(ValueError, match=r"'k3' \(from \['k1'\]\)"):
+        call(_assigned_rate_model())
+
+
+def test_scanning_nested_computed_parameters_names_free_sources() -> None:
+    model = (
+        _assigned_rate_model()
+        .add_parameter("k4", InitialAssignment(fn=fns.twice, args=["k3"]))
+        .add_derived("d1", fns.twice, args=["k1"])
+        .add_derived("d2", fns.twice, args=["d1"])
+    )
+    with pytest.raises(ValueError, match=r"'k4' \(from \['k1'\]\)"):
+        parameter_elasticities(model, to_scan=["k4"])
+    with pytest.raises(ValueError, match=r"'d2' \(from \['k1'\]\)"):
+        response_coefficients(model, to_scan=["d2"], parallel=False)
+
+
+def test_scanning_unknown_parameters_raises() -> None:
+    with pytest.raises(ValueError, match="Unknown parameters"):
+        parameter_elasticities(linear_chain(), to_scan=["nope"])
+    with pytest.raises(ValueError, match="Unknown parameters"):
+        response_coefficients(linear_chain(), to_scan=["A"], parallel=False)
 
 
 def test_duplicate_time_points_are_rejected() -> None:

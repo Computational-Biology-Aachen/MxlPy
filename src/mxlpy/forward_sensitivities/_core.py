@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from mxlpy._ode_builder import OdeModelBuilder
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder
     from mxlpy.integrators import IntegratorType
     from mxlpy.types import Array, ArrayLike, Rhs
 
@@ -39,6 +40,7 @@ _WARNED: set[str] = set()
 
 type DerivativeMethod = Literal["auto", "forward", "finite_difference"]
 type _Model = KineticModelBuilder | OdeModelBuilder
+type _AnyModel = KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder
 
 
 @dataclass(slots=True)
@@ -121,7 +123,7 @@ def _select_times(time: Array, time_points: Array) -> NDArray[np.bool_]:
     )
 
 
-def _assigned_parameters(model: _Model) -> list[str]:
+def _assigned_parameters(model: _AnyModel) -> list[str]:
     """Parameters computed from other parameters by an initial assignment."""
     return [
         k
@@ -130,16 +132,66 @@ def _assigned_parameters(model: _Model) -> list[str]:
     ]
 
 
+def _free_parameters(model: _AnyModel) -> list[str]:
+    """Parameters that can be perturbed: not computed from other parameters."""
+    assigned = set(_assigned_parameters(model))
+    return [k for k in model.get_parameter_names() if k not in assigned]
+
+
+def _computed_from(model: _AnyModel) -> dict[str, list[str]]:
+    """Derived and assigned parameters with the free parameters they depend on.
+
+    Resolved transitively through other derived and assigned parameters.
+    """
+    args = {
+        k: v.value.args
+        for k, v in model.get_raw_parameters(as_copy=False).items()
+        if isinstance(v.value, InitialAssignment)
+    } | {k: v.args for k, v in model.get_derived_parameters().items()}
+    free = set(_free_parameters(model))
+
+    def resolve(name: str, seen: frozenset[str]) -> list[str]:
+        out: list[str] = []
+        for a in args[name]:
+            if a in free:
+                out.append(a)
+            elif a in args and a not in seen:
+                out.extend(resolve(a, seen | {a}))
+        return list(dict.fromkeys(out))
+
+    return {k: resolve(k, frozenset({k})) for k in args}
+
+
+def _check_not_computed(model: _AnyModel, names: list[str]) -> None:
+    """Raise for derived and assigned parameters, pointing to their sources.
+
+    Perturbing them is ill-defined: setting a value replaces the assignment
+    with a constant instead of perturbing it.
+    """
+    sources = _computed_from(model)
+    if bad := {k: sources[k] for k in names if k in sources}:
+        computed = ", ".join(f"{k!r} (from {v})" for k, v in bad.items())
+        msg = f"Can't perturb derived parameters or those set by initial assignments: {computed}. Use the parameters they are computed from instead"
+        raise ValueError(msg)
+
+
+def _check_parameters(model: _AnyModel, names: list[str]) -> None:
+    """Raise unless `names` are distinct parameters that can be perturbed."""
+    _check_not_computed(model, names)
+    free = set(_free_parameters(model))
+    if unknown := [k for k in names if k not in free]:
+        msg = f"Unknown parameters {unknown}"
+        raise ValueError(msg)
+    if len(set(names)) != len(names):
+        msg = "Duplicate names in parameters"
+        raise ValueError(msg)
+
+
 def _check_names(model: _Model, wrt: list[str]) -> tuple[list[str], list[str]]:
     """Split `wrt` into parameters and variables (initial values)."""
+    _check_not_computed(model, wrt)
     variables = set(model.get_variable_names())
-    derived = set(model.get_derived_parameter_names()) | set(
-        _assigned_parameters(model)
-    )
-    parameters = set(model.get_parameter_names()) - derived
-    if bad := [k for k in wrt if k in derived]:
-        msg = f"Can't differentiate w.r.t. derived parameters {bad}, use the parameters they are computed from"
-        raise ValueError(msg)
+    parameters = set(_free_parameters(model))
     if unknown := [k for k in wrt if k not in variables | parameters]:
         msg = f"Unknown parameters / variables {unknown}"
         raise ValueError(msg)
