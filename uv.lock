@@ -3,20 +3,20 @@ revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'linux'",
-    "python_full_version == '3.14.*' and sys_platform == 'linux'",
-    "python_full_version == '3.13.*' and sys_platform == 'linux'",
-    "python_full_version < '3.13' and sys_platform == 'linux'",
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version == '3.14.*' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
-    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'linux'",
+    "python_full_version == '3.14.*' and sys_platform == 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version == '3.13.*' and sys_platform == 'linux'",
     "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version < '3.13' and sys_platform == 'win32'",
     "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version < '3.13' and sys_platform == 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'linux'",
+    "python_full_version < '3.13' and sys_platform == 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'emscripten'",
     "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 
@@ -2488,7 +2488,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.9.2" },
     { name = "mike", specifier = ">=2.1.3" },
     { name = "more-itertools", specifier = ">=10.5.0" },
-    { name = "mxlpy-native", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'native' or (platform_machine == 'aarch64' or platform_machine == 'x86_64') and sys_platform == 'linux' and extra == 'native' or (platform_machine == 'AMD64' or platform_machine == 'ARM64') and sys_platform == 'win32' and extra == 'native'", specifier = ">=0.5.0" },
+    { name = "mxlpy-native", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'native' or (platform_machine == 'aarch64' or platform_machine == 'x86_64') and sys_platform == 'linux' and extra == 'native' or (platform_machine == 'AMD64' or platform_machine == 'ARM64') and sys_platform == 'win32' and extra == 'native'", specifier = ">=0.6.0" },
     { name = "networkx", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=2.1.2" },
     { name = "optax", marker = "extra == 'jax'", specifier = ">=0.2.5" },
@@ -2541,18 +2541,18 @@ dev = [
 
 [[package]]
 name = "mxlpy-native"
-version = "0.5.0"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llvmlite" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/56/8a763d887eefac652ddbe27c31e729db427c43f16fdba355a08cd34f8dce/mxlpy_native-0.5.0.tar.gz", hash = "sha256:91551be143e287bef66f28a94898dea73f92297a7e1f1724ab02a35fd06ff909", size = 298604, upload-time = "2026-11-20T06:06:38.008Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/fd/fa00a91c533bc8bd8e7c817122b12f15cbcd882b7450e25cb33f13fd683e/mxlpy_native-0.6.0.tar.gz", hash = "sha256:04c507b3bca97399cde3f57fbe750dedeefc7e255eceb7c945633fb9c7ec8001", size = 310349, upload-time = "2026-11-23T18:13:19.771Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/99/3c6e2ad71671710888443ddc68f6147ebb6d3b0892111e8bc8689e83a9cd/mxlpy_native-0.5.0-cp312-abi3-macosx_12_0_arm64.whl", hash = "sha256:023c7f339ef1b8136951b9fb9ddfe8182f0d9fac34b34c4faa13cf89476bca3b", size = 224045, upload-time = "2026-11-20T06:06:31.722Z" },
-    { url = "https://files.pythonhosted.org/packages/41/2a/5ed56553ea51e479d745c738d47733056b9fe67774602acdf569265343e9/mxlpy_native-0.5.0-cp312-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:2ef6f8673bbc3c4795a09e656672dfc67fd19bb05188c1e02228e34d406030ff", size = 569406, upload-time = "2026-11-20T06:06:33.02Z" },
-    { url = "https://files.pythonhosted.org/packages/b0/14/b7343e667d1964f1c4fb4164ed5a045869a2ea712113296801fb07bb87bc/mxlpy_native-0.5.0-cp312-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a415e1db6c13ca1fc07efda5ce1cee478bdd15ba2e43c56ef99e36ad8ac43cb4", size = 584974, upload-time = "2026-11-20T06:06:34.319Z" },
-    { url = "https://files.pythonhosted.org/packages/4b/6e/1afc88b46b9be869d95eb709fca0fc5e1941403b7dd0c2b5da1fce88fd23/mxlpy_native-0.5.0-cp312-abi3-win_amd64.whl", hash = "sha256:048b5b188309a09a5b20fa11a6887ef96b621abb8c44e7c20ab212a9ef110b37", size = 133675, upload-time = "2026-11-20T06:06:35.574Z" },
-    { url = "https://files.pythonhosted.org/packages/29/20/f2d26d8d12f19fba278173b3ce4fab464738dd8738a2bb406206d9940604/mxlpy_native-0.5.0-cp312-abi3-win_arm64.whl", hash = "sha256:9c30b904dc62b3fa90254bde3037c351e97e29abf2f705738b41aeeb57f2aa2d", size = 112479, upload-time = "2026-11-20T06:06:36.842Z" },
+    { url = "https://files.pythonhosted.org/packages/49/32/cac93816fbd2d0d3e1307f3613dd3a1743bd0d8167d7e2c13ec350e79726/mxlpy_native-0.6.0-cp312-abi3-macosx_12_0_arm64.whl", hash = "sha256:2bd070ecf936babc2f7012769034fb19023eb674e32e63f12d770793bbba4542", size = 231916, upload-time = "2026-11-23T18:13:12.977Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/9f/35b7fc10252373fb73ae7a6b1f0e27ec5732c1822689a401061b0abfb122/mxlpy_native-0.6.0-cp312-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:4a2550254b1e2a1bc2d79405d9c996b3e24f9d59a3c18902775563144a68d7d8", size = 594980, upload-time = "2026-11-23T18:13:14.996Z" },
+    { url = "https://files.pythonhosted.org/packages/43/c8/944caed890e0d39231eafd2305b22503cdeb62672c56b23c4113a57a23f6/mxlpy_native-0.6.0-cp312-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c5253b1b390090966fda378f8df67de2c475263b4d7b5165f85a38782ce4defe", size = 610870, upload-time = "2026-11-23T18:13:16.386Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/95/a53e3f7383481295e968bcff7e57f00fc98bb7498400be9515bdbc1487ba/mxlpy_native-0.6.0-cp312-abi3-win_amd64.whl", hash = "sha256:aacfbea582b8be40677f9f859612e4e0f2a965532bb1b54ef1869e22458e8c68", size = 143491, upload-time = "2026-11-23T18:13:17.494Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/3b/2fce245fc4876882df6f9fd637a020a7e3743c5dba8ce218c50c593b7243/mxlpy_native-0.6.0-cp312-abi3-win_arm64.whl", hash = "sha256:675440df3a2f37d6cfad7f6147376968a73a16cfa7f0e518699d7b0d1cca9eab", size = 117398, upload-time = "2026-11-23T18:13:18.757Z" },
 ]
 
 [[package]]
@@ -4363,16 +4363,16 @@ version = "2.15.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version == '3.14.*' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
-    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'win32'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
     "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version < '3.13' and sys_platform == 'win32'",
     "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version < '3.13' and sys_platform == 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'emscripten'",
     "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 dependencies = [
