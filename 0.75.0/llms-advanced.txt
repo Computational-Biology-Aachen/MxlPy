@@ -1,0 +1,297 @@
+# MxlPy — Advanced analysis
+
+[← back to index](llms.txt)
+
+Symbolic analysis, identifiability, model selection, stability visualisation, units, and parallel execution / caching.
+
+## Symbolic analysis (`mxlpy.symbolic`)
+
+Convert a `Model` to a SymPy representation for analytical inspection.
+
+```python
+import sympy
+from mxlpy import to_symbolic_model, symbolic
+
+sym = to_symbolic_model(model)
+sym.jacobian()        # symbolic Jacobian
+```
+
+### Structural identifiability
+
+`symbolic.check_identifiability(symbolic_model, outputs=[...])` tests whether parameters are *structurally* identifiable from the chosen observed outputs (requires StrikeGOLDD). `outputs` are SymPy symbols of the observed variables.
+
+```python
+res = symbolic.check_identifiability(sym, outputs=[sympy.Symbol("i"), sympy.Symbol("r")])
+print(res.summary())
+```
+
+## Numerical (practical) identifiability (`mxlpy.identify`)
+
+`profile_likelihood` gives likelihood-ratio confidence intervals and classifies identifiability. For each parameter it steps away from the optimum in both directions, fixing the parameter and refitting all others (warm-started), with steps adapting to the profile; a side stops when the objective has increased by the threshold, at the end of the profiled range or after `max_steps` fits; without bounds the range is a factor 1000 either way for log10 steps, else ±1000·max(|value|, 1). Both sides of all parameters run in parallel.
+
+```python
+from mxlpy import fit, identify, plot
+
+nll = fit.GaussianNll(sigma=0.01)               # likelihood loss -> threshold chi2.ppf(alpha, 1) / 2
+res = fit.time_course(model, p0=p0, data=data, loss_fn=nll,
+                      minimizer=fit.LeastSquaresMinimizer()).unwrap_or_err()
+profiles = identify.profile_likelihood(
+    model,
+    data,                    # Series: steady state, DataFrame: time course (+ protocol=...)
+    res,                     # parameters: fit.Fit or {name: value} (as fisher_information); refitted first; variables = fitted initial values
+    loss_fn=nll,             # same loss as the fit; other losses need threshold=
+    # names=["k1"],          # parameters to profile, default: all fitted
+    # alpha=0.95, threshold=None (simultaneous for n params: chi2.ppf(alpha, n) / 2)
+    # minimizer=None (LeastSquaresMinimizer), y0, protocol, runner, bounds, prior, penalty,
+    # transform="log" (profile in log10 steps), postprocess_fn, standard_scale, max_steps=100, parallel=True, max_workers
+)
+profiles.ci                  # DataFrame: value, lower, upper, identifiability (bounds ±inf if not crossed)
+profiles["k1"].delta         # Δ objective indexed by the profiled values
+profiles["k1"].parameters    # all fitted values along the profile (which parameters compensate)
+profiles.better_optimum      # set (with a warning) if a profile found a better fit: refit + profile again
+profiles.log_parameters      # parameters profiled in log10 steps
+fig, axs = plot.profile_likelihood(profiles)
+```
+
+Identifiability: `identifiable` (threshold crossed on both sides), `practically_non_identifiable` (a side reaches the end of the range without crossing), `structurally_non_identifiable` (flat, < 1% of the threshold, over the whole range), `inconclusive` (a side ran out of steps or its fits failed). The profiled parameter's prior stays in the objective at its fixed values; the edge of its support (e.g. `Uniform`) ends the profile like a bound.
+
+### Fast identifiability test (`identify.identifiability_test`)
+
+Cheap numerical check for flat directions ("pulling" test, D2D's `arIdentifiablityTest`): refits `n_fits` times from random points in a ball around the (refitted) optimum with a penalty `w·(‖u − u*‖ − radius)²` pulling the parameters to distance `radius`. A fit that reaches ≥ 90% of the radius without increasing the objective by more than `threshold` is *flat*; parameters that moved by ≥ `min_displacement·radius` in a flat fit are non-identifiable. Distances: log10 units for log-transformed parameters (default `transform="log"`, so `radius=1` = one decade), `θ/|θ*|` for linear ones. Costs `n_fits` fits regardless of the number of parameters; a check, not a proof (follow up with profiles of the flagged parameters).
+
+```python
+test = identify.identifiability_test(
+    model, data, res,        # same inputs as profile_likelihood (fit.Fit or {name: value}, refitted first)
+    loss_fn=nll,
+    # radius=1.0, n_fits=10, recursive=False, seed=0,
+    # threshold=None (likelihood: chi2.ppf(alpha, 1) / 2; else threshold_rtol * objective, threshold_rtol=0.05; raises for ~0 objective)
+    # min_displacement=0.1, transform="log" (non-positive parameters need "linear"),
+    # minimizer=None (LeastSquaresMinimizer: needs GaussianNll / mean_squared, else LocalScipyMinimizer),
+    # y0, protocol, runner, bounds, prior, penalty, postprocess_fn, standard_scale, parallel=True, max_workers
+)
+test.is_identifiable         # no flat direction in the first round
+test.non_identifiable        # parameters moving along a flat direction (any round)
+test.displacement            # Series: max |Δu| per parameter (over flat fits), descending
+test.fixed                   # recursive=True: parameters fixed (most displaced first) until a round passes
+test.rounds[0].fits          # DataFrame per pulled fit: delta, distance, reached, flat (NaN delta = failed)
+test.rounds[0].n_blocked     # fits short of the radius within the threshold (bounds) -> warning, inconclusive
+test.rounds[0].displacement, test.rounds[0].parameters
+test.better_optimum          # set (with a warning) if a pulled fit improved on the optimum
+fig, axs = plot.identifiability_test(test)   # displacement bars + Δ objective vs distance
+```
+
+`identify.related_parameters(profiles, *, names=None, r2=0.95, min_change=1e-3)` finds identifiable combinations (MOTA-like) from `profile_likelihood` results: per non-identifiable profile (default), greedy forward regression of the profiled coordinate on the other parameters' paths (points within the threshold) until `R² ≥ r2`. Coordinates: log10 for `profiles.log_parameters`, else `θ/|θ*|`.
+
+```python
+related = identify.related_parameters(profiles)
+related.groups               # [["beta", "c"]], relations sharing parameters merged
+rel = related.relations[0]   # ParameterRelation: profile, coefficients (Series, profiled = 1), collinear, r2
+print(rel)                   # "1·log10(beta) +1·log10(c) ≈ const" -> beta·c is identifiable
+```
+
+Parameters moving in lockstep along a profile (multi-dimensional flat directions) can't be separated by one path: one gets the coefficient, the others are listed in `collinear` (still in `groups`); use `fisher_information(...).non_identifiable()` for exact combinations.
+
+### Prediction uncertainty (`identify.prediction_profile`, `prediction_band`, `validation_profile`)
+
+Likelihood-based confidence intervals of *predictions* (D2D's PPL/VPL): `min objective(θ) s.t. g(θ) = z`, threshold `chi2.ppf(alpha, 1) / 2`. Traced by refits with a pseudo data point `z ± σ` of the prediction (Kreutz 2012): each refit θ* is an exact profile point `(g(θ*), objective(θ*))` for any σ (σ = half the linearised prediction sd, only step control). Same inputs/kwargs as `profile_likelihood`. A prediction in the fitted condition with a `GaussianNll` loss and an unmeasured data entry is merged into the data (one simulation per evaluation); otherwise (other condition, measured entry, replicates, other losses) it is a second simulated part of a joint fit.
+
+```python
+pred_spec = identify.Prediction("x", time=30.0)       # time=None: steady state; target = variable/flux/derived/postprocess column
+# other condition: Prediction("x", 30.0, parameters={"k": 2.0}, y0={...}, protocol=df)   (protocol needs a time; predictions at a time default to the fit's protocol)
+pred = identify.prediction_profile(model, data, res, prediction=pred_spec, loss_fn=nll,
+                                   # alpha, threshold, minimizer, y0, protocol, runner, bounds, prior, penalty,
+                                   # transform, postprocess_fn, standard_scale, max_steps=100, parallel, max_workers
+                                   )
+pred.ci                  # (lower, upper); a side that can't move further (status "bound", e.g. parameter bounds) ends at the most extreme prediction found
+pred.delta               # Δ objective indexed by predicted value; pred.z (pseudo data), pred.parameters, pred.sigma
+pred.lower_status, pred.upper_status, pred.value
+
+band = identify.prediction_band(model, data, res, prediction="x",   # str (fitted condition) or Prediction with time=None
+                                times=np.linspace(0, 60, 31), loss_fn=nll,
+                                method="integrated")                # or "pointwise" (full profile per time, in parallel)
+band.value, band.lower, band.upper            # Series indexed by time; band.lower_status/upper_status; band.profiles (pointwise only)
+fig, ax = plot.prediction_band(band)          # line + shaded band; plot.prediction_profile(pred)
+
+val = identify.validation_profile(model, data, res, prediction=pred_spec, sigma=0.05, loss_fn=nll)
+val.validation_ci        # values of a new data point consistent with the model (wider than pred.ci by the noise)
+val.is_consistent(0.42)  # likelihood-ratio test of the data point
+val.delta (indexed by z), val.predicted, val.data_delta (exact prediction-profile points)
+```
+
+`integrated`: the refit at the bound of time k predicts time k+1 (z from the edge's parameters + offset scaled by the prediction sd), then ≤ 4 secant refits on sqrt(Δ) to hit the threshold within 5%; times where that fails get a full profile. ~2-4 fits per time and side vs ~10-20 for pointwise; both sides in parallel.
+
+### 2D profiles (`identify.profile_likelihood_2d`)
+
+Joint confidence region of two parameters (or a parameter and a `Prediction` as `y`), all others refitted, threshold `chi2.ppf(alpha, 2) / 2`. Shows compensation (e.g. a valley along `k1/k2 = const`) that 1D profiles and `scan` (others fixed) can't.
+
+```python
+pl2d = identify.profile_likelihood_2d(model, data, res, x="k1", y="k2",   # y may be identify.Prediction(...) (slices only)
+                                      loss_fn=nll, method="slices",       # or "grid": n_steps x n_steps, x_range/y_range (default: 1D profiles at the 2D threshold, padded 25%)
+                                      n_steps=20, transform="log")
+pl2d.points              # DataFrame x, y, delta, slice (+ z for a prediction y)
+pl2d.parameters          # refitted parameters per point
+pl2d.slices              # per x slice: x, delta, lower_status, upper_status ("grid" for grid rows)
+pl2d.region()            # DataFrame lower/upper of y per x slice; region(alpha=...) only narrower for slices
+pl2d.n_repaired          # points refitted from a neighbour (kinks > threshold/2 above a neighbour)
+fig, ax = plot.profile_likelihood_2d(pl2d)   # filled Δ contours + threshold isoline (log10 axes for log parameters)
+```
+
+### Fisher information (`identify.fisher_information`)
+
+Cheap local alternative to profile likelihoods: one sensitivity evaluation at the optimum gives the noise-weighted residual Jacobian `S`, `F = SᵀS` and the asymptotic covariance `F⁻¹` (assumes Gaussian noise, approximately linear model around the optimum).
+
+```python
+from mxlpy import identify
+
+fim = identify.fisher_information(
+    model,
+    data,                    # Series: steady state, DataFrame: time course (+ protocol=...)
+    fit_result,              # fit.Fit or {name: value}; variable names = fitted initial values
+    sigma=0.1,               # scalar, Series per observable, DataFrame per point; None = estimate noise variance Σr²/(n-p)
+    # y0=... (same as the fit), runner=None (its derivatives= picks forward / finite differences),
+    # transform="log" (log10-unit uncertainties), rtol=1e-6 (relative singular value cutoff)
+)
+fim.covariance, fim.correlation, fim.std_errors   # inf std errors for non-identifiable parameters
+fim.wald_ci(alpha=0.95)      # value, std_error, lower, upper (t distribution if sigma was estimated)
+fim.eigen()                  # (eigenvalues desc, eigenvectors as columns): small = sloppy combinations
+fim.non_identifiable()       # null-space combinations (rows), empty if all identifiable
+fim.matrix, fim.design, fim.rank, fim.chi2
+plot.heatmap(fim.correlation, annotate=True)
+```
+
+## Model selection (`mxlpy.select`)
+
+Compare candidate model structures by the log-likelihood of their best multistart fit and their number of estimated parameters `k` (AIC `2k − 2LL`, AICc `AIC + 2k(k+1)/(n−k−1)`, BIC `k ln n − 2LL`, `n` = finite data points), or by likelihood-ratio tests of nested models. Needs a likelihood loss (`fit.GaussianNll`); `LL = −loss` up to a constant shared by all candidates.
+
+```python
+from mxlpy import fit, plot, select
+from mxlpy.distributions import LogUniform
+
+space = select.ModelSpace(
+    base=model,                                   # all switches off; never modified
+    switches={
+        "feedback": select.free_parameter("k_fb", fixed_value=0.0),  # estimated when on, fixed when off (nested)
+        "degradation": lambda m: m.add_parameter("kd", 0.1).add_reaction("deg", ...),  # applied when on
+        # select.Switch(on=fn, off=fn, fix_on={...}, fix_off={...}) for the general case
+    },
+    # allowed=lambda on: len(on & {"mm", "hill"}) <= 1,   # exclude combinations
+)
+selection = select.run(
+    space,
+    data,                    # Series: steady state, DataFrame: time course (+ protocol=...)
+    {"k1": LogUniform(1e-2, 1e2), "k_fb": LogUniform(1e-3, 1e1), "kd": 0.1},  # p0: estimated params (+ initial values) with start distribution or fixed start; each candidate fits those its model has and doesn't fix; unknown names raise
+    loss_fn=fit.GaussianNll(sigma=0.05),
+    criterion="aicc",        # "aic" | "aicc" | "bic" | "lrt" (significance=0.05)
+    method="adaptive",       # "forward" | "backward" | "adaptive" (forward/backward/swap, FAMoS-like) | "brute_force"
+    n_starts=10,             # random starts per candidate, plus one warm start from the parent's optimum
+    # start=None (forward/adaptive: all off, backward: all on), minimizer=None (LeastSquaresMinimizer),
+    # y0, protocol, runner, bounds, prior (MAP fits; criteria use the data likelihood), penalty, transform, postprocess_fn,
+    # min_improvement=0.0, max_candidates=None (budget; stops with selection.complete False),
+    # reuse=previous_selection (don't refit known candidates), seed=0, parallel=True, max_workers, timeout
+)
+selection.table              # per candidate: k, n, log_likelihood, aic, aicc, bic, delta, weight, converged, n_failed, parent, one bool column per switch
+selection.best_id, selection.best_model, selection.path   # selected model (fitted values set), search path
+selection["feedback"].best_pars                            # CandidateFit: best_pars, fixed, loss, penalty, objectives (per start), converged(), model
+selection.lrt("base", "feedback")                          # LikelihoodRatio(statistic, df, p_value).rejects(significance=0.05)
+fig, ax = plot.model_selection(selection)                  # Δ criterion bars with weights
+
+# Explicit variants instead of a space
+select.compare({"base": m0, "+feedback": m1}, data, p0, loss_fn=nll, criterion="bic", n_starts=10)
+
+# Criteria on their own (e.g. for other fits)
+select.aic(ll, k), select.aicc(ll, k, n), select.bic(ll, k, n), select.model_weights(series), select.lrt(ll_null, ll_alt, df)
+```
+
+Search: each step fits all neighbours (one switch on / off / exchanged) of the current model in parallel, all starts at once, and moves to the best if it lowers the criterion by more than `min_improvement` (LRT: forward if significantly better, backward if not significantly worse). Each candidate is warm-started from the optimum of the model it neighbours; with `free_parameter` the new parameter starts at its fixed value, so the warm start reproduces the parent's fit. Random starts are seeded per candidate.
+
+## Condition-specific parameters (`select.condition_specific`)
+
+Which parameters must differ between conditions (mutants, treatments, cell lines) when one model is fitted to all of them, without trying all 2^n shared/local combinations (L1 regularisation, Steiert et al. 2016). Each candidate `k` gets a log fold-change per non-reference condition, `k_c = k * exp(fc_c)`; a joint fit of all conditions with an L1 penalty `λ Σ|fc|` is solved along a λ path (strong -> weak, warm-started); every distinct structure on the path is refitted unpenalised (zero fold-changes fixed, in parallel) and the most parsimonious one not rejected by an LRT against the full model (all fc free) is selected (or the best AIC/AICc/BIC).
+
+```python
+from mxlpy import fit, plot, select
+
+res = select.condition_specific(
+    {"wt": fit.FitSettings(model, df_wt),          # per condition: model (may differ, e.g. knock-out), data, y0, runner, protocol
+     "mut": fit.FitSettings(model_ko, df_mut)},    # Series: steady state, DataFrame: time course, protocol set: protocol time course
+    p0={"k1": 1.0, "k2": LogUniform(1e-2, 1e2)},   # estimated values shared by all conditions: start value, or distribution for random starts (nominal = model value)
+    candidates=["k1", "k2"],                       # may differ; positive p0; every condition's model needs them
+    loss_fn=fit.GaussianNll(sigma=0.05),           # likelihood loss required
+    reference="wt",                                # default: first condition
+    regularisation="l1",   # "adaptive" (weights 1/|fc_full|^gamma, gamma=1) | "elastic_net" (l1_ratio=0.5) | "group" (one norm per parameter: differs in all conditions or none) | "fused" (|fc_a - fc_b| over all pairs, fc_ref = 0: conditions can share a non-reference value)
+    lambdas=20,            # number of strengths from 1.2 * lambda_max (all fc zero) to lambda_max/1000, or explicit strengths
+    n_starts=0,            # random starts of the shared fit (parallel), which warm-starts everything else; seed=0
+    criterion="lrt",       # "aic" | "aicc" | "bic"; significance=0.05
+    # smoothing=1e-3 (fc within 2*smoothing of zero / of each other count as zero / equal), max_fold_change=1e3 (|fc| <= ln),
+    # minimizer=None (LeastSquaresMinimizer), y0, runner, bounds/prior/penalty/transform (shared values only), postprocess_fn,
+    # parallel=True, max_workers, timeout (random starts, refits); a per-condition FitSettings.loss_fn must be a likelihood too
+)
+res.path          # log fold-changes, index lambda (descending), columns (parameter, condition); NaN for failed path fits
+res.path_fits     # per lambda: loss, penalty, structure id
+res.table         # per structure: k, n, log_likelihood, aic, aicc, bic, delta + weight (IC criteria only), p_value (LRT vs full), lambda (strongest with it); sorted by criterion (lrt: k, LL)
+res.fits          # {structure id: ConditionFit}, res["shared"]
+res.selected      # {"mut": ["k2"]}: per non-reference condition, the differing candidates
+res.best          # ConditionFit: id ("shared" | "k2[mut]+k3[mut,stress]", fused groups), structure {k: ((ref group), (group), ...)},
+                  # best_pars (shared values + fc per group named "k[cond,...]"), parameters (conditions x parameters), loss, lambdas, differs,
+                  # objectives (shared: one per start), n_failed, aic/aicc/bic/criterion() (same as select.CandidateFit)
+res.models()      # {condition: model copy with the selected values}; res.models("shared")
+res.lrt("shared") # LikelihoodRatio vs the full model; res.lrt(null, alt); a failed full fit is retried from the weakest path solution
+fig, ax = plot.condition_specific_path(res)   # fc vs lambda, selected range shaded
+```
+
+- The L1 penalty is smoothed (`fit.L1Penalty`, `sqrt(fc² + ε²) - ε`), so every minimizer works; no proximal solver. lambda_max comes from the loss gradient w.r.t. the fold-changes at the shared fit (exact for l1/adaptive/elastic net/group, an upper bound for fused).
+- Cost: shared fit + full fit + one joint fit per lambda (serial) + refits (parallel). Only structures on the path are refitted, so a coarse grid can miss one; elastic net spreads fold-changes and may not reach the sparsest structure.
+- Penalties on their own: `fit.L1Penalty(names, weight, *, scales=None, matrix=None (rows = linear combinations, e.g. differences), l1_ratio=1.0, smoothing=1e-3)` and `fit.GroupL1Penalty(groups={g: [names]}, weight, *, scales=None (default sqrt(group size)), smoothing)`, both with `residuals`/`jacobian` (least squares, Gauss-Newton), usable in any fit's `penalty=`.
+
+## Stability visualisation
+
+Phase-plane vector fields and steady-state classification. `plot.trajectories_2d(model, x1=(name, values), x2=(name, values))` draws a quiver field over two variables and returns `(fig, ax)`, so you can overlay example trajectories:
+
+```python
+import numpy as np
+from mxlpy import Simulator, plot
+
+fig, ax = plot.trajectories_2d(model, x1=("s1", np.linspace(0, 2, 20)), x2=("s2", np.linspace(0, 2, 20)))
+for s1 in np.linspace(0, 1, 4):
+    for s2 in np.linspace(0, 2, 4):
+        c = Simulator(model, y0={"s1": s1, "s2": s2}).simulate(1.5).get_result().unwrap_or_err().variables
+        ax.plot(c["s1"], c["s2"])
+```
+
+For eigenvalue-based classification of a fixed point (`stable node`, `saddle point`, …) see `mca.steady_state_stability` in [scans & MCA](llms-scans-mca.txt).
+
+## Units (`mxlpy.units`)
+
+Attach units to parameters/variables/reactions (via `Parameter`, `Variable`, `unit=`) using SymPy-units constants. Available names include `second`/`minute`/`hour`, `per_second`/`per_minute`/`per_hour`, `mol`/`mmol`/`mumol`/`nmol`/`pmol` and their per-time/per-gram variants (`mol_s`, `mmol_s`, `mmol_h`, `mmol_g`, …), and `meter`/`sqm`/`cbm`.
+
+```python
+from mxlpy import Parameter, Variable, units
+
+Model().add_parameters({"k": Parameter(1.0, unit=units.per_second)}).add_variables({"S": Variable(0.0, unit=units.mmol)})
+```
+
+`model.infer_units()` returns a `UnitInference` that propagates declared units through the model and reports any `Conflict` (inconsistent units in a rate expression).
+
+## Parallel execution & caching (`mxlpy.parallel`)
+
+Scans, Monte Carlo and group/ensemble fits run in parallel by default (via `pebble` process pools + `dill`). The underlying `parallelise` is generic and reusable for any work, taking a function and an iterable of `(key, value)` pairs (the key maps results back to inputs and drives caching).
+
+```python
+from mxlpy.parallel import parallelise, Cache
+
+def square(x: float) -> float:
+    return x ** 2
+
+parallelise(square, [("a", 2), ("b", 3), ("c", 4)])
+```
+
+`Cache` persists results to disk so a repeated run loads instead of recomputing. It is a dataclass with `tmp_dir` (default `.cache`) and overridable `name_fn` / `load_fn` / `save_fn` (default pickle). Give each analysis its own folder to avoid collisions; pass `cache=` to `parallelise` and to scan functions.
+
+```python
+from pathlib import Path
+from mxlpy import scan, cartesian_product
+
+cache = Cache(tmp_dir=Path(".cache") / "k1_k2_scan")
+result = scan.steady_state(model, to_scan=cartesian_product({"k1": [0.5, 1.0, 2.0], "k2": [0.1, 1.0]}), cache=cache)
+# Second call with the same keys loads from disk instead of recomputing.
+```
