@@ -88,8 +88,8 @@ def _update_parameters_and_initial_conditions[M: _Model, T](
     if not isinstance(model, SteadyStateModelBuilder):
         variables = set(model.get_variable_names())
         model.update_variables({k: v for k, v in pd.items() if k in variables})
-    parameters = set(model.get_parameter_names())
-    model.update_parameters({k: v for k, v in pd.items() if k in parameters})
+    parameters = set(model.get_addressable_names())
+    model.update_addressable({k: v for k, v in pd.items() if k in parameters})
     return fn(model)
 
 

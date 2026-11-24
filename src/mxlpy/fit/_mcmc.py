@@ -489,7 +489,7 @@ def _sample(
         return Result(ValueError(f"x0 has entries without a prior: {sorted(unknown)}"))
 
     model = settings.model
-    current = model.get_parameter_values() | (
+    current = model.get_addressable_values() | (
         {}
         if isinstance(model, SteadyStateModelBuilder)
         else dict(model.get_initial_conditions()) | (settings.y0 or {})

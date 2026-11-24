@@ -21,6 +21,7 @@ import pandas as pd
 from wadler_lindig import pformat
 
 from mxlpy import _topo
+from mxlpy._hidden_states import HiddenStates, HiddenStatesMixin
 from mxlpy._terms import TermsMixin
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
@@ -279,6 +280,8 @@ class ModelCache:
     array_names: frozenset[str] = frozenset()
     # (contribution name, target, term), surrogate targets (term None) first
     term_plan: list[tuple[str, str, Term | None]] = field(default_factory=list)
+    hidden_nodes: dict[str, Derived] = field(default_factory=dict)
+    hidden_states: list[str] = field(default_factory=list)
 
 
 def _normalize_annotations(
@@ -293,7 +296,7 @@ def _normalize_annotations(
 
 
 @dataclass(slots=True)
-class OdeModelBuilder(TermsMixin):
+class OdeModelBuilder(TermsMixin, HiddenStatesMixin):
     """Represents a metabolic model.
 
     Attributes
@@ -342,6 +345,7 @@ class OdeModelBuilder(TermsMixin):
     # coefficient (see mxlpy.surrogates.abstract_ode's module docstring).
     _surrogates: dict[str, OdeSurrogateProtocol] = field(default_factory=dict)
     _terms: dict[str, Term] = field(default_factory=dict)
+    _hidden_states: dict[str, HiddenStates] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -414,10 +418,14 @@ class OdeModelBuilder(TermsMixin):
             if not isinstance(val := v.value, InitialAssignment)
         }
         base_variable_values: dict[str, float] = {
-            k: init
+            k: float(init)
             for k, v in self._diff_eqs.items()
             if not isinstance(init := v.initial_value, InitialAssignment)
-        }
+        } | self._hidden_state_initial_values()
+        # Weights are constant over a run, like parameters
+        weights = self.get_weight_values()
+        all_parameter_names |= set(weights)
+        hidden_nodes = self._hidden_state_nodes()
         initial_assignments: dict[str, InitialAssignment] = {
             k: init
             for k, v in self._diff_eqs.items()
@@ -427,6 +435,8 @@ class OdeModelBuilder(TermsMixin):
             for k, v in self._parameters.items()
             if isinstance(init := v.value, InitialAssignment)
         }
+        hidden_assignments = self._hidden_state_initial_assignments()
+        initial_assignments |= hidden_assignments
 
         # Sanity checks
         for name, el in it.chain(
@@ -440,7 +450,7 @@ class OdeModelBuilder(TermsMixin):
 
         # Terms are evaluated after every diff eq, see `_get_args`. Besides
         # readouts, only later terms can read their contributions.
-        terms = self._terms
+        terms = self._all_terms()
         for name, el in it.chain(
             self._derived.items(), self._diff_eqs.items(), self._surrogates.items()
         ):
@@ -463,10 +473,12 @@ class OdeModelBuilder(TermsMixin):
         available = (
             set(base_parameter_values)
             | set(base_variable_values)
+            | set(weights)
             | set(self._data)
             | {"time"}
         )
-        to_sort = initial_assignments | self._derived | self._surrogates
+        derived = self._derived | hidden_nodes
+        to_sort = initial_assignments | derived | self._surrogates
         order = _topo.sort_dependencies(
             available=available,
             elements=[
@@ -482,7 +494,11 @@ class OdeModelBuilder(TermsMixin):
         # Calculate all values once, including dynamic ones
         # That way, we can make initial conditions dependent on e.g. rates
         dependent = (
-            base_parameter_values | base_variable_values | self._data | {"time": 0.0}
+            base_parameter_values
+            | weights
+            | base_variable_values
+            | self._data
+            | {"time": 0.0}
         )
         for name in order:
             to_sort[name].calculate_inpl(name, dependent)
@@ -508,7 +524,7 @@ class OdeModelBuilder(TermsMixin):
         static_order = []
         dyn_order = []
         for name in order:
-            if name in self._diff_eqs:
+            if name in self._diff_eqs or name in hidden_assignments:
                 # `order` only contains this name at all when the variable
                 # has a *dynamic* initial value (via `initial_assignments`
                 # above) — that pass computes the initial value only, never
@@ -523,13 +539,11 @@ class OdeModelBuilder(TermsMixin):
                 dyn_order.append(name)
             elif name in self._parameters:
                 static_order.append(name)
+            elif all(i in all_parameter_names for i in derived[name].args):
+                static_order.append(name)
+                all_parameter_names.add(name)
             else:
-                derived = self._derived[name]
-                if all(i in all_parameter_names for i in derived.args):
-                    static_order.append(name)
-                    all_parameter_names.add(name)
-                else:
-                    dyn_order.append(name)
+                dyn_order.append(name)
 
         known = set(dependent)
         for name, term in terms.items():
@@ -549,13 +563,13 @@ class OdeModelBuilder(TermsMixin):
         ]
         term_plan.extend((k, v.target, v) for k, v in terms.items())
 
-        var_names = self.get_diff_eq_names()
+        var_names = self.get_variable_names()
         initial_conditions: dict[str, float] = {
-            k: cast(float, dependent[k]) for k in self._diff_eqs
+            k: cast(float, dependent[k]) for k in var_names
         }
-        all_parameter_values = dict(base_parameter_values)
+        all_parameter_values = base_parameter_values | weights
         for name in static_order:
-            if name in self._parameters or name in self._derived:
+            if name in self._parameters or name in derived:
                 all_parameter_values[name] = cast(float, dependent[name])
             else:
                 msg = f"Internal error: '{name}' appears in static_order but is not a parameter, variable, or derived - this is a bug in dependency sorting"
@@ -576,6 +590,8 @@ class OdeModelBuilder(TermsMixin):
             if self._data
             else frozenset(),
             term_plan=term_plan,
+            hidden_nodes=hidden_nodes,
+            hidden_states=self.get_hidden_state_names(),
         )
         return self._cache
 
@@ -844,6 +860,7 @@ class OdeModelBuilder(TermsMixin):
             The instance of the model with the parameter removed.
 
         """
+        self._check_not_block_input(name)
         self._remove_id(name=name)
         self._parameters.pop(name)
         return self
@@ -1466,6 +1483,7 @@ class OdeModelBuilder(TermsMixin):
             The instance of the model with the derived attribute removed.
 
         """
+        self._check_not_block_input(name)
         self._remove_id(name=name)
         self._derived.pop(name)
         return self
@@ -1517,6 +1535,10 @@ class OdeModelBuilder(TermsMixin):
             The instance of the model with the updated variable.
 
         """
+        if name not in self._diff_eqs and self._update_hidden_state(
+            name, initial_value
+        ):
+            return self
         if name not in self._diff_eqs:
             msg = f"Variable {name!r} not found. Available variables: {sorted(self._diff_eqs)}"
             raise KeyError(msg)
@@ -1774,9 +1796,13 @@ class OdeModelBuilder(TermsMixin):
         Returns
         -------
         list[str]
-            A list containing the names of the diff_eqs.
+            A list containing the names of the diff_eqs, then the states of
+            hidden-state blocks.
 
         """
+        return self.get_diff_eq_names() + self.get_hidden_state_names()
+
+    def _user_variable_names(self) -> list[str]:
         return self.get_diff_eq_names()
 
     @overload
@@ -1905,6 +1931,7 @@ class OdeModelBuilder(TermsMixin):
             The instance of the model with the diff_eq removed.
 
         """
+        self._check_not_hidden_state(name)
         self._remove_targeting_terms(name, remove=remove_targets)
         if remove_targets:
             for surrogate in self._surrogates.values():
@@ -2121,6 +2148,16 @@ class OdeModelBuilder(TermsMixin):
             if term.target == old_name:
                 term.target = new_name
 
+        # Inputs, targets and scale of hidden-state blocks
+        for block in self._hidden_states.values():
+            block.inputs = rename_args(block.inputs)
+            block.targets = rename_args(block.targets)
+            if block.scale == old_name:
+                block.scale = new_name
+            for ia in block.h0_assignments.values():
+                ia.args = rename_args(ia.args)
+            block._lowered = None  # noqa: SLF001
+
     @_invalidate_cache
     def rename(self, old_name: str, new_name: str) -> Self:
         """Rename a model component and update all references to it.
@@ -2158,6 +2195,11 @@ class OdeModelBuilder(TermsMixin):
             return self
 
         ctx = self._ids[old_name]  # KeyError if old_name is unknown
+        if ctx == "hidden_states":
+            msg = (
+                f"{old_name!r} belongs to a hidden-state block, which can't be renamed"
+            )
+            raise ValueError(msg)
         # Insert before remove so a collision or reserved name raises before
         # any part of the model is mutated.
         self._insert_id(name=new_name, ctx=ctx)
@@ -2470,7 +2512,7 @@ class OdeModelBuilder(TermsMixin):
         if include_time:
             names.append("time")
         if include_diff_eqs:
-            names.extend(self.get_diff_eq_names())
+            names.extend(self.get_variable_names())
         if include_parameters:
             names.extend(self.get_parameter_names())
         if include_derived_variables:
@@ -2533,7 +2575,7 @@ class OdeModelBuilder(TermsMixin):
         # KineticModelBuilder's merged `self._derived | self._reactions |
         # self._surrogates` dispatch (mxlpy.surrogates.abstract_ode's
         # module docstring).
-        containers = self._derived | self._surrogates
+        containers = self._derived | cache.hidden_nodes | self._surrogates
         for name in cache.dyn_order:
             containers[name].calculate_inpl(name, args)
 
@@ -2548,8 +2590,11 @@ class OdeModelBuilder(TermsMixin):
         # non-mutating variant that makes this snapshot-then-merge
         # possible.
         snapshot = dict(args)
-        for name in cache.var_names:
+        for name in self._diff_eqs:
             args[name] = self._diff_eqs[name].calculate(snapshot)
+        # Hidden states only change through their block's terms
+        for name in cache.hidden_states:
+            args[name] = 0.0
 
         # Every surrogate output already computed above (via the
         # `dyn_order` loop) that has a `targets` entry is summed into that

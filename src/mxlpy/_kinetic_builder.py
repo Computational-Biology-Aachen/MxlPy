@@ -22,6 +22,7 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy import _topo
+from mxlpy._hidden_states import HiddenStates, HiddenStatesMixin
 from mxlpy._terms import TermNode, TermsMixin, corrected_fluxes, lower_terms
 from mxlpy.dsl import from_dsl
 from mxlpy.meta.source_tools import fn_to_sympy_expr
@@ -298,6 +299,7 @@ class ModelCache:
     term_nodes: dict[str, TermNode] = field(default_factory=dict)
     term_stoich_by_cpds: dict[str, dict[str, float]] = field(default_factory=dict)
     term_dyn_stoich_by_cpds: dict[str, dict[str, Derived]] = field(default_factory=dict)
+    hidden_nodes: dict[str, Derived] = field(default_factory=dict)
 
 
 def _normalize_annotations(
@@ -312,7 +314,7 @@ def _normalize_annotations(
 
 
 @dataclass(slots=True)
-class KineticModelBuilder(TermsMixin):
+class KineticModelBuilder(TermsMixin, HiddenStatesMixin):
     """Represents a metabolic model.
 
     Attributes
@@ -355,6 +357,7 @@ class KineticModelBuilder(TermsMixin):
     _annotations: list[Annotation] = field(default_factory=list)
     _events: dict[str, Event] = field(default_factory=dict)
     _terms: dict[str, Term] = field(default_factory=dict)
+    _hidden_states: dict[str, HiddenStates] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -427,10 +430,14 @@ class KineticModelBuilder(TermsMixin):
             if not isinstance(val := v.value, InitialAssignment)
         }
         base_variable_values: dict[str, float] = {
-            k: init
+            k: float(init)
             for k, v in self._variables.items()
             if not isinstance(init := v.initial_value, InitialAssignment)
-        }
+        } | self._hidden_state_initial_values()
+        # Weights are constant over a run, like parameters
+        weights = self.get_weight_values()
+        all_parameter_names |= set(weights)
+        hidden_nodes = self._hidden_state_nodes()
         initial_assignments: dict[str, InitialAssignment] = {
             k: init
             for k, v in self._variables.items()
@@ -440,6 +447,8 @@ class KineticModelBuilder(TermsMixin):
             for k, v in self._parameters.items()
             if isinstance(init := v.value, InitialAssignment)
         }
+        hidden_assignments = self._hidden_state_initial_assignments()
+        initial_assignments |= hidden_assignments
 
         # Sanity checks
         for name, el in it.chain(
@@ -464,13 +473,15 @@ class KineticModelBuilder(TermsMixin):
         available = (
             set(base_parameter_values)
             | set(base_variable_values)
+            | set(weights)
             | set(self._data)
             | {"time"}
         )
         term_nodes = self._term_nodes()
+        derived = self._derived | hidden_nodes
         to_sort = (
             initial_assignments
-            | self._derived
+            | derived
             | self._reactions
             | self._surrogates
             | term_nodes
@@ -490,7 +501,11 @@ class KineticModelBuilder(TermsMixin):
         # Calculate all values once, including dynamic ones
         # That way, we can make initial conditions dependent on e.g. rates
         dependent = (
-            base_parameter_values | base_variable_values | self._data | {"time": 0.0}
+            base_parameter_values
+            | weights
+            | base_variable_values
+            | self._data
+            | {"time": 0.0}
         )
         for name in order:
             to_sort[name].calculate_inpl(name, dependent)
@@ -517,15 +532,17 @@ class KineticModelBuilder(TermsMixin):
                 or name in term_nodes
             ):
                 dyn_order.append(name)
-            elif name in self._variables or name in self._parameters:
+            elif (
+                name in self._variables
+                or name in self._parameters
+                or name in hidden_assignments
+            ):
                 static_order.append(name)
+            elif all(i in all_parameter_names for i in derived[name].args):
+                static_order.append(name)
+                all_parameter_names.add(name)
             else:
-                derived = self._derived[name]
-                if all(i in all_parameter_names for i in derived.args):
-                    static_order.append(name)
-                    all_parameter_names.add(name)
-                else:
-                    dyn_order.append(name)
+                dyn_order.append(name)
 
         # Calculate dynamic and static stochiometries
         stoich_by_compounds: dict[str, dict[str, float]] = {}
@@ -575,13 +592,13 @@ class KineticModelBuilder(TermsMixin):
 
         var_names = self.get_variable_names()
         initial_conditions: dict[str, float] = {
-            k: cast(float, dependent[k]) for k in self._variables
+            k: cast(float, dependent[k]) for k in var_names
         }
-        all_parameter_values = dict(base_parameter_values)
+        all_parameter_values = base_parameter_values | weights
         for name in static_order:
-            if name in self._variables:
+            if name in self._variables or name in hidden_assignments:
                 continue  # handled in initial_conditions above
-            if name in self._parameters or name in self._derived:
+            if name in self._parameters or name in derived:
                 all_parameter_values[name] = cast(float, dependent[name])
             else:
                 msg = f"Internal error: '{name}' appears in static_order but is not a parameter, variable, or derived - this is a bug in dependency sorting"
@@ -606,6 +623,7 @@ class KineticModelBuilder(TermsMixin):
             term_nodes=term_nodes,
             term_stoich_by_cpds=term_stoich_by_cpds,
             term_dyn_stoich_by_cpds=term_dyn_stoich_by_cpds,
+            hidden_nodes=hidden_nodes,
         )
         return self._cache
 
@@ -616,7 +634,7 @@ class KineticModelBuilder(TermsMixin):
         }
         for surrogate in self._surrogates.values():
             fluxes.update(surrogate.stoichiometries)
-        return lower_terms(self._terms, fluxes, set(self._reactions))
+        return lower_terms(self._all_terms(), fluxes, set(self._reactions))
 
     ###########################################################################
     # Ids
@@ -883,6 +901,7 @@ class KineticModelBuilder(TermsMixin):
             The instance of the model with the parameter removed.
 
         """
+        self._check_not_block_input(name)
         self._remove_id(name=name)
         self._parameters.pop(name)
         return self
@@ -1261,9 +1280,13 @@ class KineticModelBuilder(TermsMixin):
         Returns
         -------
         variable_names
-            A list containing the names of all variables.
+            A list containing the names of all variables, including the
+            states of hidden-state blocks.
 
         """
+        return list(self._variables) + self.get_hidden_state_names()
+
+    def _user_variable_names(self) -> list[str]:
         return list(self._variables)
 
     @_invalidate_cache
@@ -1388,6 +1411,7 @@ class KineticModelBuilder(TermsMixin):
             The instance of the model with the variable removed.
 
         """
+        self._check_not_hidden_state(name)
         self._remove_targeting_terms(name, remove=remove_terms)
         if remove_stoichiometries:
             for rxn in self._reactions.values():
@@ -1477,6 +1501,10 @@ class KineticModelBuilder(TermsMixin):
             The instance of the model with the updated variable.
 
         """
+        if name not in self._variables and self._update_hidden_state(
+            name, initial_value
+        ):
+            return self
         if name not in self._variables:
             msg = f"Variable {name!r} not found. Available variables: {sorted(self._variables)}"
             raise KeyError(msg)
@@ -1943,6 +1971,7 @@ class KineticModelBuilder(TermsMixin):
             The instance of the model with the derived attribute removed.
 
         """
+        self._check_not_block_input(name)
         self._remove_id(name=name)
         self._derived.pop(name)
         return self
@@ -2396,6 +2425,16 @@ class KineticModelBuilder(TermsMixin):
             if term.target == old_name:
                 term.target = new_name
 
+        # Inputs, targets and scale of hidden-state blocks
+        for block in self._hidden_states.values():
+            block.inputs = rename_args(block.inputs)
+            block.targets = rename_args(block.targets)
+            if block.scale == old_name:
+                block.scale = new_name
+            for ia in block.h0_assignments.values():
+                ia.args = rename_args(ia.args)
+            block._lowered = None  # noqa: SLF001
+
         # Args and stoichiometries of reactions
         for reaction in self._reactions.values():
             reaction.args = rename_args(reaction.args)
@@ -2457,6 +2496,11 @@ class KineticModelBuilder(TermsMixin):
             return self
 
         ctx = self._ids[old_name]  # KeyError if old_name is unknown
+        if ctx == "hidden_states":
+            msg = (
+                f"{old_name!r} belongs to a hidden-state block, which can't be renamed"
+            )
+            raise ValueError(msg)
         # Insert before remove so a collision or reserved name raises before
         # any part of the model is mutated.
         self._insert_id(name=new_name, ctx=ctx)
@@ -3241,7 +3285,11 @@ class KineticModelBuilder(TermsMixin):
         args["time"] = time
 
         containers = (
-            self._derived | self._reactions | self._surrogates | cache.term_nodes
+            self._derived
+            | cache.hidden_nodes
+            | self._reactions
+            | self._surrogates
+            | cache.term_nodes
         )
         for name in cache.dyn_order:
             containers[name].calculate_inpl(name, args)

@@ -107,7 +107,7 @@ def jacobian_fn(
         raise TypeError(msg)
 
     var_names = model.get_variable_names()
-    par_names = model.get_parameter_names()
+    par_names = model.get_addressable_names()
     n = len(var_names)
     rows = np.array([i for i, _ in nonzero], dtype=np.intp)
     cols = np.array([j for _, j in nonzero], dtype=np.intp)
@@ -149,7 +149,7 @@ def _expanded(model: KineticModelBuilder) -> tuple[_RawJacobian, list[tuple[int,
     sym = to_symbolic_model(model)
     time = sympy.Symbol("time")
     xs = [sym.variables[k] for k in model.get_variable_names()]
-    ps = [sym.parameters[k] for k in model.get_parameter_names()]
+    ps = [sym.parameters[k] for k in model.get_addressable_names()]
 
     jac = sympy.Matrix(sym.eqs).jacobian(xs)
     n = len(xs)
@@ -307,7 +307,7 @@ def _model_graph(
     model: KineticModelBuilder | OdeModelBuilder, wrt: list[str], outputs: list[str]
 ) -> _Graph:
     var_names = model.get_variable_names()
-    par_names = model.get_parameter_names()
+    par_names = model.get_addressable_names()
     if unknown := set(wrt) - set(par_names):
         msg = f"Can only differentiate w.r.t. parameters, not {sorted(unknown)}"
         raise ValueError(msg)

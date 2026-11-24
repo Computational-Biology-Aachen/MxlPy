@@ -80,7 +80,7 @@ def to_symbolic_model(
     rsr = sr.reduce()
 
     initial_conditions = model.get_initial_conditions()
-    parameter_values = model.get_parameter_values()
+    parameter_values = model.get_addressable_values()
 
     variables: dict[str, sympy.Symbol] = dict(
         zip(

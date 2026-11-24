@@ -133,7 +133,7 @@ class _BaseSimulation[M: (KineticModelBuilder, OdeModelBuilder)]:
                     columns=model.get_variable_names(),
                 )
             ],
-            raw_parameters=[model.get_parameter_values()],
+            raw_parameters=[model.get_addressable_values()],
         )
 
     def _adjust_data(
@@ -236,7 +236,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
 
         # Compute new otherwise
         for res, p in zip(self.raw_variables, self.raw_parameters, strict=True):
-            self.model.update_parameters(p)
+            self.model.update_addressable(p)
             self.raw_args.append(self._args_for(res, self._python_args))
         return self.raw_args
 
@@ -618,7 +618,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         args_by_simulation = self._compute_args()
         return self._adjust_data(
             [
-                self.model.update_parameters(p).get_right_hand_side_time_course(
+                self.model.update_addressable(p).get_right_hand_side_time_course(
                     args=args
                 )
                 for args, p in zip(args_by_simulation, self.raw_parameters, strict=True)
@@ -679,7 +679,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
             Whether to concatenate results into a single DataFrame.
 
         """
-        self.model.update_parameters(self.raw_parameters[0])
+        self.model.update_addressable(self.raw_parameters[0])
         names = [
             k
             for k, v in self.model.get_stoichiometries_of_variable(variable).items()
@@ -694,12 +694,12 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         if scaled:
             fluxes = [i.copy() for i in fluxes]
             for v, p in zip(fluxes, self.raw_parameters, strict=True):
-                self.model.update_parameters(p)
+                self.model.update_addressable(p)
                 stoichs = self.model.get_stoichiometries_of_variable(variable)
                 for k in names:
                     v.loc[:, k] *= stoichs[k]
 
-        self.model.update_parameters(self.raw_parameters[-1])
+        self.model.update_addressable(self.raw_parameters[-1])
         if concatenated:
             return pd.concat(fluxes, axis=0)
         return fluxes
@@ -756,7 +756,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
             Whether to concatenate results into a single DataFrame.
 
         """
-        self.model.update_parameters(self.raw_parameters[0])
+        self.model.update_addressable(self.raw_parameters[0])
         names = [
             k
             for k, v in self.model.get_stoichiometries_of_variable(variable).items()
@@ -771,12 +771,12 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         if scaled:
             fluxes = [i.copy() for i in fluxes]
             for v, p in zip(fluxes, self.raw_parameters, strict=True):
-                self.model.update_parameters(p)
+                self.model.update_addressable(p)
                 stoichs = self.model.get_stoichiometries_of_variable(variable)
                 for k in names:
                     v.loc[:, k] *= -stoichs[k]
 
-        self.model.update_parameters(self.raw_parameters[-1])
+        self.model.update_addressable(self.raw_parameters[-1])
         if concatenated:
             return pd.concat(fluxes, axis=0)
         return fluxes
@@ -828,7 +828,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
         # exclude them and use the integrated concentrations instead.
         # Variables are dropped explicitly in case the builder ever returns them.
         for res, p in zip(self.raw_variables, self.raw_parameters, strict=True):
-            self.model.update_parameters(p)
+            self.model.update_addressable(p)
             self.raw_args.append(self._args_for(res, self._python_args))
         return self.raw_args
 
@@ -1087,7 +1087,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
         """
         return self._adjust_data(
             [
-                self.model.update_parameters(p).get_args_time_course(
+                self.model.update_addressable(p).get_args_time_course(
                     variables=res,
                     include_parameters=False,
                     include_derived_parameters=False,

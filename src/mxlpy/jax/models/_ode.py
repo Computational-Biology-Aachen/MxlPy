@@ -157,7 +157,7 @@ class Ode(Base[Simulation]):
         exec(codegen.model, generated)  # noqa: S102
         exec(codegen.derived, generated)  # noqa: S102
 
-        model_pars = mxlpy_model.get_parameter_values()
+        model_pars = mxlpy_model.get_addressable_values()
         return cls(
             rhs=cast(Rhs, generated["model"]),
             pars=jnp.array([model_pars[k] for k in parameters_to_fit]),
@@ -296,7 +296,7 @@ class FluxOde(FluxBase):
         exec(codegen.nv, generated)  # noqa: S102
         exec(codegen.derived, generated)  # noqa: S102
 
-        model_pars = mxlpy_model.get_parameter_values()
+        model_pars = mxlpy_model.get_addressable_values()
         return cls(
             flux_fn=cast(Rhs, generated["fluxes"]),
             nv=cast(Nv, generated["nv"]),

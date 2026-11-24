@@ -314,6 +314,26 @@ class SteadyStateModelBuilder:
             cache = self._create_cache()
         return cache.base_parameter_values
 
+    def get_weight_names(self) -> list[str]:
+        """Names of weights: none, steady-state models have no neural blocks."""
+        return []
+
+    def get_weight_values(self) -> dict[str, float]:
+        """Values of weights: none, steady-state models have no neural blocks."""
+        return {}
+
+    def get_addressable_names(self) -> list[str]:
+        """Every name a value can be set for, the parameters here."""
+        return self.get_parameter_names()
+
+    def get_addressable_values(self) -> dict[str, float]:
+        """Values of `get_addressable_names`."""
+        return self.get_parameter_values()
+
+    def update_addressable(self, values: Mapping[str, float]) -> Self:
+        """Update parameters by name, see `KineticModelBuilder.update_addressable`."""
+        return self.update_parameters(values)
+
     def get_parameter_names(self) -> list[str]:
         """Retrieve the names of the parameters.
 

@@ -257,7 +257,7 @@ class Simulator(Generic[M]):
             The new value to set for the parameter.
 
         """
-        self.model.update_parameter(parameter, value)
+        self.model.update_addressable({parameter: value})
         return self
 
     def update_parameters(self, parameters: dict[str, float]) -> Self:
@@ -274,7 +274,7 @@ class Simulator(Generic[M]):
             and the values are the new parameter values.
 
         """
-        self.model.update_parameters(parameters)
+        self.model.update_addressable(parameters)
         return self
 
     def scale_parameter(self, parameter: str, factor: float) -> Self:
@@ -398,7 +398,7 @@ class Simulator(Generic[M]):
 
                 if self.simulation_parameters is None:
                     self.simulation_parameters = []
-                self.simulation_parameters.append(self.model.get_parameter_values())
+                self.simulation_parameters.append(self.model.get_addressable_values())
             case _ as e:
                 self._errors.append(e)
 
@@ -545,7 +545,7 @@ class Simulator(Generic[M]):
 
         for t_end, pars in protocol.iterrows():
             t_end = cast(pd.Timedelta, t_end)
-            self.model.update_parameters(cast(dict, pars.to_dict()))
+            self.model.update_addressable(cast(dict, pars.to_dict()))
             self.simulate(t_start + t_end.total_seconds(), steps=time_points_per_step)
             if self.variables is None:
                 break
@@ -618,7 +618,7 @@ class Simulator(Generic[M]):
         full_time_points = protocol.index.join(pd.Index(time_points), how="outer")
 
         for t_end, pars in protocol.iterrows():
-            self.model.update_parameters(cast(dict, pars.to_dict()))
+            self.model.update_addressable(cast(dict, pars.to_dict()))
 
             self.simulate_time_course(
                 time_points=full_time_points[

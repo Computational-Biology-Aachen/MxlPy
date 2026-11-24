@@ -41,6 +41,13 @@ def _remove_by_ctx(model: KineticModelBuilder, name: str, ctx: str) -> None:
         model.remove_data(name)
     elif ctx == "term":
         model.remove_term(name)
+    elif ctx == "hidden_states":
+        owner = next(
+            k
+            for k, v in model.get_raw_hidden_states(as_copy=False).items()
+            if name in model._block_owned_names(k, v)  # noqa: SLF001
+        )
+        model.remove_hidden_states(owner)
     elif ctx == "surrogate" and name in model.get_raw_surrogates(as_copy=False):
         # Surrogate output names also live in the namespace; only whole
         # surrogates can be removed by name (output collisions are best-effort).
@@ -66,7 +73,9 @@ def _merge_into(
                 UserWarning,
                 stacklevel=3,
             )
-            _remove_by_ctx(result, name, result.ids[name])
+            # removing a hidden-state block removes all of its names
+            if name in result.ids:
+                _remove_by_ctx(result, name, result.ids[name])
 
     result.add_parameters(model.get_raw_parameters())
     result.add_variables(model.get_raw_variables())
@@ -86,6 +95,8 @@ def _merge_into(
         result.add_surrogate(name, copy.deepcopy(surrogate))
     for name, data in model._data.items():  # noqa: SLF001
         result.add_data(name, copy.deepcopy(data))
+    for name, block in model.get_raw_hidden_states().items():
+        result._add_block(name, block)  # noqa: SLF001
     for name, term in model.get_raw_terms().items():
         result.add_term(
             name,

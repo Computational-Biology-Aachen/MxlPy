@@ -36,9 +36,12 @@ __all__ = [
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
-    from mxlpy.minimizers.abstract import LossFn
+    from mxlpy.fit._gradient import Transform
+    from mxlpy.minimizers.abstract import Bounds, LossFn
     from mxlpy.runners import SteadyStateRunner
 
 LOGGER = logging.getLogger(__name__)
@@ -99,6 +102,38 @@ class MixedSettings(Generic[M]):
     protocol: pd.DataFrame | None = None
 
 
+# Weights of hidden-state blocks are signed, unlike the minimizers' default
+WEIGHT_BOUNDS = (-1e6, 1e6)
+
+
+def with_weight_bounds(
+    models: Iterable[KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder],
+    names: Iterable[str],
+    bounds: Bounds | None,
+) -> Bounds:
+    """`bounds` plus `WEIGHT_BOUNDS` for the weights in `names` without bounds."""
+    weights = {w for m in models for w in m.get_weight_names()}
+    given = {} if bounds is None else dict(bounds)
+    return {k: WEIGHT_BOUNDS for k in names if k in weights and k not in given} | given
+
+
+def without_weights(
+    models: Iterable[KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder],
+    names: Iterable[str],
+    transform: Transform | None,
+) -> Transform | None:
+    """A transform for all `names` as one per name, leaving weights linear.
+
+    Weights are signed, so they can't be log-transformed.
+    """
+    if not isinstance(transform, str):
+        return transform
+    weights = {w for m in models for w in m.get_weight_names()}
+    if not weights:
+        return transform
+    return {k: transform for k in names if k not in weights}
+
+
 def _pick_runner(
     runner: SteadyStateRunner[Any, Any] | None,
     fallback: SteadyStateRunner[Any, Any] | None,
@@ -117,7 +152,7 @@ def _split_p0(
     p0: dict[str, float],
 ) -> tuple[list[str], list[str]]:
     """Split initial guesses into parameter and variable names."""
-    p_names = set(model.get_parameter_names())
+    p_names = set(model.get_addressable_names())
     v_names = (
         set()
         if isinstance(model, SteadyStateModelBuilder)

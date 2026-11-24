@@ -406,6 +406,10 @@ def generate_mxlpy_code(
         if (gen := _codegen_surrogate(k, surrogate, ctx=ctx)) is not None:
             surrogate_source.append(gen)
 
+    if blocks := list(model.get_raw_hidden_states(as_copy=False)):
+        msg = f"Hidden-state blocks can't be generated as code yet ({blocks}), save the model with mxlpy.serialize instead"
+        raise NotImplementedError(msg)
+
     # Terms
     term_source = [
         _codegen_term(k, term, ctx=ctx) for k, term in model.get_raw_terms().items()

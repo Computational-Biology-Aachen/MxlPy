@@ -217,7 +217,7 @@ def lower(model: Any) -> Lowered:
 
     _check_lowerable(model)
     var_names = list(model.get_variable_names())
-    par_names = list(model.get_parameter_names())
+    par_names = list(model.get_addressable_names())
     # Readouts don't affect the derivatives, so one that can't be lowered mustn't block this.
     without_readouts = copy.copy(model)
     without_readouts._readouts = {}  # noqa: SLF001
@@ -270,7 +270,7 @@ def lower_outputs(model: Any, names: list[str]) -> Lowered:
 
     _check_lowerable(model)
     var_names = list(model.get_variable_names())
-    par_names = list(model.get_parameter_names())
+    par_names = list(model.get_addressable_names())
     try:
         nsm = _normalized_symbolic_model(model, par_names, None, {})
     except Exception as e:
@@ -346,7 +346,7 @@ def _structure(
     _check_lowerable(model)
     return (
         tuple(model.get_variable_names()),
-        tuple(model.get_parameter_names()),
+        tuple(model.get_addressable_names()),
         *(
             tuple(
                 (k, _component(v, fn_key)) for k, v in getattr(model, attr, {}).items()
@@ -355,6 +355,19 @@ def _structure(
         ),
         tuple(
             (k, surrogate_key(v)) for k, v in getattr(model, "_surrogates", {}).items()
+        ),
+        tuple(
+            (
+                k,
+                v.n_hidden,
+                tuple(v.layers),
+                tuple(v.inputs),
+                tuple(v.input_scales),
+                tuple(v.targets),
+                v.scale,
+                fn_key(v.mechanism.fn),
+            )
+            for k, v in getattr(model, "_hidden_states", {}).items()
         ),
         # Insertion order matters for the composition of terms
         tuple(
