@@ -22,6 +22,7 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy import _topo
+from mxlpy._terms import TermNode, TermsMixin, corrected_fluxes, lower_terms
 from mxlpy.dsl import from_dsl
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
@@ -42,6 +43,7 @@ from mxlpy.types import (
     Readout,
     Slider,
     StructureToken,
+    Term,
     Variable,
 )
 from mxlpy.unit_inference import (
@@ -270,6 +272,12 @@ class ModelCache:
     array_names
         Array-valued derived quantities (mxl-schemas ADR 0015): internal
         intermediates, left out of argument tables.
+    term_nodes
+        Contribution nodes of the terms, see `mxlpy._terms`.
+    term_stoich_by_cpds
+        Static coefficients the term contributions enter each derivative with.
+    term_dyn_stoich_by_cpds
+        Dynamic coefficients the term contributions enter each derivative with.
 
     """
 
@@ -287,6 +295,9 @@ class ModelCache:
     dyn_stoich_by_cpds: dict[str, dict[str, Derived]]
     initial_conditions: dict[str, float]
     array_names: frozenset[str] = frozenset()
+    term_nodes: dict[str, TermNode] = field(default_factory=dict)
+    term_stoich_by_cpds: dict[str, dict[str, float]] = field(default_factory=dict)
+    term_dyn_stoich_by_cpds: dict[str, dict[str, Derived]] = field(default_factory=dict)
 
 
 def _normalize_annotations(
@@ -301,7 +312,7 @@ def _normalize_annotations(
 
 
 @dataclass(slots=True)
-class KineticModelBuilder:
+class KineticModelBuilder(TermsMixin):
     """Represents a metabolic model.
 
     Attributes
@@ -320,6 +331,8 @@ class KineticModelBuilder:
         Dictionary of reactions in the model.
     _surrogates
         Dictionary of surrogate models.
+    _terms
+        Terms rewriting derivatives or reaction rates, in insertion order.
     _cache
         Cache for storing model-related data structures.
     _data
@@ -341,6 +354,7 @@ class KineticModelBuilder:
     _data: dict[str, pd.Series | pd.DataFrame] = field(default_factory=dict)
     _annotations: list[Annotation] = field(default_factory=list)
     _events: dict[str, Event] = field(default_factory=dict)
+    _terms: dict[str, Term] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -433,6 +447,7 @@ class KineticModelBuilder:
             self._derived.items(),
             self._reactions.items(),
             self._readouts.items(),
+            self._terms.items(),
         ):
             if not _check_function_arity(el.fn, len(el.args)):
                 raise ArityMismatchError(name, el.fn, el.args)
@@ -452,8 +467,13 @@ class KineticModelBuilder:
             | set(self._data)
             | {"time"}
         )
+        term_nodes = self._term_nodes()
         to_sort = (
-            initial_assignments | self._derived | self._reactions | self._surrogates
+            initial_assignments
+            | self._derived
+            | self._reactions
+            | self._surrogates
+            | term_nodes
         )
         order = _topo.sort_dependencies(
             available=available,
@@ -491,7 +511,11 @@ class KineticModelBuilder:
         static_order = []
         dyn_order = []
         for name in order:
-            if name in self._reactions or name in self._surrogates:
+            if (
+                name in self._reactions
+                or name in self._surrogates
+                or name in term_nodes
+            ):
                 dyn_order.append(name)
             elif name in self._variables or name in self._parameters:
                 static_order.append(name)
@@ -533,6 +557,22 @@ class KineticModelBuilder:
                     else:
                         d_static[rxn_name] = factor
 
+        term_stoich_by_cpds: dict[str, dict[str, float]] = {}
+        term_dyn_stoich_by_cpds: dict[str, dict[str, Derived]] = {}
+        for term_name, node in term_nodes.items():
+            for cpd_name, factor in node.fan_out.items():
+                if isinstance(factor, Derived):
+                    if all(i in all_parameter_names for i in factor.args):
+                        term_stoich_by_cpds.setdefault(cpd_name, {})[term_name] = (
+                            factor.calculate(dependent)
+                        )
+                    else:
+                        term_dyn_stoich_by_cpds.setdefault(cpd_name, {})[term_name] = (
+                            factor
+                        )
+                else:
+                    term_stoich_by_cpds.setdefault(cpd_name, {})[term_name] = factor
+
         var_names = self.get_variable_names()
         initial_conditions: dict[str, float] = {
             k: cast(float, dependent[k]) for k in self._variables
@@ -563,8 +603,20 @@ class KineticModelBuilder:
             )
             if self._data
             else frozenset(),
+            term_nodes=term_nodes,
+            term_stoich_by_cpds=term_stoich_by_cpds,
+            term_dyn_stoich_by_cpds=term_dyn_stoich_by_cpds,
         )
         return self._cache
+
+    def _term_nodes(self) -> dict[str, TermNode]:
+        """Contribution nodes of all terms."""
+        fluxes: dict[str, Mapping[str, float | Derived]] = {
+            k: v.stoichiometry for k, v in self._reactions.items()
+        }
+        for surrogate in self._surrogates.values():
+            fluxes.update(surrogate.stoichiometries)
+        return lower_terms(self._terms, fluxes, set(self._reactions))
 
     ###########################################################################
     # Ids
@@ -1103,6 +1155,8 @@ class KineticModelBuilder:
                         args.update(factor.args)
         for readout in self._readouts.values():
             args.update(readout.args)
+        for term in self._terms.values():
+            args.update(term.args)
         for event in self._events.values():
             args.update(event.trigger_args)
             for assignment in event.assignments.values():
@@ -1311,6 +1365,7 @@ class KineticModelBuilder:
         name: str,
         *,
         remove_stoichiometries: bool = True,
+        remove_terms: bool = True,
     ) -> Self:
         """Remove a variable from the model.
 
@@ -1324,6 +1379,8 @@ class KineticModelBuilder:
             The name of the variable to remove.
         remove_stoichiometries
             whether to remove the variable from all reactions
+        remove_terms
+            whether to remove the terms targeting the variable
 
         Returns
         -------
@@ -1331,6 +1388,7 @@ class KineticModelBuilder:
             The instance of the model with the variable removed.
 
         """
+        self._remove_targeting_terms(name, remove=remove_terms)
         if remove_stoichiometries:
             for rxn in self._reactions.values():
                 if name in rxn.stoichiometry:
@@ -2237,7 +2295,7 @@ class KineticModelBuilder:
         return self
 
     @_invalidate_cache
-    def remove_reaction(self, name: str) -> Self:
+    def remove_reaction(self, name: str, *, remove_terms: bool = True) -> Self:
         """Remove a reaction from the model by its name.
 
         Examples
@@ -2248,6 +2306,8 @@ class KineticModelBuilder:
         ----------
         name
             The name of the reaction to be removed.
+        remove_terms
+            Whether to remove the terms targeting the reaction.
 
         Returns
         -------
@@ -2255,6 +2315,7 @@ class KineticModelBuilder:
             The instance of the model with the reaction removed.
 
         """
+        self._remove_targeting_terms(name, remove=remove_terms)
         self._remove_id(name=name)
         self._reactions.pop(name)
         return self
@@ -2329,6 +2390,12 @@ class KineticModelBuilder:
         for readout in self._readouts.values():
             readout.args = rename_args(readout.args)
 
+        # Args and targets of terms
+        for term in self._terms.values():
+            term.args = rename_args(term.args)
+            if term.target == old_name:
+                term.target = new_name
+
         # Args and stoichiometries of reactions
         for reaction in self._reactions.values():
             reaction.args = rename_args(reaction.args)
@@ -2395,7 +2462,12 @@ class KineticModelBuilder:
         self._insert_id(name=new_name, ctx=ctx)
         self._remove_id(name=old_name)
 
-        # Move the owning slot
+        # Move the owning slot. Terms keep their order, which matters for
+        # their composition.
+        if old_name in self._terms:
+            self._terms = {
+                (new_name if k == old_name else k): v for k, v in self._terms.items()
+            }
         containers: list[dict[str, Any]] = [
             self._variables,
             self._parameters,
@@ -2967,6 +3039,18 @@ class KineticModelBuilder:
         return names
 
     ##########################################################################
+    # Terms
+    ##########################################################################
+
+    def _check_term_target(self, name: str, target: str) -> None:
+        if target not in self._variables and target not in self._reactions:
+            msg = (
+                f"Term {name!r}: target {target!r} is neither a variable nor a "
+                "reaction of the model"
+            )
+            raise KeyError(msg)
+
+    ##########################################################################
     # Datasets
     ##########################################################################
 
@@ -3061,6 +3145,7 @@ class KineticModelBuilder:
         include_surrogate_variables: bool,
         include_surrogate_fluxes: bool,
         include_readouts: bool,
+        include_terms: bool,
     ) -> list[str]:
         """Get names of all kinds of model components.
 
@@ -3084,6 +3169,8 @@ class KineticModelBuilder:
             Include surrogate reaction names.
         include_readouts
             Include readout names.
+        include_terms
+            Include term names, the names of their contributions.
 
         Returns
         -------
@@ -3110,6 +3197,8 @@ class KineticModelBuilder:
             names.extend(self.get_surrogate_reaction_names())
         if include_readouts:
             names.extend(self.get_readout_names())
+        if include_terms:
+            names.extend(self.get_term_names())
         if self._data:
             arrays = (self._cache or self._create_cache()).array_names
             names = [n for n in names if n not in arrays]
@@ -3151,7 +3240,9 @@ class KineticModelBuilder:
         args = cache.all_parameter_values | variables | self._data
         args["time"] = time
 
-        containers = self._derived | self._reactions | self._surrogates
+        containers = (
+            self._derived | self._reactions | self._surrogates | cache.term_nodes
+        )
         for name in cache.dyn_order:
             containers[name].calculate_inpl(name, args)
 
@@ -3174,6 +3265,7 @@ class KineticModelBuilder:
         include_surrogate_variables: bool = True,
         include_surrogate_fluxes: bool = True,
         include_readouts: bool = False,
+        include_terms: bool = True,
     ) -> pd.Series:
         """Generate a pandas Series of arguments for the model.
 
@@ -3215,6 +3307,8 @@ class KineticModelBuilder:
             Whether to include surrogate fluxes
         include_readouts
             Whether to include readouts
+        include_terms
+            Whether to include term contributions
 
         Returns
         -------
@@ -3245,6 +3339,7 @@ class KineticModelBuilder:
                 include_surrogate_variables=include_surrogate_variables,
                 include_surrogate_fluxes=include_surrogate_fluxes,
                 include_readouts=include_readouts,
+                include_terms=include_terms,
             )
         ]
 
@@ -3284,6 +3379,7 @@ class KineticModelBuilder:
         include_surrogate_variables: bool = True,
         include_surrogate_fluxes: bool = True,
         include_readouts: bool = False,
+        include_terms: bool = True,
     ) -> pd.DataFrame:
         """Generate a DataFrame containing time course arguments for model evaluation.
 
@@ -3319,6 +3415,8 @@ class KineticModelBuilder:
             Whether to include surrogate fluxes
         include_readouts
             Whether to include readouts
+        include_terms
+            Whether to include term contributions
 
         Returns
         -------
@@ -3346,6 +3444,7 @@ class KineticModelBuilder:
                 include_surrogate_variables=include_surrogate_variables,
                 include_surrogate_fluxes=include_surrogate_fluxes,
                 include_readouts=include_readouts,
+                include_terms=include_terms,
             ),
         ]
 
@@ -3357,6 +3456,8 @@ class KineticModelBuilder:
         self,
         variables: dict[str, float] | None = None,
         time: float = 0.0,
+        *,
+        corrected: bool = False,
     ) -> pd.Series:
         """Calculate the fluxes for the given concentrations and time.
 
@@ -3380,6 +3481,10 @@ class KineticModelBuilder:
             A dictionary where keys are variable names and values are their concentrations.
         time
             The time at which to calculate the fluxes. Defaults to 0.0.
+        corrected
+            Whether to add the contributions of terms targeting reactions.
+            The default, mechanistic rates are those the stoichiometry
+            applies to.
 
         Returns
         -------
@@ -3387,9 +3492,14 @@ class KineticModelBuilder:
             A pandas Series containing the fluxes for each reaction.
 
         """
-        return self.get_args(
-            variables=variables,
-            time=time,
+        args = self.get_args(variables=variables, time=time)
+        fluxes = args.loc[self._flux_names()]
+        if corrected:
+            return corrected_fluxes(fluxes, args, self._all_terms())
+        return fluxes
+
+    def _flux_names(self) -> list[str]:
+        return self.get_arg_names(
             include_time=False,
             include_variables=False,
             include_parameters=False,
@@ -3399,9 +3509,12 @@ class KineticModelBuilder:
             include_surrogate_variables=False,
             include_surrogate_fluxes=True,
             include_readouts=False,
+            include_terms=False,
         )
 
-    def get_fluxes_time_course(self, variables: pd.DataFrame) -> pd.DataFrame:
+    def get_fluxes_time_course(
+        self, variables: pd.DataFrame, *, corrected: bool = False
+    ) -> pd.DataFrame:
         """Generate a time course of fluxes for the given reactions and surrogates.
 
         Examples
@@ -3421,6 +3534,8 @@ class KineticModelBuilder:
             A DataFrame containing the input arguments for the reactions
             and surrogates. Each column corresponds to a specific input
             variable, and each row represents a different time point.
+        corrected
+            Whether to add the contributions of terms targeting reactions.
 
         Returns
         -------
@@ -3430,17 +3545,11 @@ class KineticModelBuilder:
             the index of the input arguments.
 
         """
-        return self.get_args_time_course(
-            variables=variables,
-            include_variables=False,
-            include_parameters=False,
-            include_derived_parameters=False,
-            include_derived_variables=False,
-            include_reactions=True,
-            include_surrogate_variables=False,
-            include_surrogate_fluxes=True,
-            include_readouts=False,
-        )
+        args = self.get_args_time_course(variables=variables)
+        fluxes = args.loc[:, self._flux_names()]
+        if corrected:
+            return corrected_fluxes(fluxes, args, self._all_terms())
+        return fluxes
 
     ##########################################################################
     # Get rhs
@@ -3521,6 +3630,12 @@ class KineticModelBuilder:
             for flux, dv in sd.items():
                 n = dv.calculate(dependent)
                 dxdt[k] += n * dependent[flux]
+        for k, stoc in cache.term_stoich_by_cpds.items():
+            for term, n in stoc.items():
+                dxdt[k] += n * dependent[term]
+        for k, sd in cache.term_dyn_stoich_by_cpds.items():
+            for term, dv in sd.items():
+                dxdt[k] += dv.calculate(dependent) * dependent[term]
         return tuple(dxdt[i] for i in cache.var_names)
 
     def _get_right_hand_side(
@@ -3539,6 +3654,12 @@ class KineticModelBuilder:
             for flux, dv in sd.items():
                 n = dv.fn(*(args[i] for i in dv.args))
                 dxdt[k] += n * args[flux]
+        for k, stoc in cache.term_stoich_by_cpds.items():
+            for term, n in stoc.items():
+                dxdt[k] += n * args[term]
+        for k, sd in cache.term_dyn_stoich_by_cpds.items():
+            for term, dv in sd.items():
+                dxdt[k] += dv.fn(*(args[i] for i in dv.args)) * args[term]
         return dxdt
 
     def get_right_hand_side(

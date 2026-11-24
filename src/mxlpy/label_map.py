@@ -698,6 +698,9 @@ class LabelMapper:
             New Model instance with labeled components
 
         """
+        if terms := self.model.get_term_names():
+            msg = f"Label maps don't support terms ({terms})"
+            raise NotImplementedError(msg)
         isotopomers = self.get_isotopomers()
         initial_labels = {} if initial_labels is None else initial_labels
 

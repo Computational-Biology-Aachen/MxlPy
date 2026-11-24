@@ -253,6 +253,7 @@ def _split_outputs(
             include_surrogate_variables=False,
             include_surrogate_fluxes=True,
             include_readouts=False,
+            include_terms=False,
         )
     )
     return [i for i in names if i not in fluxes], [i for i in names if i in fluxes]

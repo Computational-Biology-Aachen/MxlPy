@@ -719,6 +719,12 @@ def to_tex_export(model: KineticModelBuilder) -> TexExport:
         LaTeX export object containing all model components
 
     """
+    if terms := model.get_term_names():
+        msg = (
+            f"to_tex_export doesn't support terms ({terms}), "
+            "use mxlpy.meta.generate_model_code_latex instead"
+        )
+        raise NotImplementedError(msg)
     diff_eqs = {}
     for rxn_name, rxn in model.get_raw_reactions().items():
         for var_name, factor in rxn.stoichiometry.items():

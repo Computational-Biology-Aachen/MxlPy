@@ -16,6 +16,7 @@ import sympy
 from wadler_lindig import pformat
 
 from mxlpy import _topo
+from mxlpy._terms import TermNode, lower_terms
 from mxlpy.meta.identifiers import canonical_identifier_map
 from mxlpy.meta.source_tools import fn_to_sympy_expr, fn_to_sympy_exprs
 from mxlpy.meta.sympy_tools import (
@@ -341,6 +342,8 @@ class SymbolicRepr:
     readouts: dict[str, SymbolicReadout] = field(default_factory=dict)
     reactions: dict[str, SymbolicReaction] = field(default_factory=dict)
     surrogates: dict[str, SymbolicSurrogate] = field(default_factory=dict)
+    # Term contributions, fanned out into the diff eqs like reaction rates
+    terms: dict[str, SymbolicReaction] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -378,11 +381,16 @@ class SymbolicRepr:
                 for k, v2 in other.surrogates.items()
                 if (v1 := self.surrogates.get(k)) is None or v1 != v2
             },
+            terms={
+                k: v2
+                for k, v2 in other.terms.items()
+                if (v1 := self.terms.get(k)) is None or v1 != v2
+            },
         )
 
     def reduce(self) -> ReducedSymbolicRepr:
         all_derived = self.derived | self.readouts
-        all_reactions = self.reactions
+        all_reactions = dict(self.reactions)
 
         for srg in self.surrogates.values():
             for fn, out in zip(srg.fns, srg.outputs, strict=True):
@@ -395,8 +403,13 @@ class SymbolicRepr:
                 else:
                     all_derived[out] = fn
 
+        # Term contributions are computed quantities, not reactions, but fan
+        # out into the diff eqs like reaction rates
+        for k, term in self.terms.items():
+            all_derived[k] = term.fn
+
         diffeqs: dict[str, sympy.Expr] = {i: sympy.Integer(0) for i in self.variables}
-        for rate, rxn in all_reactions.items():
+        for rate, rxn in (all_reactions | self.terms).items():
             for cpd, factor in rxn.stoichiometry.items():
                 if isinstance(factor, SymbolicFn):
                     diffeqs[cpd] += sympy.Symbol(rate) * factor.expr  # pyright: ignore[reportOperatorIssue]
@@ -679,6 +692,94 @@ def _fns_to_symbolic_reprs(
     ]
 
 
+def _term_nodes(model: KineticModelBuilder | OdeModelBuilder) -> dict[str, TermNode]:
+    """Contribution nodes of a model's terms, see `mxlpy._terms`.
+
+    The base of an `OdeModelBuilder` term is its variable's diff eq rate,
+    under the name `_ode_diff_eq_rate_name` gives it here.
+    """
+    from mxlpy._kinetic_builder import KineticModelBuilder
+
+    if isinstance(model, KineticModelBuilder):
+        return model._term_nodes()  # noqa: SLF001
+    fluxes: dict[str, Mapping[str, float | Derived]] = {
+        _ode_diff_eq_rate_name(k): {k: 1.0}
+        for k in model.get_raw_diff_eqs(as_copy=False)
+    }
+    return lower_terms(model.get_raw_terms(as_copy=False), fluxes, set())
+
+
+def _coefficient_expr(
+    origin: str,
+    coef: float | Derived,
+    *,
+    only_warn: bool,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> sympy.Float | SymbolicFn:
+    if isinstance(coef, Derived):
+        return _fn_to_symbolic_repr(
+            origin, coef.fn, coef.args, only_warn=only_warn, custom_fns=custom_fns
+        )
+    return sympy.Float(coef)
+
+
+def _terms_to_symbolic_repr(
+    nodes: Mapping[str, TermNode],
+    *,
+    only_warn: bool,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> dict[str, SymbolicReaction]:
+    """Term contributions as reaction-shaped nodes fanning out into the diff eqs."""
+    out: dict[str, SymbolicReaction] = {}
+    for k, node in nodes.items():
+        term, mechanism = node.term, node.term.mechanism
+        value = _fn_to_symbolic_repr(
+            k, term.fn, term.args, only_warn=only_warn, custom_fns=custom_fns
+        ).expr
+        base: sympy.Expr = sympy.Integer(0)
+        if mechanism.needs_base:
+            for name, coef in node.base:
+                c = _coefficient_expr(
+                    f"{k}_{name}", coef, only_warn=only_warn, custom_fns=custom_fns
+                )
+                base += sympy.Symbol(name) * (
+                    c.expr if isinstance(c, SymbolicFn) else c
+                )  # pyright: ignore[reportOperatorIssue]
+        if mechanism.name == "additive":
+            expr = value
+        elif mechanism.name == "relative":
+            expr = base * value
+        else:
+            combined = fn_to_sympy_expr(
+                mechanism.fn, origin=f"{k} mechanism", model_args=[base, value]
+            )
+            if combined is None:
+                msg = f"Unable to parse the mechanism of term '{k}'"
+                if not only_warn:
+                    raise ValueError(msg)
+                _LOGGER.warning(msg)
+                combined = sympy.Float("nan")
+            expr = combined - base
+        out[k] = SymbolicReaction(
+            fn=SymbolicFn(
+                fn_name=k,
+                expr=cast(sympy.Expr, expr),
+                args=sorted(
+                    s.name for s in expr.free_symbols if isinstance(s, sympy.Symbol)
+                ),
+            ),
+            stoichiometry={
+                cpd: _coefficient_expr(
+                    f"{k}_{cpd}", coef, only_warn=only_warn, custom_fns=custom_fns
+                )
+                for cpd, coef in node.fan_out.items()
+            },
+            # The contribution has the term's unit only for additive terms
+            unit=cast(Quantity, term.unit) if mechanism.name == "additive" else None,
+        )
+    return out
+
+
 def _ss_builder_to_symbolic_repr(
     model: SteadyStateModelBuilder,
     *,
@@ -808,6 +909,10 @@ def _ode_builder_to_symbolic_repr(
             ),
             unit=cast(Quantity, rdo.unit),
         )
+
+    sym.terms = _terms_to_symbolic_repr(
+        _term_nodes(model), only_warn=only_warn, custom_fns=custom_fns
+    )
 
     if raw_surrogates := model.get_raw_surrogates():
         # Ode surrogates (mxlpy.surrogates.abstract_ode) have no
@@ -948,6 +1053,9 @@ def _kinetic_builder_to_symbolic_repr(
             unit=cast(Quantity, rdo.unit),
         )
 
+    sym.terms = _terms_to_symbolic_repr(
+        _term_nodes(model), only_warn=only_warn, custom_fns=custom_fns
+    )
     return sym
 
 
@@ -1090,6 +1198,7 @@ def _get_dependencies_and_leaves(
     for v in model.get_raw_surrogates(as_copy=False).values():
         args = set(v.args)
         dependees.update(dict.fromkeys(v.outputs, args))
+    dependees.update({k: set(v.args) for k, v in _term_nodes(model).items()})
 
     return _topo.get_all_dependencies_of(requested, leaves, dependees)
 
@@ -1151,6 +1260,7 @@ def _get_order(self: KineticModelBuilder | OdeModelBuilder) -> list[str]:
         | dynamics
         | self._surrogates
         | self._readouts
+        | _term_nodes(self)
     )
 
     return _topo.sort_all(
@@ -1197,6 +1307,8 @@ def _normalized_symbolic_model(
             assignments[output] = fn.expr
     for k, v in sr.readouts.items():
         assignments[k] = v.fn.expr
+    for k, v in sr.terms.items():
+        assignments[k] = v.fn.expr
 
     ##################################
     # Main fn body
@@ -1228,7 +1340,7 @@ def _normalized_symbolic_model(
     ##################################
     stoich_deps_to_search = set()
     diff_eqs: dict[str, sympy.Expr] = {i: sympy.Integer(0) for i in sr.variables}
-    for rate, rxn in sr.reactions.items():
+    for rate, rxn in (sr.reactions | sr.terms).items():
         for cpd, factor in rxn.stoichiometry.items():
             if isinstance(factor, SymbolicFn):
                 diff_eqs[cpd] += sympy.Symbol(rate) * factor.expr  # pyright: ignore[reportOperatorIssue]
@@ -1297,6 +1409,7 @@ def _get_extended_returns(
             + reaction_names
             + model.get_surrogate_output_names()
             + model.get_readout_names()
+            + model.get_term_names()
         )
         if derived_to_calculate is None
         else derived_to_calculate
@@ -1367,6 +1480,7 @@ def _generate_model_code(
             include_surrogate_variables=False,
             include_surrogate_fluxes=True,
             include_readouts=False,
+            include_terms=False,
         )
         if isinstance(model, KineticModelBuilder)
         else []
@@ -1482,22 +1596,28 @@ def _generate_model_code(
             return_formatter(list_formatter([name_map[x] for x in flux_order])),
         ]
     )
-    nv_src = join_except_empty(
-        [
-            fn_template(
-                "nv",
-                [("fluxes", arr_type)],
-                ret_type_rest,
-            ),
-            # ``nv`` receives only the flux vector (no free-parameter args), so
-            # unpack the fluxes but never the extra ``args`` here.
-            flux_args,
-            stoich_src,
-            diff_eq_src,
-            return_formatter(
-                list_formatter([f"d{name_map[x]}dt" for x in variable_order])
-            ),
-        ]
+    # Terms act on the derivatives outside the stoichiometry, so they can't
+    # be computed from the fluxes alone
+    nv_src = (
+        ""
+        if model.get_term_names()
+        else join_except_empty(
+            [
+                fn_template(
+                    "nv",
+                    [("fluxes", arr_type)],
+                    ret_type_rest,
+                ),
+                # ``nv`` receives only the flux vector (no free-parameter args), so
+                # unpack the fluxes but never the extra ``args`` here.
+                flux_args,
+                stoich_src,
+                diff_eq_src,
+                return_formatter(
+                    list_formatter([f"d{name_map[x]}dt" for x in variable_order])
+                ),
+            ]
+        )
     )
     derived_src = join_except_empty(
         [
@@ -1610,6 +1730,9 @@ def generate_model_code_mxlweb(
     name_map = canonical_identifier_map(model.ids)
     subs = {sympy.Symbol(k): sympy.Symbol(v) for k, v in name_map.items()}
     sr = model_to_symbolic_repr(model, custom_fns=custom_fns)
+    if sr.terms:
+        msg = f"mxlweb has no generic terms, can't export {sorted(sr.terms)}"
+        raise NotImplementedError(msg)
     used: set[str] = set()
 
     entities: dict[

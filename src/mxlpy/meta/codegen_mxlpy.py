@@ -22,6 +22,7 @@ from mxlpy.types import (
     Parameter,
     Reaction,
     Readout,
+    Term,
     Variable,
 )
 
@@ -81,12 +82,11 @@ def _rename_fn_def(source: str, old: str, new: str) -> str:
 def _handle_fn_source(
     name: str,
     fn: Callable,
-    args: list[str],
     *,
     ctx: Context,
 ) -> str:
     fn_name = _fn_name(name, fn)
-    extracted = fn_to_source(fn, fn_name, args, strip_docstring=ctx.strip_docstring)
+    extracted = fn_to_source(fn, fn_name, strip_docstring=ctx.strip_docstring)
     if (unique := _unique_fn_name(fn_name, name, extracted.main_source, ctx=ctx)) != (
         fn_name
     ):
@@ -100,7 +100,7 @@ def _handle_fn_source(
 
 
 def _codegen_names(
-    el: Variable | Parameter | Derived | Reaction | Readout, *, ctx: Context
+    el: Variable | Parameter | Derived | Reaction | Readout | Term, *, ctx: Context
 ) -> str:
     out = "".join(
         f"{ctx.space}  {kw}={v!r},\n"
@@ -119,7 +119,7 @@ def _codegen_names(
 def _codegen_variable(k: str, variable: Variable, *, ctx: Context) -> str:
     val = variable.initial_value
     if isinstance(val, InitialAssignment):
-        fn_name = _handle_fn_source(k, val.fn, val.args, ctx=ctx)
+        fn_name = _handle_fn_source(k, val.fn, ctx=ctx)
         ctx.mxlpy_imports.add("InitialAssignment")
         return (
             f"{ctx.first}.add_variable(\n"
@@ -149,7 +149,7 @@ def _codegen_parameter(
 ) -> str:
     val = parameter.value
     if isinstance(val, InitialAssignment):
-        fn_name = _handle_fn_source(k, val.fn, val.args, ctx=ctx)
+        fn_name = _handle_fn_source(k, val.fn, ctx=ctx)
         ctx.mxlpy_imports.add("InitialAssignment")
         return (
             f"{ctx.first}.add_parameter(\n"
@@ -180,7 +180,6 @@ def _codegen_derived(
     fn_name = _handle_fn_source(
         k,
         der.fn,
-        der.args,
         ctx=ctx,
     )
     return (
@@ -202,7 +201,6 @@ def _codegen_reaction(
     fn_name = _handle_fn_source(
         k,
         rxn.fn,
-        rxn.args,
         ctx=ctx,
     )
 
@@ -213,7 +211,6 @@ def _codegen_reaction(
             stoich_fn_name = _handle_fn_source(
                 var,
                 stoich.fn,
-                stoich.args,
                 ctx=ctx,
             )
             stoichiometry.append(
@@ -261,7 +258,6 @@ def _codegen_surrogate(
             surr_model_fn_name = _handle_fn_source(
                 k,
                 model_attr,
-                surrogate.args,
                 ctx=ctx,
             )
         except (ValueError, TypeError, OSError) as exc:
@@ -285,7 +281,6 @@ def _codegen_surrogate(
                     sf_name = _handle_fn_source(
                         var,
                         factor.fn,
-                        factor.args,
                         ctx=ctx,
                     )
                     rxn_parts.append(
@@ -307,6 +302,30 @@ def _codegen_surrogate(
     )
 
 
+def _codegen_term(
+    k: str,
+    term: Term,
+    *,
+    ctx: Context,
+) -> str:
+    fn_name = _handle_fn_source(k, term.fn, ctx=ctx)
+    mechanism = term.mechanism
+    if mechanism.name is not None:
+        mechanism_src = repr(mechanism.name)
+    else:
+        mechanism_src = _handle_fn_source(f"{k}_mechanism", mechanism.fn, ctx=ctx)
+    return (
+        f"{ctx.first}.add_term(\n"
+        f"{ctx.space}  {k!r},\n"
+        f"{ctx.space}  fn={fn_name},\n"
+        f"{ctx.space}  args={term.args!r},\n"
+        f"{ctx.space}  target={term.target!r},\n"
+        f"{ctx.space}  mechanism={mechanism_src},\n"
+        f"{_codegen_names(term, ctx=ctx)}"
+        f"{ctx.space})"
+    )
+
+
 def _codegen_readout(
     k: str,
     der: Readout,
@@ -316,7 +335,6 @@ def _codegen_readout(
     fn_name = _handle_fn_source(
         k,
         der.fn,
-        der.args,
         ctx=ctx,
     )
     return (
@@ -388,7 +406,12 @@ def generate_mxlpy_code(
         if (gen := _codegen_surrogate(k, surrogate, ctx=ctx)) is not None:
             surrogate_source.append(gen)
 
-    # Surrogates
+    # Terms
+    term_source = [
+        _codegen_term(k, term, ctx=ctx) for k, term in model.get_raw_terms().items()
+    ]
+
+    # Readouts
     readout_source = []
     for k, ro in model.get_raw_readouts().items():
         readout_source.append(_codegen_readout(k, ro, ctx=ctx))
@@ -419,6 +442,8 @@ def generate_mxlpy_code(
         source.append("\n".join(reactions_source))
     if surrogate_source:
         source.append("\n".join(surrogate_source))
+    if term_source:
+        source.append("\n".join(term_source))
     if readout_source:
         source.append("\n".join(readout_source))
     if as_assignment:

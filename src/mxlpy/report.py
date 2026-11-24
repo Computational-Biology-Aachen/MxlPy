@@ -8,12 +8,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import sympy
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.meta.sympy_tools import fn_to_sympy_expr, list_of_symbols
+
+if TYPE_CHECKING:
+    from mxlpy.types import Term
 
 __all__ = ["AnalysisFn", "MarkdownReport", "markdown"]
 
@@ -78,6 +81,10 @@ class MarkdownReport:
 
         with path.open("w+") as fp:
             fp.write(self.data)
+
+
+def _mechanism_name(term: Term) -> str:
+    return term.mechanism.name or getattr(term.mechanism.fn, "__name__", "custom")
 
 
 def markdown(
@@ -155,6 +162,7 @@ def markdown(
             f"| derived variables | {len(m1.get_derived_variables())} | {len(m2.get_derived_variables())}|",
             f"| reactions | {len(m1.get_raw_reactions())} | {len(m2.get_raw_reactions())}|",
             f"| surrogates | {len(m1._surrogates)} | {len(m2._surrogates)}|",  # noqa: SLF001
+            f"| terms | {len(m1.get_term_names())} | {len(m2.get_term_names())}|",
         ]
     )
 
@@ -256,6 +264,32 @@ def markdown(
             )
         )
         content.append("\n".join(derived))
+
+    # Terms
+    new_terms, removed_terms, changed_terms = _new_removed_changed(
+        m1.get_raw_terms(), m2.get_raw_terms()
+    )
+    terms = [
+        f"| <span style='color:green'>{k}<span> | - | {v.target} ({_mechanism_name(v)}) |"
+        for k, v in new_terms.items()
+    ]
+    terms.extend(
+        f"| <span style='color: orange'>{k}</span> | {v1.target} ({_mechanism_name(v1)}) "
+        f"| {v2.target} ({_mechanism_name(v2)}) |"
+        for k, (v1, v2) in changed_terms.items()
+    )
+    terms.extend(
+        f"| <span style='color:red'>{k}</span> | - | - |" for k in removed_terms
+    )
+    if len(terms) >= 1:
+        content.extend(
+            (
+                "\n## Terms\n",
+                f"| Name | {m1_name} | {m2_name} |",
+                "| ---- | --------- | --------- |",
+            )
+        )
+        content.append("\n".join(terms))
 
     # Reactions
     new_reactions, removed_reactions, changed_reactions = _new_removed_changed(

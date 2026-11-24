@@ -19,7 +19,8 @@ if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy._steady_state_builder import SteadyStateModelBuilder
-    from mxlpy.types import Array, ArrayLike
+from mxlpy._terms import corrected_fluxes
+from mxlpy.types import Array, ArrayLike
 
 
 def _normalise_split_results(
@@ -148,6 +149,37 @@ class _BaseSimulation[M: (KineticModelBuilder, OdeModelBuilder)]:
             return pd.concat(data, axis=0)
         return data
 
+    def _compute_args(self) -> list[pd.DataFrame]:
+        raise NotImplementedError
+
+    def get_term_contributions(
+        self,
+        *,
+        normalise: float | ArrayLike | None = None,
+        concatenated: bool = True,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        """Contribution of every term to its target over time.
+
+        Parameters
+        ----------
+        normalise
+            Normalization factor or array.
+        concatenated
+            Whether to concatenate results into a single DataFrame.
+
+        Returns
+        -------
+        pd.DataFrame | list[pd.DataFrame]
+            Contributions by time and term name
+
+        """
+        names = self.model.get_term_names()
+        return self._adjust_data(
+            [i.loc[:, names] for i in self._compute_args()],
+            normalise=normalise,
+            concatenated=concatenated,
+        )
+
     def get_new_y0(self) -> dict[str, float]:
         """Get the new initial conditions after the simulation.
 
@@ -220,6 +252,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
     ) -> list[pd.DataFrame]:
         names = self.model.get_arg_names(
             include_time=False,
@@ -231,6 +264,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
             include_surrogate_variables=include_surrogate_variables,
             include_surrogate_fluxes=include_surrogate_fluxes,
             include_readouts=include_readouts,
+            include_terms=include_terms,
         )
         return [i.loc[:, names] for i in dependent]
 
@@ -246,6 +280,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
         concatenated: Literal[False],
         normalise: float | ArrayLike | None = None,
     ) -> list[pd.DataFrame]: ...
@@ -262,6 +297,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
         concatenated: Literal[True],
         normalise: float | ArrayLike | None = None,
     ) -> pd.DataFrame: ...
@@ -278,6 +314,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
     ) -> pd.DataFrame: ...
@@ -293,6 +330,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_fluxes: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
     ) -> pd.DataFrame | list[pd.DataFrame]:
@@ -316,6 +354,8 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
             Whether to include surrogate fluxes.
         include_readouts
             Whether to include readouts.
+        include_terms
+            Whether to include term contributions.
         concatenated
             Whether to concatenate results into a single DataFrame.
         normalise
@@ -340,6 +380,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
             include_surrogate_variables=include_surrogate_variables,
             include_surrogate_fluxes=include_surrogate_fluxes,
             include_readouts=include_readouts,
+            include_terms=include_terms,
         )
         return self._adjust_data(
             variables, normalise=normalise, concatenated=concatenated
@@ -436,6 +477,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         self,
         *,
         include_surrogates: bool = True,
+        corrected: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: Literal[False],
     ) -> list[pd.DataFrame]: ...
@@ -445,6 +487,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         self,
         *,
         include_surrogates: bool = True,
+        corrected: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: Literal[True],
     ) -> pd.DataFrame: ...
@@ -454,6 +497,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         self,
         *,
         include_surrogates: bool = True,
+        corrected: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: bool = True,
     ) -> pd.DataFrame: ...
@@ -462,6 +506,7 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         self,
         *,
         include_surrogates: bool = True,
+        corrected: bool = False,
         normalise: float | ArrayLike | None = None,
         concatenated: bool = True,
     ) -> pd.DataFrame | list[pd.DataFrame]:
@@ -471,6 +516,10 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
         ----------
         include_surrogates
             Whether to include surrogate fluxes.
+        corrected
+            Whether to add the contributions of terms targeting reactions.
+            The default, mechanistic rates are those the stoichiometry
+            applies to.
         normalise
             Normalization factor or array.
         concatenated
@@ -490,11 +539,17 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
             DataFrame of fluxes.
 
         """
+        args = self._compute_args()
         fluxes = self._select_data(
-            self._compute_args(),
+            args,
             include_reactions=True,
             include_surrogate_fluxes=include_surrogates,
         )
+        if corrected:
+            terms = self.model._all_terms()  # noqa: SLF001
+            fluxes = [
+                corrected_fluxes(f, a, terms) for f, a in zip(fluxes, args, strict=True)
+            ]
         return self._adjust_data(
             fluxes,
             normalise=normalise,
@@ -788,6 +843,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_targets: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
     ) -> list[pd.DataFrame]:
         names = self.model.get_variable_names() if include_variables else []
         names += self.model.get_arg_names(
@@ -799,6 +855,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
             include_surrogate_variables=include_surrogate_variables,
             include_surrogate_targets=include_surrogate_targets,
             include_readouts=include_readouts,
+            include_terms=include_terms,
         )
         return [i.loc[:, names] for i in dependent]
 
@@ -813,6 +870,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_targets: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
         concatenated: Literal[False],
         normalise: float | ArrayLike | None = None,
     ) -> list[pd.DataFrame]: ...
@@ -828,6 +886,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_targets: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
         concatenated: Literal[True],
         normalise: float | ArrayLike | None = None,
     ) -> pd.DataFrame: ...
@@ -843,6 +902,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_targets: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
     ) -> pd.DataFrame: ...
@@ -857,6 +917,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
         include_surrogate_variables: bool = False,
         include_surrogate_targets: bool = False,
         include_readouts: bool = False,
+        include_terms: bool = False,
         concatenated: bool = True,
         normalise: float | ArrayLike | None = None,
     ) -> pd.DataFrame | list[pd.DataFrame]:
@@ -878,6 +939,8 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
             Whether to include surrogate outputs feeding a dx/dt.
         include_readouts
             Whether to include readouts.
+        include_terms
+            Whether to include term contributions.
         concatenated
             Whether to concatenate results into a single DataFrame.
         normalise
@@ -893,6 +956,7 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
             include_surrogate_variables=include_surrogate_variables,
             include_surrogate_targets=include_surrogate_targets,
             include_readouts=include_readouts,
+            include_terms=include_terms,
         )
         return self._adjust_data(args, normalise=normalise, concatenated=concatenated)
 

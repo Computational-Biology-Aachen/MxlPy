@@ -98,7 +98,7 @@ def level_c(x: float) -> float:
 
 def test_simple_function() -> None:
     """Test that simple function source is correctly extracted."""
-    result = fn_to_source(simple_no_deps, "simple_no_deps", [])
+    result = fn_to_source(simple_no_deps, "simple_no_deps")
 
     assert result.main_source.strip().split("\n") == [
         "def simple_no_deps(x: float) -> float:",
@@ -114,7 +114,6 @@ def test_function_with_dependency() -> None:
     result = fn_to_source(
         function_with_deps,
         "function_with_deps",
-        [],
     )
 
     assert result.main_source.strip().split("\n") == [
@@ -136,7 +135,6 @@ def test_numpy_full_import() -> None:
     result = fn_to_source(
         function_with_numpy,
         "function_with_numpy",
-        [],
     )
 
     assert "import numpy" in result.imports
@@ -148,7 +146,6 @@ def test_numpy_alias_import() -> None:
     result = fn_to_source(
         function_with_numpy_alias,
         "function_with_numpy_alias",
-        [],
     )
 
     assert "import numpy as np" in result.imports
@@ -157,7 +154,7 @@ def test_numpy_alias_import() -> None:
 
 def test_circular_dependency_no_infinite_loop() -> None:
     """Mutually recursive functions don't cause infinite recursion."""
-    result = fn_to_source(circular_a, "circular_a", [])
+    result = fn_to_source(circular_a, "circular_a")
 
     # circular_b is a direct dep
     assert "circular_b" in result.dependencies
@@ -167,7 +164,7 @@ def test_circular_dependency_no_infinite_loop() -> None:
 
 def test_multi_level_dependencies() -> None:
     """Transitive deps (level_c → level_b → level_a) are all resolved."""
-    result = fn_to_source(level_c, "level_c", [])
+    result = fn_to_source(level_c, "level_c")
 
     assert "level_b" in result.dependencies
     assert "level_a" in result.dependencies
@@ -178,7 +175,6 @@ def test_stdlib_not_in_deps_or_imports() -> None:
     result = fn_to_source(
         function_with_stdlib,
         "function_with_stdlib",
-        [],
     )
 
     assert len(result.dependencies) == 0
@@ -190,7 +186,6 @@ def test_unavailable_source_skipped_gracefully() -> None:
     result = fn_to_source(
         function_calls_numpy_sin,
         "function_calls_numpy_sin",
-        [],
     )
 
     # C-extension source is unavailable - must be silently skipped
@@ -203,7 +198,6 @@ def test_builtin_not_in_deps_or_imports() -> None:
     result = fn_to_source(
         function_with_builtin,
         "function_with_builtin",
-        [],
     )
 
     assert len(result.dependencies) == 0
@@ -215,7 +209,6 @@ def test_numpy_nested_module_import() -> None:
     result = fn_to_source(
         function_with_numpy_nested,
         "function_with_numpy_nested",
-        [],
     )
 
     assert "import numpy" in result.imports
@@ -227,7 +220,6 @@ def test_numpy_alias_nested_module_import() -> None:
     result = fn_to_source(
         function_with_numpy_alias_nested,
         "function_with_numpy_alias_nested",
-        [],
     )
 
     assert "import numpy as np" in result.imports

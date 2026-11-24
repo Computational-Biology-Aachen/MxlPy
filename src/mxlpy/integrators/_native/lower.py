@@ -356,6 +356,11 @@ def _structure(
         tuple(
             (k, surrogate_key(v)) for k, v in getattr(model, "_surrogates", {}).items()
         ),
+        # Insertion order matters for the composition of terms
+        tuple(
+            (k, fn_key(v.fn), tuple(v.args), v.target, fn_key(v.mechanism.fn))
+            for k, v in getattr(model, "_terms", {}).items()
+        ),
         # Data is folded into the compiled code as constants
         tuple((k, _digest(v)) for k, v in getattr(model, "_data", {}).items()),
     )

@@ -21,6 +21,7 @@ import pandas as pd
 from wadler_lindig import pformat
 
 from mxlpy import _topo
+from mxlpy._terms import TermsMixin
 from mxlpy.meta.source_tools import fn_to_sympy_expr
 from mxlpy.meta.sympy_tools import (
     fn_and_args,
@@ -38,6 +39,7 @@ from mxlpy.types import (
     Readout,
     Slider,
     StructureToken,
+    Term,
 )
 from mxlpy.unit_inference import (
     MdText,
@@ -275,6 +277,8 @@ class ModelCache:
     all_parameter_values: dict[str, float]
     initial_conditions: dict[str, float]
     array_names: frozenset[str] = frozenset()
+    # (contribution name, target, term), surrogate targets (term None) first
+    term_plan: list[tuple[str, str, Term | None]] = field(default_factory=list)
 
 
 def _normalize_annotations(
@@ -289,7 +293,7 @@ def _normalize_annotations(
 
 
 @dataclass(slots=True)
-class OdeModelBuilder:
+class OdeModelBuilder(TermsMixin):
     """Represents a metabolic model.
 
     Attributes
@@ -337,6 +341,7 @@ class OdeModelBuilder:
     # coefficient) rather than via a reaction-shaped stoichiometric
     # coefficient (see mxlpy.surrogates.abstract_ode's module docstring).
     _surrogates: dict[str, OdeSurrogateProtocol] = field(default_factory=dict)
+    _terms: dict[str, Term] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""
@@ -428,9 +433,24 @@ class OdeModelBuilder:
             initial_assignments.items(),
             self._derived.items(),
             self._readouts.items(),
+            self._terms.items(),
         ):
             if not _check_function_arity(el.fn, len(el.args)):
                 raise ArityMismatchError(name, el.fn, el.args)
+
+        # Terms are evaluated after every diff eq, see `_get_args`. Besides
+        # readouts, only later terms can read their contributions.
+        terms = self._terms
+        for name, el in it.chain(
+            self._derived.items(), self._diff_eqs.items(), self._surrogates.items()
+        ):
+            if used := sorted(set(terms) & set(el.args)):
+                msg = (
+                    f"{name!r} reads the term contributions {used}, which an "
+                    "OdeModelBuilder computes after the derivatives. Only readouts "
+                    "and later terms can read them"
+                )
+                raise ValueError(msg)
 
         # Sort derived, surrogates & diff_eqs. Surrogates are folded into
         # the same topological sort as derived (mirroring
@@ -472,7 +492,7 @@ class OdeModelBuilder:
         # each other, so they go through the same topological sort as derived
         # values instead of being evaluated in insertion order.
         readout_order = _topo.sort_dependencies(
-            available=set(dependent),
+            available=set(dependent) | set(terms),
             elements=[
                 _topo.Dependency(name=k, required=set(v.args), provided={k})
                 for k, v in self._readouts.items()
@@ -511,6 +531,24 @@ class OdeModelBuilder:
                 else:
                     dyn_order.append(name)
 
+        known = set(dependent)
+        for name, term in terms.items():
+            if missing := [a for a in term.args if a not in known]:
+                msg = (
+                    f"Term {name!r}: unknown args {missing}. Terms of an "
+                    "OdeModelBuilder can read variables, parameters, derived "
+                    "values, surrogate outputs, data, time and earlier terms"
+                )
+                raise KeyError(msg)
+            known.add(name)
+        term_plan: list[tuple[str, str, Term | None]] = [
+            (output, target, None)
+            for surrogate in self._surrogates.values()
+            for output, targets in surrogate.targets.items()
+            for target in targets
+        ]
+        term_plan.extend((k, v.target, v) for k, v in terms.items())
+
         var_names = self.get_diff_eq_names()
         initial_conditions: dict[str, float] = {
             k: cast(float, dependent[k]) for k in self._diff_eqs
@@ -537,6 +575,7 @@ class OdeModelBuilder:
             )
             if self._data
             else frozenset(),
+            term_plan=term_plan,
         )
         return self._cache
 
@@ -1060,6 +1099,8 @@ class OdeModelBuilder:
             args.update(surrogate.args)
         for readout in self._readouts.values():
             args.update(readout.args)
+        for term in self._terms.values():
+            args.update(term.args)
 
         return set(self._parameters).difference(args)
 
@@ -1855,7 +1896,8 @@ class OdeModelBuilder:
             `remove_stoichiometries`). Leaving a removed diff_eq's name
             behind in a surrogate's `targets` would raise a `KeyError` the
             next time the model is evaluated — `_get_args`'s summation
-            pass assumes every `targets` value is a live diff_eq.
+            pass assumes every `targets` value is a live diff_eq. Also
+            removes the terms targeting it.
 
         Returns
         -------
@@ -1863,6 +1905,7 @@ class OdeModelBuilder:
             The instance of the model with the diff_eq removed.
 
         """
+        self._remove_targeting_terms(name, remove=remove_targets)
         if remove_targets:
             for surrogate in self._surrogates.values():
                 for targets in surrogate.targets.values():
@@ -1872,6 +1915,11 @@ class OdeModelBuilder:
         self._remove_id(name=name)
         self._diff_eqs.pop(name)
         return self
+
+    def _check_term_target(self, name: str, target: str) -> None:
+        if target not in self._diff_eqs:
+            msg = f"Term {name!r}: target {target!r} is not a diff_eq of the model"
+            raise KeyError(msg)
 
     ##########################################################################
     # Surrogates (see mxlpy.surrogates.abstract_ode)
@@ -2067,6 +2115,12 @@ class OdeModelBuilder:
                 for output, targets in surrogate.targets.items()
             }
 
+        # Args and targets of terms
+        for term in self._terms.values():
+            term.args = rename_args(term.args)
+            if term.target == old_name:
+                term.target = new_name
+
     @_invalidate_cache
     def rename(self, old_name: str, new_name: str) -> Self:
         """Rename a model component and update all references to it.
@@ -2109,7 +2163,12 @@ class OdeModelBuilder:
         self._insert_id(name=new_name, ctx=ctx)
         self._remove_id(name=old_name)
 
-        # Move the owning slot
+        # Move the owning slot. Terms keep their order, which matters for
+        # their composition.
+        if old_name in self._terms:
+            self._terms = {
+                (new_name if k == old_name else k): v for k, v in self._terms.items()
+            }
         containers: list[dict[str, Any]] = [
             self._parameters,
             self._derived,
@@ -2372,6 +2431,7 @@ class OdeModelBuilder:
         include_surrogate_variables: bool,
         include_surrogate_targets: bool,
         include_readouts: bool,
+        include_terms: bool,
     ) -> list[str]:
         """Get names of all kinds of model components.
 
@@ -2397,6 +2457,8 @@ class OdeModelBuilder:
             dx/dt (present in `targets`).
         include_readouts
             Include readout names.
+        include_terms
+            Include term names, the names of their contributions.
 
         Returns
         -------
@@ -2421,6 +2483,8 @@ class OdeModelBuilder:
             names.extend(self.get_surrogate_target_output_names())
         if include_readouts:
             names.extend(self.get_readout_names())
+        if include_terms:
+            names.extend(self.get_term_names())
         if self._data:
             arrays = (self._cache or self._create_cache()).array_names
             names = [n for n in names if n not in arrays]
@@ -2499,10 +2563,16 @@ class OdeModelBuilder:
         # no longer matters. An output with no `targets` entry contributes
         # nothing here — it already did its only job by being available in
         # `args` for anything that referenced it by name.
-        for surrogate in self._surrogates.values():
-            for output, targets in surrogate.targets.items():
-                for target in targets:
-                    args[target] += args[output]
+        # Surrogate targets are additive terms, applied before the explicit
+        # terms. Each term acts on its target's derivative so far.
+        for name, target, term in cache.term_plan:
+            if term is None:
+                args[target] += args[name]
+                continue
+            value = term.fn(*(snapshot[a] for a in term.args))
+            contribution = term.mechanism.contribution(args[target], value)
+            args[name] = snapshot[name] = contribution
+            args[target] += contribution
 
         for k in self._data:
             args.pop(k)
@@ -2522,6 +2592,7 @@ class OdeModelBuilder:
         include_surrogate_variables: bool = True,
         include_surrogate_targets: bool = True,
         include_readouts: bool = False,
+        include_terms: bool = True,
     ) -> pd.Series:
         """Generate a pandas Series of arguments for the model.
 
@@ -2563,6 +2634,8 @@ class OdeModelBuilder:
             a diff_eq's dx/dt (present in `targets`)
         include_readouts
             Whether to include readouts
+        include_terms
+            Whether to include term contributions
 
         Returns
         -------
@@ -2592,6 +2665,7 @@ class OdeModelBuilder:
                 include_surrogate_variables=include_surrogate_variables,
                 include_surrogate_targets=include_surrogate_targets,
                 include_readouts=include_readouts,
+                include_terms=include_terms,
             )
         ]
 
@@ -2630,6 +2704,7 @@ class OdeModelBuilder:
         include_surrogate_variables: bool = True,
         include_surrogate_targets: bool = True,
         include_readouts: bool = False,
+        include_terms: bool = True,
     ) -> pd.DataFrame:
         """Generate a DataFrame containing time course arguments for model evaluation.
 
@@ -2666,6 +2741,8 @@ class OdeModelBuilder:
             a diff_eq's dx/dt (present in `targets`)
         include_readouts
             Whether to include readouts
+        include_terms
+            Whether to include term contributions
 
         Returns
         -------
@@ -2692,6 +2769,7 @@ class OdeModelBuilder:
                 include_surrogate_variables=include_surrogate_variables,
                 include_surrogate_targets=include_surrogate_targets,
                 include_readouts=include_readouts,
+                include_terms=include_terms,
             ),
         ]
 

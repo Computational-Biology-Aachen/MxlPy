@@ -253,6 +253,12 @@ class FluxOde(FluxBase):
         the readouts exclude the fluxes, which :meth:`fluxes` already
         reports (scaled by ``flux_scale``).
         """
+        if terms := mxlpy_model.get_term_names():
+            msg = (
+                f"FluxOde has no terms, which act on derivatives outside the "
+                f"stoichiometry ({terms}), use Ode instead"
+            )
+            raise NotImplementedError(msg)
         parameters_to_fit = [] if parameters_to_fit is None else parameters_to_fit
         free_parameters = [] if free_parameters is None else free_parameters
         flux_names = tuple(
@@ -266,6 +272,7 @@ class FluxOde(FluxBase):
                 include_surrogate_variables=False,
                 include_surrogate_fluxes=True,
                 include_readouts=False,
+                include_terms=False,
             )
         )
         if readouts_to_calculate is None:
