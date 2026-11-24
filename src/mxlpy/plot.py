@@ -55,7 +55,14 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from mxlpy._kinetic_builder import KineticModelBuilder
-    from mxlpy.identify import IdentifiabilityTest, ProfileLikelihood
+    from mxlpy.identify import (
+        IdentifiabilityTest,
+        PredictionBand,
+        PredictionProfile,
+        ProfileLikelihood,
+        ProfileLikelihood2D,
+        ValidationProfile,
+    )
     from mxlpy.linear_label_map import LinearLabelMapper
     from mxlpy.select import ConditionSpecific, InformationCriterion, Selection
     from mxlpy.types import Array, ArrayLike
@@ -89,7 +96,10 @@ __all__ = [
     "model_selection",
     "network",
     "one_axes",
+    "prediction_band",
+    "prediction_profile",
     "profile_likelihood",
+    "profile_likelihood_2d",
     "relative_label_distribution",
     "reset_prop_cycle",
     "rotate_xlabels",
@@ -1718,6 +1728,176 @@ def profile_likelihood(
         if i % n_cols == 0:
             ax.set_ylabel("Δ objective")
     return fig, axs
+
+
+def prediction_profile(
+    profile: PredictionProfile | ValidationProfile,
+    *,
+    ax: Axes | None = None,
+    color: Color | None = None,
+    grid: bool = True,
+) -> FigAx:
+    """Plot a prediction or validation profile with its confidence interval.
+
+    Shows the increase of the objective against the prediction (for a
+    validation profile: against the value of the new data point), the
+    threshold (dashed), the optimum's prediction (dotted) and the interval
+    (shaded): the prediction's confidence interval, or the data points
+    consistent with the model.
+
+    Parameters
+    ----------
+    profile
+        Result of `mxlpy.identify.prediction_profile` or `validation_profile`
+    ax
+        Axes to plot on, a new figure by default
+    color
+        Color of the profile
+    grid
+        Whether to add a grid
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
+    from mxlpy.identify import ValidationProfile  # noqa: PLC0415
+
+    fig, ax = _default_fig_ax(ax=ax, grid=grid)
+    color = _default_color(ax, color)
+    x = profile.delta.index.to_numpy(dtype=float)
+    ax.plot(x, profile.delta.to_numpy(), marker=".", color=color)
+    ax.axhline(profile.threshold, color="C3", linestyle="dashed")
+    ax.axvline(profile.value, color="0.4", linestyle="dotted")
+    if isinstance(profile, ValidationProfile):
+        lower, upper = profile.validation_ci
+        xlabel = f"new data point of {profile.prediction.target}"
+    else:
+        lower, upper = profile.ci
+        xlabel = profile.prediction.target
+    lower, upper = max(lower, float(x.min())), min(upper, float(x.max()))
+    ax.axvspan(lower, upper, color=color, alpha=0.15, linewidth=0)
+    ax.set(xlabel=xlabel, ylabel="Δ objective")
+    return fig, ax
+
+
+def prediction_band(
+    band: PredictionBand,
+    *,
+    ax: Axes | None = None,
+    color: Color | None = None,
+    label: str | None = None,
+    grid: bool = True,
+) -> FigAx:
+    """Plot a prediction band: the optimum's prediction and the shaded band.
+
+    Infinite bounds (the band wasn't found there) are left out of the band.
+
+    Parameters
+    ----------
+    band
+        Result of `mxlpy.identify.prediction_band`
+    ax
+        Axes to plot on, a new figure by default
+    color
+        Color of the prediction and band
+    label
+        Label of the prediction, its target by default
+    grid
+        Whether to add a grid
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
+    fig, ax = _default_fig_ax(ax=ax, grid=grid)
+    color = _default_color(ax, color)
+    t = band.value.index.to_numpy(dtype=float)
+    lower = band.lower.to_numpy(dtype=float)
+    upper = band.upper.to_numpy(dtype=float)
+    finite = np.isfinite(lower) & np.isfinite(upper)
+    ax.fill_between(t, lower, upper, where=finite, color=color, alpha=0.25, linewidth=0)
+    ax.plot(
+        t,
+        band.value.to_numpy(),
+        color=color,
+        label=band.prediction.target if label is None else label,
+    )
+    ax.set(xlabel="time", ylabel=band.prediction.target)
+    return fig, ax
+
+
+def profile_likelihood_2d(
+    profile: ProfileLikelihood2D,
+    *,
+    ax: Axes | None = None,
+    cmap: str = "viridis",
+    show_points: bool = False,
+    grid: bool = False,
+) -> FigAx:
+    """Plot a two-dimensional profile likelihood with its confidence region.
+
+    Filled contours of the increase of the objective (capped at twice the
+    threshold), the boundary of the joint confidence region (black) and the
+    optimum (cross). Log-profiled axes are log-scaled.
+
+    Parameters
+    ----------
+    profile
+        Result of `mxlpy.identify.profile_likelihood_2d`
+    ax
+        Axes to plot on, a new figure by default
+    cmap
+        Colormap of the contours
+    show_points
+        Whether to mark the refitted points
+    grid
+        Whether to add a grid
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
+    from mxlpy.identify import Prediction  # noqa: PLC0415
+
+    fig, ax = _default_fig_ax(ax=ax, grid=grid)
+    points = profile.points
+    x = points["x"].to_numpy(dtype=float)
+    y = points["y"].to_numpy(dtype=float)
+    u = np.log10(x) if profile.log_x else x
+    v = np.log10(y) if profile.log_y else y
+    delta = np.clip(points["delta"].to_numpy(dtype=float), 0, 2 * profile.threshold)
+    levels = np.linspace(0, 2 * profile.threshold, 11)
+    contours = ax.tricontourf(u, v, delta, levels=levels, cmap=cmap, extend="max")
+    ax.tricontour(
+        u, v, delta, levels=[profile.threshold], colors="black", linewidths=1.5
+    )
+    fig.colorbar(contours, ax=ax, label="Δ objective")
+    if show_points:
+        ax.scatter(u, v, s=4, color="0.3")
+    ox = profile.optimum[profile.x]
+    oy = (
+        float(y[int(np.argmin(points["delta"].to_numpy()))])
+        if isinstance(profile.y, Prediction)
+        else profile.optimum[profile.y]
+    )
+    ax.scatter(
+        math.log10(ox) if profile.log_x else ox,
+        math.log10(oy) if profile.log_y else oy,
+        marker="x",
+        color="C3",
+        zorder=3,
+    )
+    ax.set(
+        xlabel=f"log10 {profile.x}" if profile.log_x else profile.x,
+        ylabel=f"log10 {profile.y_name}" if profile.log_y else profile.y_name,
+    )
+    return fig, ax
 
 
 def identifiability_test(

@@ -32,6 +32,7 @@ nav:
       - Model parameterisation: parameterise.ipynb
       - Stability analysis: stability.ipynb
       - Identifiability: parameter_identifiability.ipynb
+      - Prediction uncertainty: prediction-uncertainty.ipynb
       - Model selection: model-selection.ipynb
       - Condition-specific parameters: condition-specific-parameters.ipynb
       - Symbolic: symbolic.ipynb
