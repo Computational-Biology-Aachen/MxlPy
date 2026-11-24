@@ -712,6 +712,9 @@ def _model_to_sbml(
     compartments: dict[str, Compartment],
 ) -> libsbml.SBMLDocument:
     """Export model to sbml."""
+    if terms := model.get_term_names():
+        msg = f"SBML has no terms, can't export {terms}"
+        raise NotImplementedError(msg)
     doc = _create_sbml_document()
     sbml_model = _create_sbml_model(
         model_name=model_name,

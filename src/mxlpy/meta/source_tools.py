@@ -382,6 +382,43 @@ def get_fn_source(fn: Callable) -> str:
         return dill.source.getsource(fn)
 
 
+def _lambda_ast(fn: Callable) -> ast.FunctionDef | None:
+    """A lambda as a function definition returning its body.
+
+    The source of a lambda is the line(s) it is defined on, usually not
+    parseable on its own, so the lambda is found in its whole source file by
+    its line and argument names. None if that isn't unique.
+    """
+    code = getattr(fn, "__code__", None)
+    if code is None:
+        return None
+    try:
+        lines, _ = inspect.findsource(fn)
+        tree = ast.parse("".join(lines))
+    except (OSError, SyntaxError):
+        return None
+    arg_names = list(code.co_varnames[: code.co_argcount])
+    candidates = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Lambda)
+        and node.lineno == code.co_firstlineno
+        and [a.arg for a in node.args.args] == arg_names
+    ]
+    if len(candidates) != 1:
+        return None
+    lam = candidates[0]
+    fn_def = ast.FunctionDef(
+        name="_lambda",
+        args=lam.args,
+        body=[ast.Return(value=lam.body)],
+        decorator_list=[],
+        returns=None,
+        type_params=[],
+    )
+    return ast.fix_missing_locations(fn_def)
+
+
 def get_fn_ast(fn: Callable, *, strip_docstring: bool = False) -> ast.FunctionDef:
     """Get the source code of a function as an AST.
 
@@ -410,6 +447,8 @@ def get_fn_ast(fn: Callable, *, strip_docstring: bool = False) -> ast.FunctionDe
     True
 
     """
+    if getattr(fn, "__name__", None) == "<lambda>" and (lambda_def := _lambda_ast(fn)):
+        return lambda_def
     tree = ast.parse(textwrap.dedent(get_fn_source(fn)))
     if not isinstance(fn_def := tree.body[0], ast.FunctionDef):
         msg = (
@@ -974,14 +1013,25 @@ def _handle_call(node: ast.Call, ctx: Context) -> sympy.Expr | None:
     )
 
 
-def _lambda_to_def(source: str, fn_name: str, args: list[str]) -> str:
-    """Convert a lambda expression found in *source* to a named function."""
-    tree = ast.parse(source)
-    lambda_node = next(
-        (node for node in ast.walk(tree) if isinstance(node, ast.Lambda)),
-        None,
-    )
-    if lambda_node is None:
+def _lambda_to_def(fn: Callable, source: str, fn_name: str) -> str:
+    """Convert a lambda to a named function with the lambda's own arguments.
+
+    The lambda is looked up in its source file (see `_lambda_ast`), else
+    the first lambda in `source` is taken.
+    """
+    if (found := _lambda_ast(fn)) is not None:
+        lambda_args = [a.arg for a in found.args.args]
+        body = cast(ast.Return, found.body[0]).value
+    else:
+        lambda_node = next(
+            (n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Lambda)),
+            None,
+        )
+        lambda_args = (
+            [] if lambda_node is None else [a.arg for a in lambda_node.args.args]
+        )
+        body = None if lambda_node is None else lambda_node.body
+    if body is None:
         msg = (
             f"Could not find a lambda expression in the source of '{fn_name}'"
             " - the source may belong to a different statement or the lambda is not at module scope"
@@ -992,7 +1042,7 @@ def _lambda_to_def(source: str, fn_name: str, args: list[str]) -> str:
         posonlyargs=[],
         args=[
             ast.arg(arg=a, annotation=ast.Name(id="float", ctx=ast.Load()))
-            for a in args
+            for a in lambda_args
         ],
         vararg=None,
         kwonlyargs=[],
@@ -1003,7 +1053,7 @@ def _lambda_to_def(source: str, fn_name: str, args: list[str]) -> str:
     fn_def = ast.FunctionDef(
         name=fn_name,
         args=fn_args,
-        body=[ast.Return(value=lambda_node.body)],
+        body=[ast.Return(value=body)],
         decorator_list=[],
         returns=ast.Name(id="float", ctx=ast.Load()),
         type_params=[],
@@ -1013,7 +1063,7 @@ def _lambda_to_def(source: str, fn_name: str, args: list[str]) -> str:
 
 
 def _get_function_source(
-    fn: Callable, fn_name: str, args: list[str], *, strip_docstring: bool = False
+    fn: Callable, fn_name: str, *, strip_docstring: bool = False
 ) -> str:
     """Retrieve source code for a function using inspect or dill.
 
@@ -1023,8 +1073,6 @@ def _get_function_source(
         The function to extract
     fn_name
         Name of the function (for error messages)
-    args
-        Argument names (used when converting lambdas to named functions)
     strip_docstring
         If True, remove the docstring from the returned source
 
@@ -1061,7 +1109,7 @@ def _get_function_source(
     source = textwrap.dedent(raw)
 
     if fn.__name__ == "<lambda>":
-        source = _lambda_to_def(source, fn_name, args)
+        source = _lambda_to_def(fn, source, fn_name)
 
     if strip_docstring:
         tree = ast.parse(source)
@@ -1127,7 +1175,6 @@ def _get_function_module(fn: Callable) -> str | None:
 def fn_to_source(
     fn: Callable,
     fn_name: str,
-    args: list[str],
     *,
     strip_docstring: bool = False,
 ) -> ExtractedSource:
@@ -1157,9 +1204,7 @@ def fn_to_source(
     ValueError
         If source cannot be retrieved for the primary function
     """
-    main_source = _get_function_source(
-        fn, fn_name, args=args, strip_docstring=strip_docstring
-    )
+    main_source = _get_function_source(fn, fn_name, strip_docstring=strip_docstring)
     imports: set[str] = set()
     dependencies: dict[str, str] = {}
     visited: set[str] = set()
@@ -1188,7 +1233,7 @@ def fn_to_source(
 
         try:
             source = _get_function_source(
-                func, func_name, [], strip_docstring=strip_docstring
+                func, func_name, strip_docstring=strip_docstring
             )
         except ValueError:
             # If we can't get the source, skip this dependency
@@ -1224,7 +1269,7 @@ def fn_to_source(
                     ):
                         try:
                             dep_source = _get_function_source(
-                                obj, name, [], strip_docstring=strip_docstring
+                                obj, name, strip_docstring=strip_docstring
                             )
                             if name not in dependencies:
                                 dependencies[name] = dep_source

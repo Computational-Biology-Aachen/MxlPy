@@ -330,6 +330,9 @@ def model_to_dict(
         or a rate function that cannot be converted into an expression.
 
     """
+    if terms := model.get_term_names():
+        msg = f"terms are not serialisable yet: {', '.join(terms)}"
+        raise SerializationError(msg)
     if unexportable := _unexportable_surrogates(model):
         names = ", ".join(unexportable)
         msg = f"surrogates are not representable as nn_blocks: {names}"
@@ -522,6 +525,9 @@ def ode_model_to_dict(
         converted into an expression.
 
     """
+    if terms := model.get_term_names():
+        msg = f"terms are not serialisable yet: {', '.join(terms)}"
+        raise SerializationError(msg)
     if unexportable := _unexportable_ode_surrogates(model):
         names = ", ".join(unexportable)
         msg = f"surrogates are not representable as nn_blocks: {names}"

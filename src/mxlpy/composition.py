@@ -30,15 +30,17 @@ def _remove_by_ctx(model: KineticModelBuilder, name: str, ctx: str) -> None:
     if ctx == "parameter":
         model.remove_parameter(name)
     elif ctx == "variable":
-        model.remove_variable(name, remove_stoichiometries=False)
+        model.remove_variable(name, remove_stoichiometries=False, remove_terms=False)
     elif ctx == "derived":
         model.remove_derived(name)
     elif ctx == "reaction":
-        model.remove_reaction(name)
+        model.remove_reaction(name, remove_terms=False)
     elif ctx == "readout":
         model.remove_readout(name)
     elif ctx == "data":
         model.remove_data(name)
+    elif ctx == "term":
+        model.remove_term(name)
     elif ctx == "surrogate" and name in model.get_raw_surrogates(as_copy=False):
         # Surrogate output names also live in the namespace; only whole
         # surrogates can be removed by name (output collisions are best-effort).
@@ -84,6 +86,17 @@ def _merge_into(
         result.add_surrogate(name, copy.deepcopy(surrogate))
     for name, data in model._data.items():  # noqa: SLF001
         result.add_data(name, copy.deepcopy(data))
+    for name, term in model.get_raw_terms().items():
+        result.add_term(
+            name,
+            term.fn,
+            args=term.args,
+            target=term.target,
+            mechanism=term.mechanism,
+            unit=term.unit,
+            display_name=term.display_name,
+            tex_name=term.tex_name,
+        )
 
 
 def compose(

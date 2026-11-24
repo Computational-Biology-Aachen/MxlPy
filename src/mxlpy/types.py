@@ -47,6 +47,8 @@ __all__ = [
     "FitFailure",
     "InitialAssignment",
     "IntegrationFailure",
+    "Mechanism",
+    "MechanismLike",
     "NoSteadyState",
     "Option",
     "OscillationDetected",
@@ -61,11 +63,14 @@ __all__ = [
     "SerializationError",
     "Slider",
     "StructureToken",
+    "Term",
     "Variable",
 ]
 
 type RateFn = Callable[..., float]
 # How runners compute derivatives of their results, see `mxlpy.runners`
+# How a term combines with the quantity it targets, see `Mechanism`
+type MechanismLike = Literal["additive", "relative"] | Callable[[Any, Any], Any]
 type DerivativeMethod = Literal["auto", "forward", "adjoint", "finite_difference"]
 type Array = NDArray[np.floating[Any]]
 type ArrayLike = NDArray[np.floating[Any]] | pd.Index | list[float]
@@ -597,6 +602,86 @@ class DiffEq:
 
         """
         args[name] = cast(float, self.fn(*(args[arg] for arg in self.args)))
+
+
+def _additive(base: float, term: float) -> float:
+    return base + term
+
+
+def _relative(base: float, term: float) -> float:
+    return base * (1 + term)
+
+
+@dataclass(kw_only=True, slots=True)
+class Mechanism:
+    """How a term combines with the quantity it targets.
+
+    `fn(base, term)` is the combined value. The presets `"additive"`
+    (`base + term`) and `"relative"` (`base * (1 + term)`) have exact
+    contributions, so a zero term leaves the target bit-identical.
+    """
+
+    fn: Callable[[Any, Any], Any]
+    name: Literal["additive", "relative"] | None = None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    @classmethod
+    def of(cls, mechanism: MechanismLike | Mechanism) -> Mechanism:
+        """Normalise a preset name or a `(base, term) -> value` callable."""
+        if isinstance(mechanism, Mechanism):
+            return mechanism
+        if mechanism == "additive":
+            return cls(fn=_additive, name="additive")
+        if mechanism == "relative":
+            return cls(fn=_relative, name="relative")
+        if callable(mechanism):
+            return cls(fn=mechanism)
+        msg = (
+            f"Unknown mechanism {mechanism!r}: use 'additive', 'relative' or a "
+            "callable (base, term) -> value"
+        )
+        raise ValueError(msg)
+
+    @property
+    def needs_base(self) -> bool:
+        """Whether the contribution depends on the targeted value."""
+        return self.name != "additive"
+
+    def contribution(self, base: Any, term: Any) -> Any:
+        """Change `fn(base, term) - base` the term makes to `base`."""
+        if self.name == "additive":
+            return term
+        if self.name == "relative":
+            return base * term
+        return self.fn(base, term) - base
+
+
+@dataclass(kw_only=True, slots=True)
+class Term:
+    """A quantity rewriting a variable's derivative or a reaction's rate.
+
+    `fn(*args)` is the term value, combined with the target through
+    `mechanism`. A term never enters the stoichiometric matrix.
+    """
+
+    fn: RateFn
+    args: list[str]
+    target: str
+    mechanism: Mechanism
+    unit: sympy.Expr | None = None
+    display_name: str | None = None
+    tex_name: str | None = None
+
+    def __repr__(self) -> str:
+        """Return default representation."""
+        return pformat(self)
+
+    def calculate(self, args: dict[str, Any]) -> float:
+        """Calculate the term value (not its contribution)."""
+        return cast(float, self.fn(*(args[arg] for arg in self.args)))
 
 
 @dataclass(kw_only=True, slots=True)
