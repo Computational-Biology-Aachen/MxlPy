@@ -18,7 +18,15 @@ from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.distributions import Prior
 from mxlpy.fit import losses
 from mxlpy.fit._gradient import GradientResidual, Transform, transformed
-from mxlpy.fit.abstract import Fit, FitResidual, PostprocessFn, _Settings, _split_p0
+from mxlpy.fit.abstract import (
+    Fit,
+    FitResidual,
+    PostprocessFn,
+    _Settings,
+    _split_p0,
+    with_weight_bounds,
+    without_weights,
+)
 from mxlpy.fit.penalties import Penalty, collect_penalties, penalised
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
@@ -73,8 +81,8 @@ def _minimize[M: _Model](
     residual, p0, minimizer_bounds, back = transformed(
         residual,
         p0,
-        {} if bounds is None else bounds,
-        transform,
+        with_weight_bounds([settings.model], p0, bounds),
+        without_weights([settings.model], p0, transform),
     )
     match minimizer(residual, p0, minimizer_bounds).value:
         case OptimisationState(parameters, value):

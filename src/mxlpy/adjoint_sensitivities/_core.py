@@ -256,13 +256,13 @@ def _overridden(model: _Model, overrides: dict[str, float]) -> Iterator[None]:
     if not overrides:
         yield
         return
-    values = model.get_parameter_values()
+    values = model.get_addressable_values()
     previous = {k: values[k] for k in overrides}
-    model.update_parameters(overrides)
+    model.update_addressable(overrides)
     try:
         yield
     finally:
-        model.update_parameters(previous)
+        model.update_addressable(previous)
 
 
 def _segments(
@@ -279,7 +279,7 @@ def _segments(
     Steps of zero length change nothing and are left out, and the last one
     ends at `end`, the last time point.
     """
-    names = model.get_parameter_names()
+    names = model.get_addressable_names()
 
     def segment(start: float, stop: float, overrides: dict[str, float]) -> _Segment:
         with _overridden(model, overrides):
@@ -988,7 +988,7 @@ def _protocol_finite_difference(
 ) -> Result[AdjointSensitivities]:
     times = cotangents.index.to_numpy(dtype=float)
     columns = list(cotangents.columns)
-    restore = {k: model.get_parameter_values()[k] for k in protocol.columns}
+    restore = {k: model.get_addressable_values()[k] for k in protocol.columns}
     steps = _segments(model, protocol, float(times[-1]), [], [])
 
     def simulate(start: dict[str, float]) -> Result[pd.DataFrame]:
@@ -1000,7 +1000,7 @@ def _protocol_finite_difference(
             )
         finally:
             # The simulation leaves the last step's parameters in the model
-            model.update_parameters(restore)
+            model.update_addressable(restore)
         if isinstance(sim := res.value, Exception):
             return Result(sim)
         variables = _raw_variables(model, sim)
@@ -1165,7 +1165,7 @@ def _adjoint_steady_state(
     x = variables.to_numpy(dtype=float)[0]
 
     values = all_parameter_values(model)
-    p = np.array([values[k] for k in model.get_parameter_names()], dtype=float)
+    p = np.array([values[k] for k in model.get_addressable_names()], dtype=float)
     c = constant_values(model, vjp.constant_names)
     n = len(var_names)
     w = cotangents.reindex(var_names, fill_value=0.0).to_numpy(dtype=float)

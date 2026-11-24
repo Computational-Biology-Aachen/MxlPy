@@ -135,7 +135,7 @@ def _assigned_parameters(model: _AnyModel) -> list[str]:
 def _free_parameters(model: _AnyModel) -> list[str]:
     """Parameters that can be perturbed: not computed from other parameters."""
     assigned = set(_assigned_parameters(model))
-    return [k for k in model.get_parameter_names() if k not in assigned]
+    return [k for k in model.get_addressable_names() if k not in assigned]
 
 
 def _computed_from(model: _AnyModel) -> dict[str, list[str]]:
@@ -208,12 +208,12 @@ def _parameter_fd(
     value = all_parameter_values(model)[parameter]
     h = _step(value, displacement)
     try:
-        model.update_parameter(parameter, value + h)
+        model.update_addressable({parameter: value + h})
         up = read()
-        model.update_parameter(parameter, value - h)
+        model.update_addressable({parameter: value - h})
         down = read()
     finally:
-        model.update_parameter(parameter, value)
+        model.update_addressable({parameter: value})
     return (up - down) / (2 * h)
 
 
@@ -254,7 +254,7 @@ class _Derivatives:
             values = all_parameter_values(self.model)
             self._cache = self.model._cache  # noqa: SLF001
             self._params = np.array(
-                [values[k] for k in self.model.get_parameter_names()], dtype=float
+                [values[k] for k in self.model.get_addressable_names()], dtype=float
             )
             self._consts = constant_values(self.model, self.compiled.constant_names)
         with np.errstate(all="ignore"):
@@ -290,14 +290,19 @@ class _Setup:
 
 
 def _raw_initial_values(model: _Model) -> dict[str, float | InitialAssignment]:
+    """Initial values of all states, including those of hidden-state blocks."""
+    hidden: dict[str, float | InitialAssignment] = {
+        **model._hidden_state_initial_values(),  # noqa: SLF001
+        **model._hidden_state_initial_assignments(),  # noqa: SLF001
+    }
     if isinstance(model, KineticModelBuilder):
         return {
             k: v.initial_value
             for k, v in model.get_raw_variables(as_copy=False).items()
-        }
+        } | hidden
     return {
         k: v.initial_value for k, v in model.get_raw_diff_eqs(as_copy=False).items()
-    }
+    } | hidden
 
 
 def _initial_sources(model: _Model, *, y0_from_model: bool) -> set[str] | None:

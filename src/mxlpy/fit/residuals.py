@@ -27,8 +27,7 @@ __all__ = [
 
 def _apply_updates(updates: dict[str, float], settings: _Settings[Any]) -> None:
     model = settings.model
-    for p in settings.p_names:
-        model.update_parameter(p, updates[p])
+    model.update_addressable({p: updates[p] for p in settings.p_names})
     if isinstance(model, SteadyStateModelBuilder):
         return
     if (y0 := settings.y0) is not None:

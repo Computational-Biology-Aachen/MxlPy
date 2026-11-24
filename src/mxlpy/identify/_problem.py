@@ -18,7 +18,7 @@ from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit._gradient import GradientResidual, transformed
 from mxlpy.fit._joint import _with_derivatives
 from mxlpy.fit._single import _evaluate_loss, _fit_data, _settings_for
-from mxlpy.fit.abstract import _split_p0
+from mxlpy.fit.abstract import _split_p0, with_weight_bounds, without_weights
 from mxlpy.fit.losses import GaussianNll, _is_likelihood, _sigma_array
 from mxlpy.fit.penalties import collect_penalties, fix_penalties, penalised
 from mxlpy.minimizers.abstract import OptimisationState
@@ -185,8 +185,7 @@ class _Problem:
         caller.
         """
         fixed_p, fixed_v = _split_p0(model, fixed)
-        for k in fixed_p:
-            model.update_parameter(k, fixed[k])
+        model.update_addressable({k: fixed[k] for k in fixed_p})
         y0 = self.y0
         if fixed_v:
             y0 = {**(self.y0 or {}), **{k: fixed[k] for k in fixed_v}}
@@ -242,7 +241,7 @@ class _Problem:
             raise ValueError(msg)
         model = deepcopy(self.model)
         if prediction.parameters:
-            model.update_parameters(dict(prediction.parameters))
+            model.update_addressable(dict(prediction.parameters))
         return model
 
     def _protocol(self, prediction: Prediction) -> pd.DataFrame | None:
@@ -264,9 +263,7 @@ class _Problem:
         """Residual and settings comparing the prediction to `data`."""
         overridden = prediction.overridden
         fixed_p, fixed_v = _split_p0(model, dict(fixed))
-        for k in fixed_p:
-            if k not in overridden:
-                model.update_parameter(k, fixed[k])
+        model.update_addressable({k: fixed[k] for k in fixed_p if k not in overridden})
         y0 = None
         if not isinstance(model, SteadyStateModelBuilder):
             y0 = {
@@ -419,8 +416,7 @@ class _Problem:
         modified, pass copies owned by the caller.
         """
         fixed_p, fixed_v = _split_p0(model, fixed)
-        for k in fixed_p:
-            model.update_parameter(k, fixed[k])
+        model.update_addressable({k: fixed[k] for k in fixed_p})
         y0 = self.y0
         if fixed_v:
             y0 = {**(self.y0 or {}), **{k: fixed[k] for k in fixed_v}}
@@ -476,6 +472,8 @@ class _Problem:
         if penalties:
             residual = penalised(residual, penalties)
         bounds, transform = self._subset(list(p0))
+        bounds = with_weight_bounds([model], p0, bounds)
+        transform = without_weights([model], p0, transform)
         residual, start, minimizer_bounds, back = transformed(
             residual, p0, bounds, transform
         )

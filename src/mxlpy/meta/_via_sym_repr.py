@@ -706,7 +706,7 @@ def _term_nodes(model: KineticModelBuilder | OdeModelBuilder) -> dict[str, TermN
         _ode_diff_eq_rate_name(k): {k: 1.0}
         for k in model.get_raw_diff_eqs(as_copy=False)
     }
-    return lower_terms(model.get_raw_terms(as_copy=False), fluxes, set())
+    return lower_terms(model._all_terms(), fluxes, set())  # noqa: SLF001
 
 
 def _coefficient_expr(
@@ -778,6 +778,38 @@ def _terms_to_symbolic_repr(
             unit=cast(Quantity, term.unit) if mechanism.name == "additive" else None,
         )
     return out
+
+
+def _add_hidden_states(
+    sym: SymbolicRepr,
+    model: KineticModelBuilder | OdeModelBuilder,
+    *,
+    only_warn: bool,
+    custom_fns: dict[str, sympy.Expr | list[sympy.Expr]],
+) -> None:
+    """States, weights and internal nodes of the hidden-state blocks.
+
+    Weights are parameters of the symbolic representation, so compiled code,
+    sensitivities and adjoints treat them like parameters.
+    """
+    for k, value in model._hidden_state_initial_values().items():  # noqa: SLF001
+        sym.variables[k] = SymbolicVariable(value=sympy.Float(value), unit=None)
+    for k, ia in model._hidden_state_initial_assignments().items():  # noqa: SLF001
+        sym.variables[k] = SymbolicVariable(
+            value=_fn_to_symbolic_repr(
+                k, ia.fn, ia.args, only_warn=only_warn, custom_fns=custom_fns
+            ),
+            unit=None,
+        )
+    for k, value in model.get_weight_values().items():
+        sym.parameters[k] = SymbolicParameter(value=sympy.Float(value), unit=None)
+    for k, node in model._hidden_state_nodes().items():  # noqa: SLF001
+        sym.derived[k] = SymbolicDerived(
+            fn=_fn_to_symbolic_repr(
+                k, node.fn, node.args, only_warn=only_warn, custom_fns=custom_fns
+            ),
+            unit=None,
+        )
 
 
 def _ss_builder_to_symbolic_repr(
@@ -909,6 +941,7 @@ def _ode_builder_to_symbolic_repr(
             ),
             unit=cast(Quantity, rdo.unit),
         )
+    _add_hidden_states(sym, model, only_warn=only_warn, custom_fns=custom_fns)
 
     sym.terms = _terms_to_symbolic_repr(
         _term_nodes(model), only_warn=only_warn, custom_fns=custom_fns
@@ -978,6 +1011,7 @@ def _kinetic_builder_to_symbolic_repr(
             ),
             unit=cast(Quantity, der.unit),
         )
+    _add_hidden_states(sym, model, only_warn=only_warn, custom_fns=custom_fns)
 
     for k, rxn in model.get_raw_reactions().items():
         sym.reactions[k] = SymbolicReaction(
@@ -1179,6 +1213,8 @@ def _get_dependencies_and_leaves(
         }
         | set(getattr(model, "get_raw_data", dict)())
         | {"time"}
+        | set(model._hidden_state_initial_values())  # noqa: SLF001
+        | set(model.get_weight_names())
     )
     dependees = (
         {
@@ -1199,6 +1235,15 @@ def _get_dependencies_and_leaves(
         args = set(v.args)
         dependees.update(dict.fromkeys(v.outputs, args))
     dependees.update({k: set(v.args) for k, v in _term_nodes(model).items()})
+    dependees.update(
+        {k: set(v.args) for k, v in model._hidden_state_nodes().items()}  # noqa: SLF001
+    )
+    dependees.update(
+        {
+            k: set(v.args)
+            for k, v in model._hidden_state_initial_assignments().items()  # noqa: SLF001
+        }
+    )
 
     return _topo.get_all_dependencies_of(requested, leaves, dependees)
 
@@ -1252,6 +1297,8 @@ def _get_order(self: KineticModelBuilder | OdeModelBuilder) -> list[str]:
         | set(base_variable_values)
         | set(self._data)
         | {"time"}
+        | set(self._hidden_state_initial_values())
+        | set(self.get_weight_names())
     )
 
     to_sort = (
@@ -1261,6 +1308,8 @@ def _get_order(self: KineticModelBuilder | OdeModelBuilder) -> list[str]:
         | self._surrogates
         | self._readouts
         | _term_nodes(self)
+        | self._hidden_state_nodes()
+        | self._hidden_state_initial_assignments()
     )
 
     return _topo.sort_all(

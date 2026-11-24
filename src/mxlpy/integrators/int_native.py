@@ -170,7 +170,7 @@ register_worker_state(_export, _install)
 
 
 def _parameters(model: Any, names: list[str]) -> Array:
-    values = model.get_parameter_values()
+    values = model.get_addressable_values()
     # The solver reads pars even when a model has none, so never hand it an empty array.
     return np.array([values[p] for p in names] or [0.0], dtype=float)
 

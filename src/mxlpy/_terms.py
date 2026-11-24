@@ -206,6 +206,8 @@ class TermsMixin:
             self, variables: dict[str, float] | None = None, time: float = 0.0
         ) -> pd.Series: ...
         def get_args_time_course(self, variables: pd.DataFrame) -> pd.DataFrame: ...
+        def _all_terms(self) -> dict[str, Term]: ...
+        def _check_not_block_input(self, name: str) -> None: ...
 
     def _invalidate(self) -> None:
         self._cache = None
@@ -214,14 +216,17 @@ class TermsMixin:
     def _check_term_target(self, name: str, target: str) -> None:
         raise NotImplementedError
 
-    def _all_terms(self) -> dict[str, Term]:
-        return dict(self._terms)
-
     def _remove_targeting_terms(self, name: str, *, remove: bool) -> None:
         """Remove the terms targeting `name` (if `remove`), before removing it.
 
-        Hidden-state blocks can't lose a target, so removing one raises.
+        Hidden-state blocks can't lose a target or an input, so removing one
+        raises. Without `remove`, terms and blocks keep their references, like
+        reactions with `remove_stoichiometries=False`, e.g. for `compose`,
+        which adds the name again.
         """
+        if not remove:
+            return
+        self._check_not_block_input(name)
         blocks = getattr(self, "_hidden_states", {})
         if targeting := [k for k, v in blocks.items() if name in v.targets]:
             msg = (
@@ -229,9 +234,8 @@ class TermsMixin:
                 "remove them first"
             )
             raise ValueError(msg)
-        if remove:
-            for k in [k for k, v in self._terms.items() if v.target == name]:
-                self.remove_term(k)
+        for k in [k for k, v in self._terms.items() if v.target == name]:
+            self.remove_term(k)
 
     @overload
     def add_term(
@@ -433,8 +437,8 @@ class TermsMixin:
         return self._terms
 
     def get_term_names(self) -> list[str]:
-        """Get the term names, which are also the names of their contributions."""
-        return list(self._terms)
+        """Names of all terms and their contributions, including those of blocks."""
+        return list(self._all_terms())
 
     def get_term_contributions(
         self,

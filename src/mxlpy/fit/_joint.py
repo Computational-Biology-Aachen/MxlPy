@@ -26,6 +26,7 @@ from mxlpy.fit.abstract import (
     PostprocessFn,
     _joint_settings,
     _Settings,
+    with_weight_bounds,
 )
 from mxlpy.fit.penalties import Penalty, collect_penalties, penalised
 from mxlpy.fit.residuals import (
@@ -190,7 +191,8 @@ def _minimize_joint(
     with_penalty = None
     if penalties := collect_penalties(prior, penalty, list(p0)):
         residual = with_penalty = penalised(residual, penalties)
-    match minimizer(residual, p0, {} if bounds is None else bounds).value:
+    bounds = with_weight_bounds((s.model for _, s in parts), p0, bounds)
+    match minimizer(residual, p0, bounds).value:
         case OptimisationState(parameters, value):
             if with_penalty is None:
                 return Result(JointFit(parameters, loss=value))
