@@ -64,7 +64,8 @@ All point-estimate fits take `prior={name: distribution}` (the same mapping
 as `mcmc_*`) and further `penalty=` terms (`Penalty`, `PriorPenalty`), and
 minimise `loss + penalty`. With the `GaussianNll` loss this is a
 maximum-a-posteriori estimate. `Fit.loss` is the loss of the data alone,
-`Fit.penalty` the penalty at the optimum.
+`Fit.penalty` the penalty at the optimum. `L1Penalty` (lasso, elastic net,
+fused lasso) and `GroupL1Penalty` pull values to zero (sparsity).
 
 Gradients
 ---------
@@ -138,7 +139,7 @@ from .losses import (
     mean_squared_logarithmic,
     rmse,
 )
-from .penalties import Penalty, PriorPenalty
+from .penalties import GroupL1Penalty, L1Penalty, Penalty, PriorPenalty
 from .residuals import (
     protocol_time_course_residual,
     steady_state_residual,
@@ -154,7 +155,9 @@ __all__: list[str] = [
     "FixedNMinimizer",
     "GaussianNll",
     "GlobalScipyMinimizer",
+    "GroupL1Penalty",
     "JointFit",
+    "L1Penalty",
     "LeastSquaresMinimizer",
     "LocalScipyMinimizer",
     "LossFn",

@@ -9,6 +9,10 @@ The fit functions minimise `loss + Σ penalty`. A `prior` mapping becomes a
 heuristic loss like `rmse` a regularisation whose strength is set by the
 `weight` of the penalty.
 
+`L1Penalty` and `GroupL1Penalty` are (smoothed) lasso penalties, which
+pull values (or linear combinations of them) to zero, e.g. to find which
+parameters have to differ between conditions (`mxlpy.select.condition_specific`).
+
 Custom penalties implement the `Penalty` protocol, e.g. penalties coupling
 several parameters.
 """
@@ -31,6 +35,8 @@ if TYPE_CHECKING:
     from mxlpy.types import Array
 
 __all__ = [
+    "GroupL1Penalty",
+    "L1Penalty",
     "Penalty",
     "PriorPenalty",
 ]
@@ -91,9 +97,7 @@ class PriorPenalty:
 
     def __post_init__(self) -> None:
         """Check the weight."""
-        if not (math.isfinite(self.weight) and self.weight >= 0):
-            msg = f"The weight of a penalty has to be non-negative, got {self.weight}"
-            raise ValueError(msg)
+        _check_weight(self.weight)
 
     @property
     def names(self) -> list[str]:
@@ -138,6 +142,229 @@ class PriorPenalty:
         for i, (p, x) in enumerate(zip(self.prior.values(), values, strict=True)):
             fn = cast(Any, p).penalty_residual
             out[i, i] = math.sqrt(self.weight) * _derivative(fn, float(x))
+        return out
+
+
+def _check_weight(weight: float) -> None:
+    if not (math.isfinite(weight) and weight >= 0):
+        msg = f"The weight of a penalty has to be non-negative, got {weight}"
+        raise ValueError(msg)
+
+
+def _check_smoothing(smoothing: float) -> None:
+    if not (math.isfinite(smoothing) and smoothing > 0):
+        msg = f"The smoothing of an L1 penalty has to be positive, got {smoothing}"
+        raise ValueError(msg)
+
+
+@dataclass(frozen=True, eq=False)
+class L1Penalty:
+    """Smoothed lasso (L1) penalty, optionally an elastic net.
+
+    `weight · Σⱼ sⱼ (a |tⱼ|_ε + (1 - a) tⱼ² / 2)` of the terms `t = matrix ·
+    values` (the values themselves without a matrix), with the smooth
+    absolute value `|t|_ε = sqrt(t² + ε²) - ε`. `|t|_ε` is quadratic within
+    about `ε` of zero and `|t| - ε` beyond, so minimizers needing smooth
+    objectives work, while terms whose optimum is zero for the exact L1
+    penalty end up within about `ε` of zero.
+
+    Parameters
+    ----------
+    names
+        Names of the penalised parameters
+    weight
+        Strength of the penalty (λ)
+    scales
+        Factor `sⱼ` per term, e.g. the weights of an adaptive lasso. All 1 by
+        default
+    matrix
+        Terms as linear combinations of the values, `(n_terms, len(names))`,
+        e.g. rows `[1, -1]` to penalise differences (fused lasso). The
+        identity by default
+    l1_ratio
+        `a`, 1 for the lasso, between 0 and 1 for an elastic net
+    smoothing
+        `ε` of the smooth absolute value, in units of the terms
+
+    Examples
+    --------
+        >>> fit.time_course(model, p0=p0, data=data, minimizer=minimizer,
+        ...                 penalty=fit.L1Penalty(["k1", "k2"], weight=0.5))
+
+    """
+
+    names: Sequence[str]
+    weight: float = 1.0
+    scales: Sequence[float] | Array | None = None
+    matrix: Array | None = None
+    l1_ratio: float = 1.0
+    smoothing: float = 1e-3
+
+    def __post_init__(self) -> None:
+        """Check the settings."""
+        _check_weight(self.weight)
+        _check_smoothing(self.smoothing)
+        if not 0 <= self.l1_ratio <= 1:
+            msg = f"l1_ratio has to be within [0, 1], got {self.l1_ratio}"
+            raise ValueError(msg)
+        if self.matrix is not None:
+            matrix = np.asarray(self.matrix, dtype=float)
+            if matrix.ndim != 2 or matrix.shape[1] != len(self.names):  # noqa: PLR2004
+                msg = f"The matrix needs {len(self.names)} columns, got shape {matrix.shape}"
+                raise ValueError(msg)
+            object.__setattr__(self, "matrix", matrix)
+        n_terms = len(self.names) if self.matrix is None else len(self.matrix)
+        if self.scales is not None:
+            scales = np.asarray(self.scales, dtype=float)
+            if scales.shape != (n_terms,) or not np.all(scales >= 0):
+                msg = f"scales need one non-negative value per term ({n_terms})"
+                raise ValueError(msg)
+            object.__setattr__(self, "scales", scales)
+
+    def terms(self, values: Array) -> Array:
+        """The penalised terms `matrix · values`."""
+        values = np.asarray(values, dtype=float)
+        return values if self.matrix is None else self.matrix @ values
+
+    def _factor(self, t: Array) -> tuple[Array, Array, Array]:
+        """`c = weight · s`, `q = sqrt(t² + ε²)` and `φ` with `r = t φ`."""
+        eps = self.smoothing
+        c = self.weight * (
+            np.ones_like(t) if self.scales is None else np.asarray(self.scales)
+        )
+        q = np.sqrt(t * t + eps * eps)
+        a = self.l1_ratio
+        return c, q, np.sqrt(c * (2 * a / (q + eps) + (1 - a)))
+
+    def __call__(self, values: Array) -> float:
+        """Penalty at the values."""
+        t = self.terms(values)
+        c, q, _ = self._factor(t)
+        a = self.l1_ratio
+        return float(np.sum(c * (a * (q - self.smoothing) + (1 - a) * t * t / 2)))
+
+    def residuals(self, values: Array) -> Array:
+        """Signed pseudo-residuals `tⱼ φⱼ`, smooth through zero."""
+        t = self.terms(values)
+        return t * self._factor(t)[2]
+
+    def jacobian(self, values: Array) -> Array:
+        """Derivative of `residuals`, `(n_terms, len(names))`."""
+        t = self.terms(values)
+        c, q, phi = self._factor(t)
+        eps = self.smoothing
+        with np.errstate(divide="ignore", invalid="ignore"):
+            d_phi = np.where(
+                phi > 0,
+                -c * self.l1_ratio * t / (q * (q + eps) ** 2 * phi),
+                0.0,
+            )
+        d_t = phi + t * d_phi
+        if self.matrix is None:
+            return np.diag(d_t)
+        return d_t[:, None] * self.matrix
+
+
+@dataclass(frozen=True, eq=False)
+class GroupL1Penalty:
+    """Smoothed group lasso penalty.
+
+    `weight · Σ_g s_g |x_g|_ε` with the smooth Euclidean norm `|x|_ε =
+    sqrt(Σ x² + ε²) - ε` of the values `x_g` of each group, so groups go to
+    zero together (all values within about `ε` of zero).
+
+    Parameters
+    ----------
+    groups
+        Names of the parameters of each group, disjoint
+    weight
+        Strength of the penalty (λ)
+    scales
+        Factor `s_g` per group, `sqrt(group size)` by default so groups of
+        different size are comparable
+    smoothing
+        `ε` of the smooth norm
+
+    Examples
+    --------
+        >>> fit.GroupL1Penalty({"k1": ["k1_a", "k1_b"], "k2": ["k2_a", "k2_b"]}, 0.5)
+
+    """
+
+    groups: Mapping[str, Sequence[str]]
+    weight: float = 1.0
+    scales: Mapping[str, float] | None = None
+    smoothing: float = 1e-3
+
+    def __post_init__(self) -> None:
+        """Check the settings."""
+        _check_weight(self.weight)
+        _check_smoothing(self.smoothing)
+        names = self.names
+        if len(set(names)) != len(names):
+            msg = "The groups of a GroupL1Penalty have to be disjoint"
+            raise ValueError(msg)
+        if any(len(g) == 0 for g in self.groups.values()):
+            msg = "Groups can't be empty"
+            raise ValueError(msg)
+        if self.scales is not None and (
+            set(self.scales) != set(self.groups)
+            or any(not v >= 0 for v in self.scales.values())
+        ):
+            msg = "scales need one non-negative value per group"
+            raise ValueError(msg)
+
+    @property
+    def names(self) -> list[str]:
+        """Names of all parameters, group after group."""
+        return [k for g in self.groups.values() for k in g]
+
+    def _slices(self) -> list[tuple[slice, float]]:
+        out = []
+        start = 0
+        for name, group in self.groups.items():
+            scale = math.sqrt(len(group)) if self.scales is None else self.scales[name]
+            out.append((slice(start, start + len(group)), self.weight * scale))
+            start += len(group)
+        return out
+
+    def norms(self, values: Array) -> Array:
+        """Euclidean norm of the values of each group."""
+        values = np.asarray(values, dtype=float)
+        return np.array([np.linalg.norm(values[s]) for s, _ in self._slices()])
+
+    def __call__(self, values: Array) -> float:
+        """Penalty at the values."""
+        eps = self.smoothing
+        return float(
+            sum(
+                c * (math.sqrt(n * n + eps * eps) - eps)
+                for (_, c), n in zip(self._slices(), self.norms(values), strict=True)
+            )
+        )
+
+    def residuals(self, values: Array) -> Array:
+        """Pseudo-residuals `x_g φ_g`, smooth through zero."""
+        values = np.asarray(values, dtype=float)
+        eps = self.smoothing
+        out = np.empty_like(values)
+        for s, c in self._slices():
+            q = math.sqrt(float(values[s] @ values[s]) + eps * eps)
+            out[s] = values[s] * math.sqrt(2 * c / (q + eps))
+        return out
+
+    def jacobian(self, values: Array) -> Array:
+        """Derivative of `residuals`, block diagonal over the groups."""
+        values = np.asarray(values, dtype=float)
+        eps = self.smoothing
+        out = np.zeros((len(values), len(values)))
+        for s, c in self._slices():
+            x = values[s]
+            q = math.sqrt(float(x @ x) + eps * eps)
+            phi = math.sqrt(2 * c / (q + eps))
+            out[s, s] = phi * np.eye(len(x)) - phi / (2 * q * (q + eps)) * np.outer(
+                x, x
+            )
         return out
 
 

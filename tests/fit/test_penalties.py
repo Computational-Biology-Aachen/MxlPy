@@ -408,3 +408,97 @@ def test_penalised_gradient_matches_finite_differences(loss_fn: fit.LossFn) -> N
     np.testing.assert_allclose(residual.gradient(at), numeric, rtol=1e-4)  # type: ignore[attr-defined]
     # A penalty without residuals has no Gauss-Newton Hessian
     assert residual.hessian(at) is None  # type: ignore[attr-defined]
+
+
+###############################################################################
+# L1 penalties
+###############################################################################
+
+
+def _fd_jacobian(fn, x: Array, h: float = 1e-7) -> Array:  # noqa: ANN001
+    return np.column_stack(
+        [(fn(x + h * e) - fn(x - h * e)) / (2 * h) for e in np.eye(len(x))]
+    )
+
+
+L1_PENALTIES = {
+    "lasso": fit.L1Penalty(["a", "b", "c"], 0.7, smoothing=1e-2),
+    "elastic_net": fit.L1Penalty(["a", "b", "c"], 0.7, l1_ratio=0.4),
+    "fused": fit.L1Penalty(
+        ["a", "b", "c"],
+        2.0,
+        scales=[1.0, 0.5],
+        matrix=np.array([[1.0, -1.0, 0.0], [0.0, 1.0, -1.0]]),
+    ),
+    "group": fit.GroupL1Penalty({"g": ["a", "b"], "h": ["c"]}, 0.3),
+}
+
+
+@pytest.mark.parametrize("name", L1_PENALTIES)
+@pytest.mark.parametrize(
+    "x", [[0.3, -1.2, 2.0], [0.0, 0.0, 0.0], [1e-4, 0.0, -2.0], [5.0, 5.0, 5.0]]
+)
+def test_l1_residuals_and_jacobian(name: str, x: list[float]) -> None:
+    penalty = L1_PENALTIES[name]
+    values = np.array(x)
+    r = penalty.residuals(values)
+    assert r @ r / 2 == pytest.approx(penalty(values), abs=1e-12)
+    np.testing.assert_allclose(
+        penalty.jacobian(values),
+        _fd_jacobian(penalty.residuals, values),
+        atol=1e-6,
+    )
+
+
+def test_l1_penalty_values() -> None:
+    x = np.array([2.0, -3.0])
+    eps = 1e-3
+    lasso = fit.L1Penalty(["a", "b"], 0.5, smoothing=eps)
+    assert lasso(x) == pytest.approx(0.5 * (5.0 - 2 * eps), rel=1e-6)
+    assert lasso(np.zeros(2)) == 0.0
+    net = fit.L1Penalty(["a", "b"], 0.5, l1_ratio=0.25, smoothing=eps)
+    assert net(x) == pytest.approx(
+        0.5 * (0.25 * (5.0 - 2 * eps) + 0.75 * 13 / 2), rel=1e-6
+    )
+    scaled = fit.L1Penalty(["a", "b"], 1.0, scales=[2.0, 0.0], smoothing=eps)
+    assert scaled(x) == pytest.approx(2 * (2.0 - eps), rel=1e-6)
+    fused = fit.L1Penalty(["a", "b"], 1.0, matrix=np.array([[1.0, -1.0]]))
+    np.testing.assert_allclose(fused.terms(x), [5.0])
+    group = fit.GroupL1Penalty({"g": ["a", "b"]}, 1.0, smoothing=eps)
+    assert group.names == ["a", "b"]
+    assert group(x) == pytest.approx(math.sqrt(2) * (math.sqrt(13) - eps), rel=1e-6)
+
+
+@pytest.mark.parametrize(
+    ("make", "match"),
+    [
+        (lambda: fit.L1Penalty(["a"], -1.0), "non-negative"),
+        (lambda: fit.L1Penalty(["a"], 1.0, smoothing=0.0), "positive"),
+        (lambda: fit.L1Penalty(["a"], 1.0, l1_ratio=1.5), "l1_ratio"),
+        (lambda: fit.L1Penalty(["a"], 1.0, scales=[1.0, 2.0]), "scales"),
+        (lambda: fit.L1Penalty(["a"], 1.0, matrix=np.ones((1, 2))), "columns"),
+        (lambda: fit.GroupL1Penalty({"g": ["a"], "h": ["a"]}), "disjoint"),
+        (lambda: fit.GroupL1Penalty({"g": []}), "empty"),
+        (lambda: fit.GroupL1Penalty({"g": ["a"]}, scales={"h": 1.0}), "scales"),
+    ],
+)
+def test_l1_penalty_checks(make, match: str) -> None:  # noqa: ANN001
+    with pytest.raises(ValueError, match=match):
+        make()
+
+
+@pytest.mark.parametrize("minimizer", ["lbfgs", "least-squares"])
+@pytest.mark.parametrize(("weight", "expected"), [(0.5, 1.5), (3.0, 0.0)])
+def test_l1_penalty_soft_thresholds(
+    minimizer: str, weight: float, expected: float
+) -> None:
+    # (p - 2)² / 2 + λ|p| is minimal at p = max(2 - λ, 0)
+    res = fit.steady_state(
+        _source_model(),
+        p0={"p": 3.0},
+        data=DATA,
+        minimizer=MINIMIZERS[minimizer],
+        loss_fn=NLL,
+        penalty=fit.L1Penalty(["p"], weight),
+    ).unwrap_or_err()
+    assert res.best_pars["p"] == pytest.approx(expected, abs=2e-3)
