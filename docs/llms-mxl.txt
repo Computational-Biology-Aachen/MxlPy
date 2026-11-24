@@ -139,6 +139,41 @@ rhs_ode = jax.vmap(ude.ode, in_axes=(0, 0, None))(ts, ys_pred, jnp.array([]))
 rhs_nde = jax.vmap(ude.nn, in_axes=(0, 0, None))(ts, ys_pred, jnp.array([]))
 ```
 
+## Terms and hidden-state blocks (augmented ODEs, no JAX)
+
+A **term** rewrites a variable's dx/dt or (kinetic) a reaction's rate through an explicit mechanism; a **hidden-state block** adds latent states `h` driven by a small network, `dh/dt = nn_h(x / s, h)`, and corrects each target with `(W h)_k`. Both are lowered to ordinary symbolic equations, so all integrators (incl. `Native`), fits, forward/adjoint sensitivities, codegen and `.mxl.json` work. Hidden states give the model memory (delays, slow unmodelled processes), which a correction of the current state can't.
+
+```python
+from mxlpy import fit, plot
+
+# Generic term: mechanism is required ("additive" | "relative" | callable(base, term))
+model.add_term("leak", fns.mass_action_1s, args=["S", "k_leak"], target="S", mechanism="additive")
+model.add_term("inhib", fns.constant, args=["f"], target="v1", mechanism="relative")  # reaction target
+model.get_term_contributions()          # Δ per term: dx/dt = base + ΣΔ
+model.get_fluxes(corrected=True)        # reaction rates incl. their terms (default: mechanistic)
+
+# Hidden-state block (states aug_h0.., weights aug_w{l}_{i}_{j}, aug_b{l}_{i}, readout aug_W_{k}_{i})
+model.add_hidden_states("aug", n_hidden=1, layers=(8,), activation="tanh",
+                        targets=["P"], mechanism="relative", input_scales={"S": 10.0})
+model.get_weight_names()                # weights are NOT parameters ...
+model.get_addressable_names()           # ... parameters + weights: use for fits / sensitivities
+model.update_addressable({"aug_W_0_0": 0.1})
+model.remove_hidden_states("aug")       # exactly the mechanistic model again
+
+# Staged training: scale, then weights only (Normal priors + correction penalty), then joint refinement
+res = fit.augmented_time_course(model, data=data, p0=mechanistic_fit.best_pars, sigma=0.05,
+                                weight_prior_scale=0.1, correction_penalty=1e-2,
+                                joint_refinement=True, fit_h0=False).unwrap_or_err()
+res.model; res.best_pars; res.correction   # Δ of each block target over time, by data set
+res.models; res.predictions; res.residuals  # per data set (e.g. to test residual whiteness)
+plot.correction(res)
+```
+
+- Terms on one target compose in insertion order (user terms, then blocks). A variable term acts on the assembled dx/dt, a reaction term on the rate before the stoichiometry fans it out. Terms never enter the stoichiometric matrix (`get_stoichiometries`, MCA stay mechanistic).
+- Weight names are mxlweb-core's; fits give them signed default bounds and leave them linear under `transform="log"`.
+- With `W = 0` the derivatives of the mechanistic variables are bit-identical; trajectories agree to solver tolerance (h takes part in step-size control).
+- `.mxl.json`: terms, blocks (`nn_blocks` with `hidden_states`, `input_scales`, `output_scales`) need spec_version 0.5; every `nn_blocks` entry loads as a symbolic block (also mxlweb's, any mechanism).
+
 ## Reaction carousel (`mxlpy.carousel`)
 
 A carousel is an ensemble that keeps the model structure (stoichiometry) fixed but varies the **kinetics** of chosen reactions — useful for comparing candidate rate laws and fitting the best combination.

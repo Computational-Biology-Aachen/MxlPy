@@ -391,7 +391,7 @@ class _Posterior:
             case Exception():
                 return -np.inf
             case _:
-                prediction = res.get_combined()
+                prediction = res.get_combined(include_terms=True)
         if (postprocess := self.settings.postprocess_fn) is not None:
             prediction = postprocess(prediction)
         # Aligned by label, like the fit residuals; anything the prediction
