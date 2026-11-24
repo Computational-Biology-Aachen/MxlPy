@@ -28,7 +28,7 @@ from mxlpy.identify._problem import (
 from mxlpy.parallel import parallelise
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from mxlpy import fit
     from mxlpy.distributions import Prior
@@ -73,11 +73,40 @@ _TARGET = 0.1
 # Fits locating the threshold crossing, and their tolerance relative to it
 _REFINE = 3
 _REFINE_TOL = 0.02
+# Steps in a row without progress that end a side, see `march`
+_STALLS = 3
 
 
 ###############################################################################
 # Results
 ###############################################################################
+
+
+def crossing(
+    delta: pd.Series,
+    value: float,
+    threshold: float,
+    side: Literal[-1, 1],
+    *,
+    log: bool = False,
+) -> float:
+    """Where `delta` (indexed by ascending values) crosses `threshold` beside `value`.
+
+    Interpolates linearly (in log10 space with `log`) between the last point
+    below and the first at or above the threshold, `side * inf` if none is.
+    """
+    x = delta.index.to_numpy(dtype=float)
+    d = delta.to_numpy(dtype=float)
+    order = np.flatnonzero(x >= value if side > 0 else x <= value)
+    if side < 0:
+        order = order[::-1]
+    for inner, outer in itertools.pairwise(order):
+        if d[outer] >= threshold:
+            u = np.log10(x[[inner, outer]]) if log else x[[inner, outer]]
+            frac = (threshold - d[inner]) / (d[outer] - d[inner])
+            bound = u[0] + float(np.clip(frac, 0, 1)) * (u[1] - u[0])
+            return float(10**bound if log else bound)
+    return side * math.inf
 
 
 @dataclass(kw_only=True)
@@ -121,18 +150,7 @@ class Profile:
         status = self.upper_status if side > 0 else self.lower_status
         if status != "threshold":
             return side * math.inf
-        x = self.delta.index.to_numpy(dtype=float)
-        d = self.delta.to_numpy(dtype=float)
-        order = np.flatnonzero(x >= self.value if side > 0 else x <= self.value)
-        if side < 0:
-            order = order[::-1]
-        for inner, outer in itertools.pairwise(order):
-            if d[outer] >= self.threshold:
-                u = np.log10(x[[inner, outer]]) if self.log else x[[inner, outer]]
-                frac = (self.threshold - d[inner]) / (d[outer] - d[inner])
-                bound = u[0] + float(np.clip(frac, 0, 1)) * (u[1] - u[0])
-                return float(10**bound if self.log else bound)
-        return side * math.inf
+        return crossing(self.delta, self.value, self.threshold, side, log=self.log)
 
     @property
     def ci_lower(self) -> float:
@@ -275,7 +293,109 @@ def _range(
 type _Point = tuple[float, float, dict[str, float]]
 
 
-def _walk(
+@dataclass(frozen=True)
+class Step:
+    """A point of a profile: coordinate, increase of the objective, parameters.
+
+    `info` holds whatever else the profile records, e.g. the prediction.
+    """
+
+    u: float
+    delta: float
+    pars: dict[str, float]
+    info: Any = None
+
+
+def march(
+    at: Callable[[float, dict[str, float]], Step | None],
+    *,
+    start: Step,
+    direction: int,
+    limit: float,
+    steps: Callable[[float], tuple[float, float, float]],
+    threshold: float,
+    max_steps: int,
+    stalled: Callable[[Step, Step], bool] | None = None,
+) -> tuple[list[Step], SideStatus]:
+    """Step from `start` in `direction` until the objective increases by `threshold`.
+
+    `at(u, p0)` refits at coordinate `u` from the parameters `p0`, None if
+    the fit failed, and `steps(u)` gives the first, smallest and largest step
+    at `u`. Steps adapt so each increases the objective by about
+    `_TARGET · threshold` and are retried with half the size if they
+    increase it by more than twice that. The side ends at the threshold
+    (located by a few more fits), at `limit`, after `max_steps` fits, or
+    after `_STALLS` steps in a row for which `stalled(previous, new)` holds.
+    """
+    target = _TARGET * threshold
+    points: list[Step] = []
+    prev = start
+    h, h_min, h_max = steps(prev.u)
+    fits = 0
+    n_stalled = 0
+    while fits < max_steps:
+        if (limit - prev.u) * direction <= 0:
+            return points, "bound"
+        u = prev.u + direction * h
+        if (limit - u) * direction < 0:
+            u = limit
+        fits += 1
+        point = at(u, prev.pars)
+        if point is None:
+            if h > h_min:
+                h /= 2
+                continue
+            return points, "failed"
+        if point.delta == math.inf:
+            # Edge of a prior's support: approach it, it bounds the profile
+            if h > h_min:
+                h /= 2
+                continue
+            return points, "bound"
+        increase = point.delta - prev.delta
+        if increase > 2 * target and h > h_min:
+            h /= 2
+            continue
+        points.append(point)
+        if point.delta >= threshold:
+            points.extend(_refine(at, prev, point, threshold))
+            return points, "threshold"
+        n_stalled = n_stalled + 1 if stalled is not None and stalled(prev, point) else 0
+        if n_stalled >= _STALLS:
+            return points, "bound"
+        prev = point
+        _, h_min, h_max = steps(prev.u)
+        factor = math.sqrt(target / increase) if increase > 0 else 2.0
+        h = min(max(h * min(max(factor, 0.5), 2.0), h_min), h_max)
+    return points, "max_steps"
+
+
+def _refine(
+    at: Callable[[float, dict[str, float]], Step | None],
+    inside: Step,
+    outside: Step,
+    threshold: float,
+) -> list[Step]:
+    """Points locating the threshold crossing by regula falsi."""
+    points = []
+    for _ in range(_REFINE):
+        if abs(outside.delta - threshold) < _REFINE_TOL * threshold:
+            break
+        frac = (threshold - inside.delta) / (outside.delta - inside.delta)
+        u = inside.u + frac * (outside.u - inside.u)
+        if (point := at(u, inside.pars)) is None or point.delta == math.inf:
+            break
+        points.append(point)
+        if abs(point.delta - threshold) < _REFINE_TOL * threshold:
+            break
+        if point.delta < threshold:
+            inside = point
+        else:
+            outside = point
+    return points
+
+
+def walk(
     task: tuple[str, int],
     *,
     problem: _Problem,
@@ -284,85 +404,50 @@ def _walk(
     threshold: float,
     coordinates: dict[str, _Coordinate],
     max_steps: int,
+    fixed: dict[str, float] | None = None,
+    start_delta: float = 0.0,
 ) -> tuple[list[_Point], SideStatus]:
-    """Profile one parameter in one direction from the optimum."""
+    """Profile one parameter in one direction from `optimum`.
+
+    `fixed` values stay fixed in all refits, then `optimum` is the best fit
+    with them, whose objective is `start_delta` above `objective`.
+    """
     name, direction = task
     coord = coordinates[name]
     model = deepcopy(problem.model)
-    target = _TARGET * threshold
-    limit = coord.to_u(coord.upper if direction > 0 else coord.lower)
+    fixed = {} if fixed is None else fixed
 
-    def at(u: float, start: dict[str, float]) -> _Point | None:
+    def at(u: float, start: dict[str, float]) -> Step | None:
         x = coord.to_x(u)
-        p0 = {k: v for k, v in start.items() if k != name}
-        if (res := problem.fit(model, {name: x}, p0)) is None:
+        p0 = {k: v for k, v in start.items() if k != name and k not in fixed}
+        if (res := problem.fit(model, {**fixed, name: x}, p0)) is None:
             return None
-        return x, res[0] - objective, res[1]
+        return Step(u, res[0] - objective, res[1])
 
-    points: list[_Point] = []
-    prev_u, prev_delta, prev_pars = coord.to_u(coord.value), 0.0, optimum
-    h, h_min, h_max = coord.steps(prev_u)
-    fits = 0
-    while fits < max_steps:
-        if (limit - prev_u) * direction <= 0:
-            return points, "bound"
-        u = prev_u + direction * h
-        if (limit - u) * direction < 0:
-            u = limit
-        fits += 1
-        point = at(u, prev_pars)
-        if point is None:
-            if h > h_min:
-                h /= 2
-                continue
-            return points, "failed"
-        if point[1] == math.inf:
-            # Edge of a prior's support: approach it, it bounds the profile
-            if h > h_min:
-                h /= 2
-                continue
-            return points, "bound"
-        increase = point[1] - prev_delta
-        if increase > 2 * target and h > h_min:
-            h /= 2
-            continue
-        points.append(point)
-        if point[1] >= threshold:
-            points.extend(
-                _refine(at, coord, (prev_u, prev_delta, prev_pars), point, threshold)
-            )
-            return points, "threshold"
-        prev_u, prev_delta, prev_pars = coord.to_u(point[0]), point[1], point[2]
-        _, h_min, h_max = coord.steps(prev_u)
-        factor = math.sqrt(target / increase) if increase > 0 else 2.0
-        h = min(max(h * min(max(factor, 0.5), 2.0), h_min), h_max)
-    return points, "max_steps"
+    points, status = march(
+        at,
+        start=Step(coord.to_u(optimum[name]), start_delta, optimum),
+        direction=direction,
+        limit=coord.to_u(coord.upper if direction > 0 else coord.lower),
+        steps=coord.steps,
+        threshold=threshold,
+        max_steps=max_steps,
+    )
+    return [(coord.to_x(p.u), p.delta, p.pars) for p in points], status
 
 
-def _refine(
-    at: Any,
-    coord: _Coordinate,
-    inside: tuple[float, float, dict[str, float]],
-    outside: _Point,
-    threshold: float,
-) -> list[_Point]:
-    """Points locating the threshold crossing by regula falsi."""
-    (u_in, d_in, pars_in), (u_out, d_out) = inside, (coord.to_u(outside[0]), outside[1])
-    points = []
-    for _ in range(_REFINE):
-        if abs(d_out - threshold) < _REFINE_TOL * threshold:
-            break
-        u = u_in + (threshold - d_in) / (d_out - d_in) * (u_out - u_in)
-        if (point := at(u, pars_in)) is None or point[1] == math.inf:
-            break
-        points.append(point)
-        if abs(point[1] - threshold) < _REFINE_TOL * threshold:
-            break
-        if point[1] < threshold:
-            u_in, d_in, pars_in = u, point[1], point[2]
-        else:
-            u_out, d_out = u, point[1]
-    return points
+def coordinates_of(
+    names: Sequence[str],
+    start: dict[str, float],
+    problem: _Problem,
+    log: set[str],
+) -> dict[str, _Coordinate]:
+    """Profiled coordinate per parameter, see `_range`."""
+    out = {}
+    for k in names:
+        lower, upper = _range(start[k], problem.bounds.get(k), log=k in log)
+        out[k] = _Coordinate(log=k in log, value=start[k], lower=lower, upper=upper)
+    return out
 
 
 ###############################################################################
@@ -507,17 +592,12 @@ def profile_likelihood(
     log = _log_names(start, transform)
     objective, start = refit(problem, start)
 
-    coordinates = {}
-    for k in names:
-        lower, upper = _range(start[k], problem.bounds.get(k), log=k in log)
-        coordinates[k] = _Coordinate(
-            log=k in log, value=start[k], lower=lower, upper=upper
-        )
+    coordinates = coordinates_of(names, start, problem, log)
     tasks = [((k, d), (k, d)) for k in names for d in (-1, 1)]
     walks = dict(
         parallelise(
             partial(
-                _walk,
+                walk,
                 problem=problem,
                 optimum=start,
                 objective=objective,
