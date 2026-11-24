@@ -46,6 +46,16 @@ for each combination of model:data.
 - `joint_mixed`
 
 
+Hidden-state blocks (augmented ODEs)
+------------------------------------
+Train a model's hidden-state blocks (`add_hidden_states`) starting from the
+fitted mechanistic parameters: scaled, weights only with priors and a
+penalty on the corrections, then optionally jointly.
+
+- `augmented_time_course`
+- `augmented_protocol_time_course`
+
+
 Bayesian posterior sampling (MCMC)
 ----------------------------------
 Instead of a point estimate, sample the posterior distribution of the
@@ -99,6 +109,11 @@ from mxlpy.minimizers import (
     Residual,
 )
 
+from ._augmented import (
+    AugmentedFit,
+    augmented_protocol_time_course,
+    augmented_time_course,
+)
 from ._ensemble import (
     ensemble_protocol_time_course,
     ensemble_steady_state,
@@ -148,6 +163,7 @@ from .residuals import (
 
 __all__: list[str] = [
     "AdaptiveMetropolis",
+    "AugmentedFit",
     "Bounds",
     "EnsembleFit",
     "Fit",
@@ -170,6 +186,8 @@ __all__: list[str] = [
     "PriorPenalty",
     "Residual",
     "Sigma",
+    "augmented_protocol_time_course",
+    "augmented_time_course",
     "carousel_protocol_time_course",
     "carousel_steady_state",
     "carousel_time_course",

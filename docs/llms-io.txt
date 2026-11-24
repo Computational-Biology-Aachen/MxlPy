@@ -62,6 +62,7 @@ restored = mxlpy.load("model.mxl.json")
 - **Lossless dynamics, regenerated functions.** Rate functions go through SymPy, so a loaded model uses generated (not the original named) functions but simulates identically. `save → load → save` reaches a stable fixed point.
 - Each file references a `$schema` from the shared [`mxl-schemas`](https://github.com/Computational-Biology-Aachen/mxl-schemas) repo for editor validation/autocompletion. A `spec_version` field tracks the format version (shared with MxlWeb, decoupled from the package version).
 - Surrogates and rate functions that cannot be parsed into an expression raise `mxlpy.types.SerializationError` — use SBML for those, or for cross-tool interchange.
+- Terms and hidden-state blocks are saved too (spec_version 0.5, written only when used): `terms`, and `nn_blocks` with `hidden_states` / `input_scales` / `output_scales`, their weights (incl. readout `W` and `h0`) in `<block>.weights.json`. Every `nn_blocks` entry — also one exported from a torch surrogate or authored in mxlweb, with any mechanism — loads as a symbolic block (`get_raw_hidden_states`). SBML export and mxlweb codegen reject terms.
 - To persist a single trained surrogate in its backend's native format (any architecture, not just dense networks), use `surrogate.save(path)` / `mxlpy.surrogates.load(path)` — see [mechanistic learning](llms-mxl.txt).
 
 ## Code & LaTeX generation (`mxlpy.meta`)

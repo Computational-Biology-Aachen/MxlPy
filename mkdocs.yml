@@ -40,6 +40,7 @@ nav:
       - Compartmentalisation: compartmentalisation.ipynb
   - Mechanistic learning:
       - UDEs: mxl-ude.ipynb
+      - Augmented ODEs (terms, hidden states): augmented-ode.ipynb
       - Surrogates: mxl-surrogates.ipynb
       - Neural Posterior Estimation: mxl-npe.ipynb
       - Reaction carousel: carousel.ipynb

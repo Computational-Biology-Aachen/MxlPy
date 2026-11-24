@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Self, overload
+from typing import TYPE_CHECKING, Literal, Self, cast, overload
 
 import numpy as np
 import pandas as pd
@@ -556,8 +556,8 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
             concatenated=concatenated,
         )
 
-    def get_combined(self) -> pd.DataFrame:
-        """Get the variables and fluxes as a single pandas.DataFrame.
+    def get_combined(self, *, include_terms: bool = False) -> pd.DataFrame:
+        """Get the variables and fluxes (and term contributions) as one pandas.DataFrame.
 
         Examples
         --------
@@ -567,13 +567,21 @@ class Simulation(_BaseSimulation["KineticModelBuilder"]):
             0.000100   0.999900   0.999900   0.999900   9.999000
             0.000200   0.999800   0.999800   0.999800   9.998000
 
+        Parameters
+        ----------
+        include_terms
+            Whether to add the term contributions, e.g. to fit them
+
         Returns
         -------
         pd.DataFrame
             DataFrame of fluxes.
 
         """
-        return pd.concat((self.variables, self.fluxes), axis=1)
+        parts = [self.variables, self.fluxes]
+        if include_terms and self.model.get_term_names():
+            parts.append(cast(pd.DataFrame, self.get_term_contributions()))
+        return pd.concat(parts, axis=1)
 
     @overload
     def get_right_hand_side(  # type: ignore
@@ -1037,12 +1045,17 @@ class OdeSimulation(_BaseSimulation["OdeModelBuilder"]):
             variables, normalise=normalise, concatenated=concatenated
         )
 
-    def get_combined(self) -> pd.DataFrame:
+    def get_combined(self, *, include_terms: bool = False) -> pd.DataFrame:
         """Get the variables as a single pandas.DataFrame.
 
         The equivalent of `Simulation.get_combined`, which has no fluxes to add
-        for an `OdeModelBuilder`.
+        for an `OdeModelBuilder`, only (optionally) the term contributions.
         """
+        if include_terms and self.model.get_term_names():
+            return pd.concat(
+                [self.variables, cast(pd.DataFrame, self.get_term_contributions())],
+                axis=1,
+            )
         return self.variables
 
     @overload
@@ -1149,6 +1162,6 @@ class Evaluation:
             names = self.model.get_parameter_names() + names
         return self.raw_values.loc[names].to_frame().T
 
-    def get_combined(self) -> pd.DataFrame:
-        """Get the derived values as a single row."""
+    def get_combined(self, *, include_terms: bool = False) -> pd.DataFrame:  # noqa: ARG002
+        """Get the derived values as a single row (a steady-state model has no terms)."""
         return self.get_args()

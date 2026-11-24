@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from mxlpy._kinetic_builder import KineticModelBuilder
+    from mxlpy.fit import AugmentedFit
     from mxlpy.identify import (
         IdentifiabilityTest,
         PredictionBand,
@@ -82,6 +83,7 @@ __all__ = [
     "bars_grouped",
     "condition_specific_path",
     "context",
+    "correction",
     "grid_labels",
     "grid_layout",
     "heatmap",
@@ -1664,6 +1666,70 @@ def shade_protocol(
                 title="protocol" if protocol.name is None else cast(str, protocol.name),
             )
         )
+
+
+def correction(
+    res: AugmentedFit,
+    *,
+    relative: bool = True,
+    n_cols: int = 3,
+    col_width: float = 3,
+    row_height: float = 2.5,
+    grid: bool = True,
+) -> FigAxs:
+    """Plot the corrections of trained hidden-state blocks over time.
+
+    One axes per corrected target, one line per data set: the contribution
+    of the block to the target, by default relative to the target's scale
+    (its RMS mechanistic value), so the panels are comparable. Large values
+    show where and when the mechanism misses dynamics.
+
+    Parameters
+    ----------
+    res
+        Result of `mxlpy.fit.augmented_time_course`
+    relative
+        Whether to divide each contribution by its target's scale
+    n_cols
+        Number of columns of the grid
+    col_width
+        Width of each column in inches
+    row_height
+        Height of each row in inches
+    grid
+        Whether to add a grid to each axis
+
+    Returns
+    -------
+    FigAxs
+        Figure and Axs objects.
+
+    """
+    terms = list(res.correction.columns)
+    fig, axs = grid_layout(
+        len(terms),
+        n_cols=n_cols,
+        col_width=col_width,
+        row_height=row_height,
+        sharex=True,
+        sharey=False,
+        grid=grid,
+    )
+    data_sets = res.correction.index.get_level_values(0).unique()
+    for ax, term in zip(axs, terms, strict=False):
+        scale = res.scales.get(term, 1.0) if relative else 1.0
+        for data_set in data_sets:
+            values = res.correction.loc[data_set, term]
+            ax.plot(
+                values.index.to_numpy(dtype=float),
+                values.to_numpy(dtype=float) / scale,
+                label=str(data_set),
+            )
+        ax.axhline(0, color="0.4", linestyle="dotted")
+        ax.set(title=term, xlabel="time", ylabel="Δ / scale" if relative else "Δ")
+    if len(data_sets) > 1:
+        axs[0].legend()
+    return fig, axs
 
 
 def profile_likelihood(

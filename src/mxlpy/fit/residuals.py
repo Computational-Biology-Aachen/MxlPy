@@ -41,7 +41,7 @@ def _loss(settings: _Settings[Any], res: Result[Any], names: list[str]) -> float
         case Exception():
             return cast(float, np.inf)
         case _:
-            prediction = val.get_combined()
+            prediction = val.get_combined(include_terms=True)
             if (postprocess := settings.postprocess_fn) is not None:
                 prediction = postprocess(prediction)
             if isinstance(settings.data, pd.DataFrame):

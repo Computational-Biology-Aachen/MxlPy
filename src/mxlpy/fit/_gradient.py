@@ -228,7 +228,7 @@ class GradientResidual:
                 res = runner.protocol_time_course(s.model, s.protocol, times)
         if isinstance(val := res.value, Exception):
             return None
-        prediction = val.get_combined()
+        prediction = val.get_combined(include_terms=True)
         if s.postprocess_fn is not None:
             prediction = s.postprocess_fn(prediction)
         if self.kind == "steady_state":
