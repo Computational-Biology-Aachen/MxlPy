@@ -1,6 +1,6 @@
 # Copyright 2025 Marvin van Aalst, Anna Matuszyńska
 
-"""Tests for nn_blocks export/import (mxl-schemas nn_blocks v2) via a torch surrogate.
+"""Tests for nn_blocks export from a torch surrogate and import as a symbolic block.
 
 Closes the gap `test_serialize.py::test_surrogate_raises_serialization_error`
 documents: a surrogate whose architecture *is* representable in the shared
@@ -127,11 +127,8 @@ def test_unrecognized_activation_is_not_exportable() -> None:
 
 
 def test_save_load_round_trips_predictions(tmp_path: Path) -> None:
+    """A torch surrogate loads as a symbolic block with the same dynamics."""
     model = _make_model_with_surrogate()
-    original_surrogate = model._surrogates["corr_block"]
-    probe = np.array([0.3, -0.7])
-    original_prediction = original_surrogate.predict_raw(probe)  # type: ignore[attr-defined]
-
     path = tmp_path / "model.mxl.json"
     mxlpy.save(model, path, model_id="m")
 
@@ -140,35 +137,28 @@ def test_save_load_round_trips_predictions(tmp_path: Path) -> None:
     assert set(weights_on_disk.keys()) == {"w1", "b1", "w2", "b2"}
 
     reloaded = mxlpy.load(path)
-    # `load` now returns KineticModelBuilder | OdeModelBuilder (it dispatches
-    # on the document's `kind`) — this file was written from a
-    # KineticModelBuilder, so narrow back to it to keep `.outputs`/
-    # `.stoichiometries` (KineticModelBuilder-only, via SurrogateProtocol)
-    # visible to the type checker below.
     assert isinstance(reloaded, KineticModelBuilder)
-    reloaded_surrogate = reloaded._surrogates["corr_block"]
-    reloaded_prediction = reloaded_surrogate.predict_raw(probe)  # type: ignore[attr-defined]
-
-    np.testing.assert_allclose(reloaded_prediction, original_prediction, rtol=1e-6)
-    assert reloaded_surrogate.args == ["x", "y"]
-    # Reconstruction can't reuse the original output name "corr" (add_surrogate
-    # requires it to be a fresh, model-wide-unique id, and "x" — the target —
-    # already exists as a variable) — it derives a block-scoped one instead.
-    assert reloaded_surrogate.outputs == ["corr_block_x"]
-    assert reloaded_surrogate.stoichiometries == {"corr_block_x": {"x": 1.0}}
+    block = reloaded.get_raw_hidden_states()["corr_block"]
+    assert block.inputs == ["x", "y"]
+    assert block.targets == ["x"]
+    assert block.n_hidden == 0
+    for state in ([0.3, -0.7], [1.0, 2.0]):
+        np.testing.assert_allclose(
+            reloaded(0.0, state), model(0.0, state), rtol=1e-6, atol=1e-7
+        )
 
 
 def test_save_load_save_is_idempotent_with_nn_blocks(tmp_path: Path) -> None:
     model = _make_model_with_surrogate()
     first = tmp_path / "a.mxl.json"
     second = tmp_path / "b.mxl.json"
+    third = tmp_path / "c.mxl.json"
 
     mxlpy.save(model, first, model_id="m")
     mxlpy.save(mxlpy.load(first), second, model_id="m")
+    mxlpy.save(mxlpy.load(second), third, model_id="m")
 
-    doc_a = json.loads(first.read_text())
-    doc_b = json.loads(second.read_text())
-    assert doc_a == doc_b
+    assert json.loads(second.read_text()) == json.loads(third.read_text())
 
 
 def test_load_rejects_nn_block_with_missing_weights_file(tmp_path: Path) -> None:
@@ -181,7 +171,7 @@ def test_load_rejects_nn_block_with_missing_weights_file(tmp_path: Path) -> None
         mxlpy.load(path)
 
 
-def test_model_from_dict_rejects_non_additive_mechanism() -> None:
+def test_model_from_dict_reads_any_mechanism() -> None:
     model = _make_model_with_surrogate()
     data = model_to_dict(model, model_id="m")
     data["model"]["nn_blocks"]["corr_block"]["mechanism"] = {
@@ -192,8 +182,10 @@ def test_model_from_dict_rejects_non_additive_mechanism() -> None:
         ],
     }
     weights = mxl_json_weights_files(model)
-    with pytest.raises(SerializationError, match="additive"):
-        model_from_dict(data, weights_by_ref=weights)
+    loaded = model_from_dict(data, weights_by_ref=weights)
+    mechanism = loaded.get_raw_hidden_states()["corr_block"].mechanism
+    assert mechanism.name is None
+    assert mechanism.fn(2.0, 3.0) == 6.0
 
 
 def test_model_from_dict_rejects_non_dense_layer_type() -> None:
@@ -205,11 +197,26 @@ def test_model_from_dict_rejects_non_dense_layer_type() -> None:
         model_from_dict(data, weights_by_ref=weights)
 
 
-def test_model_from_dict_rejects_untrained_block() -> None:
+def test_model_from_dict_initialises_untrained_block() -> None:
     model = _make_model_with_surrogate()
     data = model_to_dict(model, model_id="m")
     block = data["model"]["nn_blocks"]["corr_block"]
     del block["weights_ref"]
     block["trained"] = False
-    with pytest.raises(SerializationError, match="untrained"):
-        model_from_dict(data, weights_by_ref={})
+    loaded = model_from_dict(data, weights_by_ref={})
+    assert len(loaded.get_weight_names()) == 2 * 3 + 3 + 3 + 1
+
+
+def test_surrogate_with_non_additive_term_on_its_target_is_refused() -> None:
+    """A loaded surrogate is applied after the terms, which would change the dynamics."""
+    model = _make_model_with_surrogate().add_parameter("kc", 0.5)
+    model.add_term(
+        "t", mxlpy.fns.constant, args=["kc"], target="x", mechanism="relative"
+    )
+    with pytest.raises(SerializationError, match="non-additive term"):
+        model_to_dict(model, model_id="m")
+    additive = _make_model_with_surrogate().add_parameter("kc", 0.5)
+    additive.add_term(
+        "t", mxlpy.fns.constant, args=["kc"], target="x", mechanism="additive"
+    )
+    assert model_to_dict(additive, model_id="m")["model"]["terms"]

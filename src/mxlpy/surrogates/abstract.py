@@ -49,9 +49,9 @@ def mxl_json_mechanism_additive() -> dict[str, object]:
     (ode: `AbstractOdeSurrogate` outputs sum into a targeted diff_eq) — in
     both cases plain addition, never a selectable composition algebra.
     `additive` is therefore the only mechanism any MxlPy surrogate ever
-    exports as, or can reconstruct from on load (:mod:`mxlpy.serialize`
-    rejects a loaded `.mxl.json` `nn_blocks` entry using any other
-    mechanism — not representable back into a live MxlPy surrogate).
+    exports as. On load, :mod:`mxlpy.serialize` reads every `nn_blocks`
+    entry (any mechanism) as a symbolic hidden-state block instead of a
+    surrogate.
     """
     return mml.Add(children=[mml.Name(name="ode"), mml.Name(name="nde")]).to_dict()
 

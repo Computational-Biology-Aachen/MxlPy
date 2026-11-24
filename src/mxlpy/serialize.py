@@ -25,12 +25,13 @@ from __future__ import annotations
 import dataclasses
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import numpy as np
 import pandas as pd
 import sympy
 
+from mxlpy._hidden_states import ACTIVATIONS, HiddenStates, NNLayer, init_hidden_states
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
@@ -43,16 +44,27 @@ from mxlpy.meta.sympy_tools import (
     mathml_to_sympy,
     sympy_to_mathml,
 )
-from mxlpy.surrogates.abstract import mxl_json_mechanism_additive
-from mxlpy.types import Derived, InitialAssignment, SerializationError, Slider
+from mxlpy.types import (
+    Derived,
+    InitialAssignment,
+    Mechanism,
+    SerializationError,
+    Slider,
+)
 from mxlpy.units import unit_from_json, unit_to_json
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping
 
-    from mxlpy.surrogates.abstract import SurrogateProtocol
-    from mxlpy.surrogates.abstract_ode import OdeSurrogateProtocol
-    from mxlpy.types import DiffEq, Parameter, RateFn, Reaction, Readout, Variable
+    from mxlpy.types import (
+        DiffEq,
+        Parameter,
+        RateFn,
+        Reaction,
+        Readout,
+        Term,
+        Variable,
+    )
 
 __all__ = [
     "ODE_SCHEMA_URL",
@@ -77,6 +89,8 @@ SPEC_VERSION = "0.2"
 DATA_SPEC_VERSION = "0.3"
 # Written by a model whose arrays depend on more than data (ADR 0015).
 ARRAY_SPEC_VERSION = "0.4"
+# Written by a model with terms or hidden-state blocks (ADR 0008 §6).
+TERMS_SPEC_VERSION = "0.5"
 # The schema is maintained in the shared, language-agnostic `mxl-schemas` repo
 # so it can be consumed by both mxlpy and mxlweb. It is intentionally not
 # vendored into this package. The URL is pinned to the major spec version, so a
@@ -104,7 +118,7 @@ _FN_NAME = "_mxl_fn"
 
 
 def _names_to_dict(
-    entity: Variable | Parameter | Derived | Readout | Reaction | DiffEq,
+    entity: Variable | Parameter | Derived | Readout | Reaction | DiffEq | Term,
 ) -> dict[str, Any]:
     names: dict[str, Any] = {
         "displayName": entity.display_name,
@@ -190,6 +204,24 @@ def _unexportable_surrogates(model: KineticModelBuilder) -> list[str]:
     return sorted(unexportable)
 
 
+def _check_surrogate_order(
+    model: KineticModelBuilder | OdeModelBuilder, name: str, targets: list[str]
+) -> None:
+    """Refuse a surrogate whose target has non-additive terms.
+
+    A loaded surrogate is a block, which is applied after the terms, while
+    the surrogate is part of the terms' base, so the dynamics would change.
+    """
+    for term_name, term in model.get_raw_terms(as_copy=False).items():
+        if term.target in targets and term.mechanism.name != "additive":
+            msg = (
+                f"surrogate {name!r} and the non-additive term {term_name!r} act on "
+                f"{term.target!r}: a file applies terms before nn_blocks, which "
+                "would change the dynamics"
+            )
+            raise SerializationError(msg)
+
+
 def _mxl_json_blocks_and_weights(
     model: KineticModelBuilder,
 ) -> tuple[dict[str, Any], dict[str, dict[str, list[Any]]]]:
@@ -212,18 +244,21 @@ def _mxl_json_blocks_and_weights(
         if export is None:
             continue
         spec = dict(export.spec)
+        spec.setdefault("target_kind", "variable")
+        _check_surrogate_order(model, name, cast(list[str], spec["targets"]))
         if spec["trained"]:
             weights_ref = f"{name}.weights.json"
             spec["weights_ref"] = weights_ref
             weights_files[weights_ref] = export.weights
         nn_blocks[name] = spec
-    return nn_blocks, weights_files
+    blocks, block_weights = _blocks_to_dict(model)
+    return nn_blocks | blocks, weights_files | block_weights
 
 
 def mxl_json_weights_files(
     model: KineticModelBuilder,
 ) -> dict[str, dict[str, list[Any]]]:
-    """Every trained, exportable surrogate's weights sidecar content, keyed by the relative filename its `nn_blocks[id].weights_ref` names.
+    """Weights files of the exportable surrogates and the hidden-state blocks, keyed by the relative filename their `nn_blocks[id].weights_ref` names.
 
     Pairs with :func:`model_to_dict`'s output (which references these same
     filenames but never inlines their content) to produce the full
@@ -287,15 +322,20 @@ def _envelope(
     data_ref: str,
     section: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """`spec_version` and, for a model with data, `data_ref`."""
+    """`spec_version` (the lowest one with all features used) and `data_ref`."""
+    uses_terms = bool(section.get("terms")) or any(
+        "hidden_states" in b or "input_scales" in b or "output_scales" in b
+        for b in section.get("nn_blocks", {}).values()
+    )
+    base = TERMS_SPEC_VERSION if uses_terms else SPEC_VERSION
     if not (data := model.get_raw_data()):
-        return {"spec_version": SPEC_VERSION}
+        return {"spec_version": base}
     try:
         dynamic = _dynamic_arrays(section, data)
     except ValueError as e:
         raise SerializationError(str(e)) from e
     version = ARRAY_SPEC_VERSION if dynamic else DATA_SPEC_VERSION
-    return {"spec_version": version, "data_ref": data_ref}
+    return {"spec_version": max(base, version), "data_ref": data_ref}
 
 
 def model_to_dict(
@@ -330,9 +370,6 @@ def model_to_dict(
         or a rate function that cannot be converted into an expression.
 
     """
-    if terms := model.get_term_names():
-        msg = f"terms are not serialisable yet: {', '.join(terms)}"
-        raise SerializationError(msg)
     if unexportable := _unexportable_surrogates(model):
         names = ", ".join(unexportable)
         msg = f"surrogates are not representable as nn_blocks: {names}"
@@ -414,6 +451,8 @@ def model_to_dict(
     }
     if nn_blocks:
         model_section["nn_blocks"] = nn_blocks
+    if terms := _terms_to_dict(model, customs):
+        model_section["terms"] = terms
     if customs:
         model_section["units"] = customs
 
@@ -469,18 +508,21 @@ def _ode_mxl_json_blocks_and_weights(
         if export is None:
             continue
         spec = dict(export.spec)
+        spec.setdefault("target_kind", "variable")
+        _check_surrogate_order(model, name, cast(list[str], spec["targets"]))
         if spec["trained"]:
             weights_ref = f"{name}.weights.json"
             spec["weights_ref"] = weights_ref
             weights_files[weights_ref] = export.weights
         nn_blocks[name] = spec
-    return nn_blocks, weights_files
+    blocks, block_weights = _blocks_to_dict(model)
+    return nn_blocks | blocks, weights_files | block_weights
 
 
 def ode_mxl_json_weights_files(
     model: OdeModelBuilder,
 ) -> dict[str, dict[str, list[Any]]]:
-    """Every trained, exportable ode surrogate's weights sidecar content, keyed by its `weights_ref`.
+    """Weights files of the exportable ode surrogates and the hidden-state blocks, keyed by their `weights_ref`.
 
     Ode-model counterpart of :func:`mxl_json_weights_files`.
     """
@@ -525,9 +567,6 @@ def ode_model_to_dict(
         converted into an expression.
 
     """
-    if terms := model.get_term_names():
-        msg = f"terms are not serialisable yet: {', '.join(terms)}"
-        raise SerializationError(msg)
     if unexportable := _unexportable_ode_surrogates(model):
         names = ", ".join(unexportable)
         msg = f"surrogates are not representable as nn_blocks: {names}"
@@ -593,6 +632,8 @@ def ode_model_to_dict(
     }
     if nn_blocks:
         model_section["nn_blocks"] = nn_blocks
+    if terms := _terms_to_dict(model, customs):
+        model_section["terms"] = terms
     if customs:
         model_section["units"] = customs
 
@@ -761,6 +802,276 @@ def save(
 
 
 ###############################################################################
+# Terms and hidden-state blocks (spec_version 0.5, mxl-schemas ADR 0008 §6)
+###############################################################################
+
+_ODE = sympy.Symbol("ode")
+_NDE = sympy.Symbol("nde")
+_X = sympy.Symbol("x")
+
+
+def _mechanism_to_node_dict(mechanism: Mechanism, *, origin: str) -> dict[str, Any]:
+    """A mechanism as an expression over the placeholders `ode` and `nde`."""
+    if mechanism.name == "additive":
+        expr: sympy.Expr = _ODE + _NDE
+    elif mechanism.name == "relative":
+        expr = _ODE * (1 + _NDE)
+    else:
+        parsed = fn_to_sympy_expr(mechanism.fn, origin=origin, model_args=[_ODE, _NDE])
+        if parsed is None:
+            msg = f"could not convert the mechanism of {origin!r} to an expression"
+            raise SerializationError(msg)
+        expr = parsed
+    return sympy_to_mathml(expr).to_dict()
+
+
+def _mechanism_from_node_dict(node: dict[str, Any], *, origin: str) -> Mechanism:
+    expr = mathml_to_sympy(mml.node_from_dict(node))
+    if unknown := sorted(str(s) for s in expr.free_symbols - {_ODE, _NDE}):
+        msg = f"{origin!r}: a mechanism can only read `ode` and `nde`, not {unknown}"
+        raise SerializationError(msg)
+    if sympy.expand(expr - (_ODE + _NDE)) == 0:
+        return Mechanism.of("additive")
+    if sympy.expand(expr - _ODE * (1 + _NDE)) == 0:
+        return Mechanism.of("relative")
+    base, term = sympy.Symbol("base"), sympy.Symbol("term")
+    fn = compile_fn(
+        cast(sympy.Expr, expr.xreplace({_ODE: base, _NDE: term})),
+        ["base", "term"],
+        name="_mechanism",
+    )
+    return Mechanism(fn=fn)
+
+
+def _target_kind(
+    model: KineticModelBuilder | OdeModelBuilder, targets: list[str], *, origin: str
+) -> str:
+    reactions = set(getattr(model, "get_reaction_names", list)())
+    kinds = {"reaction" if t in reactions else "variable" for t in targets}
+    if len(kinds) > 1:
+        msg = f"{origin!r} mixes variable and reaction targets, which a file can't hold"
+        raise SerializationError(msg)
+    return kinds.pop()
+
+
+def _terms_to_dict(
+    model: KineticModelBuilder | OdeModelBuilder,
+    customs: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    return {
+        name: _with_unit(
+            {
+                "fn": _fn_to_node_dict(term.fn, origin=name, args=term.args),
+                "target": term.target,
+                "target_kind": _target_kind(model, [term.target], origin=name),
+                "mechanism": _mechanism_to_node_dict(term.mechanism, origin=name),
+                **_names_to_dict(term),
+            },
+            term.unit,
+            customs,
+            origin=name,
+        )
+        for name, term in model.get_raw_terms(as_copy=False).items()
+    }
+
+
+def _activation_to_dict(layer: NNLayer) -> dict[str, Any]:
+    name = cast(str, layer.activation)
+    expr = layer.expression if layer.expression is not None else ACTIVATIONS[name](_X)
+    return {"name": name, "expression": sympy_to_mathml(expr).to_dict()}
+
+
+def _block_scale_value(
+    model: KineticModelBuilder | OdeModelBuilder, name: str, block: HiddenStates
+) -> float | None:
+    if block.scale is None:
+        return None
+    if block.scale != f"{name}_scale":
+        msg = f"nn_block {name!r}: its scale has to be the parameter {name}_scale"
+        raise SerializationError(msg)
+    return float(model.get_parameter_values()[block.scale])
+
+
+def _blocks_to_dict(
+    model: KineticModelBuilder | OdeModelBuilder,
+) -> tuple[dict[str, Any], dict[str, dict[str, list[Any]]]]:
+    """`nn_blocks` entries and weights files of the hidden-state blocks."""
+    blocks: dict[str, Any] = {}
+    weights_files: dict[str, dict[str, list[Any]]] = {}
+    for name, block in model.get_raw_hidden_states(as_copy=False).items():
+        if block.h0_assignments:
+            msg = f"nn_block {name!r}: initial assignments of h(0) can't be saved"
+            raise SerializationError(msg)
+        weights_ref = f"{name}.weights.json"
+        spec: dict[str, Any] = {
+            "inputs": list(block.inputs),
+            "layers": [
+                {
+                    "type": "dense",
+                    "width": layer.width,
+                    **(
+                        {"activation": _activation_to_dict(layer)}
+                        if layer.activation is not None
+                        else {}
+                    ),
+                }
+                for layer in block.layers
+            ],
+            "seed": block.seed,
+            "target_kind": _target_kind(model, block.targets, origin=name),
+            "targets": list(block.targets),
+            "trained": True,
+            "weights_ref": weights_ref,
+            "mechanism": _mechanism_to_node_dict(block.mechanism, origin=name),
+        }
+        if (scale := _block_scale_value(model, name, block)) is not None:
+            spec["scale"] = scale
+        elif block.n_hidden == 0:
+            spec["scale"] = 1.0
+        if block.n_hidden > 0:
+            spec["hidden_states"] = block.n_hidden
+        if np.any(block.input_scales != 1):
+            spec["input_scales"] = [float(i) for i in block.input_scales]
+        if np.any(block.output_scales != 1):
+            spec["output_scales"] = [float(i) for i in block.output_scales]
+        weights: dict[str, list[Any]] = {}
+        for i, (w, b) in enumerate(zip(block.weights, block.biases, strict=True)):
+            weights[f"w{i + 1}"] = w.tolist()
+            weights[f"b{i + 1}"] = b.tolist()
+        if block.n_hidden > 0:
+            weights["W"] = block.readout.tolist()
+            weights["h0"] = block.h0.tolist()
+        blocks[name] = spec
+        weights_files[weights_ref] = weights
+    return blocks, weights_files
+
+
+def _array(values: Any, shape: tuple[int, ...], *, origin: str) -> Any:
+    out = np.asarray(values, dtype=float)
+    if out.shape != shape:
+        msg = f"{origin}: expected shape {shape}, got {out.shape}"
+        raise SerializationError(msg)
+    return out
+
+
+def _block_from_mxl_json(
+    model: KineticModelBuilder | OdeModelBuilder,
+    name: str,
+    block: Mapping[str, Any],
+    weights_by_ref: Mapping[str, Mapping[str, list[Any]]],
+) -> None:
+    """Add one `nn_blocks[name]` entry to `model` as a symbolic block.
+
+    A block's `scale` is the parameter `{name}_scale` (as in mxlweb-core),
+    added if the file doesn't hold it. An untrained block is initialised from
+    its seed with MxlPy's own Glorot initialisation, not mxlweb-core's.
+    """
+    layers: list[NNLayer] = []
+    for layer in block["layers"]:
+        if layer.get("type") != "dense":
+            msg = f"nn_block {name!r}: only dense layers are supported"
+            raise SerializationError(msg)
+        act = layer.get("activation")
+        if act is None:
+            layers.append(NNLayer(int(layer["width"])))
+            continue
+        expr = mathml_to_sympy(mml.node_from_dict(act["expression"]))
+        known = (
+            act["name"] in ACTIVATIONS
+            and sympy.simplify(expr - ACTIVATIONS[act["name"]](_X)) == 0
+        )
+        layers.append(
+            NNLayer(int(layer["width"]), act["name"], None if known else expr)
+        )
+    n_hidden = int(block.get("hidden_states", 0))
+    inputs = list(block["inputs"])
+    targets = list(block["targets"])
+    widths = [layer.width for layer in layers]
+    out = n_hidden if n_hidden > 0 else len(targets)
+    if widths[-1] != out:
+        msg = f"nn_block {name!r}: the last layer needs {out} units, not {widths[-1]}"
+        raise SerializationError(msg)
+    scales = np.asarray(block.get("input_scales", [1.0] * len(inputs)), dtype=float)
+    hs = init_hidden_states(
+        n_hidden=n_hidden,
+        layers=layers,
+        inputs=inputs,
+        input_scales=_array(
+            scales, (len(inputs),), origin=f"nn_block {name!r} input_scales"
+        ),
+        targets=targets,
+        mechanism=_mechanism_from_node_dict(block["mechanism"], origin=name),
+        init_scale=1e-2,
+        seed=int(block["seed"]),
+    )
+    if block["trained"]:
+        if (weights := weights_by_ref.get(block.get("weights_ref", ""))) is None:
+            msg = f"nn_block {name!r}: no weights file supplied for weights_ref {block.get('weights_ref')!r}"
+            raise SerializationError(msg)
+        expected = {f"{k}{i + 1}" for i in range(len(layers)) for k in "wb"}
+        if n_hidden > 0:
+            expected |= {"W", "h0"}
+        if set(weights) != expected:
+            msg = (
+                f"nn_block {name!r}: the weights file needs {sorted(expected)}, "
+                f"not {sorted(weights)}"
+            )
+            raise SerializationError(msg)
+        for i, w in enumerate(hs.weights):
+            hs.weights[i] = _array(
+                weights[f"w{i + 1}"], w.shape, origin=f"nn_block {name!r} w{i + 1}"
+            )
+            hs.biases[i] = _array(
+                weights[f"b{i + 1}"],
+                hs.biases[i].shape,
+                origin=f"nn_block {name!r} b{i + 1}",
+            )
+        if n_hidden > 0:
+            hs.readout = _array(
+                weights["W"], hs.readout.shape, origin=f"nn_block {name!r} W"
+            )
+            hs.h0 = _array(weights["h0"], hs.h0.shape, origin=f"nn_block {name!r} h0")
+    if "output_scales" in block:
+        hs.output_scales = _array(
+            block["output_scales"],
+            (len(targets),),
+            origin=f"nn_block {name!r} output_scales",
+        )
+    if "scale" in block:
+        scale = f"{name}_scale"
+        if scale not in model.get_parameter_names():
+            model.add_parameter(scale, float(block["scale"]))
+        hs.scale = scale
+    try:
+        model._add_block(name, hs)  # noqa: SLF001
+    except (KeyError, ValueError) as exc:
+        msg = f"nn_block {name!r}: {exc}"
+        raise SerializationError(msg) from exc
+
+
+def _add_terms_and_blocks(
+    model: KineticModelBuilder | OdeModelBuilder,
+    spec: Mapping[str, Any],
+    weights_by_ref: Mapping[str, Mapping[str, list[Any]]],
+    customs: Mapping[str, Any],
+    arrays: Collection[str],
+) -> None:
+    for name, entry in spec.get("terms", {}).items():
+        fn, args = _node_dict_to_fn(entry["fn"], arrays)
+        model.add_term(
+            name,
+            fn,
+            args=args,
+            target=entry["target"],
+            mechanism=_mechanism_from_node_dict(entry["mechanism"], origin=name),
+            unit=_entry_unit(entry, customs, origin=name),
+            **_names_from_dict(entry),
+        )
+    for name, block in spec.get("nn_blocks", {}).items():
+        _block_from_mxl_json(model, name, block, weights_by_ref)
+
+
+###############################################################################
 # Load
 ###############################################################################
 
@@ -860,125 +1171,9 @@ def _node_dict_to_stoich(node_dict: dict[str, Any]) -> float | Derived:
     return Derived(fn=fn, args=args)
 
 
-def _validate_dense_nn_block(name: str, block: Mapping[str, Any]) -> None:
-    """Structural checks shared by the kinetic and ode reconstruction paths.
-
-    No backend's `*_surrogate_from_mxl_json` checks a layer's `type` — only
-    `width`/`activation`/weights, since every layer any backend can
-    currently produce is `"dense"` — so a non-`"dense"` layer (schema-valid,
-    not yet representable in MxlPy) must be caught here instead, before
-    delegating. Per-layer `activation` correctness is left to the backend
-    (`mxlpy.surrogates._torch._revive_dense_sequential` and its keras/
-    equinox counterparts), which already validates it structurally against
-    `mxlpy.surrogates.abstract.ACTIVATION_BUILDERS`.
-    """
-    if any(layer.get("type") != "dense" for layer in block["layers"]):
-        msg = f"nn_block {name!r}: only dense layers are supported"
-        raise SerializationError(msg)
-    if not block["trained"]:
-        msg = (
-            f"nn_block {name!r}: untrained blocks (no weights_ref) aren't "
-            "supported yet — MxlPy has no from-seed Glorot initialization "
-            "path for a loaded block"
-        )
-        raise SerializationError(msg)
-
-
-def _surrogate_from_mxl_json(
-    name: str,
-    block: Mapping[str, Any],
-    weights_by_ref: Mapping[str, Mapping[str, list[Any]]],
-) -> SurrogateProtocol:
-    """Reconstruct a live surrogate from one `nn_blocks[name]` entry.
-
-    Only the exact shape :meth:`AbstractSurrogate.to_mxl_json` itself
-    produces round-trips back into a real surrogate — additive mechanism,
-    dense layers with a recognized per-layer activation. A block authored
-    elsewhere (mxlweb, a different mechanism, a future non-dense layer
-    type) isn't representable in MxlPy yet; raising here (rather than
-    silently dropping the block) matches every other "can't faithfully
-    represent this" boundary in this codebase — a model missing a block's
-    dynamical contribution is worse than a load that refuses.
-    """
-    if block["mechanism"] != mxl_json_mechanism_additive():
-        msg = (
-            f"nn_block {name!r}: only the additive mechanism can be "
-            "reconstructed into a live MxlPy surrogate"
-        )
-        raise SerializationError(msg)
-    _validate_dense_nn_block(name, block)
-    weights_ref = block["weights_ref"]
-    weights = weights_by_ref.get(weights_ref)
-    if weights is None:
-        msg = f"nn_block {name!r}: no weights file supplied for weights_ref {weights_ref!r}"
-        raise SerializationError(msg)
-
-    try:
-        # Deliberately lazy: torch is an optional extra, and this module
-        # must stay importable (and usable for every model with no
-        # nn_blocks, the common case) without it installed.
-        from mxlpy.surrogates._torch import surrogate_from_mxl_json
-    except ImportError as exc:
-        msg = (
-            f"nn_block {name!r}: reconstructing it requires torch "
-            "(install mxlpy with the torch extra)"
-        )
-        raise SerializationError(msg) from exc
-    try:
-        return surrogate_from_mxl_json(name, block, weights)
-    except SerializationError as exc:
-        msg = f"nn_block {name!r}: {exc}"
-        raise SerializationError(msg) from exc
-
-
 ###############################################################################
 # Load — OdeModelBuilder
 ###############################################################################
-
-
-def _ode_surrogate_from_mxl_json(
-    name: str,
-    block: Mapping[str, Any],
-    weights_by_ref: Mapping[str, Mapping[str, list[Any]]],
-) -> OdeSurrogateProtocol:
-    """Reconstruct a live ode surrogate from one `nn_blocks[name]` entry.
-
-    Ode-model counterpart of :func:`_surrogate_from_mxl_json` — same
-    additive-mechanism-only constraint (an ode surrogate is always summed
-    into its `targets`' dx/dt, exactly like a kinetic surrogate is always
-    summed via stoichiometry; see `mxlpy.surrogates.abstract_ode`'s module
-    docstring for why there's no selectable composition operator here).
-    """
-    if block["mechanism"] != mxl_json_mechanism_additive():
-        msg = (
-            f"nn_block {name!r}: only the additive mechanism can be "
-            "reconstructed into a live MxlPy surrogate"
-        )
-        raise SerializationError(msg)
-    _validate_dense_nn_block(name, block)
-    weights_ref = block["weights_ref"]
-    weights = weights_by_ref.get(weights_ref)
-    if weights is None:
-        msg = f"nn_block {name!r}: no weights file supplied for weights_ref {weights_ref!r}"
-        raise SerializationError(msg)
-
-    try:
-        # Deliberately lazy: torch is an optional extra, see
-        # `_surrogate_from_mxl_json`'s identical import.
-        from mxlpy.surrogates._torch import (
-            ode_surrogate_from_mxl_json,
-        )
-    except ImportError as exc:
-        msg = (
-            f"nn_block {name!r}: reconstructing it requires torch "
-            "(install mxlpy with the torch extra)"
-        )
-        raise SerializationError(msg) from exc
-    try:
-        return ode_surrogate_from_mxl_json(name, block, weights)
-    except SerializationError as exc:
-        msg = f"nn_block {name!r}: {exc}"
-        raise SerializationError(msg) from exc
 
 
 def _add_data(
@@ -1023,9 +1218,9 @@ def ode_model_from_dict(
     Raises
     ------
     SerializationError
-        If the document has a `nn_blocks` entry that isn't representable
-        as a live MxlPy surrogate (see `_ode_surrogate_from_mxl_json`),
-        or is missing a weights file its `weights_ref` names.
+        If a `nn_blocks` entry can't be read (e.g. non-dense layers, weights
+        not matching its layers) or a weights file its `weights_ref` names
+        is missing.
 
     """
     spec = data["model"]
@@ -1071,9 +1266,7 @@ def ode_model_from_dict(
             unit=_entry_unit(rdt, customs, origin=name),
             **_names_from_dict(rdt),
         )
-    for name, block in spec.get("nn_blocks", {}).items():
-        surrogate = _ode_surrogate_from_mxl_json(name, block, weights_by_ref or {})
-        model.add_surrogate(name, surrogate)
+    _add_terms_and_blocks(model, spec, weights_by_ref or {}, customs, arrays)
 
     return model
 
@@ -1156,9 +1349,9 @@ def model_from_dict(
     Raises
     ------
     SerializationError
-        If the document has a `nn_blocks` entry that isn't representable
-        as a live MxlPy surrogate (see `_surrogate_from_mxl_json`), or is
-        missing a weights file its `weights_ref` names.
+        If a `nn_blocks` entry can't be read (e.g. non-dense layers, weights
+        not matching its layers) or a weights file its `weights_ref` names
+        is missing.
 
     """
     spec = data["model"]
@@ -1215,9 +1408,7 @@ def model_from_dict(
             unit=_entry_unit(rdt, customs, origin=name),
             **_names_from_dict(rdt),
         )
-    for name, block in spec.get("nn_blocks", {}).items():
-        surrogate = _surrogate_from_mxl_json(name, block, weights_by_ref or {})
-        model.add_surrogate(name, surrogate)
+    _add_terms_and_blocks(model, spec, weights_by_ref or {}, customs, arrays)
 
     return model
 
