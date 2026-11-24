@@ -12,7 +12,11 @@ cell. All other cells always run, so the examples are still checked against the
 current library.
 
 A cached cell is recomputed when its source, any preceding code cell of its
-notebook or `CACHE_VERSION` changes. A tagged cell should only assign names
+notebook, the field layout of any mxlpy dataclass or `CACHE_VERSION` changes.
+The layout is part of the key because restored names are unpickled library
+objects: unpickling skips `__init__`, so an object pickled before a field was
+added lacks that attribute (0.75.0's docs failed on a `KineticModelBuilder`
+without `_hidden_states`). A tagged cell should only assign names
 (no in-place changes to existing objects), since only assigned names are
 restored. Cells whose names can't be pickled are executed and not cached.
 
@@ -30,8 +34,12 @@ from __future__ import annotations
 
 import argparse
 import ast
+import dataclasses
+import functools
 import hashlib
+import importlib
 import json
+import pkgutil
 import sys
 import time
 from pathlib import Path
@@ -40,6 +48,8 @@ import nbformat
 from nbclient import NotebookClient
 from nbclient.exceptions import CellExecutionError
 from nbclient.util import run_sync
+
+import mxlpy
 
 # Bump to invalidate every cached cell, e.g. after a change in the library that
 # alters the results shown in the docs
@@ -84,8 +94,28 @@ def _assigned_names(source: str) -> list[str]:
     return list(dict.fromkeys(n for n in names if n != "_"))
 
 
+@functools.cache
+def _layout_fingerprint() -> str:
+    """Hash of the field names of every dataclass defined in mxlpy."""
+    layouts: set[str] = set()
+    for info in pkgutil.walk_packages(mxlpy.__path__, "mxlpy."):
+        try:
+            module = importlib.import_module(info.name)
+        except ImportError:  # optional dependency missing
+            continue
+        for obj in vars(module).values():
+            if (
+                isinstance(obj, type)
+                and dataclasses.is_dataclass(obj)
+                and obj.__module__.startswith("mxlpy")
+            ):
+                fields = ",".join(f.name for f in dataclasses.fields(obj))
+                layouts.add(f"{obj.__module__}.{obj.__qualname__}({fields})")
+    return hashlib.sha256("\n".join(sorted(layouts)).encode()).hexdigest()
+
+
 def _key(previous: list[str], source: str) -> str:
-    h = hashlib.sha256(f"v{CACHE_VERSION}".encode())
+    h = hashlib.sha256(f"v{CACHE_VERSION}:{_layout_fingerprint()}".encode())
     for s in [*previous, source]:
         h.update(hashlib.sha256(s.encode()).digest())
     return h.hexdigest()[:32]
