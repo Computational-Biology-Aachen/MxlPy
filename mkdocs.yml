@@ -33,6 +33,7 @@ nav:
       - Stability analysis: stability.ipynb
       - Identifiability: parameter_identifiability.ipynb
       - Model selection: model-selection.ipynb
+      - Condition-specific parameters: condition-specific-parameters.ipynb
       - Symbolic: symbolic.ipynb
       - Integrator configuration: integrators.ipynb
       - Compartmentalisation: compartmentalisation.ipynb

@@ -24,12 +24,9 @@ from mxlpy.parallel import parallelise
 from mxlpy.runners import default_runner, precompile
 from mxlpy.select._criteria import (
     Criterion,
+    FitCriteria,
     InformationCriterion,
     LikelihoodRatio,
-    aic,
-    aicc,
-    bic,
-    information_criterion,
     lrt,
     model_weights,
 )
@@ -72,7 +69,7 @@ _CONVERGED = 0.5
 
 
 @dataclass(kw_only=True)
-class CandidateFit[M: _Model]:
+class CandidateFit[M: _Model](FitCriteria):
     """Best multistart fit of one candidate model.
 
     Attributes
@@ -120,42 +117,6 @@ class CandidateFit[M: _Model]:
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
-
-    @property
-    def n_parameters(self) -> int:
-        """Number of estimated parameters `k`."""
-        return len(self.best_pars)
-
-    @property
-    def log_likelihood(self) -> float:
-        """Maximised log-likelihood, `-loss`."""
-        return -self.loss
-
-    @property
-    def objective(self) -> float:
-        """The minimised objective, `loss + penalty`."""
-        return self.loss + self.penalty
-
-    @property
-    def aic(self) -> float:
-        """Akaike information criterion."""
-        return aic(self.log_likelihood, self.n_parameters)
-
-    @property
-    def aicc(self) -> float:
-        """Small-sample corrected AIC."""
-        return aicc(self.log_likelihood, self.n_parameters, self.n_data)
-
-    @property
-    def bic(self) -> float:
-        """Bayesian information criterion."""
-        return bic(self.log_likelihood, self.n_parameters, self.n_data)
-
-    def criterion(self, name: InformationCriterion) -> float:
-        """Information criterion by name."""
-        return information_criterion(
-            name, self.log_likelihood, self.n_parameters, self.n_data
-        )
 
     @property
     def n_failed(self) -> int:

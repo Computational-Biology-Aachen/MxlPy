@@ -57,7 +57,7 @@ if TYPE_CHECKING:
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy.identify import IdentifiabilityTest, ProfileLikelihood
     from mxlpy.linear_label_map import LinearLabelMapper
-    from mxlpy.select import InformationCriterion, Selection
+    from mxlpy.select import ConditionSpecific, InformationCriterion, Selection
     from mxlpy.types import Array, ArrayLike
 
 
@@ -73,6 +73,7 @@ __all__ = [
     "bars",
     "bars_autogrouped",
     "bars_grouped",
+    "condition_specific_path",
     "context",
     "grid_labels",
     "grid_layout",
@@ -1872,6 +1873,56 @@ def model_selection(
     ax.set_xlim(left=0)
     ax.invert_yaxis()
     ax.set(xlabel=f"Δ {criterion.upper()} (labels: weights)")
+    if new_figure:
+        fig.tight_layout()
+    return fig, ax
+
+
+def condition_specific_path(
+    result: ConditionSpecific,
+    *,
+    ax: Axes | None = None,
+    grid: bool = True,
+) -> FigAx:
+    """Plot the regularisation path of a condition-specific selection.
+
+    One line per candidate and non-reference condition shows its log
+    fold-change over the penalty strength, from strong (left) to weak
+    penalty (right). The penalty strengths whose path solution has the
+    selected structure are shaded.
+
+    Parameters
+    ----------
+    result
+        Result of `mxlpy.select.condition_specific`
+    ax
+        Axes to draw on, a new figure by default
+    grid
+        Whether to add a grid
+
+    Returns
+    -------
+    FigAx
+        Figure and Axes objects.
+
+    """
+    new_figure = ax is None
+    fig, ax = _default_fig_ax(ax=ax, grid=grid, figsize=(7, 4))
+    path = result.path
+    lambdas = path.index.to_numpy(dtype=float)
+    for column, values in path.items():
+        parameter, condition = cast("tuple[str, str]", column)
+        ax.plot(
+            lambdas, values.to_numpy(dtype=float), label=f"{parameter} [{condition}]"
+        )
+    if selected := result.best.lambdas:
+        ax.axvspan(min(selected), max(selected), color="0.85", zorder=0)
+    ax.axhline(0, color="0.4", linewidth=1)
+    ax.set_xscale("log")
+    ax.invert_xaxis()
+    ax.set(xlabel="penalty strength λ", ylabel="log fold-change")
+    ax.set_title(f"selected: {result.best_id}", fontsize="medium")
+    ax.legend(fontsize="small")
     if new_figure:
         fig.tight_layout()
     return fig, ax

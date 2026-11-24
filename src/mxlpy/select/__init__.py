@@ -13,6 +13,12 @@ multistart fit and their number of estimated parameters.
 - `Selection`: ranked table, selected model, search path and
   likelihood-ratio tests between candidates
 
+Condition-specific parameters
+
+- `condition_specific`: which parameters have to differ between conditions
+  (mutants, treatments, ...), from an L1-regularised joint fit of all
+  conditions and unpenalised refits of the structures on its path
+
 The criteria are also available on their own, e.g. to compare other fits:
 `aic`, `aicc`, `bic`, `model_weights` and the likelihood-ratio test `lrt`.
 
@@ -31,6 +37,13 @@ Examples
 
 from __future__ import annotations
 
+from mxlpy.select._conditions import (
+    ConditionFit,
+    ConditionSpecific,
+    Regularisation,
+    Structure,
+    condition_specific,
+)
 from mxlpy.select._criteria import (
     Criterion,
     InformationCriterion,
@@ -48,18 +61,23 @@ from mxlpy.select._space import BASE, ModelSpace, Move, Switch, free_parameter
 __all__ = [
     "BASE",
     "CandidateFit",
+    "ConditionFit",
+    "ConditionSpecific",
     "Criterion",
     "InformationCriterion",
     "LikelihoodRatio",
     "Method",
     "ModelSpace",
     "Move",
+    "Regularisation",
     "Selection",
+    "Structure",
     "Switch",
     "aic",
     "aicc",
     "bic",
     "compare",
+    "condition_specific",
     "free_parameter",
     "information_criterion",
     "lrt",
