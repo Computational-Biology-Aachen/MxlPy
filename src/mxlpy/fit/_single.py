@@ -533,6 +533,17 @@ def _fit_data(
     return time_course(model, data=data, **kwargs)  # type: ignore[arg-type]
 
 
+def _residual_for(
+    data: pd.Series | pd.DataFrame, protocol: pd.DataFrame | None
+) -> FitResidual:
+    """Residual of a steady state (Series), time course (DataFrame) or protocol fit."""
+    if protocol is not None:
+        return protocol_time_course_residual
+    if isinstance(data, pd.Series):
+        return steady_state_residual
+    return time_course_residual
+
+
 def _settings_for(
     model: _Model,
     data: pd.Series | pd.DataFrame,
@@ -546,12 +557,7 @@ def _settings_for(
     names: list[str],
 ) -> tuple[FitResidual, _Settings[Any]]:
     """Residual function and settings for any kind of data, fitting `names`."""
-    if protocol is not None:
-        fn: FitResidual = protocol_time_course_residual
-    elif isinstance(data, pd.Series):
-        fn = steady_state_residual
-    else:
-        fn = time_course_residual
+    fn = _residual_for(data, protocol)
     p_names, v_names = _split_p0(model, dict.fromkeys(names, 0.0))
     if unknown := [k for k in names if k not in p_names + v_names]:
         msg = f"Unknown parameters / variables {unknown}"

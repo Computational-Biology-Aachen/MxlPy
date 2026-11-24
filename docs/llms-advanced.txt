@@ -159,6 +159,45 @@ select.aic(ll, k), select.aicc(ll, k, n), select.bic(ll, k, n), select.model_wei
 
 Search: each step fits all neighbours (one switch on / off / exchanged) of the current model in parallel, all starts at once, and moves to the best if it lowers the criterion by more than `min_improvement` (LRT: forward if significantly better, backward if not significantly worse). Each candidate is warm-started from the optimum of the model it neighbours; with `free_parameter` the new parameter starts at its fixed value, so the warm start reproduces the parent's fit. Random starts are seeded per candidate.
 
+## Condition-specific parameters (`select.condition_specific`)
+
+Which parameters must differ between conditions (mutants, treatments, cell lines) when one model is fitted to all of them, without trying all 2^n shared/local combinations (L1 regularisation, Steiert et al. 2016). Each candidate `k` gets a log fold-change per non-reference condition, `k_c = k * exp(fc_c)`; a joint fit of all conditions with an L1 penalty `λ Σ|fc|` is solved along a λ path (strong -> weak, warm-started); every distinct structure on the path is refitted unpenalised (zero fold-changes fixed, in parallel) and the most parsimonious one not rejected by an LRT against the full model (all fc free) is selected (or the best AIC/AICc/BIC).
+
+```python
+from mxlpy import fit, plot, select
+
+res = select.condition_specific(
+    {"wt": fit.FitSettings(model, df_wt),          # per condition: model (may differ, e.g. knock-out), data, y0, runner, protocol
+     "mut": fit.FitSettings(model_ko, df_mut)},    # Series: steady state, DataFrame: time course, protocol set: protocol time course
+    p0={"k1": 1.0, "k2": LogUniform(1e-2, 1e2)},   # estimated values shared by all conditions: start value, or distribution for random starts (nominal = model value)
+    candidates=["k1", "k2"],                       # may differ; positive p0; every condition's model needs them
+    loss_fn=fit.GaussianNll(sigma=0.05),           # likelihood loss required
+    reference="wt",                                # default: first condition
+    regularisation="l1",   # "adaptive" (weights 1/|fc_full|^gamma, gamma=1) | "elastic_net" (l1_ratio=0.5) | "group" (one norm per parameter: differs in all conditions or none) | "fused" (|fc_a - fc_b| over all pairs, fc_ref = 0: conditions can share a non-reference value)
+    lambdas=20,            # number of strengths from 1.2 * lambda_max (all fc zero) to lambda_max/1000, or explicit strengths
+    n_starts=0,            # random starts of the shared fit (parallel), which warm-starts everything else; seed=0
+    criterion="lrt",       # "aic" | "aicc" | "bic"; significance=0.05
+    # smoothing=1e-3 (fc within 2*smoothing of zero / of each other count as zero / equal), max_fold_change=1e3 (|fc| <= ln),
+    # minimizer=None (LeastSquaresMinimizer), y0, runner, bounds/prior/penalty/transform (shared values only), postprocess_fn,
+    # parallel=True, max_workers, timeout (random starts, refits); a per-condition FitSettings.loss_fn must be a likelihood too
+)
+res.path          # log fold-changes, index lambda (descending), columns (parameter, condition); NaN for failed path fits
+res.path_fits     # per lambda: loss, penalty, structure id
+res.table         # per structure: k, n, log_likelihood, aic, aicc, bic, delta + weight (IC criteria only), p_value (LRT vs full), lambda (strongest with it); sorted by criterion (lrt: k, LL)
+res.fits          # {structure id: ConditionFit}, res["shared"]
+res.selected      # {"mut": ["k2"]}: per non-reference condition, the differing candidates
+res.best          # ConditionFit: id ("shared" | "k2[mut]+k3[mut,stress]", fused groups), structure {k: ((ref group), (group), ...)},
+                  # best_pars (shared values + fc per group named "k[cond,...]"), parameters (conditions x parameters), loss, lambdas, differs,
+                  # objectives (shared: one per start), n_failed, aic/aicc/bic/criterion() (same as select.CandidateFit)
+res.models()      # {condition: model copy with the selected values}; res.models("shared")
+res.lrt("shared") # LikelihoodRatio vs the full model; res.lrt(null, alt); a failed full fit is retried from the weakest path solution
+fig, ax = plot.condition_specific_path(res)   # fc vs lambda, selected range shaded
+```
+
+- The L1 penalty is smoothed (`fit.L1Penalty`, `sqrt(fc² + ε²) - ε`), so every minimizer works; no proximal solver. lambda_max comes from the loss gradient w.r.t. the fold-changes at the shared fit (exact for l1/adaptive/elastic net/group, an upper bound for fused).
+- Cost: shared fit + full fit + one joint fit per lambda (serial) + refits (parallel). Only structures on the path are refitted, so a coarse grid can miss one; elastic net spreads fold-changes and may not reach the sparsest structure.
+- Penalties on their own: `fit.L1Penalty(names, weight, *, scales=None, matrix=None (rows = linear combinations, e.g. differences), l1_ratio=1.0, smoothing=1e-3)` and `fit.GroupL1Penalty(groups={g: [names]}, weight, *, scales=None (default sqrt(group size)), smoothing)`, both with `residuals`/`jacobian` (least squares, Gauss-Newton), usable in any fit's `penalty=`.
+
 ## Stability visualisation
 
 Phase-plane vector fields and steady-state classification. `plot.trajectories_2d(model, x1=(name, values), x2=(name, values))` draws a quiver field over two variables and returns `(fig, ax)`, so you can overlay example trajectories:

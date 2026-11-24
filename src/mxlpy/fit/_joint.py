@@ -101,12 +101,24 @@ class _JointGradient:
         return self.loss(updates)
 
     def _sub(self, i: int, updates: dict[str, float]) -> dict[str, float]:
+        """Updates of part `i`, in the order of its parameters."""
         return {k: updates[k] for k in self.names[i]}
+
+    def _pull(self, i: int, updates: dict[str, float], deriv: Array) -> Array:
+        """Derivative w.r.t. part `i`'s parameters (last axis) to the updates'."""
+        out = np.zeros((*deriv.shape[:-1], len(updates)))
+        out[..., self.columns[i]] = deriv
+        return out
+
+    def _pull_hessian(self, i: int, updates: dict[str, float], hess: Array) -> Array:
+        out = np.zeros((len(updates), len(updates)))
+        out[np.ix_(self.columns[i], self.columns[i])] = hess
+        return out
 
     def gradient(self, updates: dict[str, float]) -> Array:
         out = np.zeros(len(updates))
         for i, part in enumerate(self.parts):
-            out[self.columns[i]] += part.gradient(self._sub(i, updates))
+            out += self._pull(i, updates, part.gradient(self._sub(i, updates)))
         return out
 
     def _factors(self) -> list[float]:
@@ -132,20 +144,22 @@ class _JointGradient:
         )
 
     def jacobian(self, updates: dict[str, float]) -> Array:
-        blocks = []
-        for i, (part, c) in enumerate(zip(self.parts, self._factors(), strict=True)):
-            jac = part.jacobian(self._sub(i, updates))
-            block = np.zeros((jac.shape[0], len(updates)))
-            block[:, self.columns[i]] = np.sqrt(c) * jac
-            blocks.append(block)
-        return np.vstack(blocks)
+        return np.vstack(
+            [
+                np.sqrt(c)
+                * self._pull(i, updates, part.jacobian(self._sub(i, updates)))
+                for i, (part, c) in enumerate(
+                    zip(self.parts, self._factors(), strict=True)
+                )
+            ]
+        )
 
     def hessian(self, updates: dict[str, float]) -> Array | None:
         out = np.zeros((len(updates), len(updates)))
         for i, part in enumerate(self.parts):
             if (h := part.hessian(self._sub(i, updates))) is None:
                 return None
-            out[np.ix_(self.columns[i], self.columns[i])] += h
+            out += self._pull_hessian(i, updates, h)
         return out
 
 

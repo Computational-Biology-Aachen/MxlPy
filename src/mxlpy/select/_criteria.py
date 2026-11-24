@@ -18,6 +18,7 @@ from scipy import stats
 
 __all__ = [
     "Criterion",
+    "FitCriteria",
     "InformationCriterion",
     "LikelihoodRatio",
     "aic",
@@ -188,3 +189,53 @@ def lrt(
         df=df,
         p_value=float(stats.chi2.sf(statistic, df)),
     )
+
+
+class FitCriteria:
+    """Criteria of a maximum-likelihood fit, shared by the results of `mxlpy.select`.
+
+    Needs the attributes `best_pars` (estimated values), `loss` (negative
+    log-likelihood, up to a constant), `penalty` (priors and penalties, not
+    part of the criteria) and `n_data` (number of data points).
+    """
+
+    best_pars: dict[str, float]
+    loss: float
+    penalty: float
+    n_data: int
+
+    @property
+    def n_parameters(self) -> int:
+        """Number of estimated parameters `k`."""
+        return len(self.best_pars)
+
+    @property
+    def log_likelihood(self) -> float:
+        """Maximised log-likelihood, `-loss`."""
+        return -self.loss
+
+    @property
+    def objective(self) -> float:
+        """The minimised objective, `loss + penalty`."""
+        return self.loss + self.penalty
+
+    @property
+    def aic(self) -> float:
+        """Akaike information criterion."""
+        return aic(self.log_likelihood, self.n_parameters)
+
+    @property
+    def aicc(self) -> float:
+        """Small-sample corrected AIC."""
+        return aicc(self.log_likelihood, self.n_parameters, self.n_data)
+
+    @property
+    def bic(self) -> float:
+        """Bayesian information criterion."""
+        return bic(self.log_likelihood, self.n_parameters, self.n_data)
+
+    def criterion(self, name: InformationCriterion) -> float:
+        """Information criterion by name."""
+        return information_criterion(
+            name, self.log_likelihood, self.n_parameters, self.n_data
+        )
