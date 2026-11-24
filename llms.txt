@@ -23,10 +23,10 @@ Each file is a self-contained reference for one topic area:
 - [scans & MCA](llms-scans-mca.txt) — `scan` (steady-state / time-course / protocol parameter sweeps) and `mca` (elasticities, response coefficients, stability, rate characteristics)
 - [sensitivity](llms-sensitivity.txt) — global sensitivity (Morris screening, Sobol variance decomposition) and local forward sensitivities (`mxlpy.forward_sensitivities`) and adjoint gradients (`mxlpy.adjoint_sensitivities`)
 - [fitting](llms-fitting.txt) — `fit` (steady-state / time-course / protocol; group / ensemble / joint / mixed), minimizers, loss functions, gradient-based fitting (runner derivatives, `LeastSquaresMinimizer`, Gauss-Newton Hessians, log transforms), Bayesian posterior sampling (`fit.mcmc_*`), fuzzy fitting, Monte Carlo (`mc`), distributions, parameterisation from BRENDA
-- [mechanistic learning](llms-mxl.txt) — neural-network surrogates, neural posterior estimation (`npe`), universal differential equations (UDEs), reaction carousels
+- [mechanistic learning](llms-mxl.txt) — neural-network surrogates, neural posterior estimation (`npe`), universal differential equations (UDEs), terms and hidden-state blocks (augmented ODEs without JAX, `fit.augmented_time_course`), reaction carousels
 - [visualization](llms-visualization.txt) — the `plot` module and model-comparison `report`s
 - [import/export](llms-io.txt) — SBML read/write (+ MIRIAM annotations), native `.mxl.json` format, code/LaTeX generation (`meta`)
-- [advanced](llms-advanced.txt) — symbolic analysis, structural & numerical identifiability (profile likelihood, Fisher information, fast pulling test, related parameter combinations), model selection (AIC/AICc/BIC, LRT, structure search), stability, units, parallel execution & caching
+- [advanced](llms-advanced.txt) — symbolic analysis, structural & numerical identifiability (profile likelihood, Fisher information, fast pulling test, related parameter combinations), prediction uncertainty (prediction/validation profiles, prediction bands, 2D profiles), model selection (AIC/AICc/BIC, LRT, structure search), condition-specific parameters (L1 regularisation path), stability, units, parallel execution & caching
 
 ## Installation
 
