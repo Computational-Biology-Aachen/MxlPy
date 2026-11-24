@@ -364,6 +364,7 @@ def _structure(
                 tuple(v.inputs),
                 tuple(v.input_scales),
                 tuple(v.targets),
+                tuple(v.output_scales),
                 v.scale,
                 fn_key(v.mechanism.fn),
             )

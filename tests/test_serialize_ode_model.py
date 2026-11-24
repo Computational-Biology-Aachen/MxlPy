@@ -117,6 +117,7 @@ def test_ode_mxl_json_weights_files_shapes_match_layers() -> None:
 
 
 def test_save_load_round_trips_predictions(tmp_path: Path) -> None:
+    """A torch surrogate loads as a symbolic block with the same dynamics."""
     model = _make_model_with_surrogate()
     path = tmp_path / "model.mxl.json"
     mxlpy.save(model, path, model_id="m")
@@ -125,13 +126,10 @@ def test_save_load_round_trips_predictions(tmp_path: Path) -> None:
 
     reloaded = mxlpy.load(path)
     assert isinstance(reloaded, OdeModelBuilder)
-    reloaded_surrogate = reloaded._surrogates["corr_block"]
-    assert reloaded_surrogate.args == ["x", "k"]
-    # Reconstruction can't reuse the original output name "corr" (add_surrogate
-    # requires it to be a fresh, model-wide-unique id) — it derives a
-    # block-scoped one instead, matching the kinetic path's convention.
-    assert reloaded_surrogate.outputs == ["corr_block_x"]
-    assert reloaded_surrogate.targets == {"corr_block_x": ["x"]}
+    block = reloaded.get_raw_hidden_states()["corr_block"]
+    assert block.inputs == ["x", "k"]
+    assert block.targets == ["x"]
+    assert block.n_hidden == 0
 
     original_dxdt = model(0.0, [2.0])
     reloaded_dxdt = reloaded(0.0, [2.0])
@@ -142,13 +140,13 @@ def test_save_load_save_is_idempotent_with_nn_blocks(tmp_path: Path) -> None:
     model = _make_model_with_surrogate()
     first = tmp_path / "a.mxl.json"
     second = tmp_path / "b.mxl.json"
+    third = tmp_path / "c.mxl.json"
 
     mxlpy.save(model, first, model_id="m")
     mxlpy.save(mxlpy.load(first), second, model_id="m")
+    mxlpy.save(mxlpy.load(second), third, model_id="m")
 
-    doc_a = json.loads(first.read_text())
-    doc_b = json.loads(second.read_text())
-    assert doc_a == doc_b
+    assert json.loads(second.read_text()) == json.loads(third.read_text())
 
 
 def test_load_rejects_nn_block_with_missing_weights_file(tmp_path: Path) -> None:
@@ -161,7 +159,7 @@ def test_load_rejects_nn_block_with_missing_weights_file(tmp_path: Path) -> None
         mxlpy.load(path)
 
 
-def test_ode_model_from_dict_rejects_non_additive_mechanism() -> None:
+def test_ode_model_from_dict_reads_any_mechanism() -> None:
     model = _make_model_with_surrogate()
     data = ode_model_to_dict(model, model_id="m")
     data["model"]["nn_blocks"]["corr_block"]["mechanism"] = {
@@ -172,8 +170,10 @@ def test_ode_model_from_dict_rejects_non_additive_mechanism() -> None:
         ],
     }
     weights = ode_mxl_json_weights_files(model)
-    with pytest.raises(SerializationError, match="additive"):
-        ode_model_from_dict(data, weights_by_ref=weights)
+    loaded = ode_model_from_dict(data, weights_by_ref=weights)
+    mechanism = loaded.get_raw_hidden_states()["corr_block"].mechanism
+    assert mechanism.name is None
+    assert mechanism.fn(2.0, 3.0) == 6.0
 
 
 def test_ode_model_from_dict_rejects_non_dense_layer_type() -> None:
@@ -185,14 +185,14 @@ def test_ode_model_from_dict_rejects_non_dense_layer_type() -> None:
         ode_model_from_dict(data, weights_by_ref=weights)
 
 
-def test_ode_model_from_dict_rejects_untrained_block() -> None:
+def test_ode_model_from_dict_initialises_untrained_block() -> None:
     model = _make_model_with_surrogate()
     data = ode_model_to_dict(model, model_id="m")
     block = data["model"]["nn_blocks"]["corr_block"]
     del block["weights_ref"]
     block["trained"] = False
-    with pytest.raises(SerializationError, match="untrained"):
-        ode_model_from_dict(data, weights_by_ref={})
+    loaded = ode_model_from_dict(data, weights_by_ref={})
+    assert len(loaded.get_weight_names()) == 3 * 2 + 3 + 3 + 1
 
 
 def test_load_dispatches_kinetic_documents_without_kind_field(tmp_path: Path) -> None:

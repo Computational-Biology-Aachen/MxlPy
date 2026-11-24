@@ -134,6 +134,9 @@ class HiddenStates:
         Model names `nn_h` reads besides the hidden states
     input_scales
         Constants the inputs are divided by
+    output_scales
+        Constants each target's term is multiplied by, e.g. a characteristic
+        rate, so the weights can stay dimensionless
     targets
         Variables or reactions corrected by the block, one readout row each
     mechanism
@@ -161,6 +164,7 @@ class HiddenStates:
     inputs: list[str]
     input_scales: Array
     targets: list[str]
+    output_scales: Array
     mechanism: Mechanism
     weights: list[Array]
     biases: list[Array]
@@ -288,6 +292,7 @@ class HiddenStates:
             )
         scale = sympy.Integer(1) if self.scale is None else sympy.Symbol(self.scale)
         for k, target in enumerate(self.targets):
+            out_scale = float(self.output_scales[k])
             if states:
                 readout = sympy.Add(
                     *(
@@ -297,6 +302,8 @@ class HiddenStates:
                 )
             else:
                 readout = outputs[k]
+            if out_scale != 1:
+                readout = sympy.Float(out_scale) * readout
             fn, args = expr_to_fn(
                 cast(sympy.Expr, scale * readout), origin=f"{name}_{target}"
             )
@@ -343,6 +350,7 @@ def init_hidden_states(
         inputs=inputs,
         input_scales=input_scales,
         targets=targets,
+        output_scales=np.ones(len(targets)),
         mechanism=mechanism,
         weights=weights,
         biases=biases,
@@ -499,6 +507,16 @@ class HiddenStatesMixin:
 
     def _add_block(self, name: str, block: HiddenStates) -> Self:
         """Add a block as is, e.g. a copy or one read from a file."""
+        if len(set(block.targets)) != len(block.targets):
+            msg = f"Hidden states {name!r}: duplicate targets {block.targets}"
+            raise ValueError(msg)
+        for target in block.targets:
+            self._check_term_target(name, target)
+        if unknown := [i for i in block.inputs if i not in self._ids and i != "time"]:
+            msg = f"Hidden states {name!r}: unknown inputs {unknown}"
+            raise KeyError(msg)
+        _check_scales(name, dict(zip(block.inputs, block.input_scales, strict=True)))
+        _check_scales(name, dict(zip(block.targets, block.output_scales, strict=True)))
         self._insert_block_ids(name, block)
         self._invalidate()
         self._hidden_states[name] = block
@@ -567,9 +585,10 @@ class HiddenStatesMixin:
         name: str,
         *,
         input_scales: Mapping[str, float] | None = None,
+        output_scales: Mapping[str, float] | None = None,
         h0: Iterable[float] | None = None,
     ) -> Self:
-        """Update the input scales or the initial values of a block.
+        """Update the input or output scales or the initial values of a block.
 
         Weights are updated by name through `update_addressable`.
 
@@ -579,6 +598,8 @@ class HiddenStatesMixin:
             Name of the block
         input_scales
             New scales by input name, the others are kept
+        output_scales
+            New scales by target name, the others are kept
         h0
             New initial values of the hidden states
 
@@ -597,6 +618,15 @@ class HiddenStatesMixin:
             for k, v in input_scales.items():
                 block.input_scales[block.inputs.index(k)] = float(v)
             block._lowered = None  # noqa: SLF001, scales are constants of the equations
+            self._invalidate()
+        if output_scales is not None:
+            if unknown := sorted(set(output_scales) - set(block.targets)):
+                msg = f"Hidden states {name!r}: scales for unknown targets {unknown}"
+                raise KeyError(msg)
+            _check_scales(name, output_scales)
+            for k, v in output_scales.items():
+                block.output_scales[block.targets.index(k)] = float(v)
+            block._lowered = None  # noqa: SLF001
             self._invalidate()
         if h0 is not None:
             values = np.asarray(list(h0), dtype=float)

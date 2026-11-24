@@ -20,7 +20,6 @@ from mxlpy import (
     fns,
     forward_sensitivities,
     sbml,
-    serialize,
 )
 from mxlpy.composition import compose
 from mxlpy.integrators import Native, Scipy
@@ -29,7 +28,7 @@ from mxlpy.meta import (
     generate_model_code_py,
     generate_mxlpy_code,
 )
-from mxlpy.types import Derived, Mechanism, SerializationError
+from mxlpy.types import Derived, Mechanism
 
 T = np.linspace(0, 4, 9)
 
@@ -380,8 +379,6 @@ def test_unsupported_exports_raise(tmp_path: object) -> None:
         generate_model_code_mxlweb(model)
     with pytest.raises(NotImplementedError, match="terms"):
         sbml.write(model, Path(str(tmp_path)) / "m.xml")
-    with pytest.raises(SerializationError, match="terms"):
-        serialize.save(model, Path(str(tmp_path)) / "m.mxl.json")
 
 
 ###############################################################################
