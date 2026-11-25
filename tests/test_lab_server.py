@@ -19,6 +19,9 @@ from mxlpy.cli import main
 from mxlpy.lab.server import LabServer, create_app
 
 TOKEN = "secret-token"  # noqa: S105
+# The module fixture runs a whole lab (~30 s alone, over 60 s on a loaded
+# CI runner), and its setup counts towards the first test's timeout
+pytestmark = pytest.mark.timeout(300)
 
 
 def _wait_for(condition, timeout: float = 60.0) -> None:  # noqa: ANN001
