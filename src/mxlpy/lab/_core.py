@@ -35,9 +35,12 @@ __all__ = [
     "LabConfig",
     "LabState",
     "Observable",
+    "Option",
     "StepName",
     "StepResult",
+    "TITLES",
     "parse_duration",
+    "step_status",
 ]
 
 type Model = KineticModelBuilder | OdeModelBuilder
@@ -53,6 +56,14 @@ STEPS: tuple[StepName, ...] = (
     "identifiability",
     "uncertainty",
 )
+TITLES: dict[str, str] = {
+    "setup": "Setup",
+    "parameters": "Parameter selection",
+    "fit": "Fit",
+    "diagnose": "Missing dynamics",
+    "identifiability": "Identifiability",
+    "uncertainty": "Uncertainty",
+}
 
 
 ###############################################################################
@@ -265,6 +276,68 @@ class LabConfig:
 # Results and state
 ###############################################################################
 
+type OptionKind = Literal["subset", "choice", "flag", "mapping"]
+
+
+@dataclass(frozen=True)
+class Option:
+    """What a key of a step's proposal can be set to (see `FittingLab.decide`).
+
+    Steps declare their options in `StepResult.options`; `decide` checks
+    values against them and the web UI builds its gate forms from them.
+
+    Parameters
+    ----------
+    kind
+        `subset` (a list of `choices`), `choice` (one of `choices`), `flag`
+        (a bool) or `mapping` (a JSON object, checked by the step)
+    choices
+        Allowed values of `subset` and `choice`
+    description
+        What the key decides
+
+    Examples
+    --------
+        >>> lab.Option("subset", ("k1", "k2", "Km"), "Estimated parameters")
+
+    """
+
+    kind: OptionKind
+    choices: tuple[Any, ...] = ()
+    description: str = ""
+
+    def check(self, name: str, value: Any) -> None:
+        """Raise if `value` isn't allowed."""
+        if self.kind == "subset":
+            if isinstance(value, str) or not isinstance(value, list | tuple):
+                msg = f"{name} takes a list of {list(self.choices)}"
+                raise TypeError(msg)
+            if unknown := [v for v in value if v not in self.choices]:
+                msg = f"{name}: {unknown} not in {list(self.choices)}"
+                raise ValueError(msg)
+            if len(set(value)) != len(value):
+                msg = f"{name}: duplicate values in {list(value)}"
+                raise ValueError(msg)
+        elif self.kind == "choice":
+            if value not in self.choices:
+                msg = f"{name} is one of {list(self.choices)}, not {value!r}"
+                raise ValueError(msg)
+        elif self.kind == "flag":
+            if not isinstance(value, bool):
+                msg = f"{name} takes true or false, not {value!r}"
+                raise TypeError(msg)
+        elif not isinstance(value, dict):
+            msg = f"{name} takes a mapping, not {value!r}"
+            raise TypeError(msg)
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-compatible dict."""
+        return {
+            "kind": self.kind,
+            "choices": list(self.choices),
+            "description": self.description,
+        }
+
 
 @dataclass
 class StepResult:
@@ -281,6 +354,8 @@ class StepResult:
         report and the web UI)
     proposal
         The proposed decision of the step's gate, see `FittingLab.decide`
+    options
+        What each key of the proposal can be set to
     messages
         Findings in words
     artifacts
@@ -298,6 +373,7 @@ class StepResult:
     passed: bool | None = None
     summary: dict[str, Any] = field(default_factory=dict)
     proposal: dict[str, Any] = field(default_factory=dict)
+    options: dict[str, Option] = field(default_factory=dict)
     messages: list[str] = field(default_factory=list)
     artifacts: dict[str, Any] = field(default_factory=dict)
     input_hash: str = ""
@@ -306,10 +382,9 @@ class StepResult:
 
     def __repr__(self) -> str:
         """Short representation."""
-        status = {True: "passed", False: "failed", None: "done"}[self.passed]
-        if self.skipped:
-            status = "skipped"
-        lines = [f"StepResult({self.step!r}, {status}, {self.duration:.1f} s)"]
+        lines = [
+            f"StepResult({self.step!r}, {step_status(self)}, {self.duration:.1f} s)"
+        ]
         lines.extend(f"  - {m}" for m in self.messages)
         if self.proposal:
             lines.append(f"  proposal: {self.proposal}")
@@ -322,11 +397,21 @@ class StepResult:
             "passed": self.passed,
             "summary": self.summary,
             "proposal": self.proposal,
+            "options": {k: v.to_dict() for k, v in self.options.items()},
             "messages": self.messages,
             "input_hash": self.input_hash,
             "duration": self.duration,
             "skipped": self.skipped,
         }
+
+
+def step_status(result: StepResult | None) -> str:
+    """`pending` (no result), `skipped`, `passed`, `failed` or `done` (no checks)."""
+    if result is None:
+        return "pending"
+    if result.skipped:
+        return "skipped"
+    return {True: "passed", False: "failed", None: "done"}[result.passed]
 
 
 @dataclass

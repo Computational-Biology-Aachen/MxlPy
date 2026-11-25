@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from mxlpy.lab._core import Current, LabState, StepResult, start_values
+from mxlpy.lab._core import Current, LabState, Option, StepResult, start_values
 from mxlpy.lab.runtime import Estimate, RuntimeModel, fit_evaluations
 from mxlpy.parallel import parallelise
 
@@ -216,6 +216,11 @@ def run(state: LabState) -> StepResult:
             },
         },
         proposal={"parameters": proposal},
+        options={
+            "parameters": Option(
+                "subset", tuple(table), "Parameters to estimate, the others stay fixed"
+            )
+        },
         messages=messages,
         artifacts={"importance": dict(zip(names, importance.tolist(), strict=True))},
     )

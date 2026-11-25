@@ -4,10 +4,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 import threading
 import time
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Self
 
@@ -20,15 +22,16 @@ from mxlpy.lab._core import (
     StepName,
     StepResult,
     parse_duration,
+    step_status,
 )
 from mxlpy.lab.runtime import Estimate, RuntimeModel, fit_evaluations
 from mxlpy.lab.steps import RUNNERS
-from mxlpy.lab.store import RunStore
+from mxlpy.lab.store import RunLockedError, RunStore
 from mxlpy.parallel import _n_workers, content_hash
 
 if TYPE_CHECKING:
     import os
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterator, Mapping
     from pathlib import Path
 
     from mxlpy import fit
@@ -345,6 +348,10 @@ class FittingLab:
         self.runner = runner
         self.variants = variants
         self._listeners: list[Callable[[LabEvent], None]] = []
+        self._driver = threading.RLock()
+        self._driving_depth = 0
+        self._lock_stack: contextlib.ExitStack | None = None
+        self._mtimes: dict[str, float] = {}
         state = store.read_json(store.runtime_file, {}) or {}
         self.runtime = RuntimeModel.from_dict(state.get("model", {}))
         self.runtime.workers = (
@@ -359,13 +366,27 @@ class FittingLab:
             [content_hash(v) for _, v in sorted(variants.items())],
         )
         self.results: dict[str, StepResult] = {}
+        self._refresh()
+
+    def _refresh(self) -> list[str]:
+        """Load step results another process wrote since; returns their steps."""
+        changed = []
         for step in STEPS:
-            file = store.step_dir(step) / "result.pkl"
-            if file.exists():
-                try:
-                    self.results[step] = store.read_pickle(file)
-                except Exception:  # noqa: BLE001
-                    _LOGGER.warning("Couldn't load the result of %s, rerunning", step)
+            file = self.store.step_dir(step) / "result.pkl"
+            try:
+                mtime = file.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if self._mtimes.get(step) == mtime:
+                continue
+            try:
+                self.results[step] = self.store.read_pickle(file)
+            except Exception:  # noqa: BLE001
+                _LOGGER.warning("Couldn't load the result of %s, rerunning", step)
+                continue
+            self._mtimes[step] = mtime
+            changed.append(step)
+        return changed
 
     # Events ##################################################################
 
@@ -426,7 +447,19 @@ class FittingLab:
         if unknown:
             msg = f"Step {step!r} decides {sorted(proposal)}, not {unknown}"
             raise ValueError(msg)
+        options = {} if result is None else result.options
+        for k, v in values.items():
+            if k in options:
+                options[k].check(k, v)
         self._record(step, {**proposal, **values}, "user")
+
+    def reopen(self, step: StepName | int | str) -> None:
+        """Forget the decision of a step's gate, so `run` stops there again."""
+        step = _key(step)
+        self.store.drop_decision(step)
+        self.store.append_event(
+            {"source": "lab", "kind": "decision", "step": step, "by": None}
+        )
 
     def _record(self, step: str, values: dict[str, Any], source: str) -> None:
         result = self.results.get(step)
@@ -501,6 +534,7 @@ class FittingLab:
         result = StepResult(step=step, skipped=True, messages=["Not needed"])
         result.input_hash = self._hash(step)
         self._save(result)
+        self.store.append_event({"source": "lab", "kind": "step_skipped", "step": step})
         return result
 
     def _save(self, result: StepResult) -> None:
@@ -508,6 +542,7 @@ class FittingLab:
         directory = self.store.step_dir(result.step)
         self.store.write_pickle(directory / "result.pkl", result)
         self.store.write_json(directory / "result.json", result.to_dict())
+        self._mtimes[result.step] = (directory / "result.pkl").stat().st_mtime
 
     def _expected(self, step: StepName) -> tuple[Estimate | None, int]:
         """Expected runtime of a step and the number of estimated parameters."""
@@ -549,7 +584,16 @@ class FittingLab:
     def _execute(self, step: StepName) -> StepResult:
         input_hash = self._hash(step)
         expected, n_parameters = self._expected(step)
-        self.store.append_event({"source": "lab", "kind": "step_started", "step": step})
+        self.store.append_event(
+            {
+                "source": "lab",
+                "kind": "step_started",
+                "step": step,
+                "expected": None
+                if expected is None
+                else [expected.low, expected.typical, expected.high],
+            }
+        )
         self._notify(
             LabEvent(
                 step=step,
@@ -559,7 +603,18 @@ class FittingLab:
         )
         t0 = time.perf_counter()
         with _Monitor(self, step, expected, n_parameters) as monitor:
-            result = RUNNERS[step](self._state())
+            try:
+                result = RUNNERS[step](self._state())
+            except Exception as e:
+                self.store.append_event(
+                    {
+                        "source": "lab",
+                        "kind": "step_failed",
+                        "step": step,
+                        "message": f"{type(e).__name__}: {e}",
+                    }
+                )
+                raise
         result.input_hash = input_hash
         result.duration = time.perf_counter() - t0
         self._save(result)
@@ -584,12 +639,35 @@ class FittingLab:
         )
         return result
 
+    @contextlib.contextmanager
+    def _driving(self) -> Iterator[None]:
+        """Run steps: only one thread of one process at a time (`RunLockedError`)."""
+        if not self._driver.acquire(blocking=False):
+            msg = "Another thread is running the steps of this lab"
+            raise RunLockedError(msg)
+        try:
+            if self._driving_depth == 0:
+                stack = contextlib.ExitStack()
+                stack.enter_context(self.store.driving())
+                self._lock_stack = stack
+            self._driving_depth += 1
+            try:
+                yield
+            finally:
+                self._driving_depth -= 1
+                if self._driving_depth == 0 and self._lock_stack is not None:
+                    self._lock_stack.close()
+                    self._lock_stack = None
+        finally:
+            self._driver.release()
+
     def _step(self, step: StepName, *, source: str = "implicit") -> StepResult:
-        self._prepare(step, source)
-        if self.is_current(step) and not self.results[step].skipped:
-            self._notify(LabEvent(step=step, kind="cached"))
-            return self.results[step]
-        return self._execute(step)
+        with self._driving():
+            self._prepare(step, source)
+            if self.is_current(step) and not self.results[step].skipped:
+                self._notify(LabEvent(step=step, kind="cached"))
+                return self.results[step]
+            return self._execute(step)
 
     def step0_setup(self) -> StepResult:
         """Observables, noise, integrator and timing."""
@@ -615,13 +693,28 @@ class FittingLab:
         """Prediction bands and the optional posterior."""
         return self._step("uncertainty")
 
-    def run(self, *, auto: bool = False) -> StepResult | None:
-        """Run the steps in order.
+    @property
+    def paused(self) -> bool:
+        """Whether `run` pauses before its next step."""
+        return self.store.paused
 
-        With `auto`, every proposal is accepted and the run goes through to
-        the end. Otherwise it stops at the first gate without a decision and
-        returns its result; call `decide` (or a later step, accepting the
-        proposal) to go on.
+    def pause(self) -> None:
+        """Pause `run` once the running step finished (from any process)."""
+        self.store.set_paused(True)
+        self.store.append_event({"source": "lab", "kind": "paused"})
+
+    def unpause(self) -> None:
+        """Let a paused `run` go on."""
+        self.store.set_paused(False)
+        self.store.append_event({"source": "lab", "kind": "unpaused"})
+
+    def _advance(
+        self, *, auto: bool, stop: threading.Event | None = None
+    ) -> tuple[StepResult | None, str | None]:
+        """Run the steps up to the first open gate or pause.
+
+        Returns the last result and why it stopped: the step of an open gate,
+        `"paused"`, `"stopped"` (by `stop`), or None at the end of the pipeline.
         """
         last: StepResult | None = None
         for step in STEPS:
@@ -631,12 +724,80 @@ class FittingLab:
                 if self.decision(step) is None:
                     self._record(step, {}, "auto" if auto else "implicit")
                 continue
+            if not self.is_current(step):
+                if stop is not None and stop.is_set():
+                    return last, "stopped"
+                if self.paused:
+                    return last, "paused"
             last = self._step(step, source="auto")
             if self.decision(step) is None:
                 if not auto:
-                    return last
+                    return last, step
                 self._record(step, dict(last.proposal), "auto")
-        return last
+        return last, None
+
+    def run(
+        self,
+        *,
+        auto: bool = False,
+        wait: bool = False,
+        stop: threading.Event | None = None,
+    ) -> StepResult | None:
+        """Run the steps in order.
+
+        With `auto`, every proposal is accepted and the run goes through to
+        the end. Otherwise it stops at the first gate without a decision and
+        returns its result; call `decide` (or a later step, accepting the
+        proposal) to go on. With `wait`, it waits there instead until the
+        gate is decided, e.g. from the web UI or another process, and goes
+        on to the end. A `pause` (from any process) stops it before its next
+        step; with `wait` it goes on after `unpause`.
+
+        Parameters
+        ----------
+        auto
+            Accept every proposal
+        wait
+            Wait at open gates and pauses instead of returning
+        stop
+            Event that ends the run before its next step or while waiting
+
+        Raises
+        ------
+        RunLockedError
+            If another process or thread is running the steps
+
+        """
+        with self._driving():
+            announced: str | None = None
+            while True:
+                # Taken before advancing: decisions made while it stops at a
+                # gate count as changes
+                snapshot = (self.store.decisions(), self.paused)
+                last, stopped_at = self._advance(auto=auto, stop=stop)
+                if stopped_at is None:
+                    self.store.append_event({"source": "lab", "kind": "run_finished"})
+                    return last
+                if stopped_at == "stopped":
+                    return last
+                if stopped_at == "paused" and not wait:
+                    warnings.warn(
+                        "The run is paused, call `unpause()` to go on",
+                        stacklevel=2,
+                    )
+                    return last
+                if stopped_at not in ("paused", announced):
+                    self.store.append_event(
+                        {"source": "lab", "kind": "gate_open", "step": stopped_at}
+                    )
+                    announced = stopped_at
+                if not wait:
+                    return last
+                while snapshot == (self.store.decisions(), self.paused):
+                    if stop is not None and stop.wait(_POLL):
+                        return last
+                    if stop is None:
+                        time.sleep(_POLL)
 
     def __getitem__(self, step: StepName | int | str) -> StepResult:
         """The stored result of a step (by name or number)."""
@@ -645,7 +806,7 @@ class FittingLab:
     @property
     def active_time(self) -> float:
         """Seconds the current results took to compute (counts against the budget)."""
-        return sum(r.duration for r in self.results.values())
+        return sum(r.duration for r in list(self.results.values()))
 
     def report(self, *, html: bool = True) -> Path:
         """Write `report.html` (and always `report.json`), returns the HTML path."""
@@ -661,11 +822,9 @@ class FittingLab:
             res = self.results.get(step)
             if res is None:
                 status = "-"
-            elif res.skipped:
-                status = "skipped"
             else:
-                status = {True: "passed", False: "failed", None: "done"}[res.passed]
-                if not self.is_current(step):
+                status = step_status(res)
+                if not res.skipped and not self.is_current(step):
                     status += " (outdated)"
             gate = decisions.get(step, {}).get("source", "open")
             lines.append(f"  {step:16s} {status:20s} gate: {gate}")

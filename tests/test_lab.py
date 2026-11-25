@@ -2,6 +2,8 @@
 
 import json
 import math
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +14,7 @@ import pytest
 from mxlpy import KineticModelBuilder, Simulator, fit, fns, lab
 from mxlpy.fit import diagnostics
 from mxlpy.lab.runtime import Estimate, RuntimeModel, fit_evaluations
-from mxlpy.lab.store import RunStore, to_json
+from mxlpy.lab.store import RunLockedError, RunStore, to_json
 
 T = np.linspace(0.25, 8, 20)
 SIGMA = 0.01
@@ -412,3 +414,111 @@ def test_budget_counts_computing_time(tmp_path: Path) -> None:
     run.step1_select_parameters()
     assert run["parameters"].summary["limits"]["time_budget"] >= 2
     assert run.active_time < 60
+
+
+###############################################################################
+# Gate options, pause, waiting runs, the run lock
+###############################################################################
+
+
+def _wait_for(condition, timeout: float = 60.0) -> None:  # noqa: ANN001
+    deadline = time.monotonic() + timeout
+    while not condition():
+        if time.monotonic() > deadline:
+            msg = "condition not reached"
+            raise TimeoutError(msg)
+        time.sleep(0.05)
+
+
+def test_options_check_decisions(tmp_path: Path) -> None:
+    run = lab.FittingLab(_decay(), _data(_decay(), 7), tmp_path / "run", **FAST)
+    run.step2_fit()
+    options = run["parameters"].options["parameters"]
+    assert options.kind == "subset"
+    assert set(options.choices) == {"k1", "k2"}
+    with pytest.raises(ValueError, match="not in"):
+        run.decide("parameters", parameters=["k1", "nope"])
+    with pytest.raises(TypeError, match="list"):
+        run.decide("parameters", parameters="k1")
+    with pytest.raises(ValueError, match="one of"):
+        run.decide("fit", next="nowhere")
+    with pytest.raises(TypeError, match="mapping"):
+        run.decide("fit", local=["k1"])
+    run.decide("fit", next="diagnose")
+    assert run.decision("fit")["next"] == "diagnose"  # type: ignore[index]
+    assert run["fit"].to_dict()["options"]["next"]["kind"] == "choice"
+    run.reopen(2)
+    assert run.decision("fit") is None
+
+
+def test_pause_stops_before_the_next_step(tmp_path: Path) -> None:
+    # seed 7: the fit passes, so the diagnosis is skipped
+    run = lab.FittingLab(_decay(), _data(_decay(), 7), tmp_path / "run", **FAST)
+    run.pause()
+    assert run.paused
+    with pytest.warns(UserWarning, match="paused"):
+        assert run.run(auto=True) is None
+    assert run.results == {}
+    run.unpause()
+    run.step0_setup()
+    run.pause()
+    # the up-to-date setup is kept, the parameters step doesn't start
+    with pytest.warns(UserWarning, match="paused"):
+        last = run.run(auto=True)
+    assert last is not None
+    assert last.step == "setup"
+    assert "parameters" not in run.results
+    # a stop ends the run before its next step as well
+    run.unpause()
+    stop = threading.Event()
+    stop.set()
+    assert run.run(auto=True, stop=stop).step == "setup"  # type: ignore[union-attr]
+    assert "parameters" not in run.results
+    # the fit passes, so the diagnosis is skipped
+    run.run(auto=True)
+    kinds = [e["kind"] for e in run.store.read_events()[0]]
+    assert {"paused", "unpaused", "step_skipped", "run_finished"} <= set(kinds)
+
+
+def test_failed_steps_are_reported(tmp_path: Path) -> None:
+    data = _data(_decay(), 4).rename(columns={"y": "unknown"})
+    run = lab.FittingLab(_decay(), data, tmp_path / "run", **FAST)
+    with pytest.raises(ValueError, match="no model output"):
+        run.step1_select_parameters()
+    events = run.store.read_events()[0]
+    # the setup, run as a requirement of step 1, failed
+    assert [(e["kind"], e["step"]) for e in events if e.get("source") == "lab"] == [
+        ("step_started", "setup"),
+        ("step_failed", "setup"),
+    ]
+    assert "no model output" in events[-1]["message"]
+
+
+def test_waiting_run_goes_on_after_decisions(tmp_path: Path) -> None:
+    run = lab.FittingLab(_decay(), _data(_decay(), 3), tmp_path / "run", **FAST)
+    stop = threading.Event()
+    thread = threading.Thread(target=lambda: run.run(wait=True, stop=stop))
+    thread.start()
+    try:
+
+        def gates() -> list[str]:
+            return [
+                e["step"]
+                for e in run.store.read_events()[0]
+                if e["kind"] == "gate_open"
+            ]
+
+        _wait_for(lambda: gates() == ["setup"])
+        # another process (or the web UI) decides through the run directory
+        other = lab.FittingLab.resume(tmp_path / "run")
+        with pytest.raises(RunLockedError):
+            other.step1_select_parameters()
+        other.decide("setup")
+        _wait_for(lambda: gates() == ["setup", "parameters"])
+        assert "parameters" in run.results
+    finally:
+        stop.set()
+        thread.join(30)
+    assert not thread.is_alive()
+    # the lock is released once the run returns
+    lab.FittingLab.resume(tmp_path / "run").step1_select_parameters()

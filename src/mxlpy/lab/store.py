@@ -8,6 +8,8 @@ Layout::
         config.json        settings of the run (human-readable)
         inputs.pkl         model, data and further Python inputs (dill)
         decisions.json     gate decisions by step
+        control.json       whether the run is paused
+        run.lock           held by the process running the steps
         events.jsonl       progress events, one JSON object per line
         runtime.json       state of the runtime model
         steps/<step>/
@@ -42,7 +44,11 @@ except ImportError:  # Windows
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-__all__ = ["RunStore", "to_json"]
+__all__ = ["RunLockedError", "RunStore", "to_json"]
+
+
+class RunLockedError(RuntimeError):
+    """Another process (or thread) is running the steps of this run."""
 
 
 def to_json(obj: Any) -> Any:
@@ -101,6 +107,16 @@ class RunStore:
         return self.root / "events.jsonl"
 
     @property
+    def control_file(self) -> Path:
+        """Pause flag of the run."""
+        return self.root / "control.json"
+
+    @property
+    def lock_file(self) -> Path:
+        """Lock held by the process running the steps."""
+        return self.root / "run.lock"
+
+    @property
     def runtime_file(self) -> Path:
         """State of the runtime model."""
         return self.root / "runtime.json"
@@ -152,6 +168,56 @@ class RunStore:
         """Read a dill pickle (only of runs you trust, like any pickle)."""
         with path.open("rb") as f:
             return dill.load(f)  # nosec
+
+    # Control #################################################################
+
+    @property
+    def paused(self) -> bool:
+        """Whether the run pauses before its next step."""
+        try:
+            return bool(self.read_json(self.control_file, {}).get("paused", False))
+        except json.JSONDecodeError:
+            return False
+
+    def set_paused(self, paused: bool) -> None:  # noqa: FBT001
+        """Pause the run before its next step, or let it go on."""
+        self.write_json(self.control_file, {"paused": paused})
+
+    @contextlib.contextmanager
+    def driving(self) -> Iterator[None]:
+        """Hold the run lock while running steps (where `fcntl` exists).
+
+        Raises
+        ------
+        RunLockedError
+            If another process holds it
+
+        """
+        self.root.mkdir(parents=True, exist_ok=True)
+        with self.lock_file.open("a") as f:
+            if fcntl is not None:
+                try:
+                    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    msg = f"Another process is running the steps of {self.root}"
+                    raise RunLockedError(msg) from None
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+
+    def is_driven(self) -> bool:
+        """Whether a process holds the run lock (always False without `fcntl`)."""
+        if fcntl is None or not self.lock_file.exists():
+            return False
+        with self.lock_file.open("a") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(f, fcntl.LOCK_UN)
+            return False
 
     # Decisions ###############################################################
 

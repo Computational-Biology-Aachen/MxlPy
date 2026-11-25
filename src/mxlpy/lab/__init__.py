@@ -22,17 +22,21 @@ Examples
     >>> run.on_event(lambda ev: print(ev.step, ev.best_loss, ev.eta))
     >>> run.run(auto=True)
     >>> run.report()
+    >>> run.serve()     # web UI, needs mxlpy[lab]
 
 """
 
-from mxlpy.lab._core import LabConfig, Observable, StepName, StepResult
+from mxlpy.lab._core import LabConfig, Observable, Option, StepName, StepResult
 from mxlpy.lab._lab import FittingLab, LabEvent
+from mxlpy.lab.store import RunLockedError
 
 __all__ = [
     "FittingLab",
     "LabConfig",
     "LabEvent",
     "Observable",
+    "Option",
+    "RunLockedError",
     "StepName",
     "StepResult",
 ]
