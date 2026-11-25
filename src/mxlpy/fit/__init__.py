@@ -94,6 +94,13 @@ multi-start fits). `JsonlCallback` appends the events to a file, also from
 parallel workers. Multi-start fits keep failed starts in
 `GroupFit.failures`.
 
+Diagnostics
+-----------
+`fit.diagnostics`: `estimate_sigma` (noise from replicates or neighbouring
+points), `chi2_test` (goodness of fit of a likelihood fit) and
+`check_residuals` (runs and Ljung-Box tests: structured residuals mean
+missing dynamics).
+
 Loss functions
 --------------
 - rmse, mean_squared, mae, ... (heuristic, compared after standard scaling)
@@ -156,6 +163,7 @@ from .abstract import (
     MixedSettings,
 )
 from .callbacks import Callback, FitEvent, JsonlCallback
+from .diagnostics import check_residuals, chi2_test, estimate_sigma
 from .losses import (
     GaussianNll,
     Sigma,
@@ -210,10 +218,13 @@ __all__: list[str] = [
     "carousel_protocol_time_course",
     "carousel_steady_state",
     "carousel_time_course",
+    "check_residuals",
+    "chi2_test",
     "cosine_similarity",
     "ensemble_protocol_time_course",
     "ensemble_steady_state",
     "ensemble_time_course",
+    "estimate_sigma",
     "group_protocol_time_course",
     "group_steady_state",
     "group_time_course",
