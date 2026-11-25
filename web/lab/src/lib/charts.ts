@@ -50,12 +50,40 @@ function spansDecade(values: number[]): boolean {
   return Math.max(...values) / Math.min(...values) >= 10;
 }
 
+/**
+ * Relative spread below which the lab draws an axis as flat: objectives that
+ * differ in the seventh digit are the same fit, and an axis over such a range
+ * (live traces of refits that start at the optimum span ~1e-14) has no
+ * readable ticks. Stricter than PlotChart's own guard (1e-9).
+ */
+const FLAT = 1e-6;
+
+/** Limits around the value of flat data (± 5 %), undefined otherwise. */
+export function flatLimits(values: number[]): [number, number] | undefined {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const v of values) {
+    if (!Number.isFinite(v)) continue;
+    lo = Math.min(lo, v);
+    hi = Math.max(hi, v);
+  }
+  if (!Number.isFinite(lo)) return undefined;
+  const size = Math.max(Math.abs(lo), Math.abs(hi));
+  if (hi - lo > FLAT * size) return undefined;
+  const mid = (lo + hi) / 2;
+  const pad = size > 0 ? 0.05 * size : 1;
+  return [mid - pad, mid + pad];
+}
+
 export interface XYProps {
   series: PlotSeries[];
   xLabel: string;
   yLabel: string;
   logX: boolean;
   logY: boolean;
+  /** Fixed limits of flat data (see `flatLimits`) */
+  xLim?: [number, number];
+  yLim?: [number, number];
   hLines: PlotRule[];
   legend: boolean;
 }
@@ -111,14 +139,23 @@ export function xyProps(spec: ChartSpec): XYProps {
       });
     }
   }
-  const logX = spec.x.log && spansDecade(series.flatMap((s) => s.x));
-  const logY = spec.y.log && spansDecade(series.flatMap((s) => s.y));
+  const xs = series.flatMap((s) => s.x);
+  const ys = [
+    ...series.flatMap((s) => [...s.y, ...(s.fillTo ?? [])]),
+    ...spec.hlines.map((h) => h.y),
+  ];
+  const xLim = flatLimits(xs);
+  const yLim = flatLimits(ys);
+  const logX = spec.x.log && !xLim && spansDecade(xs);
+  const logY = spec.y.log && !yLim && spansDecade(series.flatMap((s) => s.y));
   return {
     series,
     xLabel: spec.x.label,
     yLabel: spec.y.label,
     logX,
     logY,
+    xLim,
+    yLim,
     hLines: spec.hlines.map((h) => ({
       value: h.y,
       color: "rgb(100 116 139)",

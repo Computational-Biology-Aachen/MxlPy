@@ -3,6 +3,7 @@ import type { ChartSpec } from "../../src/lib/api.js";
 import {
   barProps,
   color,
+  flatLimits,
   PALETTE,
   traceChart,
   waterfallChart,
@@ -125,8 +126,36 @@ describe("progress charts", () => {
     expect(fall.series[0].x).toEqual([1, 2, 3]);
   });
 
+  it("draws a trace flat up to rounding with fixed limits, not a log axis", () => {
+    // A refit starting at the optimum: its best objective moves by 1e-14,
+    // which made PlotChart's tick loop endless
+    const trace = traceChart({
+      refit: [
+        [0.01, 86.0007932579445],
+        [0.02, 86.00079325794448],
+      ],
+    });
+    const props = xyProps(trace);
+    expect(props.logY).toBe(false);
+    expect(props.yLim?.[0]).toBeCloseTo(81.7, 1);
+    expect(props.yLim?.[1]).toBeCloseTo(90.3, 1);
+    expect(props.xLim).toBeUndefined();
+  });
+
   it("wraps colour indices", () => {
     expect(color(PALETTE.length)).toBe(PALETTE[0]);
     expect(color(-1)).toBe(PALETTE[PALETTE.length - 1]);
+  });
+});
+
+describe("flatLimits", () => {
+  it("fixes limits only for spreads below 1e-6 of the values", () => {
+    const [lo, hi] = flatLimits([1, 1 + 1e-7])!;
+    expect(lo).toBeCloseTo(0.95, 6);
+    expect(hi).toBeCloseTo(1.05, 6);
+    expect(flatLimits([1, 1 + 1e-5])).toBeUndefined();
+    expect(flatLimits([0, 0])).toEqual([-1, 1]);
+    expect(flatLimits([-2, Number.NaN, -2])).toEqual([-2.1, -1.9]);
+    expect(flatLimits([Number.NaN])).toBeUndefined();
   });
 });

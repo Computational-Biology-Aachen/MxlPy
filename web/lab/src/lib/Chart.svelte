@@ -25,6 +25,8 @@
         yLabel={xy.yLabel}
         logX={xy.logX}
         logY={xy.logY}
+        xLim={xy.xLim}
+        yLim={xy.yLim}
         hLines={xy.hLines}
         legend={xy.legend}
         margin={0.05}
