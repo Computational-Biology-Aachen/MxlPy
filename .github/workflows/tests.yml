@@ -76,6 +76,11 @@ jobs:
           cache: npm
           cache-dependency-path: web/lab/package-lock.json
 
+      # npm 12, like the sites: `allow-git=root` (.npmrc) for the design
+      # package's git dependency
+      - name: Upgrade npm
+        run: npm install -g "npm@==12.2.0"
+
       - run: npm ci
       - run: npm run lint
       - run: npm run check
