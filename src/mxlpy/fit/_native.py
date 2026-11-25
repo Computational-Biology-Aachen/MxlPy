@@ -25,6 +25,7 @@ import pandas as pd
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._ode_builder import OdeModelBuilder
 from mxlpy.fit._gradient import GradientResidual, _TransformedGradient
+from mxlpy.fit.callbacks import untracked
 from mxlpy.fit.penalties import _Penalised
 from mxlpy.fit.residuals import _apply_updates
 from mxlpy.integrators._native import differentiate
@@ -501,6 +502,8 @@ def least_squares(
     `postprocess_fn`, fitted initial values or initial values depending on
     fitted parameters, the wasm backend.
     """
+    # Progress tracking can't see into the compiled loop, only the fallbacks
+    tracked_fn, residual_fn = residual_fn, untracked(residual_fn)
     if isinstance(residual_fn, _Penalised) or isinstance(
         getattr(residual_fn, "inner", None), _Penalised
     ):
@@ -508,7 +511,7 @@ def least_squares(
             "Fitting with scipy instead of the compiled loop, as priors and penalties can't be compiled"
         )
         return LeastSquaresMinimizer(method="lm", max_nfev=max_nfev)(
-            residual_fn, p0, bounds
+            tracked_fn, p0, bounds
         )
     try:
         residual, log = _unwrap(residual_fn)
@@ -520,7 +523,7 @@ def least_squares(
             "Fitting with scipy instead of the compiled loop, as it only runs single fits"
         )
         return LeastSquaresMinimizer(method="lm", max_nfev=max_nfev)(
-            residual_fn, p0, bounds
+            tracked_fn, p0, bounds
         )
     to_inner = getattr(residual_fn, "to_inner", lambda x: x)
     values = cast(dict[str, float], to_inner(p0))
@@ -540,13 +543,14 @@ def least_squares(
         _apply_updates(values, residual.settings)
         _warn_once(f"Fitting with scipy instead of the compiled loop, as {e}")
         return LeastSquaresMinimizer(method="lm", max_nfev=max_nfev)(
-            residual_fn, p0, bounds
+            tracked_fn, p0, bounds
         )
 
     fitted = {k: float(pars[i]) for k, i in zip(values, problem.theta, strict=True)}
     # Back to the minimizer's (possibly log10) parameters
     parameters = {k: float(np.log10(v)) if k in log else v for k, v in fitted.items()}
-    loss = residual_fn(parameters)
+    # Through the tracker, so the callback sees the optimum
+    loss = tracked_fn(parameters)
     if info not in _CONVERGED or not np.isfinite(loss):
         msg = f"Compiled least squares stopped with MINPACK info {info}"
         _LOGGER.warning(msg)

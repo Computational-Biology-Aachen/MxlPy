@@ -15,11 +15,12 @@ import numpy as np
 import pandas as pd
 
 from mxlpy.fit._gradient import _log_names
-from mxlpy.fit.losses import _is_likelihood
-from mxlpy.identify._problem import (
+from mxlpy.fit._problem import (
     BETTER_OPTIMUM,
     _Problem,
     check_threshold,
+    condition_losses,
+    is_likelihood,
     likelihood_threshold,
     refit,
     setup_problem,
@@ -33,9 +34,10 @@ if TYPE_CHECKING:
     from mxlpy import fit
     from mxlpy.distributions import Prior
     from mxlpy.fit._gradient import Transform
-    from mxlpy.fit.abstract import PostprocessFn
+    from mxlpy.fit._problem import _Model
+    from mxlpy.fit.abstract import Data, PostprocessFn
+    from mxlpy.fit.callbacks import Callback
     from mxlpy.fit.penalties import Penalty
-    from mxlpy.identify._problem import _Model
     from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
     from mxlpy.types import Array
 
@@ -383,10 +385,10 @@ def _round(
 
 def identifiability_test(
     model: _Model,
-    data: pd.Series | pd.DataFrame,
+    data: Data,
     parameters: fit.Fit | Mapping[str, float],
     *,
-    loss_fn: LossFn,
+    loss_fn: LossFn | None = None,
     radius: float = 1.0,
     n_fits: int = 10,
     recursive: bool = False,
@@ -407,6 +409,7 @@ def identifiability_test(
     seed: int = 0,
     parallel: bool = True,
     max_workers: int | None = None,
+    callback: Callback | None = None,
 ) -> IdentifiabilityTest:
     """Fast numerical identifiability test around the optimum.
 
@@ -438,7 +441,10 @@ def identifiability_test(
         The model, which isn't modified
     data
         A Series fits a steady state, a DataFrame (indexed by time) a time
-        course, or a protocol time course if `protocol` is given
+        course, or a protocol time course if `protocol` is given. Several
+        data sets are fitted jointly: a mapping of names to data or
+        `fit.Condition`s (with their own initial values, protocol,
+        parameters and noise)
     parameters
         Fitted parameters (and initial values), e.g. a fit result. They are
         refitted first, so they only need to be close to the optimum
@@ -496,6 +502,10 @@ def identifiability_test(
         Whether to run the fits of a round in parallel
     max_workers
         Maximum number of worker processes
+    callback
+        Called with a `FitEvent` after every evaluation and at the end of
+        every refit, see `mxlpy.fit.callbacks`. Has to be picklable with
+        `parallel=True`
 
     Examples
     --------
@@ -517,8 +527,10 @@ def identifiability_test(
         raise ValueError(msg)
     if threshold is not None:
         threshold = check_threshold(threshold)
-    elif _is_likelihood(loss_fn):
-        threshold = likelihood_threshold(loss_fn, alpha, "Thresholds from alpha")
+    elif is_likelihood(condition_losses(data, loss_fn)):
+        threshold = likelihood_threshold(
+            condition_losses(data, loss_fn), alpha, "Thresholds from alpha"
+        )
     elif not (math.isfinite(threshold_rtol) and threshold_rtol > 0):
         msg = f"threshold_rtol has to be positive, got {threshold_rtol}"
         raise ValueError(msg)
@@ -538,6 +550,7 @@ def identifiability_test(
         transform=transform,
         postprocess_fn=postprocess_fn,
         standard_scale=standard_scale,
+        callback=callback,
     )
     log = _log_names(start, transform)
     objective, start = refit(problem, start)

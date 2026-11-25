@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass, field, replace
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Generic, Protocol
 
@@ -17,11 +17,13 @@ from wadler_lindig import pformat
 
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
-from mxlpy.fit.losses import _is_likelihood
+from mxlpy.fit.losses import GaussianNll, _is_likelihood
 from mxlpy.runners import default_runner
 from mxlpy.simulator import _normalise_protocol_index
 
 __all__ = [
+    "Condition",
+    "Data",
     "EnsembleFit",
     "Fit",
     "FitResidual",
@@ -36,11 +38,12 @@ __all__ = [
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Hashable, Iterable, Mapping
 
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy.fit._gradient import Transform
+    from mxlpy.fit.losses import Sigma
     from mxlpy.minimizers.abstract import Bounds, LossFn
     from mxlpy.runners import SteadyStateRunner
 
@@ -73,6 +76,112 @@ class FitResidual(Protocol):
     ) -> float:
         """Do minimization step."""
         ...
+
+
+@dataclass(frozen=True, eq=False)
+class Condition:
+    """One data set and the experimental condition it was measured in.
+
+    Functions fitting several data sets at once take a mapping of names to
+    conditions (or plain data, a condition without settings).
+
+    Parameters
+    ----------
+    data
+        A Series for steady-state data, a DataFrame indexed by time for a
+        time course (with `protocol`: a protocol time course)
+    y0
+        Initial values of the condition. Fitted initial values still override
+        them
+    protocol
+        Protocol of a protocol time course, see `fit.protocol_time_course`
+    parameters
+        Parameter values set by the condition (e.g. an inhibitor
+        concentration). They override fitted values in this condition, so
+        parameters set by every condition can't be estimated
+    local
+        Condition-specific estimates: in this condition the model parameter
+        (key) takes the value of the estimated name (value), e.g.
+        `{"k1": "k1_mut"}` estimates `k1` separately for a mutant. The name
+        has to be estimated (in `p0` / the fitted values) like a parameter
+    sigma
+        Standard deviation of the measurement noise (scalar, per observable
+        or per data point). If set, the condition's loss is
+        `GaussianNll(sigma)`, regardless of the function's `loss_fn`
+
+    Examples
+    --------
+        >>> fit.Condition(df_inhibited, parameters={"I": 10.0}, sigma=0.05)
+        >>> fit.Condition(df_mutant, local={"k1": "k1_mut"})
+
+    """
+
+    data: pd.Series | pd.DataFrame
+    _: KW_ONLY
+    y0: Mapping[str, float] | None = None
+    protocol: pd.DataFrame | None = None
+    parameters: Mapping[str, float] | None = None
+    local: Mapping[str, str] | None = None
+    sigma: Sigma | None = None
+
+    def loss(self, loss_fn: LossFn | None) -> LossFn:
+        """Loss of the condition: `GaussianNll(sigma)` if it has a sigma, else `loss_fn`."""
+        if self.sigma is not None:
+            return GaussianNll(self.sigma)
+        if loss_fn is None:
+            msg = "Pass loss_fn, or a sigma for every condition"
+            raise ValueError(msg)
+        return loss_fn
+
+    @property
+    def overridden(self) -> set[str]:
+        """Model names whose values the condition sets or renames."""
+        return set(self.parameters or {}) | set(self.local or {})
+
+
+type Data = (
+    pd.Series
+    | pd.DataFrame
+    | Condition
+    | Mapping[str, pd.Series | pd.DataFrame | Condition]
+)
+
+
+def as_conditions(
+    data: Data,
+    *,
+    y0: Mapping[str, float] | None = None,
+    protocol: pd.DataFrame | None = None,
+) -> dict[str, Condition]:
+    """Conditions by name of any form of `data`.
+
+    Single data (or a single condition) is named `data`. `y0` and `protocol`
+    apply to conditions without their own.
+    """
+    items: dict[str, pd.Series | pd.DataFrame | Condition]
+    if isinstance(data, (pd.Series, pd.DataFrame, Condition)):
+        items = {"data": data}
+    else:
+        items = dict(data)
+        if not items:
+            msg = "No data given"
+            raise ValueError(msg)
+    out = {}
+    for name, item in items.items():
+        cond = item if isinstance(item, Condition) else Condition(item)
+        if (y0 is not None and cond.y0 is None) or (
+            protocol is not None and cond.protocol is None
+        ):
+            cond = replace(
+                cond,
+                y0=cond.y0 if cond.y0 is not None else y0,
+                protocol=cond.protocol if cond.protocol is not None else protocol,
+            )
+        if cond.protocol is not None and not isinstance(cond.data, pd.DataFrame):
+            msg = f"Condition {name!r}: a protocol needs a time course (DataFrame)"
+            raise TypeError(msg)
+        out[str(name)] = cond
+    return out
 
 
 @dataclass
@@ -305,25 +414,45 @@ class Fit(Generic[M]):
 
 @dataclass
 class GroupFit(Generic[M]):
-    """Result of a carousel fit operation."""
+    """Result of a multi-start fit.
 
-    fits: list[Fit[M]]
+    Attributes
+    ----------
+    fits
+        Successful fits by start (the row labels of `p0`)
+    failures
+        Reason of every failed start by start, e.g. the minimizer's message
+        or `timeout`
+
+    """
+
+    fits: dict[Hashable, Fit[M]]
+    failures: dict[Hashable, str] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         """Return default representation."""
         return pformat(self)
 
+    @property
+    def n_failed(self) -> int:
+        """Number of failed starts."""
+        return len(self.failures)
+
     def get_losses(self) -> pd.Series:
-        """Get losses of all fits, without their penalties."""
-        return pd.Series({i: f.loss for i, f in enumerate(self.fits)})
+        """Get losses of all successful fits by start, without their penalties."""
+        return pd.Series({k: f.loss for k, f in self.fits.items()}, dtype=float)
 
     def get_objectives(self) -> pd.Series:
-        """Get the minimized objectives (loss + penalty) of all fits."""
-        return pd.Series({i: f.objective for i, f in enumerate(self.fits)})
+        """Get the minimized objectives (loss + penalty) of all successful fits by start."""
+        return pd.Series({k: f.objective for k, f in self.fits.items()}, dtype=float)
 
     def get_best_fit(self) -> Fit[M]:
         """Get the fit with the lowest objective (loss + penalty)."""
-        return min(self.fits, key=lambda x: x.objective)
+        if not self.fits:
+            reasons = sorted(set(self.failures.values()))
+            msg = f"All {self.n_failed} starts failed: {reasons}"
+            raise ValueError(msg)
+        return min(self.fits.values(), key=lambda x: x.objective)
 
 
 @dataclass

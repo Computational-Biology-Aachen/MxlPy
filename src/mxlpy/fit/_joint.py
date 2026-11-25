@@ -8,6 +8,7 @@
 
 import contextlib
 import multiprocessing
+import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import partial
@@ -18,7 +19,7 @@ from loky import ProcessPoolExecutor
 
 from mxlpy.distributions import Prior
 from mxlpy.fit import losses
-from mxlpy.fit._gradient import GradientResidual
+from mxlpy.fit._gradient import GradientResidual, Transform, transformed
 from mxlpy.fit.abstract import (
     FitResidual,
     FitSettings,
@@ -27,6 +28,14 @@ from mxlpy.fit.abstract import (
     _joint_settings,
     _Settings,
     with_weight_bounds,
+    without_weights,
+)
+from mxlpy.fit.callbacks import (
+    Callback,
+    failed,
+    failure_message,
+    finished,
+    tracked,
 )
 from mxlpy.fit.penalties import Penalty, collect_penalties, penalised
 from mxlpy.fit.residuals import (
@@ -185,27 +194,54 @@ def _minimize_joint(
     bounds: Bounds | None,
     prior: Mapping[str, Prior] | None,
     penalty: Penalty | Sequence[Penalty] | None,
+    callback: Callback | None = None,
+    transform: Transform | None = None,
 ) -> Result[JointFit]:
     """Minimize the summed residual of a joint fit plus its penalties."""
-    residual = _with_derivatives(residual, parts, p0)
+    t0 = time.perf_counter()
+    if not hasattr(residual, "jacobian"):
+        residual = _with_derivatives(residual, parts, p0)
     with_penalty = None
     if penalties := collect_penalties(prior, penalty, list(p0)):
         residual = with_penalty = penalised(residual, penalties)
-    bounds = with_weight_bounds((s.model for _, s in parts), p0, bounds)
-    match minimizer(residual, p0, bounds).value:
+    models = [s.model for _, s in parts]
+    residual, start, bounds, back = transformed(
+        residual,
+        p0,
+        with_weight_bounds(models, p0, bounds),
+        without_weights(models, p0, transform),
+    )
+    residual = tracked(residual, callback, back=back)
+    match minimizer(residual, start, bounds).value:
         case OptimisationState(parameters, value):
+            parameters = back(parameters)
             if with_penalty is None:
-                return Result(JointFit(parameters, loss=value))
-            # Evaluated separately, as `value - penalty` loses the loss's
-            # precision if the penalty dominates
-            return Result(
-                JointFit(
+                result = JointFit(parameters, loss=value)
+            else:
+                # Evaluated separately, as `value - penalty` loses the loss's
+                # precision if the penalty dominates
+                result = JointFit(
                     parameters,
                     loss=with_penalty.inner(parameters),
                     penalty=with_penalty.penalty(parameters),
                 )
+            finished(
+                callback,
+                residual,
+                start=None,
+                value=result.objective,
+                parameters=dict(parameters),
+                duration=time.perf_counter() - t0,
             )
+            return Result(result)
         case _ as e:
+            failed(
+                callback,
+                residual,
+                start=None,
+                message=failure_message(e),
+                duration=time.perf_counter() - t0,
+            )
             return Result(e)
 
 
@@ -235,6 +271,7 @@ def joint_steady_state(
     max_workers: int | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    callback: Callback | None = None,
 ) -> Result[JointFit]:
     """Multi-model, multi-data fitting.
 
@@ -290,6 +327,9 @@ def joint_steady_state(
     standard_scale
         Whether to apply standard scale to data and prediction. Skipped for
         fewer than two data points.
+    callback
+        Called with a `FitEvent` after every evaluation and at the end, see
+        `mxlpy.fit.callbacks`
 
     Returns
     -------
@@ -325,6 +365,7 @@ def joint_steady_state(
             bounds=bounds,
             prior=prior,
             penalty=penalty,
+            callback=callback,
         )
 
 
@@ -344,6 +385,7 @@ def joint_time_course(
     max_workers: int | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    callback: Callback | None = None,
 ) -> Result[JointFit]:
     """Multi-model, multi-data fitting.
 
@@ -393,6 +435,9 @@ def joint_time_course(
     standard_scale
         Whether to apply standard scale to data and prediction. Skipped for
         fewer than two data points.
+    callback
+        Called with a `FitEvent` after every evaluation and at the end, see
+        `mxlpy.fit.callbacks`
 
     Returns
     -------
@@ -428,6 +473,7 @@ def joint_time_course(
             bounds=bounds,
             prior=prior,
             penalty=penalty,
+            callback=callback,
         )
 
 
@@ -447,6 +493,7 @@ def joint_protocol_time_course(
     max_workers: int | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    callback: Callback | None = None,
 ) -> Result[JointFit]:
     """Multi-model, multi-data fitting.
 
@@ -496,6 +543,9 @@ def joint_protocol_time_course(
     standard_scale
         Whether to apply standard scale to data and prediction. Skipped for
         fewer than two data points.
+    callback
+        Called with a `FitEvent` after every evaluation and at the end, see
+        `mxlpy.fit.callbacks`
 
     Returns
     -------
@@ -531,4 +581,5 @@ def joint_protocol_time_course(
             bounds=bounds,
             prior=prior,
             penalty=penalty,
+            callback=callback,
         )

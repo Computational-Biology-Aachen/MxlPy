@@ -147,7 +147,7 @@ def test_review_fixes() -> None:
         "aug", n_hidden=1, layers=(3,), targets=["P"], mechanism="relative"
     )
     before = model.get_weight_values()["aug_W_0_0"]
-    _scale_blocks(model, ["aug"], {"d": _data()}, {}, None)
+    _scale_blocks(model, ["aug"], {"d": fit.Condition(_data())}, {}, None)
     assert model.get_weight_values()["aug_W_0_0"] == before != 0
     # relative terms aren't scaled by a rate
     assert model.get_raw_hidden_states()["aug"].output_scales[0] == 1.0
@@ -170,3 +170,50 @@ def test_review_fixes() -> None:
     sim = Simulator(res.model).simulate_time_course(T).get_result().unwrap_or_err()
     assert "aug_P" not in sim.get_combined().columns
     assert "aug_P" in sim.get_combined(include_terms=True).columns
+
+
+def test_conditions_set_initial_values_parameters_and_sigma() -> None:
+    truth = _truth().update_variable("S", 2.0)
+    res2 = Simulator(truth).simulate_time_course(T).get_result().unwrap_or_err()
+    data2 = res2.variables.loc[:, ["S", "P"]].iloc[::2]
+    model = _mechanistic().add_hidden_states(
+        "aug", n_hidden=1, layers=(3,), targets=["P"], mechanism="additive"
+    )
+    res = fit.augmented_time_course(
+        model,
+        data={
+            "a": fit.Condition(_data(), sigma=SIGMA),
+            "b": fit.Condition(data2, y0={"S": 2.0}, sigma=SIGMA),
+        },
+        p0={"k": 1.0},
+        sigma=123.0,  # ignored, every condition has its own
+        joint_refinement=False,
+        minimizer=fit.FixedNMinimizer(n_steps=3),
+    ).unwrap_or_err()
+    assert res.models["b"].get_initial_conditions()["S"] == 2.0
+    assert res.models["a"].get_initial_conditions()["S"] == 1.0
+    # each data set predicted from its own initial value
+    assert res.predictions["b"]["S"].iloc[0] == pytest.approx(2.0)
+    assert res.predictions["a"]["S"].iloc[0] == pytest.approx(1.0)
+    # sigma of the conditions, not the ignored 123: a loss in units of SIGMA
+    assert res.loss > 1.0
+
+    with pytest.raises(ValueError, match="set by a condition can't be refined"):
+        fit.augmented_time_course(
+            model,
+            data={"a": fit.Condition(_data(), parameters={"k": 1.0})},
+            p0={"k": 1.0},
+        )
+
+
+def test_mixed_protocols_raise() -> None:
+    model = _mechanistic().add_hidden_states(
+        "aug", n_hidden=1, layers=(3,), targets=["P"], mechanism="additive"
+    )
+    protocol = pd.DataFrame({"k": [1.0]}, index=pd.Index([8.0], name="time"))
+    with pytest.raises(KeyError, match="have a protocol"):
+        fit.augmented_time_course(
+            model,
+            data={"a": fit.Condition(_data(), protocol=protocol), "b": _data()},
+            p0={"k": 1.0},
+        )

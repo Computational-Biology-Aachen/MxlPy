@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from mxlpy.fit._problem import Constraint, Prediction, _Problem, start_values
 from mxlpy.identify._prediction import (
     _SIGMA,
     _setup,
@@ -21,7 +22,6 @@ from mxlpy.identify._prediction import (
     predicted_values,
     prediction_scale,
 )
-from mxlpy.identify._problem import Constraint, Prediction, _Problem, start_values
 from mxlpy.identify._profile import (
     SideStatus,
     Step,
@@ -38,9 +38,10 @@ if TYPE_CHECKING:
     from mxlpy import fit
     from mxlpy.distributions import Prior
     from mxlpy.fit._gradient import Transform
-    from mxlpy.fit.abstract import PostprocessFn
+    from mxlpy.fit._problem import _Model
+    from mxlpy.fit.abstract import Data, PostprocessFn
+    from mxlpy.fit.callbacks import Callback
     from mxlpy.fit.penalties import Penalty
-    from mxlpy.identify._problem import _Model
     from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
 
 __all__ = ["ProfileLikelihood2D", "profile_likelihood_2d"]
@@ -425,12 +426,12 @@ def _axis_values(value_range: tuple[float, float], n: int, *, log: bool) -> list
 
 def profile_likelihood_2d(
     model: _Model,
-    data: pd.Series | pd.DataFrame,
+    data: Data,
     parameters: fit.Fit | Mapping[str, float],
     *,
     x: str,
     y: str | Prediction,
-    loss_fn: LossFn,
+    loss_fn: LossFn | None = None,
     method: Literal["slices", "grid"] = "slices",
     alpha: float = 0.95,
     threshold: float | None = None,
@@ -450,6 +451,7 @@ def profile_likelihood_2d(
     max_steps: int = 100,
     parallel: bool = True,
     max_workers: int | None = None,
+    callback: Callback | None = None,
 ) -> ProfileLikelihood2D:
     """Two-dimensional profile likelihood and joint confidence region.
 
@@ -529,6 +531,10 @@ def profile_likelihood_2d(
         Whether to compute in parallel
     max_workers
         Maximum number of worker processes
+    callback
+        Called with a `FitEvent` after every evaluation and at the end of
+        every refit, see `mxlpy.fit.callbacks`. Has to be picklable with
+        `parallel=True`
 
     Examples
     --------
@@ -575,6 +581,7 @@ def profile_likelihood_2d(
         transform=transform,
         postprocess_fn=postprocess_fn,
         standard_scale=standard_scale,
+        callback=callback,
     )
     problem, optimum, thr = setup.problem, setup.optimum, setup.threshold
     coordinates = coordinates_of(names, optimum, problem, setup.log)

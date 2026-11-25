@@ -24,6 +24,7 @@ from mxlpy.fit import losses
 from mxlpy.fit.losses import GaussianNll, _sigma_array
 from mxlpy.fit.residuals import (
     _apply_updates,
+    predicted,
     protocol_time_course_residual,
     steady_state_residual,
     time_course_residual,
@@ -228,7 +229,7 @@ class GradientResidual:
                 res = runner.protocol_time_course(s.model, s.protocol, times)
         if isinstance(val := res.value, Exception):
             return None
-        prediction = val.get_combined(include_terms=True)
+        prediction = predicted(val, self.names)
         if s.postprocess_fn is not None:
             prediction = s.postprocess_fn(prediction)
         if self.kind == "steady_state":

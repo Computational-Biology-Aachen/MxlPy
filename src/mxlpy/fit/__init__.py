@@ -14,7 +14,8 @@ Also known as **multi-start** optimisation: the same model is fitted to the
 same data from many different initial parameter guesses (one per row of the
 `p0` DataFrame, e.g. generated with `mxlpy.distributions.sample`). The starts
 run in parallel and a `GroupFit` is returned, whose `get_best_fit()` yields
-the best result and `get_losses()` the loss of every start.
+the best result, `get_losses()` the loss of every start and `failures` the
+reason of every failed start.
 - `group_steady_state`
 - `group_time_course`
 - `group_protocol_time_course`
@@ -85,6 +86,14 @@ gradient-based minimizers see it. The runner chooses how (see
 time courses) cost one forward and one backward solve for any number of
 parameters.
 
+Progress
+--------
+Every fit function takes `callback=`, called with a `FitEvent` after every
+evaluation and when a fit finished or failed (`start` tags the start of
+multi-start fits). `JsonlCallback` appends the events to a file, also from
+parallel workers. Multi-start fits keep failed starts in
+`GroupFit.failures`.
+
 Loss functions
 --------------
 - rmse, mean_squared, mae, ... (heuristic, compared after standard scaling)
@@ -137,12 +146,16 @@ from ._mcmc import (
 )
 from ._single import loss_gradient, protocol_time_course, steady_state, time_course
 from .abstract import (
+    Condition,
+    Data,
     EnsembleFit,
     Fit,
     FitSettings,
+    GroupFit,
     JointFit,
     MixedSettings,
 )
+from .callbacks import Callback, FitEvent, JsonlCallback
 from .losses import (
     GaussianNll,
     Sigma,
@@ -165,14 +178,20 @@ __all__: list[str] = [
     "AdaptiveMetropolis",
     "AugmentedFit",
     "Bounds",
+    "Callback",
+    "Condition",
+    "Data",
     "EnsembleFit",
     "Fit",
+    "FitEvent",
     "FitSettings",
     "FixedNMinimizer",
     "GaussianNll",
     "GlobalScipyMinimizer",
+    "GroupFit",
     "GroupL1Penalty",
     "JointFit",
+    "JsonlCallback",
     "L1Penalty",
     "LeastSquaresMinimizer",
     "LocalScipyMinimizer",

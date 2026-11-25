@@ -7,15 +7,17 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
 from mxlpy import fit
+from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.fit._gradient import GradientResidual, _log_names
-from mxlpy.fit.abstract import _Settings, _split_p0
+from mxlpy.fit._problem import check_estimable, make_parts
+from mxlpy.fit.abstract import _Settings, _split_p0, as_conditions
 from mxlpy.fit.losses import _sigma_array
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
@@ -31,8 +33,8 @@ if TYPE_CHECKING:
 
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
-    from mxlpy._steady_state_builder import SteadyStateModelBuilder
     from mxlpy.fit._gradient import Transform
+    from mxlpy.fit.abstract import Data
     from mxlpy.fit.losses import Sigma
     from mxlpy.types import Array
 
@@ -224,7 +226,7 @@ def _sigma_vector(
 
 def fisher_information(
     model: KineticModelBuilder | OdeModelBuilder | SteadyStateModelBuilder,
-    data: pd.Series | pd.DataFrame,
+    data: Data,
     parameters: Mapping[str, float] | fit.Fit,
     *,
     sigma: Sigma | None = None,
@@ -247,14 +249,17 @@ def fisher_information(
         The model, which isn't modified
     data
         A Series fits a steady state, a DataFrame (indexed by time) a time
-        course, or a protocol time course if `protocol` is given
+        course, or a protocol time course if `protocol` is given. Several
+        data sets: a mapping of names to data or `fit.Condition`s, whose
+        rows are stacked (with a `condition` index level)
     parameters
         Values of the fitted parameters (and initial values), e.g. a fit result
     sigma
         Standard deviation of the measurement noise: a scalar, one value per
         observable (Series) or per data point (DataFrame like `data`).
         If None, the noise variance is estimated from the residuals as
-        `Σr² / (n - p)` and Wald intervals use the t distribution
+        `Σr² / (n - p)` and Wald intervals use the t distribution.
+        The sigma of a `fit.Condition` takes precedence
     y0
         Initial conditions the fit used, if any. Variables in `parameters`
         are fitted initial values, as in the fit functions
@@ -284,39 +289,85 @@ def fisher_information(
     values = {k: float(v) for k, v in parameters.items()}
     model = deepcopy(model)
     p_names, v_names = _split_p0(model, values)
-    if unknown := sorted(set(values) - set(p_names) - set(v_names)):
+    conditions = as_conditions(data, y0=y0, protocol=protocol)
+    parts = make_parts(model, data, fit.rmse, y0=y0, protocol=protocol)
+    local = {v for part in parts for v in part.local.values()}
+    if unknown := sorted(set(values) - set(p_names) - set(v_names) - local):
         msg = f"Unknown parameters or variables: {unknown}"
         raise ValueError(msg)
-    settings = _Settings(
-        model=model,
-        data=data,
-        y0=y0,
-        runner=default_runner(model) if runner is None else runner,
-        loss_fn=fit.rmse,
-        p_names=p_names,
-        v_names=v_names,
-        standard_scale=False,
-        protocol=protocol,
-    )
-    residual = GradientResidual(residual_fn(data, protocol), settings)
-    r = residual.residuals(values)
-    if not np.isfinite(r).all():
-        msg = "Simulation failed at the given parameters"
+    check_estimable(parts, list(values))
+    sigmas = [sigma if c.sigma is None else c.sigma for c in conditions.values()]
+    if any(i is None for i in sigmas) and not all(i is None for i in sigmas):
+        msg = "Pass sigma for all data sets or for none of them"
         raise ValueError(msg)
-    jac = residual.jacobian(values)
+    resolved_runner: Any = default_runner(model) if runner is None else runner
+    names = list(values)
+    model_names = set(p_names) | set(v_names) | set(model.get_addressable_names())
+    if not isinstance(model, SteadyStateModelBuilder):
+        model_names |= set(model.get_variable_names())
+    single = len(parts) == 1
+    r_parts, jac_parts, row_parts, weight_parts = [], [], [], []
+    for part, cond_sigma in zip(parts, sigmas, strict=True):
+        m = model if single else deepcopy(model)
+        if part.parameters:
+            m.update_addressable(part.parameters)
+        skip = set(part.parameters) | set(part.local)
+        sources = {k: k for k in names if k in model_names and k not in skip}
+        sources |= {k: v for k, v in part.local.items() if v in values}
+        fitted = {k: values[v] for k, v in sources.items()}
+        part_p, part_v = _split_p0(m, fitted)
+        settings = _Settings(
+            model=m,
+            data=part.data,
+            y0=part.y0,
+            runner=resolved_runner,
+            loss_fn=fit.rmse,
+            p_names=part_p,
+            v_names=part_v,
+            standard_scale=False,
+            protocol=part.protocol,
+        )
+        residual = GradientResidual(residual_fn(part.data, part.protocol), settings)
+        r = residual.residuals(fitted)
+        if not np.isfinite(r).all():
+            msg = "Simulation failed at the given parameters"
+            raise ValueError(msg)
+        jac = np.zeros((len(r), len(names)))
+        if sources:
+            jac[:, [names.index(v) for v in sources.values()]] = residual.jacobian(
+                fitted
+            )
+        mask = residual.mask
+        rows: pd.Index
+        if isinstance(part.data, pd.DataFrame):
+            rows = cast(
+                pd.Index,
+                pd.MultiIndex.from_product(
+                    [part.data.index, part.data.columns], names=["time", "observable"]
+                )[mask],
+            )
+        else:
+            rows = pd.Index(part.data.index, name="observable")[mask]
+        if not single:
+            level_names = list(rows.names)
+            rows = pd.MultiIndex.from_tuples(
+                [(part.name, *(i if isinstance(i, tuple) else (i,))) for i in rows],
+                names=["condition", *level_names],
+            )
+        r_parts.append(r)
+        jac_parts.append(jac)
+        row_parts.append(rows)
+        if cond_sigma is not None:
+            weight_parts.append(1 / _sigma_vector(cond_sigma, part.data, mask))
+    r = np.concatenate(r_parts)
+    jac = np.vstack(jac_parts)
+    rows = row_parts[0] if single else row_parts[0].append(row_parts[1:])
 
     log = _log_names(values, transform)
     jac = jac * np.array([values[k] * np.log(10) if k in log else 1.0 for k in values])
 
-    mask = residual.mask
-    if isinstance(data, pd.DataFrame):
-        rows = pd.MultiIndex.from_product(
-            [data.index, data.columns], names=["time", "observable"]
-        )[mask]
-    else:
-        rows = pd.Index(data.index, name="observable")[mask]
-
-    if sigma is None:
+    estimated = all(i is None for i in sigmas)
+    if estimated:
         n, p = jac.shape
         if n <= p:
             msg = "Estimating sigma needs more data points than parameters, pass sigma"
@@ -328,7 +379,7 @@ def fisher_information(
         # Weighting with the estimated noise makes F⁻¹ the covariance as well
         weights = np.full(n, 1 / np.sqrt(residual_variance))
     else:
-        weights = 1 / _sigma_vector(sigma, data, mask)
+        weights = np.concatenate(weight_parts)
         residual_variance = 1.0
 
     return FisherInformation(
@@ -336,7 +387,7 @@ def fisher_information(
         design=pd.DataFrame(jac * weights[:, None], index=rows, columns=list(values)),
         residuals=pd.Series(r * weights, index=rows, name="residual"),
         residual_variance=residual_variance,
-        sigma_estimated=sigma is None,
+        sigma_estimated=estimated,
         log_parameters=log,
         rtol=rtol,
     )

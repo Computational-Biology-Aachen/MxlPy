@@ -26,6 +26,7 @@ from mxlpy.fit.abstract import (
     _joint_settings,
     _Settings,
 )
+from mxlpy.fit.callbacks import Callback
 from mxlpy.fit.penalties import Penalty
 from mxlpy.fit.residuals import steady_state_residual
 from mxlpy.minimizers.abstract import (
@@ -79,6 +80,7 @@ def joint_mixed(
     max_workers: int | None = None,
     as_deepcopy: bool = True,
     standard_scale: bool = True,
+    callback: Callback | None = None,
 ) -> Result[JointFit]:
     """Multi-model, multi-data, multi-simulation fitting.
 
@@ -142,6 +144,9 @@ def joint_mixed(
     standard_scale
         Whether to apply standard scale to data and prediction. Skipped for
         fewer than two data points.
+    callback
+        Called with a `FitEvent` after every evaluation and at the end, see
+        `mxlpy.fit.callbacks`
 
     Returns
     -------
@@ -176,4 +181,5 @@ def joint_mixed(
             bounds=bounds,
             prior=prior,
             penalty=penalty,
+            callback=callback,
         )

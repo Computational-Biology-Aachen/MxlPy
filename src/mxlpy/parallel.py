@@ -15,6 +15,9 @@ Functions:
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import json
 import pickle
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
@@ -28,7 +31,7 @@ from tqdm import tqdm
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Hashable
 
-__all__ = ["Cache", "parallelise", "parallelise_keyless"]
+__all__ = ["Cache", "content_hash", "parallelise", "parallelise_keyless"]
 
 
 # (export, install) pairs: export runs in the parent before a pool starts, and
@@ -144,6 +147,99 @@ def _pickle_save(file: Path, data: Any) -> None:
         pickle.dump(data, fp)
 
 
+def _model_bytes(model: Any) -> bytes | None:
+    """Canonical bytes of a model builder via its `.mxl.json` form, None for others."""
+    from mxlpy import serialize  # noqa: PLC0415 (slow import, only needed here)
+    from mxlpy._kinetic_builder import KineticModelBuilder  # noqa: PLC0415
+    from mxlpy._ode_builder import OdeModelBuilder  # noqa: PLC0415
+    from mxlpy._steady_state_builder import SteadyStateModelBuilder  # noqa: PLC0415
+
+    to_dict: Callable[..., dict[str, Any]]
+    if isinstance(model, KineticModelBuilder):
+        to_dict = serialize.model_to_dict
+    elif isinstance(model, OdeModelBuilder):
+        to_dict = serialize.ode_model_to_dict
+    elif isinstance(model, SteadyStateModelBuilder):
+        to_dict = serialize.steady_state_model_to_dict
+    else:
+        return None
+    try:
+        data = to_dict(model, model_id="model")
+    except Exception:  # noqa: BLE001 (anything the format can't express)
+        return None
+    return json.dumps(data, sort_keys=True, default=repr).encode()
+
+
+def _update_hash(h: Any, obj: Any) -> None:
+    """Feed a canonical, type-tagged byte form of `obj` into the hash `h`."""
+    import numpy as np  # noqa: PLC0415
+    import pandas as pd  # noqa: PLC0415
+
+    h.update(type(obj).__qualname__.encode() + b"\0")
+    if obj is None or isinstance(obj, (bool, int, float, complex, str, bytes)):
+        h.update(repr(obj).encode())
+    elif isinstance(obj, (list, tuple)):
+        h.update(str(len(obj)).encode())
+        for i in obj:
+            _update_hash(h, i)
+    elif isinstance(obj, (set, frozenset)):
+        for i in sorted(obj, key=repr):
+            _update_hash(h, i)
+    elif isinstance(obj, dict):
+        for k in sorted(obj, key=repr):
+            _update_hash(h, k)
+            _update_hash(h, obj[k])
+    elif isinstance(obj, pd.DataFrame):
+        _update_hash(h, list(obj.index))
+        for name in obj.columns:
+            _update_hash(h, name)
+            _update_hash(h, obj[name].to_numpy())
+    elif isinstance(obj, pd.Series):
+        _update_hash(h, list(obj.index))
+        _update_hash(h, obj.name)
+        _update_hash(h, obj.to_numpy())
+    elif isinstance(obj, np.ndarray):
+        h.update(f"{obj.dtype}{obj.shape}".encode())
+        if obj.dtype.hasobject:
+            # Object arrays hold pointers, hash their elements instead
+            _update_hash(h, obj.ravel().tolist())
+        else:
+            h.update(np.ascontiguousarray(obj).tobytes())
+    elif isinstance(obj, np.generic):
+        h.update(repr(obj.item()).encode())
+    elif (model := _model_bytes(obj)) is not None:
+        h.update(model)
+    elif dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        for f in dataclasses.fields(obj):
+            _update_hash(h, f.name)
+            _update_hash(h, getattr(obj, f.name))
+    else:
+        import dill  # noqa: PLC0415
+
+        h.update(dill.dumps(obj))
+
+
+def content_hash(*objs: Any) -> str:
+    """Stable sha256 hex digest of the contents of `objs`.
+
+    Containers, numbers, strings, numpy arrays and pandas objects are hashed
+    by value (independent of dict order). Models are hashed via their
+    `.mxl.json` form, so changing e.g. a rate function changes the hash.
+    Models the format can't express and other objects are hashed via their
+    pickle, which identifies module-level functions by name only.
+
+    Examples
+    --------
+        >>> content_hash(model, {"k1": 1.0}) == content_hash(model, {"k1": 1.0})
+        True
+
+    """
+    h = hashlib.sha256()
+    for obj in objs:
+        _update_hash(h, obj)
+    return h.hexdigest()
+
+
 @dataclass
 class Cache:
     """Cache class for storing and retrieving computation results.
@@ -158,6 +254,13 @@ class Cache:
         Function to load data from files.
     save_fn
         Function to save data to files.
+    content_hash
+        Add a hash of `salt` and the input to every file name, so changed
+        inputs are recomputed instead of loaded, e.g. when resuming with
+        different settings.
+    salt
+        Anything else the results depend on, e.g. the model, hashed with
+        `content_hash` (only used with `content_hash=True`).
 
     """
 
@@ -165,12 +268,23 @@ class Cache:
     name_fn: Callable[[Any], str] = _pickle_name
     load_fn: Callable[[Path], Any] = _pickle_load
     save_fn: Callable[[Path, Any], None] = _pickle_save
+    content_hash: bool = False
+    salt: Any = None
+
+    def file(self, key: Hashable, value: Any, salt_digest: str = "") -> Path:
+        """File of the result for `key` (and `value` with `content_hash`)."""
+        file = self.tmp_dir / self.name_fn(key)
+        if not self.content_hash:
+            return file
+        digest = content_hash(salt_digest, value)[:16]
+        return file.with_name(f"{file.stem}-{digest}{file.suffix}")
 
 
 def _load_or_run[K: Hashable, Tin, Tout](
     inp: tuple[K, Tin],
     fn: Callable[[Tin], Tout],
     cache: Cache | None,
+    salt_digest: str = "",
 ) -> tuple[K, Tout]:
     """Load data from cache or execute function and save result.
 
@@ -182,6 +296,8 @@ def _load_or_run[K: Hashable, Tin, Tout](
         Function to execute if result is not in cache.
     cache
         Optional cache to store and retrieve results.
+    salt_digest
+        Content hash of the cache's salt, computed once by `parallelise`
 
     Returns
     -------
@@ -193,7 +309,7 @@ def _load_or_run[K: Hashable, Tin, Tout](
     if cache is None:
         res = fn(v)
     else:
-        file = cache.tmp_dir / cache.name_fn(k)
+        file = cache.file(k, v, salt_digest)
         if file.exists():
             return k, cast(Tout, cache.load_fn(file))
         res = fn(v)
@@ -245,13 +361,17 @@ def parallelise[K: Hashable, Tin, Tout](
         Dictionary mapping inputs to their corresponding outputs.
 
     """
+    salt_digest = ""
     if cache is not None:
         cache.tmp_dir.mkdir(parents=True, exist_ok=True)
+        if cache.content_hash:
+            salt_digest = content_hash(cache.salt)
 
     worker: Callable[[K, Tin], tuple[K, Tout]] = partial(
         _load_or_run,
         fn=fn,
         cache=cache,
+        salt_digest=salt_digest,
     )  # type: ignore
 
     results: list[tuple[K, Tout]]

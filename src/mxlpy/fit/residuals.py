@@ -11,10 +11,12 @@ import pandas as pd
 
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
 from mxlpy.runners import DynamicRunner
-from mxlpy.simulation import _align_time
+from mxlpy.simulation import Evaluation, _align_time
 from mxlpy.types import cast
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from mxlpy.fit.abstract import _Settings
     from mxlpy.types import Result
 
@@ -36,12 +38,28 @@ def _apply_updates(updates: dict[str, float], settings: _Settings[Any]) -> None:
         model.update_variable(p, updates[p])
 
 
+def predicted(result: Any, names: Iterable[str]) -> pd.DataFrame:
+    """Simulated values to compare with data.
+
+    Variables, fluxes and term contributions, plus the derived values among
+    `names` (only computed if the data has some).
+    """
+    prediction = result.get_combined(include_terms=True)
+    if missing := [n for n in names if n not in prediction.columns]:
+        if isinstance(result, Evaluation):
+            return prediction
+        args = result.get_args(include_derived_parameters=True)
+        if extra := [n for n in missing if n in args.columns]:
+            prediction = pd.concat([prediction, args.loc[:, extra]], axis=1)
+    return prediction
+
+
 def _loss(settings: _Settings[Any], res: Result[Any], names: list[str]) -> float:
     match val := res.value:
         case Exception():
             return cast(float, np.inf)
         case _:
-            prediction = val.get_combined(include_terms=True)
+            prediction = predicted(val, names)
             if (postprocess := settings.postprocess_fn) is not None:
                 prediction = postprocess(prediction)
             if isinstance(settings.data, pd.DataFrame):

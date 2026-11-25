@@ -37,9 +37,11 @@ from wadler_lindig import pformat
 from mxlpy import fns
 from mxlpy.distributions import Normal
 from mxlpy.fit._joint import joint_protocol_time_course, joint_time_course
-from mxlpy.fit.abstract import FitSettings
+from mxlpy.fit.abstract import Condition, FitSettings, as_conditions
+from mxlpy.fit.callbacks import Callback, tagged
 from mxlpy.fit.losses import GaussianNll
 from mxlpy.fit.penalties import PriorPenalty
+from mxlpy.fit.residuals import predicted
 from mxlpy.minimizers._scipy import LocalScipyMinimizer
 from mxlpy.simulator import Simulator
 from mxlpy.types import InitialAssignment, Result
@@ -141,10 +143,20 @@ def _block_terms(model: _Model, blocks: Sequence[str]) -> list[str]:
     return [f"{b}_{t}" for b in blocks for t in raw[b].targets]
 
 
+def _condition_model(model: _Model, condition: Condition) -> _Model:
+    """A copy of the model with the parameters and initial values of a condition."""
+    part = deepcopy(model)
+    if condition.parameters:
+        part.update_addressable(dict(condition.parameters))
+    if condition.y0:
+        part.update_variables(dict(condition.y0))
+    return part
+
+
 def _scale_blocks(
     model: _Model,
     blocks: Sequence[str],
-    data_sets: Mapping[str, pd.DataFrame],
+    conditions: Mapping[str, Condition],
     protocols: Mapping[str, pd.DataFrame],
     integrator: IntegratorType | None,
 ) -> dict[str, float]:
@@ -161,8 +173,13 @@ def _scale_blocks(
         # Results are computed lazily with the parameters of the simulation,
         # so everything is read before the readout is restored
         args, rhs, fluxes = [], [], []
-        for name, data in data_sets.items():
-            sim = _simulate(model, data.index, protocols.get(name), integrator)
+        for name, cond in conditions.items():
+            sim = _simulate(
+                _condition_model(model, cond),
+                cond.data.index,
+                protocols.get(name),
+                integrator,
+            )
             a = cast(
                 pd.DataFrame,
                 sim.get_args(
@@ -234,7 +251,7 @@ def _noise(sigma: Sigma, data: pd.DataFrame) -> pd.Series | pd.DataFrame:
 
 def _augmented(
     model: _Model,
-    data: pd.DataFrame | Mapping[str, pd.DataFrame],
+    data: pd.DataFrame | Condition | Mapping[str, pd.DataFrame | Condition],
     protocol: pd.DataFrame | Mapping[str, pd.DataFrame] | None,
     *,
     p0: Mapping[str, float],
@@ -250,19 +267,36 @@ def _augmented(
     integrator: IntegratorType | None,
     bounds: Bounds | None,
     prior: Mapping[str, Prior] | None,
+    callback: Callback | None,
 ) -> Result[AugmentedFit]:
-    data_sets = {"data": data} if isinstance(data, pd.DataFrame) else dict(data)
-    protocols: dict[str, pd.DataFrame] = {}
+    conditions = as_conditions(data)
+    if not all(isinstance(c.data, pd.DataFrame) for c in conditions.values()):
+        msg = "Hidden-state blocks are trained on time courses (DataFrames)"
+        raise TypeError(msg)
+    data_sets = {k: cast(pd.DataFrame, c.data) for k, c in conditions.items()}
+    protocols = {k: c.protocol for k, c in conditions.items() if c.protocol is not None}
     if isinstance(protocol, pd.DataFrame):
-        protocols = dict.fromkeys(data_sets, protocol)
+        protocols = dict.fromkeys(data_sets, protocol) | protocols
     elif protocol is not None:
-        protocols = dict(protocol)
-        if unknown := sorted(set(protocols) - set(data_sets)):
+        given = dict(protocol)
+        if unknown := sorted(set(given) - set(data_sets)):
             msg = f"Protocols for unknown data sets {unknown}"
             raise KeyError(msg)
+        protocols = given | protocols
         if missing := sorted(set(data_sets) - set(protocols)):
             msg = f"No protocol for the data sets {missing}"
             raise KeyError(msg)
+    if protocols and (missing := sorted(set(data_sets) - set(protocols))):
+        msg = f"Some data sets have a protocol, but not {missing}"
+        raise KeyError(msg)
+    if renamed := sorted({k for c in conditions.values() for k in (c.local or {})}):
+        msg = f"Condition-specific names (local) aren't supported here, set {renamed} as parameters"
+        raise ValueError(msg)
+    if refined := sorted(
+        {k for c in conditions.values() for k in c.overridden if k in p0}
+    ):
+        msg = f"Parameters set by a condition can't be refined: {refined}"
+        raise ValueError(msg)
     model = deepcopy(model)
     raw = model.get_raw_hidden_states(as_copy=False)
     blocks = list(raw) if blocks is None else list(blocks)
@@ -284,7 +318,7 @@ def _augmented(
 
     terms = _block_terms(model, blocks)
     if rescale:
-        scales = _scale_blocks(model, blocks, data_sets, protocols, integrator)
+        scales = _scale_blocks(model, blocks, conditions, protocols, integrator)
     else:
         scales = {
             f"{b}_{t}": float(s)
@@ -297,11 +331,15 @@ def _augmented(
     noises: dict[str, pd.Series | pd.DataFrame] = {}
     local: dict[str, float] = {}
     for name, df in data_sets.items():
-        part = deepcopy(model)
+        cond = conditions[name]
+        part = _condition_model(model, cond)
         if fit_h0:
             local |= _local_h0(part, blocks, name)
         observed = df.copy()
-        noise = noises[name] = _noise(_sigma_of(sigma, name, data_sets), df)
+        noise = noises[name] = _noise(
+            _sigma_of(sigma, name, data_sets) if cond.sigma is None else cond.sigma,
+            df,
+        )
         if correction_penalty > 0:
             penalty_sigma = {
                 t: scales[t] / math.sqrt(2 * correction_penalty) for t in terms
@@ -327,7 +365,7 @@ def _augmented(
     }
     values = model.get_addressable_values() | model.get_initial_conditions()
 
-    def stage(names: list[str]) -> Result[JointFit]:
+    def stage(label: str, names: list[str]) -> Result[JointFit]:
         start = {k: float(values[k]) for k in names if k not in local} | {
             k: local[k] for k in names if k in local
         }
@@ -338,19 +376,20 @@ def _augmented(
             "bounds": bounds,
             "parallel": False,
             "standard_scale": False,
+            "callback": tagged(callback, label),
         }
         if protocols:
             return joint_protocol_time_course(settings, **kwargs)
         return joint_time_course(settings, **kwargs)
 
     stages: dict[str, JointFit] = {}
-    if isinstance(fit := stage(weights + list(local)).value, Exception):
+    if isinstance(fit := stage("weights", weights + list(local)).value, Exception):
         return Result(fit)
     stages["weights"] = fit
     values |= {k: v for k, v in fit.best_pars.items() if k not in local}
     local |= {k: v for k, v in fit.best_pars.items() if k in local}
     if joint_refinement and p0:
-        if isinstance(fit := stage([*p0, *weights, *local]).value, Exception):
+        if isinstance(fit := stage("joint", [*p0, *weights, *local]).value, Exception):
             return Result(fit)
         stages["joint"] = fit
         values |= {k: v for k, v in fit.best_pars.items() if k not in local}
@@ -373,14 +412,14 @@ def _augmented(
         part.update_variables({k: v for k, v in fitted.items() if k in states})
         models[name] = part
         sim = _simulate(part, df.index, protocols.get(name), integrator)
-        combined = cast(pd.DataFrame, sim.get_combined(include_terms=True))
-        predicted = combined.reindex(np.asarray(df.index, dtype=float)).loc[
+        combined = predicted(sim, [*df.columns, *terms])
+        prediction = combined.reindex(np.asarray(df.index, dtype=float)).loc[
             :, list(df.columns)
         ]
-        predicted.index = df.index
-        predictions[name] = predicted
-        residuals[name] = df - predicted
-        loss += GaussianNll(sigma=noises[name])(predicted, df)
+        prediction.index = df.index
+        predictions[name] = prediction
+        residuals[name] = df - prediction
+        loss += GaussianNll(sigma=noises[name])(prediction, df)
         corrections.append(combined.loc[:, terms])
     correction = pd.concat(corrections, keys=list(data_sets), names=["data", "time"])
     if fit_h0 and len(data_sets) == 1:
@@ -409,7 +448,7 @@ def _augmented(
 def augmented_time_course(
     model: _Model,
     *,
-    data: pd.DataFrame | Mapping[str, pd.DataFrame],
+    data: pd.DataFrame | Condition | Mapping[str, pd.DataFrame | Condition],
     p0: Mapping[str, float],
     sigma: Sigma | Mapping[str, Any] = 1.0,
     blocks: Sequence[str] | None = None,
@@ -423,6 +462,7 @@ def augmented_time_course(
     integrator: IntegratorType | None = None,
     bounds: Bounds | None = None,
     prior: Mapping[str, Prior] | None = None,
+    callback: Callback | None = None,
 ) -> Result[AugmentedFit]:
     """Train the hidden-state blocks of a model on time courses.
 
@@ -442,14 +482,17 @@ def augmented_time_course(
     model
         Model with hidden-state blocks
     data
-        Time course, or time courses by data set name, all fitted jointly
-        with the same weights
+        Time course, or time courses (or `fit.Condition`s with their own
+        initial values, parameters, protocol and sigma) by data set name, all
+        fitted jointly with the same weights. Parameters a condition sets
+        can't be in `p0`, and conditions can't have condition-specific
+        (`local`) names
     p0
         Fitted mechanistic parameters (and initial values), the start
     sigma
         Measurement noise of the data: scalar, per observable (Series or
         mapping) or per data point (DataFrame), or a mapping of these by
-        data set name
+        data set name. The sigma of a `fit.Condition` takes precedence
     blocks
         Blocks to train, all by default; the weights of the others are fixed
     weight_prior_scale
@@ -475,6 +518,9 @@ def augmented_time_course(
         Bounds of the fitted values; weights default to signed bounds
     prior
         Priors of the values in `p0`, used in the joint refinement
+    callback
+        Called with a `FitEvent` after every evaluation and at the end of
+        every stage, whose `start` is the stage, see `mxlpy.fit.callbacks`
 
     Returns
     -------
@@ -500,13 +546,14 @@ def augmented_time_course(
         integrator=integrator,
         bounds=bounds,
         prior=prior,
+        callback=callback,
     )
 
 
 def augmented_protocol_time_course(
     model: _Model,
     *,
-    data: pd.DataFrame | Mapping[str, pd.DataFrame],
+    data: pd.DataFrame | Condition | Mapping[str, pd.DataFrame | Condition],
     protocol: pd.DataFrame | Mapping[str, pd.DataFrame],
     p0: Mapping[str, float],
     sigma: Sigma | Mapping[str, Any] = 1.0,
@@ -521,6 +568,7 @@ def augmented_protocol_time_course(
     integrator: IntegratorType | None = None,
     bounds: Bounds | None = None,
     prior: Mapping[str, Prior] | None = None,
+    callback: Callback | None = None,
 ) -> Result[AugmentedFit]:
     """Train the hidden-state blocks of a model on protocol time courses.
 
@@ -532,7 +580,7 @@ def augmented_protocol_time_course(
     model
         Model with hidden-state blocks
     data
-        Time course, or time courses by data set name
+        Time course, or time courses (or `fit.Condition`s) by data set name
     protocol
         Protocol, or protocols by data set name
     p0
@@ -561,6 +609,9 @@ def augmented_protocol_time_course(
         Bounds of the fitted values
     prior
         Priors of the values in `p0`, used in the joint refinement
+    callback
+        Called with a `FitEvent` after every evaluation and at the end of
+        every stage, whose `start` is the stage, see `mxlpy.fit.callbacks`
 
     Returns
     -------
@@ -585,4 +636,5 @@ def augmented_protocol_time_course(
         integrator=integrator,
         bounds=bounds,
         prior=prior,
+        callback=callback,
     )

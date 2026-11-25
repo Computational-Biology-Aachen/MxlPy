@@ -16,10 +16,11 @@ import numpy as np
 import pandas as pd
 
 from mxlpy.fit._gradient import _log_names
-from mxlpy.identify._problem import (
+from mxlpy.fit._problem import (
     BETTER_OPTIMUM,
     _Problem,
     check_threshold,
+    condition_losses,
     likelihood_threshold,
     refit,
     setup_problem,
@@ -33,9 +34,10 @@ if TYPE_CHECKING:
     from mxlpy import fit
     from mxlpy.distributions import Prior
     from mxlpy.fit._gradient import Transform
-    from mxlpy.fit.abstract import PostprocessFn
+    from mxlpy.fit._problem import _Model
+    from mxlpy.fit.abstract import Data, PostprocessFn
+    from mxlpy.fit.callbacks import Callback
     from mxlpy.fit.penalties import Penalty
-    from mxlpy.identify._problem import _Model
     from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
 
 __all__ = [
@@ -457,10 +459,10 @@ def coordinates_of(
 
 def profile_likelihood(
     model: _Model,
-    data: pd.Series | pd.DataFrame,
+    data: Data,
     parameters: fit.Fit | Mapping[str, float],
     *,
-    loss_fn: LossFn,
+    loss_fn: LossFn | None = None,
     names: Sequence[str] | None = None,
     alpha: float = 0.95,
     threshold: float | None = None,
@@ -477,6 +479,7 @@ def profile_likelihood(
     max_steps: int = 100,
     parallel: bool = True,
     max_workers: int | None = None,
+    callback: Callback | None = None,
 ) -> ProfileLikelihood:
     """Profile likelihoods, confidence intervals and identifiability.
 
@@ -501,7 +504,10 @@ def profile_likelihood(
         The model, which isn't modified
     data
         A Series fits a steady state, a DataFrame (indexed by time) a time
-        course, or a protocol time course if `protocol` is given
+        course, or a protocol time course if `protocol` is given. Several
+        data sets are fitted jointly: a mapping of names to data or
+        `fit.Condition`s (with their own initial values, protocol,
+        parameters and noise)
     parameters
         Fitted parameters (and initial values) the profiles start from, e.g.
         a fit result, as for `fisher_information`. They are refitted first,
@@ -548,6 +554,10 @@ def profile_likelihood(
         Whether to profile in parallel
     max_workers
         Maximum number of worker processes
+    callback
+        Called with a `FitEvent` after every evaluation and at the end of
+        every refit, see `mxlpy.fit.callbacks`. Has to be picklable with
+        `parallel=True`
 
     Examples
     --------
@@ -568,7 +578,9 @@ def profile_likelihood(
         msg = f"max_steps has to be positive, got {max_steps}"
         raise ValueError(msg)
     if threshold is None:
-        threshold = likelihood_threshold(loss_fn, alpha, "Confidence thresholds")
+        threshold = likelihood_threshold(
+            condition_losses(data, loss_fn), alpha, "Confidence thresholds"
+        )
         used_alpha: float | None = alpha
     else:
         threshold = check_threshold(threshold)
@@ -588,6 +600,7 @@ def profile_likelihood(
         transform=transform,
         postprocess_fn=postprocess_fn,
         standard_scale=standard_scale,
+        callback=callback,
     )
     log = _log_names(start, transform)
     objective, start = refit(problem, start)
