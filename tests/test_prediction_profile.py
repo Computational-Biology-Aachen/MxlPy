@@ -9,7 +9,7 @@ import pytest
 from scipy import stats
 
 from mxlpy import Simulator, fit, identify, make_protocol, plot
-from mxlpy.identify._problem import Constraint, setup_problem
+from mxlpy.fit._problem import Constraint, setup_problem
 from mxlpy.identify._profile2d import _Axis, _repair
 from tests.test_profile_likelihood import (
     SIGMA,

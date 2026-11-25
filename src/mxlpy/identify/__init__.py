@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+from mxlpy.fit._problem import Prediction
 from mxlpy.identify._fisher import FisherInformation, fisher_information
 from mxlpy.identify._prediction import (
     PredictionBand,
@@ -29,7 +30,6 @@ from mxlpy.identify._prediction import (
     prediction_profile,
     validation_profile,
 )
-from mxlpy.identify._problem import Prediction
 from mxlpy.identify._profile import (
     Identifiability,
     Profile,

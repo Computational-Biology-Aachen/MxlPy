@@ -8,18 +8,25 @@ import math
 import warnings
 import zlib
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import pandas as pd
 from wadler_lindig import pformat
 
-from mxlpy import fit
 from mxlpy._steady_state_builder import SteadyStateModelBuilder
-from mxlpy.fit._single import _evaluate_loss, _fit_data
-from mxlpy.fit.losses import _is_likelihood
-from mxlpy.fit.penalties import Penalty, fix_penalties
+from mxlpy.fit._problem import (
+    _Problem,
+    check_estimable,
+    condition_losses,
+    is_likelihood,
+    make_parts,
+    pick_minimizer,
+)
+from mxlpy.fit.abstract import Condition, as_conditions
+from mxlpy.fit.callbacks import tagged
+from mxlpy.fit.penalties import Penalty, collect_penalties, fix_penalties
 from mxlpy.parallel import parallelise
 from mxlpy.runners import default_runner, precompile
 from mxlpy.select._criteria import (
@@ -38,7 +45,8 @@ if TYPE_CHECKING:
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy.distributions import Distribution, Prior
     from mxlpy.fit._gradient import Transform
-    from mxlpy.fit.abstract import PostprocessFn
+    from mxlpy.fit.abstract import Data, PostprocessFn
+    from mxlpy.fit.callbacks import Callback
     from mxlpy.minimizers.abstract import Bounds, LossFn, MinimizerProtocol
     from mxlpy.select._space import ModelSpace, Move
 
@@ -241,63 +249,24 @@ class Selection[M: _Model]:
 ###############################################################################
 
 
-@dataclass(kw_only=True)
-class _Problem:
-    """Everything a worker needs to fit one candidate from one start."""
-
-    model: _Model
-    data: pd.Series | pd.DataFrame
-    loss_fn: LossFn
-    minimizer: MinimizerProtocol
-    y0: dict[str, float] | None
-    protocol: pd.DataFrame | None
-    runner: Any
-    bounds: Bounds
-    prior: dict[str, Prior] | None
-    penalty: Penalty | Sequence[Penalty] | None
-    transform: Transform | None
-    postprocess_fn: PostprocessFn | None
-
-
 type _Outcome = tuple[float, float, float, dict[str, float]]
+type _Task = tuple[_Problem, dict[str, float], dict[str, float], str]
 
 
-def _fit_start(task: tuple[_Problem, dict[str, float]]) -> _Outcome | None:
-    """Objective, loss, penalty and parameters of one fit, None if it failed."""
-    problem, p0 = task
-    if not p0:
-        # Nothing to estimate, only evaluate the loss
-        loss = _evaluate_loss(
-            deepcopy(problem.model),
-            problem.data,
-            problem.protocol,
-            y0=problem.y0,
-            runner=problem.runner,
-            loss_fn=problem.loss_fn,
-            postprocess_fn=problem.postprocess_fn,
-            standard_scale=False,
-        )
-        return (loss, loss, 0.0, {}) if math.isfinite(loss) else None
-    res = _fit_data(
-        problem.model,
-        problem.data,
-        problem.protocol,
-        p0=p0,
-        y0=problem.y0,
-        minimizer=problem.minimizer,
-        runner=problem.runner,
-        loss_fn=problem.loss_fn,
-        postprocess_fn=problem.postprocess_fn,
-        bounds=problem.bounds,
-        prior=problem.prior,
-        penalty=problem.penalty,
-        transform=problem.transform,
-    )
-    match res.value:
-        case fit.Fit() as best if math.isfinite(best.objective):
-            return best.objective, best.loss, best.penalty, best.best_pars
-        case _:
-            return None
+def _fit_start(task: _Task) -> _Outcome | None:
+    """Objective, loss, penalty and parameters of one fit, None if it failed.
+
+    The task is the problem, the start, fixed initial values and the label
+    of the start for the callback.
+    """
+    problem, p0, fixed_v, label = task
+    if problem.callback is not None:
+        problem = replace(problem, callback=tagged(problem.callback, label))
+    res = problem.fit_result(deepcopy(problem.model), dict(fixed_v), p0)
+    if res is None or not math.isfinite(res.objective):
+        return None
+    pars = {k: v for k, v in res.parameters.items() if k not in fixed_v}
+    return res.objective, res.loss, res.penalty, pars
 
 
 def _names(model: _Model) -> tuple[set[str], set[str]]:
@@ -322,10 +291,10 @@ class _Spec:
 class _Fitter:
     """Fits candidates: shared settings of a selection."""
 
-    data: pd.Series | pd.DataFrame
+    data: Data
     p0: Mapping[str, float | Distribution]
-    loss_fn: LossFn
-    minimizer: MinimizerProtocol
+    loss_fn: LossFn | None
+    minimizer: MinimizerProtocol | None
     n_starts: int
     y0: dict[str, float] | None
     protocol: pd.DataFrame | None
@@ -339,11 +308,17 @@ class _Fitter:
     parallel: bool
     max_workers: int | None
     timeout: float | None
+    callback: Callback | None = None
+    conditions: dict[str, Condition] = field(init=False)
     n_data: int = field(init=False)
 
     def __post_init__(self) -> None:
         """Count the data points and check the names of the settings."""
-        self.n_data = int(np.isfinite(self.data.to_numpy(dtype=float)).sum())
+        self.conditions = as_conditions(self.data, y0=self.y0, protocol=self.protocol)
+        self.n_data = sum(
+            int(np.isfinite(c.data.to_numpy(dtype=float)).sum())
+            for c in self.conditions.values()
+        )
         named = {"bounds": self.bounds, "prior": self.prior or {}}
         if isinstance(self.transform, dict):
             named["transform"] = self.transform
@@ -356,7 +331,7 @@ class _Fitter:
 
     def check_names(self, models: Iterable[_Model]) -> None:
         """Raise for estimated names that none of `models` has, e.g. typos."""
-        known: set[str] = set()
+        known: set[str] = set(self.local)
         for model in models:
             known.update(_names(model)[0] | _names(model)[1])
         if unknown := sorted(set(self.p0) - known):
@@ -431,11 +406,17 @@ class _Fitter:
         ]
         return [warm, *sampled]
 
-    def _problem(self, spec: _Spec, free: list[str], v_names: set[str]) -> _Problem:
+    @property
+    def local(self) -> dict[str, str]:
+        """Condition-specific names, with the model parameter each renames."""
+        return {
+            v: k for c in self.conditions.values() for k, v in (c.local or {}).items()
+        }
+
+    def _problem(self, spec: _Spec, free: list[str]) -> _Problem:
         model = spec.model
-        y0 = self.y0
-        if fixed_v := {k: v for k, v in spec.fixed.items() if k in v_names}:
-            y0 = {**(y0 or {}), **fixed_v}
+        parts = make_parts(model, self.conditions, self.loss_fn, y0=None, protocol=None)
+        check_estimable(parts, free)
         transform = self.transform
         if isinstance(transform, dict):
             transform = cast(
@@ -443,24 +424,23 @@ class _Fitter:
             )
         runner = default_runner(model) if self.runner is None else self.runner
         precompile(runner, model)
+        prior = (
+            {k: v for k, v in self.prior.items() if k in free} if self.prior else None
+        )
         return _Problem(
             model=model,
-            data=self.data,
-            loss_fn=self.loss_fn,
-            minimizer=self.minimizer,
-            y0=y0,
-            protocol=self.protocol,
+            parts=parts,
+            minimizer=pick_minimizer(parts, self.minimizer),
             runner=runner,
             bounds={k: v for k, v in self.bounds.items() if k in free},
-            prior=(
-                {k: v for k, v in self.prior.items() if k in free}
-                if self.prior
-                else None
-            ),
             # Penalties of fixed parameters are constants, which don't matter
-            penalty=fix_penalties(self.penalty, spec.fixed)[0],
+            penalties=collect_penalties(
+                prior, fix_penalties(self.penalty, spec.fixed)[0], free
+            ),
             transform=transform,
             postprocess_fn=self.postprocess_fn,
+            standard_scale=True,
+            callback=self.callback,
         )
 
     def fit(self, specs: list[_Spec]) -> list[CandidateFit[Any]]:
@@ -468,25 +448,32 @@ class _Fitter:
         if not specs:
             return []
         prepared = []
-        tasks: list[tuple[tuple[int, int], tuple[_Problem, dict[str, float]]]] = []
+        tasks: list[tuple[tuple[int, int], _Task]] = []
         for i, spec in enumerate(specs):
             p_names, v_names = _names(spec.model)
             if unknown := sorted(set(spec.fixed) - p_names - v_names):
                 msg = f"Candidate {spec.id!r} fixes unknown parameters {unknown}"
                 raise ValueError(msg)
+            local = self.local
             free = [
                 k
                 for k in self.p0
-                if (k in p_names or k in v_names) and k not in spec.fixed
+                if (k in p_names or k in v_names or local.get(k) in p_names)
+                and k not in spec.fixed
             ]
             nominal = dict(spec.model.get_parameter_values())
             if v_names:
                 model = cast("KineticModelBuilder | OdeModelBuilder", spec.model)
                 nominal |= model.get_initial_conditions() | (self.y0 or {})
+            nominal |= {k: nominal[v] for k, v in local.items() if v in nominal}
             starts = self._starts(spec, free, nominal)
-            problem = self._problem(spec, free, v_names)
+            problem = self._problem(spec, free)
+            fixed_v = {k: v for k, v in spec.fixed.items() if k in v_names}
             prepared.append((spec, free, starts, v_names))
-            tasks.extend(((i, j), (problem, p0)) for j, p0 in enumerate(starts))
+            tasks.extend(
+                ((i, j), (problem, p0, fixed_v, f"{spec.id}/{j}"))
+                for j, p0 in enumerate(starts)
+            )
 
         outcomes = dict(
             parallelise(
@@ -546,13 +533,14 @@ def _penalties(penalty: Penalty | Sequence[Penalty] | None) -> list[Penalty]:
 
 
 def _check_args(
-    loss_fn: LossFn,
+    data: Data,
+    loss_fn: LossFn | None,
     n_starts: int,
     model: _Model,
     y0: dict[str, float] | None,
 ) -> None:
-    if not _is_likelihood(loss_fn):
-        msg = "Model selection needs a likelihood loss like fit.GaussianNll(sigma)"
+    if not is_likelihood(condition_losses(data, loss_fn)):
+        msg = "Model selection needs a likelihood loss like fit.GaussianNll(sigma), or a sigma for every condition"
         raise ValueError(msg)
     if n_starts < 0:
         msg = f"n_starts can't be negative, got {n_starts}"
@@ -686,10 +674,10 @@ class _Search[M: _Model]:
 
 def run[M: _Model](
     space: ModelSpace[M],
-    data: pd.Series | pd.DataFrame,
+    data: Data,
     p0: Mapping[str, float | Distribution],
     *,
-    loss_fn: LossFn,
+    loss_fn: LossFn | None = None,
     criterion: Criterion = "aicc",
     method: Method = "adaptive",
     start: Iterable[str] | None = None,
@@ -711,6 +699,7 @@ def run[M: _Model](
     parallel: bool = True,
     max_workers: int | None = None,
     timeout: float | None = None,
+    callback: Callback | None = None,
 ) -> Selection[M]:
     """Select a model structure from a model space.
 
@@ -746,7 +735,9 @@ def run[M: _Model](
         The candidate models
     data
         A Series fits a steady state, a DataFrame (indexed by time) a time
-        course, or a protocol time course if `protocol` is given
+        course, or a protocol time course if `protocol` is given. Several
+        data sets are fitted jointly: a mapping of names to data or
+        `fit.Condition`s
     p0
         Parameters (and initial values) to estimate, with the distribution
         random starts are drawn from, or a fixed start value. Each candidate
@@ -810,6 +801,10 @@ def run[M: _Model](
         Timeout in seconds per fit when fitting in parallel; fits that time
         out count as failed. Errors raised by a fit (not failures to
         converge) abort the selection
+    callback
+        Called with a `FitEvent` after every evaluation and at the end of
+        every fit, whose `start` is `{candidate id}/{start}`, see
+        `mxlpy.fit.callbacks`. Has to be picklable with `parallel=True`
 
     Returns
     -------
@@ -834,7 +829,7 @@ def run[M: _Model](
         >>> selection.best_model
 
     """
-    _check_args(loss_fn, n_starts, space.base, y0)
+    _check_args(data, loss_fn, n_starts, space.base, y0)
     if criterion not in ("aic", "aicc", "bic", "lrt"):
         msg = f"Unknown criterion {criterion!r}, use 'aic', 'aicc', 'bic' or 'lrt'"
         raise ValueError(msg)
@@ -858,7 +853,7 @@ def run[M: _Model](
         data=data,
         p0=p0,
         loss_fn=loss_fn,
-        minimizer=fit.LeastSquaresMinimizer() if minimizer is None else minimizer,
+        minimizer=minimizer,
         n_starts=n_starts,
         y0=y0,
         protocol=protocol,
@@ -872,6 +867,7 @@ def run[M: _Model](
         parallel=parallel,
         max_workers=max_workers,
         timeout=timeout,
+        callback=callback,
     )
     fitter.check_names(
         [space.build([])[0], *(space.build([k])[0] for k in space.names)]
@@ -931,10 +927,10 @@ def run[M: _Model](
 
 def compare[M: _Model](
     models: Mapping[str, M],
-    data: pd.Series | pd.DataFrame,
+    data: Data,
     p0: Mapping[str, float | Distribution],
     *,
-    loss_fn: LossFn,
+    loss_fn: LossFn | None = None,
     criterion: InformationCriterion = "aicc",
     n_starts: int = 10,
     minimizer: MinimizerProtocol | None = None,
@@ -950,6 +946,7 @@ def compare[M: _Model](
     parallel: bool = True,
     max_workers: int | None = None,
     timeout: float | None = None,
+    callback: Callback | None = None,
 ) -> Selection[M]:
     """Fit and rank explicitly given model variants.
 
@@ -963,7 +960,9 @@ def compare[M: _Model](
         Model per name, which aren't modified
     data
         A Series fits a steady state, a DataFrame (indexed by time) a time
-        course, or a protocol time course if `protocol` is given
+        course, or a protocol time course if `protocol` is given. Several
+        data sets are fitted jointly: a mapping of names to data or
+        `fit.Condition`s
     p0
         Parameters (and initial values) to estimate with the distribution
         random starts are drawn from, or a fixed start value. Each model
@@ -991,7 +990,7 @@ def compare[M: _Model](
         msg = "No models to compare"
         raise ValueError(msg)
     for model in models.values():
-        _check_args(loss_fn, n_starts, model, y0)
+        _check_args(data, loss_fn, n_starts, model, y0)
     if criterion not in ("aic", "aicc", "bic"):
         msg = f"compare needs 'aic', 'aicc' or 'bic', not {criterion!r}; use Selection.lrt for tests"
         raise ValueError(msg)
@@ -999,7 +998,7 @@ def compare[M: _Model](
         data=data,
         p0=p0,
         loss_fn=loss_fn,
-        minimizer=fit.LeastSquaresMinimizer() if minimizer is None else minimizer,
+        minimizer=minimizer,
         n_starts=n_starts,
         y0=y0,
         protocol=protocol,
@@ -1013,6 +1012,7 @@ def compare[M: _Model](
         parallel=parallel,
         max_workers=max_workers,
         timeout=timeout,
+        callback=callback,
     )
     fitter.check_names(models.values())
     specs = [

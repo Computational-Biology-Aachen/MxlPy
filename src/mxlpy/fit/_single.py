@@ -5,6 +5,7 @@
 # This is single-model, single-data fitting
 ###############################################################################
 
+import time
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from functools import partial
@@ -26,6 +27,13 @@ from mxlpy.fit.abstract import (
     _split_p0,
     with_weight_bounds,
     without_weights,
+)
+from mxlpy.fit.callbacks import (
+    Callback,
+    failed,
+    failure_message,
+    finished,
+    tracked,
 )
 from mxlpy.fit.penalties import Penalty, collect_penalties, penalised
 from mxlpy.fit.residuals import (
@@ -67,7 +75,9 @@ def _minimize[M: _Model](
     transform: Transform | None = None,
     prior: Mapping[str, Prior] | None = None,
     penalty: Penalty | Sequence[Penalty] | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[M]]:
+    t0 = time.perf_counter()
     residual: Residual = (
         GradientResidual(residual_fn, settings)
         if GradientResidual.supports(residual_fn)
@@ -84,22 +94,38 @@ def _minimize[M: _Model](
         with_weight_bounds([settings.model], p0, bounds),
         without_weights([settings.model], p0, transform),
     )
+    residual = tracked(residual, callback, back=back)
     match minimizer(residual, p0, minimizer_bounds).value:
         case OptimisationState(parameters, value):
             best = back(parameters)
             if with_penalty is None:
-                return Result(Fit(model=settings.model, best_pars=best, loss=value))
-            # Evaluated separately, as `value - penalty` loses the loss's
-            # precision if the penalty dominates
-            return Result(
-                Fit(
+                result = Fit(model=settings.model, best_pars=best, loss=value)
+            else:
+                # Evaluated separately, as `value - penalty` loses the loss's
+                # precision if the penalty dominates
+                result = Fit(
                     model=settings.model,
                     best_pars=best,
                     loss=with_penalty.inner(best),
                     penalty=with_penalty.penalty(best),
                 )
+            finished(
+                callback,
+                residual,
+                start=None,
+                value=result.objective,
+                parameters=best,
+                duration=time.perf_counter() - t0,
             )
+            return Result(result)
         case _ as e:
+            failed(
+                callback,
+                residual,
+                start=None,
+                message=failure_message(e),
+                duration=time.perf_counter() - t0,
+            )
             return Result(e)
 
 
@@ -121,6 +147,7 @@ def steady_state(
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[KineticModelBuilder]]: ...
 
 
@@ -142,6 +169,7 @@ def steady_state(
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[OdeModelBuilder]]: ...
 
 
@@ -162,6 +190,7 @@ def steady_state(
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[SteadyStateModelBuilder]]: ...
 
 
@@ -182,6 +211,7 @@ def steady_state[M: _Model](
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[M]]:
     """Fit model parameters to steady-state experimental data.
 
@@ -234,6 +264,9 @@ def steady_state[M: _Model](
         to linear. Log space suits values spanning orders of magnitude with
         `LeastSquaresMinimizer`, but the unit first steps of quasi-Newton
         methods like L-BFGS-B then change values tenfold
+    callback
+        Called with a `FitEvent` after every evaluation and at the end, see
+        `mxlpy.fit.callbacks`
 
     Returns
     -------
@@ -256,6 +289,7 @@ def steady_state[M: _Model](
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
         transform=transform,
+        callback=callback,
     )
 
 
@@ -276,6 +310,7 @@ def _steady_state[M: _Model](
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[M]]:
     """Non-overloaded implementation of `steady_state`, for internal callers."""
     _check_y0(model, y0)
@@ -302,6 +337,7 @@ def _steady_state[M: _Model](
         prior=prior,
         penalty=penalty,
         transform=transform,
+        callback=callback,
     )
 
 
@@ -322,6 +358,7 @@ def time_course[M: KineticModelBuilder | OdeModelBuilder](
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[M]]:
     """Fit model parameters to time course of experimental data.
 
@@ -374,6 +411,9 @@ def time_course[M: KineticModelBuilder | OdeModelBuilder](
         to linear. Log space suits values spanning orders of magnitude with
         `LeastSquaresMinimizer`, but the unit first steps of quasi-Newton
         methods like L-BFGS-B then change values tenfold
+    callback
+        Called with a `FitEvent` after every evaluation and at the end, see
+        `mxlpy.fit.callbacks`
 
     Returns
     -------
@@ -403,6 +443,7 @@ def time_course[M: KineticModelBuilder | OdeModelBuilder](
         prior=prior,
         penalty=penalty,
         transform=transform,
+        callback=callback,
     )
 
 
@@ -424,6 +465,7 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[M]]:
     """Fit model parameters to time course of experimental data.
 
@@ -488,6 +530,9 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         to linear. Log space suits values spanning orders of magnitude with
         `LeastSquaresMinimizer`, but the unit first steps of quasi-Newton
         methods like L-BFGS-B then change values tenfold
+    callback
+        Called with a `FitEvent` after every evaluation and at the end, see
+        `mxlpy.fit.callbacks`
 
     Returns
     -------
@@ -519,6 +564,7 @@ def protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         prior=prior,
         penalty=penalty,
         transform=transform,
+        callback=callback,
     )
 
 
@@ -583,32 +629,6 @@ def _settings_for(
         protocol=_normalise_protocol_index(protocol) if protocol is not None else None,
     )
     return fn, settings
-
-
-def _evaluate_loss(
-    model: _Model,
-    data: pd.Series | pd.DataFrame,
-    protocol: pd.DataFrame | None,
-    *,
-    y0: dict[str, float] | None,
-    runner: Any,
-    loss_fn: LossFn,
-    postprocess_fn: PostprocessFn | None,
-    standard_scale: bool,
-) -> float:
-    """Loss of a model with nothing to fit, for any kind of data."""
-    fn, settings = _settings_for(
-        model,
-        data,
-        protocol,
-        y0=y0,
-        runner=runner,
-        loss_fn=loss_fn,
-        postprocess_fn=postprocess_fn,
-        standard_scale=standard_scale,
-        names=[],
-    )
-    return float(fn({}, settings=settings))
 
 
 def loss_gradient(

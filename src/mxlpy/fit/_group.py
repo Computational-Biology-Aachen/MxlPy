@@ -6,7 +6,7 @@
 ###############################################################################
 
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from functools import partial
 from typing import Any, cast, overload
 
@@ -20,6 +20,7 @@ from mxlpy.fit import losses
 from mxlpy.fit._gradient import Transform
 from mxlpy.fit._single import _steady_state, protocol_time_course, time_course
 from mxlpy.fit.abstract import Fit, FitResidual, GroupFit, PostprocessFn
+from mxlpy.fit.callbacks import Callback, failed, failure_message, tagged
 from mxlpy.fit.penalties import Penalty
 from mxlpy.fit.residuals import (
     protocol_time_course_residual,
@@ -38,7 +39,7 @@ __all__ = ["group_protocol_time_course", "group_steady_state", "group_time_cours
 
 
 def _wrap_steady_state[M: _Model](
-    p0: dict[str, float],
+    task: tuple[Hashable, dict[str, float]],
     *,
     model: M,
     data: pd.Series,
@@ -54,7 +55,9 @@ def _wrap_steady_state[M: _Model](
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[M]]:
+    start, p0 = task
     return _steady_state(
         model=model,
         p0=p0,
@@ -71,11 +74,12 @@ def _wrap_steady_state[M: _Model](
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
         transform=transform,
+        callback=tagged(callback, start),
     )
 
 
 def _wrap_time_course[M: KineticModelBuilder | OdeModelBuilder](
-    p0: dict[str, float],
+    task: tuple[Hashable, dict[str, float]],
     *,
     model: M,
     data: pd.DataFrame,
@@ -91,7 +95,9 @@ def _wrap_time_course[M: KineticModelBuilder | OdeModelBuilder](
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[M]]:
+    start, p0 = task
     return time_course(
         model=model,
         p0=p0,
@@ -108,11 +114,12 @@ def _wrap_time_course[M: KineticModelBuilder | OdeModelBuilder](
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
         transform=transform,
+        callback=tagged(callback, start),
     )
 
 
 def _wrap_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
-    p0: dict[str, float],
+    task: tuple[Hashable, dict[str, float]],
     *,
     model: M,
     data: pd.DataFrame,
@@ -129,7 +136,9 @@ def _wrap_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     as_deepcopy: bool = True,
     standard_scale: bool = True,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> Result[Fit[M]]:
+    start, p0 = task
     return protocol_time_course(
         model=model,
         p0=p0,
@@ -147,12 +156,40 @@ def _wrap_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         as_deepcopy=as_deepcopy,
         standard_scale=standard_scale,
         transform=transform,
+        callback=tagged(callback, start),
     )
 
 
-def _iterrows(df: pd.DataFrame) -> Iterable[tuple[str, dict[str, float]]]:
+def _iterrows(df: pd.DataFrame) -> Iterable[tuple[Hashable, dict[str, float]]]:
     for name, val in df.iterrows():
-        yield cast(str, name), cast(dict, val.to_dict())
+        yield cast(Hashable, name), cast(dict, val.to_dict())
+
+
+def _run_group[M: _Model](
+    fn: Callable[[tuple[Hashable, dict[str, float]]], Result[Fit[M]]],
+    p0: pd.DataFrame,
+    *,
+    callback: Callback | None,
+    parallel: bool,
+    timeout: float | None,
+) -> GroupFit[M]:
+    """Fit from every row of `p0`, keeping the fits and failures by start."""
+    if not p0.index.is_unique:
+        msg = "The starts (row labels of p0) have to be unique"
+        raise ValueError(msg)
+    inputs = [(k, (k, v)) for k, v in _iterrows(p0)]
+    results = dict(parallelise(fn, inputs, parallel=parallel, timeout=timeout))
+    fits: dict[Hashable, Fit[M]] = {}
+    failures: dict[Hashable, str] = {}
+    for k, _ in inputs:
+        if k not in results:
+            failures[k] = "timeout"
+            failed(tagged(callback, k), None, start=str(k), message="timeout")
+        elif isinstance(value := results[k].value, Exception):
+            failures[k] = failure_message(value)
+        else:
+            fits[k] = value
+    return GroupFit(fits, failures)
 
 
 @overload
@@ -174,6 +211,7 @@ def group_steady_state[M: (KineticModelBuilder, OdeModelBuilder)](
     parallel: bool = True,
     timeout: float | None = None,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> GroupFit[M]: ...
 
 
@@ -195,6 +233,7 @@ def group_steady_state(
     parallel: bool = True,
     timeout: float | None = None,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> GroupFit[SteadyStateModelBuilder]: ...
 
 
@@ -216,6 +255,7 @@ def group_steady_state[M: _Model](
     parallel: bool = True,
     timeout: float | None = None,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> GroupFit[M]:
     """Fit model parameters to steady-state experimental data.
 
@@ -277,38 +317,38 @@ def group_steady_state[M: _Model](
         to linear. Log space suits values spanning orders of magnitude with
         `LeastSquaresMinimizer`, but the unit first steps of quasi-Newton
         methods like L-BFGS-B then change values tenfold
+    callback
+        Called with a `FitEvent` (whose `start` is the row label of `p0`, as str)
+        after every evaluation of every start and at the end of each, see
+        `mxlpy.fit.callbacks`. Has to be picklable with `parallel=True`
 
     Returns
     -------
-        Group fit object
+        Multi-start result: the fits and failures by start
 
     """
-    return GroupFit(
-        [
-            fit
-            for i in parallelise(
-                partial(
-                    _wrap_steady_state,
-                    model=model,
-                    data=data,
-                    y0=y0,
-                    runner=runner,
-                    loss_fn=loss_fn,
-                    postprocess_fn=postprocess_fn,
-                    minimizer=minimizer,
-                    residual_fn=residual_fn,
-                    bounds=bounds,
-                    prior=prior,
-                    penalty=penalty,
-                    as_deepcopy=as_deepcopy,
-                    transform=transform,
-                ),
-                inputs=list(_iterrows(p0)),
-                parallel=parallel,
-                timeout=timeout,
-            )
-            if not isinstance(fit := i[1].value, Exception)
-        ]
+    return _run_group(
+        partial(
+            _wrap_steady_state,
+            model=model,
+            data=data,
+            y0=y0,
+            runner=runner,
+            loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
+            minimizer=minimizer,
+            residual_fn=residual_fn,
+            bounds=bounds,
+            prior=prior,
+            penalty=penalty,
+            as_deepcopy=as_deepcopy,
+            transform=transform,
+            callback=callback,
+        ),
+        p0,
+        callback=callback,
+        parallel=parallel,
+        timeout=timeout,
     )
 
 
@@ -330,6 +370,7 @@ def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
     parallel: bool = True,
     timeout: float | None = None,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> GroupFit[M]:
     """Fit model parameters to time course of experimental data over a carousel.
 
@@ -393,38 +434,38 @@ def group_time_course[M: KineticModelBuilder | OdeModelBuilder](
         to linear. Log space suits values spanning orders of magnitude with
         `LeastSquaresMinimizer`, but the unit first steps of quasi-Newton
         methods like L-BFGS-B then change values tenfold
+    callback
+        Called with a `FitEvent` (whose `start` is the row label of `p0`, as str)
+        after every evaluation of every start and at the end of each, see
+        `mxlpy.fit.callbacks`. Has to be picklable with `parallel=True`
 
     Returns
     -------
-        Group fit object
+        Multi-start result: the fits and failures by start
 
     """
-    return GroupFit(
-        [
-            fit
-            for i in parallelise(
-                partial(
-                    _wrap_time_course,
-                    model=model,
-                    data=data,
-                    y0=y0,
-                    runner=runner,
-                    loss_fn=loss_fn,
-                    postprocess_fn=postprocess_fn,
-                    minimizer=minimizer,
-                    residual_fn=residual_fn,
-                    bounds=bounds,
-                    prior=prior,
-                    penalty=penalty,
-                    as_deepcopy=as_deepcopy,
-                    transform=transform,
-                ),
-                inputs=list(_iterrows(p0)),
-                parallel=parallel,
-                timeout=timeout,
-            )
-            if not isinstance(fit := i[1].value, Exception)
-        ]
+    return _run_group(
+        partial(
+            _wrap_time_course,
+            model=model,
+            data=data,
+            y0=y0,
+            runner=runner,
+            loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
+            minimizer=minimizer,
+            residual_fn=residual_fn,
+            bounds=bounds,
+            prior=prior,
+            penalty=penalty,
+            as_deepcopy=as_deepcopy,
+            transform=transform,
+            callback=callback,
+        ),
+        p0,
+        callback=callback,
+        parallel=parallel,
+        timeout=timeout,
     )
 
 
@@ -447,6 +488,7 @@ def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
     parallel: bool = True,
     timeout: float | None = None,
     transform: Transform | None = None,
+    callback: Callback | None = None,
 ) -> GroupFit[M]:
     """Fit model parameters to time course of experimental data over a protocol.
 
@@ -511,38 +553,38 @@ def group_protocol_time_course[M: KineticModelBuilder | OdeModelBuilder](
         to linear. Log space suits values spanning orders of magnitude with
         `LeastSquaresMinimizer`, but the unit first steps of quasi-Newton
         methods like L-BFGS-B then change values tenfold
+    callback
+        Called with a `FitEvent` (whose `start` is the row label of `p0`, as str)
+        after every evaluation of every start and at the end of each, see
+        `mxlpy.fit.callbacks`. Has to be picklable with `parallel=True`
 
     Returns
     -------
-        Group fit object
+        Multi-start result: the fits and failures by start
 
     """
     protocol = _normalise_protocol_index(protocol)
-    return GroupFit(
-        [
-            fit
-            for i in parallelise(
-                partial(
-                    _wrap_protocol_time_course,
-                    model=model,
-                    data=data,
-                    protocol=protocol,
-                    y0=y0,
-                    runner=runner,
-                    loss_fn=loss_fn,
-                    postprocess_fn=postprocess_fn,
-                    minimizer=minimizer,
-                    residual_fn=residual_fn,
-                    bounds=bounds,
-                    prior=prior,
-                    penalty=penalty,
-                    as_deepcopy=as_deepcopy,
-                    transform=transform,
-                ),
-                inputs=list(_iterrows(p0)),
-                parallel=parallel,
-                timeout=timeout,
-            )
-            if not isinstance(fit := i[1].value, Exception)
-        ]
+    return _run_group(
+        partial(
+            _wrap_protocol_time_course,
+            model=model,
+            data=data,
+            protocol=protocol,
+            y0=y0,
+            runner=runner,
+            loss_fn=loss_fn,
+            postprocess_fn=postprocess_fn,
+            minimizer=minimizer,
+            residual_fn=residual_fn,
+            bounds=bounds,
+            prior=prior,
+            penalty=penalty,
+            as_deepcopy=as_deepcopy,
+            transform=transform,
+            callback=callback,
+        ),
+        p0,
+        callback=callback,
+        parallel=parallel,
+        timeout=timeout,
     )

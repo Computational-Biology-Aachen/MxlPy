@@ -370,7 +370,7 @@ def test_group_fit_with_least_squares() -> None:
         parallel=False,
     )
     assert len(res.fits) == 2
-    for f in res.fits:
+    for f in res.fits.values():
         assert f.best_pars["k2"] == pytest.approx(2.0, rel=1e-3)
 
 
