@@ -22,6 +22,7 @@ from mxlpy.lab._core import (
     Current,
     LabState,
     Observable,
+    Option,
     StepResult,
     simulate_conditions,
 )
@@ -376,6 +377,21 @@ def run(state: LabState) -> StepResult:
             "nominal_chi2": gof.chi2,
         },
         proposal={"sigma": sigma_table, "integrator": integrator},
+        options={
+            "sigma": Option(
+                "mapping",
+                description=(
+                    "Measurement noise per data set: a number or {observable: number}"
+                ),
+            ),
+            "integrator": Option(
+                "choice",
+                tuple(
+                    k for k in INTEGRATORS if k != "user" or state.runner is not None
+                ),
+                "Integrator of all simulations",
+            ),
+        },
         messages=messages,
         artifacts={"current": current, "sigmas": sigmas},
     )

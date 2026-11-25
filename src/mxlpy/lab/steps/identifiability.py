@@ -11,7 +11,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 from mxlpy import identify
-from mxlpy.lab._core import Current, LabState, StepResult
+from mxlpy.lab._core import Current, LabState, Option, StepResult
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -144,6 +144,12 @@ def run(state: LabState) -> StepResult:
         passed=passed,
         summary=summary,
         proposal={"fix": fix, "refit": bool(fix)},
+        options={
+            "fix": Option(
+                "subset", tuple(names), "Estimates fixed at their values from now on"
+            ),
+            "refit": Option("flag", description="Refit the others after fixing"),
+        },
         messages=messages,
         artifacts=artifacts,
     )

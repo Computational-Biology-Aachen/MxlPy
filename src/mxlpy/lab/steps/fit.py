@@ -18,6 +18,7 @@ from mxlpy.fit.diagnostics import ResidualCheck, check_residuals, chi2_test
 from mxlpy.lab._core import (
     Current,
     LabState,
+    Option,
     StepResult,
     condition_model,
     nrmse,
@@ -293,6 +294,19 @@ def run(state: LabState) -> StepResult:
         passed=passed,
         summary=summary,
         proposal=proposal,
+        options={
+            "next": Option(
+                "choice",
+                ("identifiability", "diagnose"),
+                "Go on with the identifiability analysis or diagnose missing dynamics",
+            ),
+            "local": Option(
+                "mapping",
+                description=(
+                    "Condition-specific estimates: {data set: {parameter: new name}}"
+                ),
+            ),
+        },
         messages=messages,
         artifacts=artifacts,
     )

@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from mxlpy import plot
-from mxlpy.lab._core import STEPS
+from mxlpy.lab._core import STEPS, TITLES, step_status
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -30,14 +30,6 @@ __all__ = ["write_report"]
 
 _LOGGER = logging.getLogger(__name__)
 
-_TITLES = {
-    "setup": "0 · Setup",
-    "parameters": "1 · Parameter selection",
-    "fit": "2 · Fit",
-    "diagnose": "3 · Missing dynamics",
-    "identifiability": "4 · Identifiability",
-    "uncertainty": "5 · Uncertainty",
-}
 
 _STYLE = """
 :root { --fg: #1d2327; --muted: #5f6b73; --bg: #ffffff; --line: #d9dee2;
@@ -160,12 +152,12 @@ def _summary_tables(step: str, result: StepResult) -> list[str]:
 
 def _section(lab: FittingLab, step: str) -> str:
     result = lab.results.get(step)
-    title = html_lib.escape(_TITLES[step])
+    title = html_lib.escape(f"{STEPS.index(step)} · {TITLES[step]}")  # type: ignore[arg-type]
     if result is None:
         return f"<h2>{title}</h2><p class='muted'>Not run.</p>"
     if result.skipped:
         return f"<h2>{title}</h2><p class='muted'>Not needed.</p>"
-    status = {True: "passed", False: "failed", None: "done"}[result.passed]
+    status = step_status(result)
     decision = lab.decisions().get(step)
     parts = [
         f"<h2>{title}</h2>",
@@ -195,7 +187,7 @@ def write_report(lab: FittingLab, *, html: bool = True) -> Path:
         {
             "config": lab.config.to_dict(),
             "decisions": lab.decisions(),
-            "steps": {k: v.to_dict() for k, v in lab.results.items()},
+            "steps": {k: v.to_dict() for k, v in dict(lab.results).items()},
             "runtime": lab.runtime.to_dict(),
             "active_time": lab.active_time,
         },

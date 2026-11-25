@@ -15,7 +15,7 @@ from mxlpy import fit, fns, select
 from mxlpy._kinetic_builder import KineticModelBuilder
 from mxlpy.fit.callbacks import tagged
 from mxlpy.fit.diagnostics import check_residuals
-from mxlpy.lab._core import Current, LabState, StepResult, safe_name
+from mxlpy.lab._core import Current, LabState, Option, StepResult, safe_name
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -327,6 +327,13 @@ def run(state: LabState) -> StepResult:
         passed=bool(chosen is not None and hidden[chosen].get("white")),
         summary=summary,
         proposal=proposal,
+        options={
+            "model": Option(
+                "choice",
+                tuple(artifacts.get("models", {"original": None})),
+                "Model the later steps continue with",
+            )
+        },
         messages=messages,
         artifacts=artifacts,
     )
