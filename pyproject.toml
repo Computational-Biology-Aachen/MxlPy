@@ -190,6 +190,7 @@ select = ["ALL"]
 ]
 "scripts/*" = ["INP001"]  # standalone scripts, not a package
 "web/*" = ["INP001"]      # the lab UI's test fixture server
+"docs/lab-video/*" = ["INP001", "T201"]  # scripts making the lab's demo video
 "tests/*" = [
     "D",       # all of documentation
     "PD901",   # "df" name
