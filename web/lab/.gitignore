@@ -1,0 +1,8 @@
+node_modules
+/.svelte-kit
+/test-results
+/playwright-report
+vite.config.ts.timestamp-*
+
+# the root .gitignore ignores Python build dirs named lib/
+!/src/lib/

@@ -6,6 +6,8 @@ import os
 # default TensorFlow backend would cost each worker ~500 MB. The jax backend
 # is loaded anyway and adds ~40 MB. An explicit KERAS_BACKEND still wins.
 os.environ.setdefault("KERAS_BACKEND", "jax")
+# No GUI windows (and figures drawn from server threads, e.g. the lab's report)
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 # Every xdist worker starts its own process pools in parallel scans and fits,
 # so share the CPUs between them instead of each starting one worker per CPU

@@ -1,0 +1,9 @@
+{
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "strict": true,
+    "module": "es2022",
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["src", "tests", "vite.config.ts", "playwright.config.ts"]
+}

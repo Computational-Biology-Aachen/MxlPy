@@ -59,3 +59,52 @@ jobs:
           # path without changing test behavior.
           TORCHDYNAMO_DISABLE: "1"
         run: uv run pytest -n auto --disable-warnings tests/
+
+  # The fitting lab's web UI (web/lab), whose build is committed into the
+  # package (src/mxlpy/lab/static) so users need no JS toolchain
+  lab-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/lab
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.15
+          cache: npm
+          cache-dependency-path: web/lab/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+
+      - name: Check that the committed build is up to date
+        run: |
+          if [ -n "$(git status --porcelain -- ../../src/mxlpy/lab/static)" ]; then
+            git status --short -- ../../src/mxlpy/lab/static
+            echo "::error::Rebuild the lab UI (npm run build in web/lab) and commit src/mxlpy/lab/static"
+            exit 1
+          fi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Set up Python
+        working-directory: .
+        run: |
+          uv python install 3.13.12
+          uv venv --python 3.13.12
+          uv sync --extra lab
+
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/lab/test-results/

@@ -5,6 +5,7 @@ requires = ["hatchling"]
 [dependency-groups]
 dev = [
     "coverage>=7.6.4",
+    "httpx2>=2.16.2",                   # starlette's TestClient
     "jupyter>=1.1.1",
     "line-profiler>=5.0.0",
     "mkdocs-jupyter>=0.25.1",
@@ -86,6 +87,7 @@ version = "0.75.0"
 [project.optional-dependencies]
 jax = ["diffrax>=0.7.0", "equinox>=0.13", "optax>=0.2.5", "sympy2jax>=0.0.7"]
 keras = ["keras>=3.9.2"]
+lab = ["starlette>=0.46", "uvicorn>=0.34"]
 # mxlpy-native (with llvmlite) only has wheels where llvmlite does; everywhere
 # else `native` gets the WASM backend, which runs the same solvers. Keep in sync
 # with _LLVM_PLATFORMS in src/mxlpy/integrators/_native/backends.py.
@@ -102,6 +104,9 @@ sundials = [
 ]
 tensorflow = ["tensorflow>=2.19.0"]
 torch = ["torch>=2.5.1"]
+
+[project.scripts]
+mxlpy = "mxlpy.cli:main"
 
 [tool.bandit]
 skips = ["B101", "B301", "B403", "B404", "B603", "B607"]
@@ -184,6 +189,7 @@ select = ["ALL"]
     "T201", # print statements
 ]
 "scripts/*" = ["INP001"]  # standalone scripts, not a package
+"web/*" = ["INP001"]      # the lab UI's test fixture server
 "tests/*" = [
     "D",       # all of documentation
     "PD901",   # "df" name
