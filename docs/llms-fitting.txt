@@ -52,8 +52,10 @@ group_fit = fit.group_steady_state(
     model, data=ss_series, minimizer=fit.LocalScipyMinimizer(tol=1e-6),
     p0=sample({"k1": Uniform(1.0, 2.0), "k2": Uniform(1.0, 2.0)}, n=50),  # or a hand-built DataFrame
 )
-group_fit.get_losses()              # pd.Series of every start's loss
-best_model = group_fit.get_best_fit().model
+group_fit.get_losses()              # pd.Series of every successful start's loss, by start (row label of p0)
+group_fit.fits                      # {start: Fit} (a dict by start, was a list)
+group_fit.failures                  # {start: reason} of failed / timed-out starts, group_fit.n_failed
+best_model = group_fit.get_best_fit().model   # ValueError if every start failed
 
 # Ensemble: list of models, shared p0
 ensemble_fit = fit.ensemble_steady_state([model_a, model_b], data=ss_series, p0={"k1": 1.0},
@@ -129,6 +131,49 @@ res.loss, res.penalty, res.objective   # data loss, prior term, loss + penalty
 - Sparsity: `fit.L1Penalty(names, weight, *, scales, matrix, l1_ratio, smoothing=1e-3)` (smoothed lasso / adaptive / elastic net / fused via `matrix` rows) and `fit.GroupL1Penalty({group: names}, weight)` (smoothed group lasso), with residuals + Jacobians; used by `select.condition_specific` (see [advanced](llms-advanced.txt)).
 - Custom penalties: objects with `names` and `__call__(values) -> float` (`fit.Penalty`), optionally `residuals(values)` (Σr²/2 == value) and `jacobian(values)` for least squares / Newton methods; pass via `penalty=` (one or a sequence).
 - `Fit.loss`/`JointFit.loss` exclude the penalty; `GroupFit.get_best_fit()` / `EnsembleFit.get_best_fit()` use `objective`, `GroupFit.get_objectives()` lists them.
+
+### Progress callbacks (`callback=`, `fit.FitEvent`, `fit.JsonlCallback`)
+
+Every fit (single, `group_*`, `joint_*`, `joint_mixed`, `augmented_*`) and the `identify.*` / `select.run` / `select.compare` analyses take `callback=`, called with a frozen `fit.FitEvent` after every objective evaluation (`kind="evaluation"`) and once at the end (`"finished"` / `"failed"`). Fields: `start` (row label of `p0` as str for group fits, `"{candidate}/{start}"` in select, `"refit-<pid>-<n>"` in identify, the stage in augmented fits; None for a single fit), `n_evaluations`, `value` (objective; residual vectors of least squares are converted, NaN for non-sum-of-squares losses), `best`, `improved`, `parameters` (only on improvements and at the end, untransformed), `duration`, `message`, `time`. With `callback=None` the residual isn't wrapped (no overhead).
+
+```python
+events = []
+fit.time_course(model, p0=p0, data=data, minimizer=fit.LeastSquaresMinimizer(), callback=events.append)
+# parallel workers get a pickled copy: use a sink whose effects leave the process
+fit.group_time_course(model, p0=starts, data=data, minimizer=..., callback=fit.JsonlCallback("events.jsonl", interval=1.0, fields={"run": "a"}))
+```
+
+`fit.JsonlCallback(path, interval=1.0, kinds=..., fields={})` appends one JSON object per event (single O_APPEND write, safe across processes); plain evaluations at most every `interval` s per start, improvements and ends always. An in-memory sink like `events.append` only works with `parallel=False`.
+
+### Several data sets (`fit.Condition`)
+
+`fit.Condition(data, *, y0=None, protocol=None, parameters=None, local=None, sigma=None)` is a data set plus its condition. `fit.Data` = Series | DataFrame | Condition | `{name: Series | DataFrame | Condition}`.
+
+- `sigma` (scalar / per observable / per point): the condition's loss is `GaussianNll(sigma)`, overriding `loss_fn` (which then may be omitted).
+- `parameters`: fixed values in this condition (not fitted there); a parameter set by every condition can't be estimated (`ValueError`).
+- `local={"k1": "k1_mut"}`: in this condition model parameter `k1` takes the estimated value `k1_mut` (put `k1_mut` in `p0` / the fitted values like a parameter); condition-specific estimates.
+- `y0`: initial values of the condition; fitted initial values still override them. Function-level `y0` / `protocol` apply to conditions without their own.
+- Accepted by `identify.*` (all data sets fitted jointly; Fisher information stacks rows with a `condition` index level), `select.run` / `select.compare` and `fit.augmented_time_course` (no `local`, `p0` can't contain names set by a condition). Joint fits with losses that aren't sums of squares use `LocalScipyMinimizer` by default (`LeastSquaresMinimizer` raises).
+- Fits compare data with derived values as well as variables, fluxes and terms (columns named after derived values).
+
+## Fitting lab (`mxlpy.lab`)
+
+Guided, checkpointed pipeline: one model, one or several time-course data sets. `lab.FittingLab(model, data, run_dir, *, parameters=None, max_parameters=None, time_budget=None ("2h", "30min", seconds), observables=None ({col: lab.Observable(target, scale=False, offset=False)} or {col: target}), sigma=None ({data set: sigma}), bounds=None, variants=None ({name: fn(model) -> model}), runner=None, **settings)`; settings are `lab.LabConfig` fields (`n_starts=10`, `n_samples=20`, `spread=10`, `collinearity=0.1`, `rank_rtol=1e-3`, `significance=0.05`, `converged=0.5`, `max_hidden=3`, `hidden_layers=(4,)`, `structure_search=True`, `delay_stages=2`, `spline_knots=6`, `n_pull_fits=5`, `profile="all"|"flagged"`, `prediction_times=20`, `mcmc=False`, `seed=0`, `parallel=True`, `max_workers`).
+
+Steps (each returns a `lab.StepResult`: `passed`, `summary` (JSON-able), `proposal`, `messages`, `artifacts`, `duration`, `skipped`):
+
+| Method | Step key | Proposal |
+|---|---|---|
+| `step0_setup()` | `setup` | `sigma` per data set (replicates, else cubic pseudo-residuals of neighbouring points, else 1% RMS; estimates of the same column are pooled over data sets), `integrator` (Native Radau/LSODA by stiffness if installed) |
+| `step1_select_parameters()` | `parameters` | `parameters`: ranked by RMS noise-weighted log-sensitivity over `n_samples`, greedily dropping collinear (sine to chosen span < `collinearity`); count = min(selected, sensitivity rank, time budget, `max_parameters`); runtime table per count |
+| `step2_fit()` | `fit` | `next` ("identifiability"/"diagnose"), `local` (condition-specific structure from `select.condition_specific` if the joint fit fails but each data set fits alone). Pass = χ² GOF + runs/Ljung-Box whiteness (Bonferroni) |
+| `step3_diagnose()` | `diagnose` | `model`: hidden states n=1..`max_hidden` (`fit.augmented_time_course`) until residuals white, correction per target; then `select.compare` of `variants` + generic edits of flagged variables (`degradation[v]`, `input[v]` spline, `delay[v]` linear chain), proposes a variant beating "original" by ΔAICc > 2. Skipped if the fit passed |
+| `step4_identifiability()` | `identifiability` | `fix`, `refit`: FIM → pulling test (recursive) → profile CIs; fixes the less sensitive parameters of non-identifiable groups (`identify.related_parameters`) |
+| `step5_uncertainty()` | `uncertainty` | – (prediction bands per data set × observable, condition-specific estimates via `identify.Prediction(local=...)`; final `estimates`/`fixed`; MCMC if `mcmc=True`, single plain data set) |
+
+Gates: calling a step runs earlier steps as needed and accepts their proposals (decision source `implicit`); `run.decide(step, **values)` overrides (keys of the proposal, e.g. `run.decide("parameters", parameters=["k1"])`); `run.run(auto=False)` stops at the first undecided gate, `run(auto=True)` accepts all (`auto`). Results are cached with an input hash (model + data + config + upstream decisions); changing a decision outdates later steps (`run.is_current(step)`). `lab.FittingLab.resume(run_dir)`, `run[step]`, `run.report()` (self-contained `report.html` + `report.json`), `run.on_event(fn)` (`lab.LabEvent`: step, kind started/progress/finished/cached, best_loss, n_evaluations, elapsed, eta (low, high) s).
+
+Run directory: `config.json`, `inputs.pkl` (dill), `decisions.json` (`{step: {"values", "source", "basis"}}`; accepted proposals only hold for the result they were made on (`basis` = its input hash), user decisions until changed), `events.jsonl` (fit events with `step` + lab events with `source: "lab"`), `runtime.json`, `steps/<step>/result.json|pkl`. Steps are addressed by key, number (0-5) or method name in `decide`, `run[...]`, `is_current`. The time budget counts the computing time of the steps (not pauses). Offsets are fitted linearly without default bounds. Diagnostics (also usable without the lab): `fit.estimate_sigma(df)` (replicates, else cubic pseudo-residuals of neighbouring points), `fit.check_residuals({name: residual_df}, significance)` → `ResidualCheck` (`table`, `flagged`, `passed`), `fit.chi2_test(nll, n_data, n_parameters)` → `GoodnessOfFit`; `fit.diagnostics.runs_test`, `ljung_box`.
 
 ## Bayesian posterior sampling (`fit.mcmc_*`)
 

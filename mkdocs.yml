@@ -35,6 +35,7 @@ nav:
       - Prediction uncertainty: prediction-uncertainty.ipynb
       - Model selection: model-selection.ipynb
       - Condition-specific parameters: condition-specific-parameters.ipynb
+      - Fitting lab: fitting-lab.ipynb
       - Symbolic: symbolic.ipynb
       - Integrator configuration: integrators.ipynb
       - Compartmentalisation: compartmentalisation.ipynb
