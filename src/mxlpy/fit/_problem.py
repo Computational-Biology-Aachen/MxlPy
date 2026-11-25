@@ -80,6 +80,10 @@ class Prediction:
     protocol
         Protocol of the condition, as for `fit.protocol_time_course`.
         Predictions at a time default to the protocol of a protocol fit
+    local
+        Condition-specific estimates of the condition, as for
+        `fit.Condition`: the model parameter (key) takes the value of the
+        estimated name (value), whose uncertainty enters the prediction
 
     Notes
     -----
@@ -99,6 +103,7 @@ class Prediction:
     parameters: Mapping[str, float] | None = None
     y0: Mapping[str, float] | None = None
     protocol: pd.DataFrame | None = None
+    local: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:
         """Check the time."""
@@ -114,6 +119,7 @@ class Prediction:
             parameters=self.parameters,
             y0=self.y0,
             protocol=self.protocol,
+            local=self.local,
         )
 
     @property
@@ -555,6 +561,11 @@ class _Problem:
                 **(prediction.y0 or {}),
             } or None
         sources = self._sources(single, names, overridden)
+        if local := dict(prediction.local or {}):
+            if local_fixed := {k: fixed[v] for k, v in local.items() if v in fixed}:
+                model.update_addressable(local_fixed)
+            sources = {k: v for k, v in sources.items() if k not in local}
+            sources |= {k: v for k, v in local.items() if v in names}
         fn, settings = _settings_for(
             model,
             data,
