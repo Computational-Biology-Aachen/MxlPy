@@ -1,0 +1,7 @@
+# Everything make_video.sh generates
+/recording/
+/replay-run/
+/out/
+/node_modules
+*.mp4
+*.webm
