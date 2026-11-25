@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from mxlpy import fit
     from mxlpy.lab._core import Model
+    from mxlpy.lab.server import LabServer
 
 __all__ = ["FittingLab", "LabEvent"]
 
@@ -798,6 +799,56 @@ class FittingLab:
                         return last
                     if stop is None:
                         time.sleep(_POLL)
+
+    def serve(
+        self,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 8765,
+        token: bool | str = True,
+        open_browser: bool = True,
+        watch: bool = False,
+        auto: bool = False,
+    ) -> LabServer:
+        """Watch and steer the run in the browser (needs `mxlpy[lab]`).
+
+        Starts a local web server in the background and returns it. It also
+        runs the steps (`run(wait=True)`), so gates decided in the browser go
+        on by themselves, unless `watch` (another process runs them).
+
+        Parameters
+        ----------
+        host
+            Interface to listen on; anything but localhost exposes the run
+        port
+            Port to listen on (0: a free one)
+        token
+            Access token in the URL: True for a random one, a string for a
+            fixed one, False for none
+        open_browser
+            Open the UI in the default browser
+        watch
+            Only watch and decide; another process runs the steps
+        auto
+            Accept every proposal while running the steps
+
+        Examples
+        --------
+            >>> server = run.serve()
+            >>> server.url
+            >>> server.stop()
+
+        """
+        from mxlpy.lab.server import LabServer  # noqa: PLC0415 (optional extra)
+
+        return LabServer(
+            self,
+            host=host,
+            port=port,
+            token=token,
+            watch=watch,
+            auto=auto,
+        ).start(open_browser=open_browser)
 
     def __getitem__(self, step: StepName | int | str) -> StepResult:
         """The stored result of a step (by name or number)."""

@@ -1,0 +1,8 @@
+@import "@computational-biology-aachen/design/tokens.css";
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
