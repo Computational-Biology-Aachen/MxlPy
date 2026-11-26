@@ -108,6 +108,15 @@ class _JointGradient:
         self.columns = [[names.index(k) for k in n] for n in self.names]
 
     def __call__(self, updates: dict[str, float]) -> float:
+        # Parts whose gradients come from pullbacks evaluate their loss on the
+        # same simulation, so the joint loss agrees with the joint gradient
+        subs = [self._sub(i, updates) for i in range(len(self.parts))]
+        if all(
+            part.uses_pullback(sub) for part, sub in zip(self.parts, subs, strict=True)
+        ):
+            return float(
+                sum(part(sub) for part, sub in zip(self.parts, subs, strict=True))
+            )
         return self.loss(updates)
 
     def _sub(self, i: int, updates: dict[str, float]) -> dict[str, float]:

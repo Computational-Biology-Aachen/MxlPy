@@ -107,7 +107,7 @@ def _compare(
     adj = adjoint_sensitivities.time_course(model, w, wrt, method="adjoint", **kwargs)
     fwd = adjoint_sensitivities.time_course(model, w, wrt, method="forward", **kwargs)
     a, f = adj.unwrap_or_err(), fwd.unwrap_or_err()
-    assert a.method == "adjoint"
+    assert a.method in ("discrete_adjoint", "continuous_adjoint")
     assert f.method == "forward"
     np.testing.assert_allclose(
         a.gradient, f.gradient, rtol=RTOL, atol=RTOL * np.abs(f.gradient).max()
@@ -264,12 +264,13 @@ def test_ode_model_and_runner() -> None:
         .add_diff_eq("x", 2.0, _decay, args=["x", "k"])
     )
     w = pd.DataFrame({"x": np.ones(len(T))}, index=T)
-    res = (
+    pullback = (
         OdeRunner(derivatives="adjoint")
-        .time_course_vjp(model, w, ["k"])
+        .time_course_pullback(model, T, ["k"])
         .unwrap_or_err()
     )
-    assert res.method == "adjoint"
+    res = pullback(w).unwrap_or_err()
+    assert res.method == "continuous_adjoint"
     t = np.array(T)
     assert cast(float, res.gradient["k"]) == pytest.approx(
         np.sum(-2 * t * np.exp(-0.5 * t)), rel=1e-6
@@ -306,7 +307,7 @@ def test_invalid_inputs() -> None:
         adjoint_sensitivities.time_course(
             model, _cotangents(["x"], [-1.0, 1.0]), ["k1"]
         )
-    with pytest.raises(ValueError, match="Unknown cotangent"):
+    with pytest.raises(ValueError, match="Unknown columns"):
         adjoint_sensitivities.time_course(model, _cotangents(["nope"], T), ["k1"])
     with pytest.raises(ValueError, match="Unknown"):
         adjoint_sensitivities.time_course(model, _cotangents(["x"], T), ["nope"])
@@ -378,11 +379,12 @@ def test_compiled_adjoint(method: str) -> None:
     ]:
         wrt = model.get_parameter_names() + model.get_variable_names()
         adj = adjoint_sensitivities.time_course(
-            model, w, wrt, method="adjoint", integrator=integrator
+            model, w, wrt, method="continuous_adjoint", integrator=integrator
         ).unwrap_or_err()
         fwd = adjoint_sensitivities.time_course(
             model, w, wrt, method="forward"
         ).unwrap_or_err()
+        assert adj.method == "continuous_adjoint"
         # Only λ(0) comes back from the compiled solve
         assert adj.adjoint is not None
         assert list(adj.adjoint.index) == [0.0]
@@ -405,7 +407,7 @@ def test_compiled_adjoint_initial_assignments() -> None:
     )
     w = pd.DataFrame({"x": np.ones(len(T))}, index=T)
     res = adjoint_sensitivities.time_course(
-        model, w, ["k", "s"], method="adjoint", integrator=_native()
+        model, w, ["k", "s"], method="continuous_adjoint", integrator=_native()
     ).unwrap_or_err()
     t = np.array(T)
     e = np.exp(-2.0 * t)
@@ -424,14 +426,19 @@ def test_compiled_adjoint_wasm(method: str) -> None:
         wrt = ["k1", "k2", "x"]
         if protocol is None:
             adj = adjoint_sensitivities.time_course(
-                model, w, wrt, method="adjoint", integrator=integrator
+                model, w, wrt, method="continuous_adjoint", integrator=integrator
             ).unwrap_or_err()
             ref = adjoint_sensitivities.time_course(
                 model, w, wrt, method="forward"
             ).unwrap_or_err()
         else:
             adj = adjoint_sensitivities.protocol_time_course(
-                model, protocol, w, wrt, method="adjoint", integrator=integrator
+                model,
+                protocol,
+                w,
+                wrt,
+                method="continuous_adjoint",
+                integrator=integrator,
             ).unwrap_or_err()
             ref = adjoint_sensitivities.protocol_time_course(
                 model, protocol, w, wrt, method="adjoint"
@@ -445,16 +452,13 @@ def test_compiled_adjoint_wasm(method: str) -> None:
 
 
 def test_native_always_uses_adjoints() -> None:
-    integrator = _native()
-    assert adjoint_sensitivities.uses_adjoint(_chain(), 1, integrator)
-    # Not where the compiled adjoint can't run
-    native = pytest.importorskip("mxlpy.integrators.int_native")
-    other = functools.partial(native.Native, method="CVODE_BDF")
-    assert not adjoint_sensitivities.uses_adjoint(_chain(), 1, other)
-    res = adjoint_sensitivities.time_course(
-        _chain(), _cotangents(["x"], T), ["k1"], integrator=integrator
-    ).unwrap_or_err()
-    assert res.method == "adjoint"
+    for method in ("Radau", "LSODA", "CVODE_BDF", "CVODE_Adams"):
+        integrator = _native(method=method)
+        assert adjoint_sensitivities.uses_adjoint(_chain(), 1, integrator)
+        res = adjoint_sensitivities.time_course(
+            _chain(), _cotangents(["x"], T), ["k1"], integrator=integrator
+        ).unwrap_or_err()
+        assert res.method == "discrete_adjoint"
 
 
 def test_fit_with_compiled_adjoint() -> None:
@@ -499,7 +503,8 @@ def test_steady_state_with_conservation() -> None:
 
 def test_steady_state_runner() -> None:
     model = _reversible()
-    res = KineticRunner().steady_state_vjp(model, pd.Series({"A": 1.0}), ["kf"])
+    pullback = KineticRunner().steady_state_pullback(model, ["kf"], columns=["A"])
+    res = pullback.unwrap_or_err()(pd.Series({"A": 1.0}))
     assert cast(float, res.unwrap_or_err().gradient["kf"]) == pytest.approx(
         -0.5 / 1.5**2, rel=1e-5
     )
@@ -660,7 +665,8 @@ def test_failed_native_compiles_are_cached(monkeypatch: pytest.MonkeyPatch) -> N
         adjoint_sensitivities.time_course(
             model, w, ["k1"], method="adjoint", integrator=integrator
         ).unwrap_or_err()
-    assert len(calls) == 1
+    # Once for the discrete, once for the continuous adjoint, then cached
+    assert len(calls) == 2
 
 
 def _kinked(x: float, y: float, k: float, k2: float) -> float:
@@ -691,7 +697,7 @@ def test_max_abs_min_are_differentiated() -> None:
     fd = adjoint_sensitivities.time_course(
         model, w, wrt, method="finite_difference", displacement=1e-5, integrator=tight
     ).unwrap_or_err()
-    for method in ("adjoint", "forward"):
+    for method in ("continuous_adjoint", "forward"):
         res = adjoint_sensitivities.time_course(
             model, w, wrt, method=method
         ).unwrap_or_err()
@@ -738,7 +744,7 @@ def test_protocol_matches_finite_differences(compiled: bool) -> None:  # noqa: F
     adj = adjoint_sensitivities.protocol_time_course(
         model, _PROTOCOL, w, wrt, method="adjoint", **kwargs
     ).unwrap_or_err()
-    assert adj.method == "adjoint"
+    assert adj.method in ("discrete_adjoint", "continuous_adjoint")
     np.testing.assert_allclose(adj.gradient, fd.gradient, rtol=1e-6)
     # The time point after the protocol is ignored, as in the simulation
     assert list(adj.simulated.index) == _PROTOCOL_TIMES[:-1]

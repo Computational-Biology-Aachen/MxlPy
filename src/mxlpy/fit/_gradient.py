@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from mxlpy.adjoint_sensitivities import Pullback
     from mxlpy.fit.abstract import FitResidual, _Settings
     from mxlpy.minimizers.abstract import Bounds, Residual
     from mxlpy.types import Array
@@ -121,6 +122,11 @@ class GradientResidual:
     runner's sensitivities if it provides them, else from central finite
     differences of whole simulations.
 
+    If loss gradients come from adjoints, the loss and the predictions are
+    taken from the same simulation as the gradient (the runner's pullback),
+    so with discrete adjoints the gradient is exactly the loss's, and one
+    loss + gradient costs one forward solve.
+
     Parameters
     ----------
     residual_fn
@@ -163,7 +169,11 @@ class GradientResidual:
             self._fall_back(reason)
 
         self._key: tuple[tuple[str, float], ...] | None = None
+        # Whether `_prediction` was simulated asking for the runner's pullback
+        self._with_pullback = False
         self._prediction: pd.DataFrame | pd.Series | None = None
+        # The runner's pullback of the simulation `_prediction` came from, if any
+        self._pullback: Pullback | None = None
         self._jac_key: tuple[tuple[str, float], ...] | None = None
         self._jac: Array | None = None
         self._adjoint_failed = False
@@ -214,8 +224,28 @@ class GradientResidual:
     # Simulations
     ###########################################################################
 
-    def _simulate(self, updates: dict[str, float]) -> pd.DataFrame | pd.Series | None:
+    def _simulate(
+        self, updates: dict[str, float], *, pullback: bool = False
+    ) -> pd.DataFrame | pd.Series | None:
+        """Prediction at `updates`.
+
+        With `pullback` (for the loss and its gradient) from the runner's
+        pullback if loss gradients come from adjoints, stored in `_pullback`.
+        Residual vectors and finite differences never need one, so they
+        simulate plainly, without recording a discrete adjoint's tape.
+        """
         s = self.settings
+        if pullback and self._uses_adjoint(len(updates)):
+            self._pullback = self._pullback_of(updates)
+            if (pb := self._pullback) is not None:
+                if self.kind == "steady_state":
+                    return cast(pd.Series, pb.simulated).loc[self.names]
+                return _align_time(cast(pd.DataFrame, pb.simulated), s.data.index).loc[
+                    :, self.names
+                ]
+            if not self._adjoint_failed:
+                # The simulation failed
+                return None
         _apply_updates(updates, s)
         runner = cast(Any, s.runner)
         if self.kind == "steady_state":
@@ -245,11 +275,14 @@ class GradientResidual:
         )
         return r if self.weights is None else r * self.weights
 
-    def _predict(self, updates: dict[str, float]) -> pd.DataFrame | pd.Series | None:
+    def _predict(
+        self, updates: dict[str, float], *, pullback: bool = False
+    ) -> pd.DataFrame | pd.Series | None:
         key = tuple(updates.items())
-        if key != self._key:
-            self._prediction = self._simulate(updates)
-            self._key = key
+        if key != self._key or (pullback and not self._with_pullback):
+            self._pullback = None
+            self._prediction = self._simulate(updates, pullback=pullback)
+            self._key, self._with_pullback = key, pullback
         return self._prediction
 
     ###########################################################################
@@ -260,9 +293,18 @@ class GradientResidual:
         """Scalar loss of the wrapped residual function.
 
         Calls it directly, so fits not using derivatives behave exactly as
-        without this wrapper.
+        without this wrapper, unless loss gradients come from adjoints: then
+        the loss is evaluated on the pullback's simulation, the same one the
+        gradient differentiates.
         """
-        return self.fn(updates)
+        if not self._uses_adjoint(len(updates)):
+            return self.fn(updates)
+        prediction = self._predict(updates, pullback=True)
+        if self._adjoint_failed:
+            return self.fn(updates)
+        if prediction is None:
+            return cast(float, np.inf)
+        return self.settings.loss(prediction)
 
     def residuals(self, updates: dict[str, float]) -> Array:
         """Residual vector, all `nan` if the simulation failed.
@@ -294,7 +336,7 @@ class GradientResidual:
         From the runner's vector-Jacobian product if it uses adjoints, else
         from the residual Jacobian.
         """
-        r = self._vector(self._predict(updates))
+        r = self._vector(self._predict(updates, pullback=True))
         valid = np.isfinite(r)
         if self._prediction is None or not valid.any():
             return np.full(len(updates), np.nan)
@@ -304,7 +346,7 @@ class GradientResidual:
         cached = tuple(updates.items()) == self._jac_key and self._jac is not None
         if (
             not cached
-            and self._uses_adjoint(len(updates))
+            and self._pullback is not None
             and (grad := self._adjoint(updates, d_loss, valid)) is not None
         ):
             return grad
@@ -374,17 +416,21 @@ class GradientResidual:
             out[i] = (loss_at(up) - loss_at(down)) / (2 * h)
         return out
 
+    def uses_pullback(self, updates: dict[str, float]) -> bool:
+        """Whether the loss and its gradient come from the runner's pullback."""
+        return self._uses_adjoint(len(updates))
+
     def _uses_adjoint(self, n_wrt: int) -> bool:
         """Whether loss gradients come from the runner's adjoints."""
         s = self.settings
         if (
             self._adjoint_failed
-            or not callable(getattr(s.runner, f"{self.kind}_vjp", None))
+            or not callable(getattr(s.runner, f"{self.kind}_pullback", None))
             or s.postprocess_fn is not None
         ):
             return False
         derivatives = getattr(s.runner, "derivatives", None)
-        if derivatives == "adjoint":
+        if derivatives in ("adjoint", "discrete_adjoint", "continuous_adjoint"):
             return True
         # Steady-state sensitivities cost one linear solve, shared with the
         # Gauss-Newton Hessian, so only time courses switch
@@ -426,36 +472,59 @@ class GradientResidual:
             out = cast(pd.DataFrame | pd.Series, out / s.scale)
         return out.fillna(0.0)
 
-    def _adjoint(
-        self, updates: dict[str, float], d_loss: Array, valid: NDArray[np.bool_]
-    ) -> Array | None:
-        """Loss gradient from the runner's vector-Jacobian product."""
+    def _pullback_of(self, updates: dict[str, float]) -> Pullback | None:
+        """The runner's pullback of the simulation at `updates`.
+
+        None if the simulation failed. If adjoints can't be used at all,
+        `_adjoint_failed` is set as well.
+        """
         s = self.settings
         _apply_updates(updates, s)
         runner = cast(Any, s.runner)
         wrt = list(updates)
-        cotangents = self._cotangents(d_loss, valid)
         try:
             if self.kind == "steady_state":
-                res = runner.steady_state_vjp(s.model, cotangents, wrt)
-            elif self.kind == "time_course":
-                res = runner.time_course_vjp(s.model, cotangents, wrt)
+                res = runner.steady_state_pullback(s.model, wrt, columns=self.names)
             else:
-                res = runner.protocol_time_course_vjp(
-                    s.model, s.protocol, cotangents, wrt
-                )
+                # Replicates share time points, which the integrators reject
+                times = np.unique(np.asarray(s.data.index, dtype=float))
+                if self.kind == "time_course":
+                    res = runner.time_course_pullback(
+                        s.model, times, wrt, columns=self.names
+                    )
+                else:
+                    res = runner.protocol_time_course_pullback(
+                        s.model, s.protocol, times, wrt, columns=self.names
+                    )
         except Exception as e:  # noqa: BLE001
             # Models the adjoint codegen can't handle with derivatives="adjoint"
             self._adjoint_failed = True
             msg = f"Using sensitivities for loss gradients, as adjoints failed: {e}"
-            if getattr(s.runner, "derivatives", None) == "adjoint":
+            if getattr(s.runner, "derivatives", None) in (
+                "adjoint",
+                "discrete_adjoint",
+                "continuous_adjoint",
+            ):
                 _warn_once(msg)
             else:
                 _LOGGER.debug(msg)
             return None
+        if isinstance(pullback := res.value, Exception):
+            return None
+        if pullback.method in ("forward", "finite_difference"):
+            # No adjoint worked, so the loss alone needn't pay for sensitivities
+            self._adjoint_failed = True
+        return pullback
+
+    def _adjoint(
+        self, updates: dict[str, float], d_loss: Array, valid: NDArray[np.bool_]
+    ) -> Array | None:
+        """Loss gradient from the pullback of the current prediction."""
+        pullback = cast("Pullback", self._pullback)
+        res = pullback(self._cotangents(d_loss, valid))
         if isinstance(val := res.value, Exception):
             return None
-        return val.gradient.loc[wrt].to_numpy(dtype=float)
+        return val.gradient.loc[list(updates)].to_numpy(dtype=float)
 
     def _forward(self, updates: dict[str, float]) -> Array | None:
         s = self.settings
