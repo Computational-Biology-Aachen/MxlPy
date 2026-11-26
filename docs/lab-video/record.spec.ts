@@ -149,7 +149,7 @@ test("fitting lab demo", async ({ page }) => {
 
   // 7. Identifiability
   await caption(page, "Step 4 · Identifiability runs: Fisher information, pulling test and profile likelihoods");
-  await expect(step(/Identifiability/)).toContainText(/passed|failed/, { timeout: 20_000 });
+  await expect(step(/Identifiability/)).toContainText(/waiting for you|passed|failed/, { timeout: 20_000 });
   await page.waitForTimeout(600);
   await click(page, step(/Identifiability/), 0);
   await expect(waiting).toBeVisible();
@@ -161,7 +161,7 @@ test("fitting lab demo", async ({ page }) => {
 
   // 8. Uncertainty
   await caption(page, "Step 5 · Uncertainty runs: prediction bands of the observables");
-  await expect(step(/Uncertainty/)).toContainText(/done|passed/, { timeout: 20_000 });
+  await expect(step(/Uncertainty/)).toContainText(/waiting for you|done|passed/, { timeout: 20_000 });
   await page.waitForTimeout(600);
   await click(page, step(/Uncertainty/), 0);
   await expect(gate).toBeVisible();

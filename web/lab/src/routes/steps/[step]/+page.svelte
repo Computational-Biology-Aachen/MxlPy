@@ -64,6 +64,9 @@
         {#if badge}
           <StatusBadge tone={badge.tone}>{badge.text}</StatusBadge>
         {/if}
+        {#if badge?.tone === "waiting" && view.status === "failed"}
+          <StatusBadge tone="failed">failed</StatusBadge>
+        {/if}
         {#if view.result}<span>{formatSeconds(view.result.duration)}</span>{/if}
         {#if view.result && !view.current}
           <span>outdated: recomputed when the run gets here</span>

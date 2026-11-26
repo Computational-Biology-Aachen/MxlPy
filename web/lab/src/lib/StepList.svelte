@@ -43,6 +43,9 @@
           <span class="title">{step.title}</span>
           <span class="meta">
             <StatusBadge tone={badge.tone}>{badge.text}</StatusBadge>
+            {#if waiting && step.status === "failed"}
+              <StatusBadge tone="failed">failed</StatusBadge>
+            {/if}
             {#if step.duration !== null}
               <span>{formatSeconds(step.duration)}</span>
             {/if}
