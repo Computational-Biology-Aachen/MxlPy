@@ -194,3 +194,19 @@ export function formatValue(v: unknown): string {
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }
+
+export type Tone = "running" | "passed" | "failed" | "waiting" | "neutral";
+
+/** Badge of a step: running, waiting for a decision, or its status. */
+export function stepBadge(
+  step: Pick<StepSummary, "status">,
+  running: boolean,
+  waiting: boolean,
+): { tone: Tone; text: string } {
+  if (running) return { tone: "running", text: "running" };
+  if (waiting) return { tone: "waiting", text: "waiting for you" };
+  if (step.status === "passed" || step.status === "done")
+    return { tone: "passed", text: step.status };
+  if (step.status === "failed") return { tone: "failed", text: "failed" };
+  return { tone: "neutral", text: step.status };
+}

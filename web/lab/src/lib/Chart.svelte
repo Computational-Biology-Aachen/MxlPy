@@ -45,22 +45,30 @@
 
 <style>
   figure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
     margin: 0;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    border-radius: var(--radius-lg);
     background: var(--color-surface);
-    padding: var(--space-3);
+    padding: var(--space-4) var(--space-4) var(--space-3);
     min-width: 0;
   }
   figcaption {
-    margin-bottom: var(--space-2);
-    font-weight: 600;
+    font-weight: var(--weight-medium);
+    font-size: var(--text-sm);
   }
   .plot {
     position: relative;
-    height: 260px;
+    min-height: 300px;
   }
   .empty {
+    display: grid;
+    place-items: center;
+    margin: 0;
+    height: 300px;
     color: var(--color-text-muted);
+    font-size: var(--text-sm);
   }
 </style>

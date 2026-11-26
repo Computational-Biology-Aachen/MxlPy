@@ -2,8 +2,11 @@
   import "../app.css";
   import Button from "@computational-biology-aachen/design/Button.svelte";
   import InfoBox from "@computational-biology-aachen/design/InfoBox.svelte";
-  import { api } from "#lib/api.js";
+  import Navbar from "@computational-biology-aachen/design/Navbar.svelte";
+  import SectionMain from "@computational-biology-aachen/design/SectionMain.svelte";
+  import { api, formatSeconds, type Tone } from "#lib/api.js";
   import { run } from "#lib/run.svelte.js";
+  import StatusBadge from "#lib/StatusBadge.svelte";
 
   let { children } = $props();
 
@@ -11,76 +14,107 @@
 
   let overview = $derived(run.overview);
   let running = $derived(overview?.progress.running?.step ?? null);
+  let runningTitle = $derived(
+    overview?.steps.find((s) => s.step === running)?.title ?? running,
+  );
+  let gateTitle = $derived(
+    overview?.steps.find((s) => s.step === overview?.open_gate)?.title ??
+      overview?.open_gate,
+  );
+
+  let state = $derived.by((): { tone: Tone; text: string } | null => {
+    if (!overview) return null;
+    if (overview.paused)
+      return {
+        tone: "neutral",
+        text: running ? `pausing after ${runningTitle}…` : "paused",
+      };
+    if (running) return { tone: "running", text: `running ${runningTitle}` };
+    if (overview.finished) return { tone: "passed", text: "finished" };
+    if (overview.open_gate)
+      return { tone: "neutral", text: `waiting at ${gateTitle}` };
+    if (!overview.driving && !overview.driven)
+      return { tone: "neutral", text: "idle" };
+    return null;
+  });
 </script>
 
-<header>
-  <div class="inner">
+<Navbar>
+  {#snippet brand()}
     <a
       class="brand"
       href="/"
     >
-      Fitting lab
+      <span class="wordmark">MxlPy</span>
+      <span class="product">Fitting lab</span>
     </a>
-    {#if overview}
-      <span
-        class="run-dir"
-        title={overview.run_dir}
-      >
-        {overview.run_dir}
-      </span>
-      <span
-        class="state"
-        role="status"
-      >
-        {#if overview.paused}
-          {running ? `pausing after ${running}…` : "paused"}
-        {:else if running}
-          running {running}
-        {:else if overview.finished}
-          finished
-        {:else if overview.open_gate}
-          waiting at {overview.open_gate}
-        {:else if !overview.driving && !overview.driven}
-          idle
-        {/if}
-        {#if !run.connected}· reconnecting{/if}
-      </span>
+  {/snippet}
+  <div
+    class="state"
+    role="status"
+  >
+    {#if state}
+      <StatusBadge tone={state.tone}>{state.text}</StatusBadge>
+    {/if}
+    {#if overview && !run.connected}
+      <StatusBadge tone="neutral">reconnecting</StatusBadge>
+    {/if}
+  </div>
+</Navbar>
+
+<SectionMain
+  pad="tight"
+  styleVars={{ innerAlign: "stretch" }}
+>
+  {#if overview}
+    <div class="toolbar">
+      <div class="run">
+        <span
+          class="run-dir"
+          title={overview.run_dir}
+        >
+          {overview.run_dir}
+        </span>
+        <span class="muted">
+          Computing time {formatSeconds(overview.active_time)}
+          {#if overview.time_budget !== null}
+            of {formatSeconds(overview.time_budget)}
+          {/if}
+        </span>
+      </div>
       <div class="actions">
+        {#if overview.can_run && !overview.driving && !overview.driven}
+          <Button
+            variant="primary"
+            onclick={() => void run.act(() => api.run())}
+          >
+            Run
+          </Button>
+        {/if}
         {#if overview.paused}
           <Button
-            variant="inverted"
+            variant="secondary"
             onclick={() => void run.act(api.unpause)}
           >
             Unpause
           </Button>
         {:else}
           <Button
-            variant="inverted"
+            variant="secondary"
             onclick={() => void run.act(api.pause)}
           >
             Pause
           </Button>
         {/if}
-        {#if overview.can_run && !overview.driving && !overview.driven}
-          <Button
-            variant="inverted"
-            onclick={() => void run.act(() => api.run())}
-          >
-            Run
-          </Button>
-        {/if}
         <Button
-          variant="inverted"
+          variant="secondary"
           href="/api/report"
         >
           Report
         </Button>
       </div>
-    {/if}
-  </div>
-</header>
-
-<main>
+    </div>
+  {/if}
   {#if run.unauthorized}
     <InfoBox
       header="Access token needed"
@@ -116,60 +150,68 @@
     {/if}
     {@render children()}
   {/if}
-</main>
+</SectionMain>
 
 <style>
-  header {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--color-primary);
-    color: var(--color-text-inverse);
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+    color: var(--color-text);
+    text-decoration: none;
+    white-space: nowrap;
   }
-  .inner {
+  .wordmark {
+    color: var(--color-primary);
+    font-weight: var(--weight-bold);
+    font-size: var(--text-h1);
+  }
+  .product {
+    color: var(--color-text-muted);
+    font-weight: var(--weight-medium);
+  }
+  .state {
     display: flex;
     flex-wrap: wrap;
+    justify-content: end;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
     align-items: center;
     gap: var(--space-2) var(--space-4);
-    margin: 0 auto;
-    padding: var(--space-2) var(--space-4);
-    max-width: 1400px;
+    width: 100%;
   }
-  .brand {
-    color: inherit;
-    font-weight: 700;
-    font-size: var(--text-h3);
-    text-decoration: none;
+  .run {
+    display: flex;
+    flex: 1 1 16rem;
+    flex-direction: column;
+    min-width: 0;
+    font-size: var(--text-sm);
   }
   .run-dir {
-    flex: 1 1 10rem;
-    min-width: 0;
     overflow: hidden;
-    font-size: var(--text-sm);
     font-family: var(--font-mono);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .muted {
+    color: var(--color-text-muted);
   }
   .actions {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
   }
-  main {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    margin: 0 auto;
-    padding: var(--space-4);
-    max-width: 1400px;
+  .actions :global(:is(button, a)) {
+    width: auto;
   }
   pre {
+    margin: 0;
     white-space: pre-wrap;
-  }
-  @media (max-width: 600px) {
-    .inner,
-    main {
-      padding: var(--space-2) var(--space-4);
-    }
   }
 </style>

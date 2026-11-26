@@ -6,15 +6,19 @@ import type {
 } from "@computational-biology-aachen/design/PlotChart.svelte";
 import type { ChartSpec, Series } from "./api.js";
 
-/** RWTH palette; index 7 is neutral (e.g. parameters that stay fixed). */
+/**
+ * RWTH palette, starting with the design's chart colours --color-c1..c4
+ * (petrol, violet, blue, magenta); index 7 is neutral (e.g. parameters that
+ * stay fixed).
+ */
 export const PALETTE = [
   "rgb(0, 97, 101)",
-  "rgb(246, 168, 0)",
+  "rgb(97, 33, 88)",
   "rgb(0, 84, 159)",
   "rgb(227, 0, 102)",
+  "rgb(246, 168, 0)",
   "rgb(87, 171, 39)",
   "rgb(161, 16, 53)",
-  "rgb(97, 33, 88)",
   "rgb(148, 163, 184)",
   "rgb(0, 152, 161)",
   "rgb(122, 111, 172)",

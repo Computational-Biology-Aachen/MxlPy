@@ -4,5 +4,11 @@ body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
+  line-height: var(--line-height-base);
   font-family: var(--font-sans);
+}
+
+code {
+  font-size: var(--text-body);
+  font-family: var(--font-mono);
 }

@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { formatSeconds } from "#lib/api.js";
+  import Button from "@computational-biology-aachen/design/Button.svelte";
+  import LabLayout from "#lib/LabLayout.svelte";
   import LiveProgress from "#lib/LiveProgress.svelte";
+  import Panel from "#lib/Panel.svelte";
   import { run } from "#lib/run.svelte.js";
   import StepList from "#lib/StepList.svelte";
 
@@ -15,37 +17,48 @@
 <svelte:head><title>Fitting lab</title></svelte:head>
 
 {#if overview}
-  <div class="layout">
-    <aside>
+  <LabLayout>
+    {#snippet rail()}
       <StepList overview={overview} />
-      <p class="muted">
-        Computing time {formatSeconds(overview.active_time)}
-        {#if overview.time_budget !== null}
-          of a budget of {formatSeconds(overview.time_budget)}
-        {/if}
-      </p>
-    </aside>
-    <section>
-      {#if running}
-        <h1>
-          Running: {overview.steps.find((s) => s.step === running)?.title}
-        </h1>
-        {#key running}
-          <LiveProgress step={running} />
-        {/key}
-      {:else if gate}
+    {/snippet}
+    {#if running}
+      <h1>
+        Running: {overview.steps.find((s) => s.step === running)?.title}
+      </h1>
+      {#key running}
+        <LiveProgress step={running} />
+      {/key}
+    {:else if gate}
+      <Panel label="Next">
         <h1>{gateTitle} waits for your decision</h1>
         <p>
-          <a href={`/steps/${gate}`}>Review the results and decide</a>, or
-          decide from Python with <code>run.decide("{gate}", ...)</code>.
+          Check its results, then accept the proposal or edit it. From Python:
+          <code>run.decide("{gate}", ...)</code>.
         </p>
-      {:else if overview.finished}
+        <div class="cta">
+          <Button
+            variant="primary"
+            href={`/steps/${gate}`}
+          >
+            Review the results and decide
+          </Button>
+        </div>
+      </Panel>
+    {:else if overview.finished}
+      <Panel label="Next">
         <h1>The run is finished</h1>
-        <p>
-          Every step is decided. <a href="/api/report">Download the report</a>
-          or open a step to review it.
-        </p>
-      {:else}
+        <p>Every step is decided. Open a step to review it.</p>
+        <div class="cta">
+          <Button
+            variant="primary"
+            href="/api/report"
+          >
+            Download the report
+          </Button>
+        </div>
+      </Panel>
+    {:else}
+      <Panel label="Next">
         <h1>Overview</h1>
         <p class="muted">
           {#if overview.driving || overview.driven}
@@ -54,34 +67,25 @@
             No process runs the steps. Press Run, or run the lab from Python.
           {/if}
         </p>
-      {/if}
-    </section>
-  </div>
+      </Panel>
+    {/if}
+  </LabLayout>
 {:else if !run.error}
-  <p>Loading…</p>
+  <p class="muted">Loading…</p>
 {/if}
 
 <style>
-  .layout {
-    display: grid;
-    grid-template-columns: minmax(16rem, 22rem) 1fr;
-    align-items: start;
-    gap: var(--space-6);
-  }
-  section {
-    min-width: 0;
-  }
   h1 {
-    margin-top: 0;
-    font-size: var(--text-h2);
+    margin: 0;
+    font-size: var(--text-h1);
+  }
+  p {
+    margin: 0;
   }
   .muted {
     color: var(--color-text-muted);
-    font-size: var(--text-sm);
   }
-  @media (max-width: 800px) {
-    .layout {
-      grid-template-columns: 1fr;
-    }
+  .cta :global(:is(a, button)) {
+    width: auto;
   }
 </style>

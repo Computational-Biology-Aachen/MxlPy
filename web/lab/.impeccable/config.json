@@ -2,16 +2,6 @@
   "detector": {
     "ignoreRules": [],
     "ignoreFiles": [],
-    "ignoreValues": [
-      {
-        "rule": "side-tab",
-        "value": "*",
-        "files": [
-          "src/lib/GatePanel.svelte"
-        ],
-        "createdAt": "2026-11-25T19:31:06.455Z",
-        "reason": "user confirmed 2026-11-25: keep the open-gate accent stripe for now"
-      }
-    ]
+    "ignoreValues": []
   }
 }
