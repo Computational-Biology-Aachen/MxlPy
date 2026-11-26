@@ -24,6 +24,8 @@ from mxlpy.symbolic.jacobian import _generated, all_parameter_values
 from mxlpy.types import IntegrationFailure
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy.integrators import IntegratorType
@@ -73,9 +75,13 @@ class _Settings:
     atol: float
 
 
-def _settings(integrator: IntegratorType) -> _Settings:
-    """Backend, solver and tolerances of a Native integrator."""
-    from mxlpy.fit._native import _SOLVERS  # noqa: PLC0415
+def native_options(integrator: IntegratorType) -> tuple[str, Callable[[str], Any]]:
+    """Backend of a Native integrator and a getter of its other options.
+
+    The getter returns the integrator's keyword argument, else Native's
+    default. Raises `NativeUnsupported` for other integrators and backends
+    that aren't installed.
+    """
     from mxlpy.integrators._native.backends import problem  # noqa: PLC0415
     from mxlpy.integrators.int_native import Native, _pick_backend  # noqa: PLC0415
 
@@ -83,22 +89,34 @@ def _settings(integrator: IntegratorType) -> _Settings:
     if not (isinstance(base, type) and issubclass(base, Native)):
         msg = "the integrator isn't Native"
         raise NativeUnsupported(msg)
-    method = kwargs.get("method", getattr(base, "method", None))
-    if method not in _SOLVERS:
-        msg = f"the compiled adjoint supports the methods {list(_SOLVERS)}, not {method!r}"
-        raise NativeUnsupported(msg)
-    backend = str(kwargs.get("backend", getattr(base, "backend", "auto")))
+
+    def get(name: str) -> Any:
+        return kwargs.get(name, getattr(base, name))
+
+    backend = str(get("backend"))
     try:
         backend = _pick_backend() if backend == "auto" else backend
     except ImportError as e:
         raise NativeUnsupported(str(e)) from e
     if (reason := problem(backend)) is not None:
         raise NativeUnsupported(reason)
+    return backend, get
+
+
+def _settings(integrator: IntegratorType) -> _Settings:
+    """Backend, solver and tolerances of a Native integrator."""
+    from mxlpy.fit._native import _SOLVERS  # noqa: PLC0415
+
+    backend, get = native_options(integrator)
+    method = get("method")
+    if method not in _SOLVERS:
+        msg = f"the compiled adjoint supports the methods {list(_SOLVERS)}, not {method!r}"
+        raise NativeUnsupported(msg)
     return _Settings(
         backend=backend,
         solver=_SOLVERS[str(method)],
-        rtol=float(cast(float, kwargs.get("rtol", getattr(base, "rtol", 1e-8)))),
-        atol=float(cast(float, kwargs.get("atol", getattr(base, "atol", 1e-8)))),
+        rtol=float(get("rtol")),
+        atol=float(get("atol")),
     )
 
 

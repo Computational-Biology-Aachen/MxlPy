@@ -7,6 +7,7 @@ from __future__ import annotations
 import contextlib
 import functools
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -14,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from mxlpy import forward_sensitivities
-from mxlpy.adjoint_sensitivities import _native
+from mxlpy.adjoint_sensitivities import _discrete, _native
 from mxlpy.forward_sensitivities._core import (
     _assigned_parameters,
     _chain_factors,
@@ -40,13 +41,13 @@ from mxlpy.symbolic.jacobian import (
 from mxlpy.types import Result
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
 
     from mxlpy._kinetic_builder import KineticModelBuilder
     from mxlpy._ode_builder import OdeModelBuilder
     from mxlpy.integrators import IntegratorType
     from mxlpy.symbolic.jacobian import CompiledVjp
-    from mxlpy.types import Array, DerivativeMethod, Rhs
+    from mxlpy.types import Array, ArrayLike, DerivativeMethod, Rhs
 
     type _Model = KineticModelBuilder | OdeModelBuilder
 
@@ -54,9 +55,13 @@ __all__ = [
     "ADJOINT_THRESHOLD",
     "PROTOCOL_ADJOINT_THRESHOLD",
     "AdjointSensitivities",
+    "Pullback",
     "protocol_time_course",
+    "protocol_time_course_pullback",
     "steady_state",
+    "steady_state_pullback",
     "time_course",
+    "time_course_pullback",
     "uses_adjoint",
 ]
 
@@ -104,20 +109,26 @@ class AdjointSensitivities:
         For every parameter / variable initial value `theta`, the derivative
         of `sum(cotangents * simulated)` w.r.t. it
     method
-        How the gradient was computed
+        How the gradient was computed, see `Pullback.method`
     adjoint
         Adjoint state `λ(t)` (time x variables) on the grid of the backward
-        solve, only for `method="adjoint"` (only `λ(0)` from the compiled
-        adjoint of `Native`). It jumps by the cotangents at
-        their time points, where it holds the value after the jump (the
-        limit from earlier times), so `λ(0)` is the gradient w.r.t. the
-        initial values
+        solve of the Python continuous adjoint, only `λ(0)` from the compiled
+        adjoints of `Native` and at the steady state for steady states; None
+        for forward sensitivities. It jumps by the cotangents at their time
+        points, where it holds the value after the jump (the limit from
+        earlier times), so `λ(0)` is the gradient w.r.t. the initial values
 
     """
 
     simulated: pd.DataFrame | pd.Series
     gradient: pd.Series
-    method: Literal["adjoint", "forward", "finite_difference"]
+    method: Literal[
+        "discrete_adjoint",
+        "continuous_adjoint",
+        "adjoint",
+        "forward",
+        "finite_difference",
+    ]
     adjoint: pd.DataFrame | None = None
 
 
@@ -468,17 +479,96 @@ def _backward(
     return lam, total
 
 
-def _adjoint_time_course(
-    model: _Model,
-    cotangents: pd.DataFrame,
-    wrt: list[str],
-    *,
-    protocol: pd.DataFrame | None,
-    y0: dict[str, float] | None,
-    integrator: IntegratorType,
-    displacement: float,
-) -> Result[AdjointSensitivities]:
-    """Adjoint gradient, with the cotangents scaled to max |w| = 1.
+###############################################################################
+# Pullbacks
+###############################################################################
+
+type _Backward = Callable[[pd.DataFrame | pd.Series], Result[AdjointSensitivities]]
+type _Method = Literal[
+    "discrete_adjoint", "continuous_adjoint", "adjoint", "forward", "finite_difference"
+]
+
+
+@dataclass(eq=False)
+class Pullback:
+    """A simulation and the vector-Jacobian products of its values.
+
+    Calling it with cotangents returns the gradient of
+    `sum(cotangents * simulated)` w.r.t. `wrt`, without simulating again: the
+    loss of a fit can be evaluated on `simulated` first, and its derivative
+    then gives the cotangents (as `jax.vjp`). With `discrete_adjoint` the
+    gradient is exactly that of `simulated` as computed (see the package
+    docstring). A pullback can be called any number of times.
+
+    Attributes
+    ----------
+    simulated
+        Simulated values: time points x columns for time courses, a Series
+        for steady states
+    wrt
+        Parameters and variables (for their initial values) the gradients are
+        w.r.t.
+    method
+        How gradients are computed: `discrete_adjoint`, `continuous_adjoint`,
+        `adjoint` (steady states: the implicit function theorem), `forward`
+        or `finite_difference` (contracting forward sensitivities)
+
+    """
+
+    simulated: pd.DataFrame | pd.Series
+    wrt: list[str]
+    method: _Method
+    _backward: _Backward = field(repr=False)
+    # Protocol time courses ignore cotangents after the protocol's end
+    _end: float | None = field(default=None, repr=False)
+
+    def __call__(
+        self, cotangents: pd.DataFrame | pd.Series
+    ) -> Result[AdjointSensitivities]:
+        """Gradient of `sum(cotangents * simulated)`.
+
+        Parameters
+        ----------
+        cotangents
+            Weight of simulated values (NaN or missing for none): time points
+            x columns of `simulated` for time courses, a Series of its index
+            for steady states
+
+        """
+        return self._backward(self._align(cotangents))
+
+    def _align(self, cotangents: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
+        sim = self.simulated
+        if isinstance(sim, pd.Series):
+            if not isinstance(cotangents, pd.Series):
+                msg = "Cotangents of a steady state are a Series"
+                raise TypeError(msg)
+            if unknown := [c for c in cotangents.index if c not in sim.index]:
+                msg = f"Unknown cotangent entries {unknown}, choose from {list(sim.index)}"
+                raise ValueError(msg)
+            return cotangents.reindex(sim.index).astype(float).fillna(0.0)
+        if not isinstance(cotangents, pd.DataFrame):
+            msg = "Cotangents of a time course are a DataFrame (time points x columns)"
+            raise TypeError(msg)
+        if unknown := [c for c in cotangents.columns if c not in sim.columns]:
+            msg = (
+                f"Unknown cotangent columns {unknown}, choose from {list(sim.columns)}"
+            )
+            raise ValueError(msg)
+        times = cotangents.index.to_numpy(dtype=float)
+        if self._end is not None:
+            cotangents = cotangents.loc[times <= self._end]
+            times = times[times <= self._end]
+        if missing := sorted(set(times) - set(sim.index.to_numpy(dtype=float))):
+            msg = f"Cotangent time points {missing} weren't simulated"
+            raise ValueError(msg)
+        aligned = cast(pd.DataFrame, cotangents).copy()
+        aligned.index = pd.Index(times)
+        return aligned.reindex(index=sim.index, columns=sim.columns).fillna(0.0)
+
+
+def _scaled(cotangents: pd.DataFrame) -> tuple[pd.DataFrame, float]:
+    """Cotangents scaled to max |w| = 1, and the scale.
 
     λ is linear in the cotangents, but integrated with the absolute tolerance
     of the states, so small cotangents (close to a fit's optimum) would lose
@@ -487,73 +577,205 @@ def _adjoint_time_course(
     scale = float(np.abs(cotangents.to_numpy(dtype=float)).max(initial=0.0))
     if scale == 0 or not np.isfinite(scale):
         scale = 1.0
-    res = _scaled_adjoint_time_course(
-        model,
-        cotangents / scale,
-        wrt,
-        protocol=protocol,
-        y0=y0,
-        integrator=integrator,
-        displacement=displacement,
-    )
-    if isinstance(val := res.value, Exception):
-        return res
-    val.gradient = val.gradient * scale
-    if val.adjoint is not None:
-        val.adjoint = val.adjoint * scale
-    return res
+    return cotangents / scale, scale
 
 
-def _scaled_adjoint_time_course(
+def _x0(model: _Model, y0: dict[str, float] | None) -> Array:
+    start = model.get_initial_conditions() if y0 is None else y0
+    return np.array([start[k] for k in model.get_variable_names()], dtype=float)
+
+
+def _discrete_pullback(
     model: _Model,
-    cotangents: pd.DataFrame,
+    times: Array,
+    columns: list[str],
     wrt: list[str],
     *,
     protocol: pd.DataFrame | None,
     y0: dict[str, float] | None,
     integrator: IntegratorType,
     displacement: float,
-) -> Result[AdjointSensitivities]:
+) -> Result[Pullback]:
+    """Discrete adjoint of `Native`'s solver, over a recorded forward solve."""
+    if protocol is not None:
+        _check_protocol(model, protocol)
     var_names = model.get_variable_names()
-    outputs = [c for c in cotangents.columns if c not in var_names]
     compiled_wrt, chain, s0 = _chain_factors(
         model, wrt, y0_from_model=y0 is None, displacement=displacement
     )
-    start = model.get_initial_conditions() if y0 is None else y0
-    x0 = np.array([start[k] for k in var_names], dtype=float)
-    times = cotangents.index.to_numpy(dtype=float)
+    segments = None
+    if protocol is not None:
+        segments = [
+            (s.end, s.overrides)
+            for s in _segments(model, protocol, float(times[-1]), [], [])
+        ]
+    res = _discrete.forward(
+        model,
+        times,
+        columns,
+        compiled_wrt,
+        x0=_x0(model, y0),
+        integrator=integrator,
+        segments=segments,
+    )
+    if isinstance(res, Exception):
+        return Result(res)
+    predictions, tape = res
+    simulated = pd.DataFrame(predictions, index=times, columns=columns)
 
+    def backward(cotangents: pd.DataFrame | pd.Series) -> Result[AdjointSensitivities]:
+        out = tape.backward(cast(pd.DataFrame, cotangents).to_numpy(dtype=float))
+        if isinstance(out, Exception):
+            return Result(out)
+        theta_bar, lam0 = out
+        return Result(
+            AdjointSensitivities(
+                simulated=simulated,
+                gradient=pd.Series(chain.T @ theta_bar + s0.T @ lam0, index=wrt),
+                method="discrete_adjoint",
+                adjoint=pd.DataFrame(lam0[None, :], index=[0.0], columns=var_names),
+            )
+        )
+
+    return Result(
+        Pullback(
+            simulated=simulated, wrt=wrt, method="discrete_adjoint", _backward=backward
+        )
+    )
+
+
+def _continuous_pullback(
+    model: _Model,
+    times: Array,
+    columns: list[str],
+    wrt: list[str],
+    *,
+    protocol: pd.DataFrame | None,
+    y0: dict[str, float] | None,
+    integrator: IntegratorType,
+    displacement: float,
+) -> Result[Pullback]:
+    """Continuous adjoint, in compiled code for `Native` (Radau, LSODA)."""
+    if protocol is not None:
+        _check_protocol(model, protocol)
+    compiled_wrt, chain, s0 = _chain_factors(
+        model, wrt, y0_from_model=y0 is None, displacement=displacement
+    )
+    x0 = _x0(model, y0)
     compiled_integrator = bool(getattr(_unwrap(integrator)[0], "compiles_model", False))
-    if compiled_integrator and times[-1] > 0:
+    if compiled_integrator and times[-1] > 0 and _native.supports(integrator):
         try:
-            res = _native.vjp(
+            return _compiled_continuous(
                 model,
-                cotangents,
-                compiled_wrt,
+                times,
+                columns,
+                wrt,
+                compiled_wrt=compiled_wrt,
+                chain=chain,
+                s0=s0,
                 x0=x0,
-                integrator=integrator,
                 protocol=protocol,
+                integrator=integrator,
             )
         except _native.NativeUnsupported as e:
             _LOGGER.debug("Using the Python adjoint, as %s", e)
-        else:
-            if isinstance(res, Exception):
-                return Result(res)
-            simulated, theta_bar, lam0 = res
-            return Result(
-                AdjointSensitivities(
-                    simulated=pd.DataFrame(
-                        simulated, index=times, columns=list(cotangents.columns)
-                    ),
-                    gradient=pd.Series(chain.T @ theta_bar + s0.T @ lam0, index=wrt),
-                    method="adjoint",
-                    adjoint=pd.DataFrame(lam0[None, :], index=[0.0], columns=var_names),
-                )
-            )
+    return _python_continuous(
+        model,
+        times,
+        columns,
+        wrt,
+        compiled_wrt=compiled_wrt,
+        chain=chain,
+        s0=s0,
+        x0=x0,
+        protocol=protocol,
+        integrator=integrator,
+    )
 
+
+def _compiled_continuous(
+    model: _Model,
+    times: Array,
+    columns: list[str],
+    wrt: list[str],
+    *,
+    compiled_wrt: list[str],
+    chain: Array,
+    s0: Array,
+    x0: Array,
+    protocol: pd.DataFrame | None,
+    integrator: IntegratorType,
+) -> Result[Pullback]:
+    """Continuous adjoint compiled by `Native`.
+
+    mxn_adjoint_vjp solves forwards and backwards in one call, so the pullback
+    solves once for the simulated values and again per call.
+    """
+    var_names = model.get_variable_names()
+
+    def run(cotangents: pd.DataFrame) -> tuple[Array, Array, Array] | Exception:
+        return _native.vjp(
+            model,
+            cotangents,
+            compiled_wrt,
+            x0=x0,
+            integrator=integrator,
+            protocol=protocol,
+        )
+
+    first = run(pd.DataFrame(0.0, index=times, columns=columns))
+    if isinstance(first, Exception):
+        return Result(first)
+    simulated = pd.DataFrame(first[0], index=times, columns=columns)
+
+    def backward(cotangents: pd.DataFrame | pd.Series) -> Result[AdjointSensitivities]:
+        w, scale = _scaled(cast(pd.DataFrame, cotangents))
+        if isinstance(out := run(w), Exception):
+            return Result(out)
+        _, theta_bar, lam0 = out
+        return Result(
+            AdjointSensitivities(
+                simulated=simulated,
+                gradient=pd.Series(
+                    (chain.T @ theta_bar + s0.T @ lam0) * scale, index=wrt
+                ),
+                method="continuous_adjoint",
+                adjoint=pd.DataFrame(
+                    lam0[None, :] * scale, index=[0.0], columns=var_names
+                ),
+            )
+        )
+
+    return Result(
+        Pullback(
+            simulated=simulated,
+            wrt=wrt,
+            method="continuous_adjoint",
+            _backward=backward,
+        )
+    )
+
+
+def _python_continuous(
+    model: _Model,
+    times: Array,
+    columns: list[str],
+    wrt: list[str],
+    *,
+    compiled_wrt: list[str],
+    chain: Array,
+    s0: Array,
+    x0: Array,
+    protocol: pd.DataFrame | None,
+    integrator: IntegratorType,
+) -> Result[Pullback]:
+    """The forward trajectory is interpolated once, λ solved per call."""
+    var_names = model.get_variable_names()
+    outputs = [c for c in columns if c not in var_names]
     vjp_out = compile_vjp(model, wrt=compiled_wrt, outputs=outputs) if outputs else None
     vjp_p = compile_vjp(model, wrt=compiled_wrt)
     rtol, atol = _tolerances(integrator)
+    compiled_integrator = bool(getattr(_unwrap(integrator)[0], "compiles_model", False))
     backward_integrator = (
         functools.partial(DefaultIntegrator, rtol=rtol, atol=atol)
         if compiled_integrator
@@ -592,69 +814,6 @@ def _scaled_adjoint_time_course(
             _Hermite(np.array([0.0, 1.0]), np.vstack([x0, x0]), np.zeros((2, len(x0))))
         ]
 
-    w = cotangents.reindex(columns=var_names, fill_value=0.0).to_numpy(dtype=float)
-    w_out = cotangents.loc[:, outputs].to_numpy(dtype=float)
-    n = len(var_names)
-    lam = np.zeros(n)
-    theta_bar = np.zeros(len(compiled_wrt))
-    pieces: list[pd.DataFrame] = []
-
-    def piece(g: int, t_hi: float, t_lo: float) -> Exception | None:
-        """λ from t_hi down to t_lo within segment g, adding its quadrature."""
-        nonlocal lam, theta_bar
-        if not t_hi > t_lo:
-            return None
-        prob.seg = segments[g]
-        if isinstance(res := _backward(prob, trajs[g], t_lo, t_hi, lam), Exception):
-            return res
-        traj, quadrature = res
-        theta_bar = theta_bar + quadrature
-        lam = traj.y[0].copy()
-        pieces.append(pd.DataFrame(traj.y, index=traj.t, columns=var_names))
-        return None
-
-    # From the last time point down to 0, stopping at every time point (its
-    # jump) and segment boundary (λ is continuous there)
-    t_hi = float(times[-1])
-    g = prob.segment_of(t_hi)
-    for i in range(len(times) - 1, -1, -1):
-        t_i = float(times[i])
-        while g > prob.segment_of(t_i):
-            if (err := piece(g, t_hi, segments[g].start)) is not None:
-                return Result(err)
-            t_hi = segments[g].start
-            g -= 1
-        if (err := piece(g, t_hi, t_i)) is not None:
-            return Result(err)
-        t_hi = t_i
-        lam = lam + w[i]
-        if vjp_out is not None:
-            x_bar, p_bar = vjp_out.fn(
-                t_i,
-                trajs[g](t_i),
-                segments[g].p,
-                segments[g].c,
-                np.zeros(n),
-                w_out[i],
-            )
-            lam = lam + x_bar
-            theta_bar = theta_bar + p_bar
-    while g >= 0:
-        if (err := piece(g, t_hi, segments[g].start)) is not None:
-            return Result(err)
-        t_hi = segments[g].start
-        g -= 1
-
-    gradient = chain.T @ theta_bar + s0.T @ lam
-    # At data times the value after their jump, i.e. the limit from below
-    adjoint = (
-        pd.concat(pieces[::-1]).groupby(level=0).first()
-        if pieces
-        else pd.DataFrame(columns=var_names, dtype=float)
-    )
-    adjoint.loc[0.0] = lam
-    adjoint = adjoint.sort_index()
-
     # Outputs depend on the parameters of each time point's segment
     blocks = []
     which = np.array([prob.segment_of(float(t)) for t in times])
@@ -667,14 +826,112 @@ def _scaled_adjoint_time_course(
             columns=var_names,
         )
         with _overridden(model, segment.overrides):
-            blocks.append(_values(model, states).loc[:, list(cotangents.columns)])
-    return Result(
-        AdjointSensitivities(
-            simulated=pd.concat(blocks),
-            gradient=pd.Series(gradient, index=wrt),
-            method="adjoint",
-            adjoint=adjoint,
+            blocks.append(_values(model, states).loc[:, columns])
+    simulated = cast(pd.DataFrame, pd.concat(blocks))
+
+    def backward(cotangents: pd.DataFrame | pd.Series) -> Result[AdjointSensitivities]:
+        w_frame, scale = _scaled(cast(pd.DataFrame, cotangents))
+        w = w_frame.reindex(columns=var_names, fill_value=0.0).to_numpy(dtype=float)
+        w_out = w_frame.loc[:, outputs].to_numpy(dtype=float)
+        n = len(var_names)
+        lam = np.zeros(n)
+        theta_bar = np.zeros(len(compiled_wrt))
+        pieces: list[pd.DataFrame] = []
+
+        def piece(g: int, t_hi: float, t_lo: float) -> Exception | None:
+            """λ from t_hi down to t_lo within segment g, adding its quadrature."""
+            nonlocal lam, theta_bar
+            if not t_hi > t_lo:
+                return None
+            prob.seg = segments[g]
+            if isinstance(res := _backward(prob, trajs[g], t_lo, t_hi, lam), Exception):
+                return res
+            traj, quadrature = res
+            theta_bar = theta_bar + quadrature
+            lam = traj.y[0].copy()
+            pieces.append(pd.DataFrame(traj.y, index=traj.t, columns=var_names))
+            return None
+
+        # From the last time point down to 0, stopping at every time point (its
+        # jump) and segment boundary (λ is continuous there)
+        t_hi = float(times[-1])
+        g = prob.segment_of(t_hi)
+        for i in range(len(times) - 1, -1, -1):
+            t_i = float(times[i])
+            while g > prob.segment_of(t_i):
+                if (err := piece(g, t_hi, segments[g].start)) is not None:
+                    return Result(err)
+                t_hi = segments[g].start
+                g -= 1
+            if (err := piece(g, t_hi, t_i)) is not None:
+                return Result(err)
+            t_hi = t_i
+            lam = lam + w[i]
+            if vjp_out is not None:
+                x_bar, p_bar = vjp_out.fn(
+                    t_i,
+                    trajs[g](t_i),
+                    segments[g].p,
+                    segments[g].c,
+                    np.zeros(n),
+                    w_out[i],
+                )
+                lam = lam + x_bar
+                theta_bar = theta_bar + p_bar
+        while g >= 0:
+            if (err := piece(g, t_hi, segments[g].start)) is not None:
+                return Result(err)
+            t_hi = segments[g].start
+            g -= 1
+
+        gradient = chain.T @ theta_bar + s0.T @ lam
+        # At data times the value after their jump, i.e. the limit from below
+        adjoint = (
+            pd.concat(pieces[::-1]).groupby(level=0).first()
+            if pieces
+            else pd.DataFrame(columns=var_names, dtype=float)
         )
+        adjoint.loc[0.0] = lam
+        adjoint = adjoint.sort_index()
+        return Result(
+            AdjointSensitivities(
+                simulated=simulated,
+                gradient=pd.Series(gradient * scale, index=wrt),
+                method="continuous_adjoint",
+                adjoint=adjoint * scale,
+            )
+        )
+
+    return Result(
+        Pullback(
+            simulated=simulated,
+            wrt=wrt,
+            method="continuous_adjoint",
+            _backward=backward,
+        )
+    )
+
+
+def _sensitivity_pullback(
+    sens: forward_sensitivities.ForwardSensitivities,
+    columns: list[str],
+    wrt: list[str],
+    *,
+    steady_state: bool = False,
+    end: float | None = None,
+) -> Pullback:
+    """Contracts forward sensitivities (or finite differences) with the cotangents."""
+    simulated = (
+        sens.simulated.iloc[-1].loc[columns]
+        if steady_state
+        else sens.simulated.loc[:, columns]
+    )
+    return Pullback(
+        simulated=simulated,
+        wrt=wrt,
+        method=sens.method,
+        _backward=lambda w: Result(_contract(sens, w, wrt)),
+        _end=end,
     )
 
 
@@ -686,7 +943,7 @@ def _scaled_adjoint_time_course(
 def _check_columns(model: _Model, columns: list[str]) -> None:
     available = model.get_variable_names() + _output_names(model)
     if unknown := [c for c in columns if c not in available]:
-        msg = f"Unknown cotangent columns {unknown}, choose from {available}"
+        msg = f"Unknown columns {unknown}, choose from {available}"
         raise ValueError(msg)
 
 
@@ -705,10 +962,17 @@ def _contract(
         ]
     else:
         columns = list(cotangents.columns)
-        simulated = sens.simulated.loc[:, columns]
+        simulated = sens.simulated.loc[cotangents.index, columns]
         w = cotangents.to_numpy(dtype=float)
         gradient = [
-            float(np.sum(sens.derivatives[k].loc[:, columns].to_numpy(dtype=float) * w))
+            float(
+                np.sum(
+                    sens.derivatives[k]
+                    .loc[cotangents.index, columns]
+                    .to_numpy(dtype=float)
+                    * w
+                )
+            )
             for k in wrt
         ]
     return AdjointSensitivities(
@@ -718,8 +982,14 @@ def _contract(
     )
 
 
+def _check_times(times: Array) -> None:
+    if len(times) == 0 or (times < 0).any() or (np.diff(times) <= 0).any():
+        msg = "Time points must be ascending, distinct and non-negative"
+        raise ValueError(msg)
+
+
 ###############################################################################
-# Public API
+# Choosing the method
 ###############################################################################
 
 
@@ -732,77 +1002,132 @@ def uses_adjoint(
 ) -> bool:
     """Whether `method="auto"` uses adjoints for a time course.
 
-    Always with compiled adjoints (`Native` with Radau or LSODA),
-    which can't integrate forward sensitivities either, so these would fall
-    back to finite differences. Otherwise from `ADJOINT_THRESHOLD` variables x
-    parameters / initial values on, and for protocols (whose alternative is
-    finite differences, 2 simulations per parameter) from
-    `PROTOCOL_ADJOINT_THRESHOLD` parameters / initial values on.
+    Always with `Native`, which runs discrete adjoints in compiled code (and
+    can't integrate forward sensitivities, so these would fall back to finite
+    differences). Otherwise from `ADJOINT_THRESHOLD` variables x parameters /
+    initial values on, and for protocols (whose alternative is finite
+    differences, 2 simulations per parameter) from
+    `PROTOCOL_ADJOINT_THRESHOLD` parameters / initial values on. Never for
+    models with events.
     """
-    if integrator is not None and _native.supports(integrator):
+    if getattr(model, "_events", None):
+        return False
+    if integrator is not None and _discrete.supports(integrator):
         return True
     if protocol:
         return n_wrt >= PROTOCOL_ADJOINT_THRESHOLD
     return len(model.get_variable_names()) * n_wrt >= ADJOINT_THRESHOLD
 
 
-def time_course(
+def _candidates(
+    method: DerivativeMethod,
     model: _Model,
-    cotangents: pd.DataFrame,
+    n_wrt: int,
+    integrator: IntegratorType,
+    *,
+    protocol: bool,
+) -> list[_Method]:
+    """Methods to try in order; only the last one's errors propagate."""
+    fallback: _Method = "finite_difference" if protocol else "forward"
+    events = bool(getattr(model, "_events", None))
+    discrete = _discrete.supports(integrator)
+    if method in ("adjoint", "discrete_adjoint", "continuous_adjoint") and events:
+        msg = "Adjoint sensitivities aren't supported for models with events"
+        raise ValueError(msg)
+    if method == "discrete_adjoint":
+        if not discrete:
+            msg = "Discrete adjoints need the Native integrator"
+            raise ValueError(msg)
+        return ["discrete_adjoint"]
+    if method == "continuous_adjoint":
+        return ["continuous_adjoint"]
+    adjoints: list[_Method] = [
+        *(["discrete_adjoint"] if discrete else []),
+        "continuous_adjoint",
+    ]
+    if method == "adjoint":
+        return adjoints
+    if method == "forward":
+        if protocol:
+            msg = "Forward sensitivities don't support protocols, use adjoint or finite_difference"
+            raise ValueError(msg)
+        return ["forward"]
+    if method == "finite_difference":
+        return ["finite_difference"]
+    if uses_adjoint(model, n_wrt, integrator, protocol=protocol):
+        return [*adjoints, fallback]
+    return [fallback]
+
+
+###############################################################################
+# Public API
+###############################################################################
+
+
+def time_course_pullback(
+    model: _Model,
+    time_points: ArrayLike,
     wrt: list[str],
     *,
+    columns: list[str] | None = None,
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
     method: DerivativeMethod = "auto",
     displacement: float = 1e-3,
-) -> Result[AdjointSensitivities]:
-    """Gradient of `sum(cotangents * y(t))` w.r.t. parameters and initial values.
+) -> Result[Pullback]:
+    """Simulate a time course and return its vector-Jacobian products.
 
-    This is the vector-Jacobian product of a time course, e.g. the gradient
-    of a loss with `cotangents = d loss / d y(t)`. With adjoints it costs one
-    forward and one backward solve, however many parameters there are.
+    The returned `Pullback` holds the simulated values; called with
+    cotangents (e.g. `d loss / d y(t)`) it returns the gradient of
+    `sum(cotangents * y(t))` w.r.t. `wrt`, without simulating again. With
+    adjoints that costs one backward pass, however many parameters there are.
 
     Examples
     --------
-        >>> w = pd.DataFrame({"x": [1.0, -1.0]}, index=[1.0, 2.0])
-        >>> adjoint_sensitivities.time_course(model, w, ["k1", "k2"]).unwrap_or_err().gradient
+        >>> pullback = adjoint_sensitivities.time_course_pullback(model, [1.0, 2.0], ["k1"]).unwrap_or_err()
+        >>> pullback(pd.DataFrame({"x": [1.0, -1.0]}, index=[1.0, 2.0])).unwrap_or_err().gradient
 
     Parameters
     ----------
     model
         Model to simulate
-    cotangents
-        Weight of every simulated value (time points x variables, derived
-        quantities and reactions), NaN for none. The time points must be
-        ascending, distinct and non-negative
+    time_points
+        Ascending, distinct, non-negative time points
     wrt
         Parameters and variables (for their initial values) to differentiate w.r.t.
+    columns
+        Simulated values cotangents may weight (variables, derived quantities
+        and reactions), all variables if None
     y0
         Initial values. If None, they are taken from the model, so initial
         assignments depending on the parameters are differentiated, too
     integrator
-        Integrator, defaults to the default integrator. `Native` (Radau or
-        LSODA) runs both solves in compiled code; for models it can't compile
-        it solves the forward pass and the default integrator the backward one
+        Integrator, defaults to the default integrator. With `Native`, adjoints
+        are discrete and run in compiled code
     method
-        `adjoint` solves the adjoint equations backwards in time, `forward`
-        and `finite_difference` contract forward sensitivities (see
-        `forward_sensitivities`), `auto` uses adjoints for large problems
-        and `Native` (see `uses_adjoint`) and forward sensitivities otherwise
-        or if adjoints aren't possible (models with events)
+        `discrete_adjoint` differentiates `Native`'s solver steps, exact for the
+        computed solution; `continuous_adjoint` solves the adjoint equations
+        backwards in time (compiled for `Native` Radau / LSODA, Python
+        otherwise); `adjoint` takes the discrete one where possible, else
+        (or if it fails, e.g. beyond `Native.max_tape_bytes`) the continuous one;
+        `forward` and `finite_difference` contract forward sensitivities (see
+        `forward_sensitivities`); `auto` uses adjoints for large problems and
+        `Native` (see `uses_adjoint`) and forward sensitivities otherwise, or if
+        adjoints aren't possible (models with events)
     displacement
         Relative step of the finite differences of initial assignments
 
     Returns
     -------
-    Result[AdjointSensitivities]
-        Gradient and the simulated values at the cotangents' time points
+    Result[Pullback]
+        The simulated values and their vector-Jacobian product
 
     """
-    return _time_course(
+    return _time_course_pullback(
         model,
-        cotangents,
+        np.asarray(time_points, dtype=float),
         wrt,
+        columns=columns,
         protocol=None,
         y0=y0,
         integrator=integrator,
@@ -811,29 +1136,30 @@ def time_course(
     )
 
 
-def protocol_time_course(
+def protocol_time_course_pullback(
     model: _Model,
     protocol: pd.DataFrame,
-    cotangents: pd.DataFrame,
+    time_points: ArrayLike,
     wrt: list[str],
     *,
+    columns: list[str] | None = None,
     y0: dict[str, float] | None = None,
     integrator: IntegratorType | None = None,
     method: DerivativeMethod = "auto",
     displacement: float = 1e-3,
-) -> Result[AdjointSensitivities]:
-    """Gradient of `sum(cotangents * y(t))` over a protocol.
+) -> Result[Pullback]:
+    """Simulate a protocol time course and return its vector-Jacobian products.
 
-    As `time_course`, for a simulation with
+    As `time_course_pullback`, for a simulation with
     `Simulator.simulate_protocol_time_course`: every protocol step sets its
-    parameters, and a time point on a step's end belongs to that step. The
-    adjoint runs backwards through the steps, with each step's parameters.
+    parameters, and a time point on a step's end belongs to that step. Time
+    points after the protocol's end are left out, as in the simulation, and
+    cotangents there are ignored.
 
     Examples
     --------
         >>> protocol = make_protocol([(1, {"k_in": 1.0}), (2, {"k_in": 0.0})])
-        >>> w = pd.DataFrame({"x": [1.0, -1.0]}, index=[0.5, 2.0])
-        >>> adjoint_sensitivities.protocol_time_course(model, protocol, w, ["k1"])
+        >>> pullback = adjoint_sensitivities.protocol_time_course_pullback(model, protocol, [0.5, 2.0], ["k1"]).unwrap_or_err()
 
     Parameters
     ----------
@@ -841,90 +1167,85 @@ def protocol_time_course(
         Model to simulate
     protocol
         Parameter values per step (index: step end times)
-    cotangents
-        Weight of every simulated value, as for `time_course`. Time points
-        after the protocol's end are ignored, as in the simulation
+    time_points
+        Time points, as for `time_course_pullback`
     wrt
         Parameters and variables (for their initial values) to differentiate
         w.r.t., not the parameters the protocol sets
+    columns
+        As for `time_course_pullback`
     y0
-        Initial values, as for `time_course`
+        Initial values, as for `time_course_pullback`
     integrator
-        Integrator, as for `time_course`
+        Integrator, as for `time_course_pullback`
     method
-        `adjoint` solves the adjoint equations, `finite_difference` perturbs
-        every parameter and simulates again (forward sensitivities don't
-        support protocols), `auto` uses adjoints where they are cheaper (see
+        As for `time_course_pullback`, except that forward sensitivities don't
+        support protocols: `auto` uses adjoints where they are cheaper (see
         `uses_adjoint`) and finite differences otherwise
     displacement
         Relative step of the finite differences
 
     Returns
     -------
-    Result[AdjointSensitivities]
-        Gradient and the simulated values at the cotangents' time points
+    Result[Pullback]
+        The simulated values and their vector-Jacobian product
 
     """
-    if method == "forward":
-        msg = "Forward sensitivities don't support protocols, use adjoint or finite_difference"
-        raise ValueError(msg)
     protocol = _normalise_protocol_index(protocol)
     if overridden := sorted(set(wrt) & set(protocol.columns)):
         msg = f"Can't differentiate w.r.t. parameters the protocol sets: {overridden}"
         raise ValueError(msg)
     end = float(cast(pd.TimedeltaIndex, protocol.index).total_seconds()[-1])
-    cotangents = cotangents.loc[cotangents.index.to_numpy(dtype=float) <= end]
-    if cotangents.empty:
-        msg = f"No cotangent time points within the protocol (ending at {end})"
+    times = np.asarray(time_points, dtype=float)
+    times = times[times <= end]
+    if len(times) == 0:
+        msg = f"No time points within the protocol (ending at {end})"
         raise ValueError(msg)
-    return _time_course(
+    res = _time_course_pullback(
         model,
-        cotangents,
+        times,
         wrt,
+        columns=columns,
         protocol=protocol,
         y0=y0,
         integrator=integrator,
         method=method,
         displacement=displacement,
     )
+    if not isinstance(pullback := res.value, Exception):
+        pullback._end = end  # noqa: SLF001
+    return res
 
 
-def _time_course(
+def _time_course_pullback(
     model: _Model,
-    cotangents: pd.DataFrame,
+    times: Array,
     wrt: list[str],
     *,
+    columns: list[str] | None,
     protocol: pd.DataFrame | None,
     y0: dict[str, float] | None,
     integrator: IntegratorType | None,
     method: DerivativeMethod,
     displacement: float,
-) -> Result[AdjointSensitivities]:
+) -> Result[Pullback]:
     integrator = DefaultIntegrator if integrator is None else integrator
+    columns = list(model.get_variable_names()) if columns is None else list(columns)
     _check_names(model, wrt)
-    _check_columns(model, list(cotangents.columns))
-    cotangents = cotangents.fillna(0.0)
-    times = cotangents.index.to_numpy(dtype=float)
-    if len(times) == 0 or (times < 0).any() or (np.diff(times) <= 0).any():
-        msg = "Cotangent time points must be ascending, distinct and non-negative"
-        raise ValueError(msg)
+    _check_columns(model, columns)
+    _check_times(times)
 
-    adjoint = method == "adjoint" or (
-        method == "auto"
-        and uses_adjoint(model, len(wrt), integrator, protocol=protocol is not None)
+    candidates = _candidates(
+        method, model, len(wrt), integrator, protocol=protocol is not None
     )
-    if adjoint and getattr(model, "_events", None):
-        if method == "adjoint":
-            msg = "Adjoint sensitivities aren't supported for models with events"
-            raise ValueError(msg)
-        adjoint = False
-    if adjoint:
+    for i, candidate in enumerate(candidates):
+        last = i == len(candidates) - 1
         try:
-            if protocol is not None:
-                _check_protocol(model, protocol)
-            return _adjoint_time_course(
+            res = _build(
+                candidate,
                 model,
-                cotangents,
+                times,
+                columns,
                 wrt,
                 protocol=protocol,
                 y0=y0,
@@ -932,34 +1253,81 @@ def _time_course(
                 displacement=displacement,
             )
         except Exception as e:
-            if method == "adjoint":
+            if last:
                 raise
-            _LOGGER.debug("Using sensitivities instead of adjoints: %s", e)
+            _LOGGER.debug("Using %s instead of %s: %s", candidates[i + 1], candidate, e)
+            continue
+        # A failed solve, e.g. of the discrete adjoint's tighter Newton
+        # iterations, may still succeed with the next method
+        if last or not isinstance(res.value, Exception):
+            return res
+        _LOGGER.debug(
+            "Using %s instead of %s: %s", candidates[i + 1], candidate, res.value
+        )
+    msg = "unreachable"
+    raise AssertionError(msg)
 
+
+def _build(
+    method: _Method,
+    model: _Model,
+    times: Array,
+    columns: list[str],
+    wrt: list[str],
+    *,
+    protocol: pd.DataFrame | None,
+    y0: dict[str, float] | None,
+    integrator: IntegratorType,
+    displacement: float,
+) -> Result[Pullback]:
+    if method == "discrete_adjoint":
+        return _discrete_pullback(
+            model,
+            times,
+            columns,
+            wrt,
+            protocol=protocol,
+            y0=y0,
+            integrator=integrator,
+            displacement=displacement,
+        )
+    if method == "continuous_adjoint":
+        return _continuous_pullback(
+            model,
+            times,
+            columns,
+            wrt,
+            protocol=protocol,
+            y0=y0,
+            integrator=integrator,
+            displacement=displacement,
+        )
     if protocol is not None:
-        return _protocol_finite_difference(
+        res = _protocol_finite_difference(
             model,
             protocol,
-            cotangents,
+            times,
+            columns,
             wrt,
             y0=y0,
             integrator=integrator,
             displacement=displacement,
         )
-    outputs = [c for c in cotangents.columns if c not in model.get_variable_names()]
-    res = forward_sensitivities.time_course(
-        model,
-        times,
-        wrt,
-        y0=y0,
-        integrator=integrator,
-        outputs=outputs,
-        method="auto" if method in ("auto", "adjoint") else method,
-        displacement=displacement,
-    )
+    else:
+        outputs = [c for c in columns if c not in model.get_variable_names()]
+        res = forward_sensitivities.time_course(
+            model,
+            times,
+            wrt,
+            y0=y0,
+            integrator=integrator,
+            outputs=outputs,
+            method="auto" if method == "forward" else "finite_difference",
+            displacement=displacement,
+        )
     if isinstance(sens := res.value, Exception):
         return Result(sens)
-    return Result(_contract(sens, cotangents, wrt))
+    return Result(_sensitivity_pullback(sens, columns, wrt))
 
 
 def _check_protocol(model: _Model, protocol: pd.DataFrame) -> None:
@@ -979,15 +1347,14 @@ def _check_protocol(model: _Model, protocol: pd.DataFrame) -> None:
 def _protocol_finite_difference(
     model: _Model,
     protocol: pd.DataFrame,
-    cotangents: pd.DataFrame,
+    times: Array,
+    columns: list[str],
     wrt: list[str],
     *,
     y0: dict[str, float] | None,
     integrator: IntegratorType,
     displacement: float,
-) -> Result[AdjointSensitivities]:
-    times = cotangents.index.to_numpy(dtype=float)
-    columns = list(cotangents.columns)
+) -> Result[forward_sensitivities.ForwardSensitivities]:
     restore = {k: model.get_addressable_values()[k] for k in protocol.columns}
     steps = _segments(model, protocol, float(times[-1]), [], [])
 
@@ -1019,10 +1386,228 @@ def _protocol_finite_difference(
                     blocks.append(_values(model, variables.loc[mask]))
         return Result(pd.concat(blocks).loc[:, columns])
 
-    res = _fd(model, wrt, y0, simulate, displacement)
+    return _fd(model, wrt, y0, simulate, displacement)
+
+
+def time_course(
+    model: _Model,
+    cotangents: pd.DataFrame,
+    wrt: list[str],
+    *,
+    y0: dict[str, float] | None = None,
+    integrator: IntegratorType | None = None,
+    method: DerivativeMethod = "auto",
+    displacement: float = 1e-3,
+) -> Result[AdjointSensitivities]:
+    """Gradient of `sum(cotangents * y(t))` w.r.t. parameters and initial values.
+
+    `time_course_pullback` at the cotangents' time points and columns, called once.
+
+    Examples
+    --------
+        >>> w = pd.DataFrame({"x": [1.0, -1.0]}, index=[1.0, 2.0])
+        >>> adjoint_sensitivities.time_course(model, w, ["k1", "k2"]).unwrap_or_err().gradient
+
+    Parameters
+    ----------
+    model
+        Model to simulate
+    cotangents
+        Weight of every simulated value (time points x variables, derived
+        quantities and reactions), NaN for none. The time points must be
+        ascending, distinct and non-negative
+    wrt
+        Parameters and variables (for their initial values) to differentiate w.r.t.
+    y0
+        Initial values, as for `time_course_pullback`
+    integrator
+        Integrator, as for `time_course_pullback`
+    method
+        As for `time_course_pullback`
+    displacement
+        Relative step of the finite differences of initial assignments
+
+    Returns
+    -------
+    Result[AdjointSensitivities]
+        Gradient and the simulated values at the cotangents' time points
+
+    """
+    res = time_course_pullback(
+        model,
+        cotangents.index.to_numpy(dtype=float),
+        wrt,
+        columns=list(cotangents.columns),
+        y0=y0,
+        integrator=integrator,
+        method=method,
+        displacement=displacement,
+    )
+    if isinstance(pullback := res.value, Exception):
+        return Result(pullback)
+    return pullback(cotangents)
+
+
+def protocol_time_course(
+    model: _Model,
+    protocol: pd.DataFrame,
+    cotangents: pd.DataFrame,
+    wrt: list[str],
+    *,
+    y0: dict[str, float] | None = None,
+    integrator: IntegratorType | None = None,
+    method: DerivativeMethod = "auto",
+    displacement: float = 1e-3,
+) -> Result[AdjointSensitivities]:
+    """Gradient of `sum(cotangents * y(t))` over a protocol.
+
+    `protocol_time_course_pullback` at the cotangents' time points and columns,
+    called once. Cotangents after the protocol's end are ignored.
+
+    Examples
+    --------
+        >>> protocol = make_protocol([(1, {"k_in": 1.0}), (2, {"k_in": 0.0})])
+        >>> w = pd.DataFrame({"x": [1.0, -1.0]}, index=[0.5, 2.0])
+        >>> adjoint_sensitivities.protocol_time_course(model, protocol, w, ["k1"])
+
+    Parameters
+    ----------
+    model
+        Model to simulate
+    protocol
+        Parameter values per step (index: step end times)
+    cotangents
+        Weight of every simulated value, as for `time_course`
+    wrt
+        Parameters and variables (for their initial values) to differentiate
+        w.r.t., not the parameters the protocol sets
+    y0
+        Initial values, as for `time_course_pullback`
+    integrator
+        Integrator, as for `time_course_pullback`
+    method
+        As for `protocol_time_course_pullback`
+    displacement
+        Relative step of the finite differences
+
+    Returns
+    -------
+    Result[AdjointSensitivities]
+        Gradient and the simulated values at the cotangents' time points
+
+    """
+    res = protocol_time_course_pullback(
+        model,
+        protocol,
+        cotangents.index.to_numpy(dtype=float),
+        wrt,
+        columns=list(cotangents.columns),
+        y0=y0,
+        integrator=integrator,
+        method=method,
+        displacement=displacement,
+    )
+    if isinstance(pullback := res.value, Exception):
+        return Result(pullback)
+    return pullback(cotangents)
+
+
+###############################################################################
+# Steady states
+###############################################################################
+
+
+def steady_state_pullback(
+    model: _Model,
+    wrt: list[str],
+    *,
+    columns: list[str] | None = None,
+    y0: dict[str, float] | None = None,
+    integrator: IntegratorType | None = None,
+    method: DerivativeMethod = "auto",
+    displacement: float = 1e-3,
+    tolerance: float = 1e-6,
+    rel_norm: bool = False,
+) -> Result[Pullback]:
+    """Simulate to the steady state `y*` and return its vector-Jacobian products.
+
+    With adjoints, one linear solve `Jᵀλ = cotangents` per call replaces one
+    per parameter (implicit function theorem). Conserved quantities, which make
+    `J` singular, are fixed by the initial values instead.
+
+    Examples
+    --------
+        >>> pullback = adjoint_sensitivities.steady_state_pullback(model, ["k1", "k2"]).unwrap_or_err()
+        >>> pullback(pd.Series({"x": 1.0})).unwrap_or_err().gradient
+
+    Parameters
+    ----------
+    model
+        Model to simulate
+    wrt
+        Parameters and variables (for their initial values) to differentiate
+        w.r.t. Initial values only matter for conserved quantities
+    columns
+        Steady-state values cotangents may weight (variables, derived
+        quantities and reactions), all variables if None
+    y0
+        Initial values. If None, they are taken from the model, so initial
+        assignments depending on the parameters are differentiated, too
+    integrator
+        Integrator, defaults to the default integrator
+    method
+        Any adjoint method solves the adjoint system, `forward` and
+        `finite_difference` contract forward sensitivities, `auto` uses the
+        adjoint unless the model can't be differentiated symbolically
+    displacement
+        Relative step of the finite differences of initial assignments
+    tolerance
+        Steady-state tolerance
+    rel_norm
+        Whether to use the relative norm for the steady-state check
+
+    Returns
+    -------
+    Result[Pullback]
+        The steady-state values and their vector-Jacobian product
+
+    """
+    integrator = DefaultIntegrator if integrator is None else integrator
+    columns = list(model.get_variable_names()) if columns is None else list(columns)
+    _check_names(model, wrt)
+    _check_columns(model, columns)
+    if method in ("auto", "adjoint", "discrete_adjoint", "continuous_adjoint"):
+        try:
+            return _adjoint_steady_state(
+                model,
+                columns,
+                wrt,
+                y0=y0,
+                integrator=integrator,
+                displacement=displacement,
+                tolerance=tolerance,
+                rel_norm=rel_norm,
+            )
+        except Exception as e:
+            if method != "auto":
+                raise
+            _LOGGER.debug("Using forward sensitivities instead of adjoints: %s", e)
+
+    outputs = [c for c in columns if c not in model.get_variable_names()]
+    res = forward_sensitivities.steady_state(
+        model,
+        wrt,
+        y0=y0,
+        integrator=integrator,
+        outputs=outputs,
+        method="finite_difference" if method == "finite_difference" else "auto",
+        displacement=displacement,
+        tolerance=tolerance,
+        rel_norm=rel_norm,
+    )
     if isinstance(sens := res.value, Exception):
         return Result(sens)
-    return Result(_contract(sens, cotangents, wrt))
+    return Result(_sensitivity_pullback(sens, columns, wrt, steady_state=True))
 
 
 def steady_state(
@@ -1039,9 +1624,7 @@ def steady_state(
 ) -> Result[AdjointSensitivities]:
     """Gradient of `sum(cotangents * y*)` of the steady state `y*`.
 
-    With adjoints, one linear solve `Jᵀλ = cotangents` replaces one per
-    parameter (implicit function theorem). Conserved quantities, which make
-    `J` singular, are fixed by the initial values instead.
+    `steady_state_pullback` for the cotangents' entries, called once.
 
     Examples
     --------
@@ -1059,14 +1642,11 @@ def steady_state(
         Parameters and variables (for their initial values) to differentiate
         w.r.t. Initial values only matter for conserved quantities
     y0
-        Initial values. If None, they are taken from the model, so initial
-        assignments depending on the parameters are differentiated, too
+        Initial values, as for `steady_state_pullback`
     integrator
         Integrator, defaults to the default integrator
     method
-        `adjoint` solves the adjoint system, `forward` and `finite_difference`
-        contract forward sensitivities, `auto` uses adjoints unless the model
-        can't be differentiated symbolically
+        As for `steady_state_pullback`
     displacement
         Relative step of the finite differences of initial assignments
     tolerance
@@ -1080,47 +1660,25 @@ def steady_state(
         Gradient and the steady-state values
 
     """
-    integrator = DefaultIntegrator if integrator is None else integrator
-    _check_names(model, wrt)
-    _check_columns(model, list(cotangents.index))
-    cotangents = cotangents.fillna(0.0)
-    if method in ("auto", "adjoint"):
-        try:
-            return _adjoint_steady_state(
-                model,
-                cotangents,
-                wrt,
-                y0=y0,
-                integrator=integrator,
-                displacement=displacement,
-                tolerance=tolerance,
-                rel_norm=rel_norm,
-            )
-        except Exception as e:
-            if method == "adjoint":
-                raise
-            _LOGGER.debug("Using forward sensitivities instead of adjoints: %s", e)
-
-    outputs = [str(c) for c in cotangents.index if c not in model.get_variable_names()]
-    res = forward_sensitivities.steady_state(
+    res = steady_state_pullback(
         model,
         wrt,
+        columns=[str(c) for c in cotangents.index],
         y0=y0,
         integrator=integrator,
-        outputs=outputs,
-        method="auto" if method in ("auto", "adjoint") else method,
+        method=method,
         displacement=displacement,
         tolerance=tolerance,
         rel_norm=rel_norm,
     )
-    if isinstance(sens := res.value, Exception):
-        return Result(sens)
-    return Result(_contract(sens, cotangents, wrt))
+    if isinstance(pullback := res.value, Exception):
+        return Result(pullback)
+    return pullback(cotangents)
 
 
 def _adjoint_steady_state(
     model: _Model,
-    cotangents: pd.Series,
+    columns: list[str],
     wrt: list[str],
     *,
     y0: dict[str, float] | None,
@@ -1128,7 +1686,7 @@ def _adjoint_steady_state(
     displacement: float,
     tolerance: float,
     rel_norm: bool,
-) -> Result[AdjointSensitivities]:
+) -> Result[Pullback]:
     """Adjoint of the implicit function theorem.
 
     The forward sensitivities solve `A s = b` with `A = [J; N]`, `b =
@@ -1140,7 +1698,7 @@ def _adjoint_steady_state(
         msg = "Adjoint sensitivities aren't supported for models with events"
         raise ValueError(msg)
     var_names = model.get_variable_names()
-    outputs = [str(c) for c in cotangents.index if c not in var_names]
+    outputs = [c for c in columns if c not in var_names]
     compiled_wrt, chain, s0 = _chain_factors(
         model, wrt, y0_from_model=y0 is None, displacement=displacement
     )
@@ -1168,26 +1726,31 @@ def _adjoint_steady_state(
     p = np.array([values[k] for k in model.get_addressable_names()], dtype=float)
     c = constant_values(model, vjp.constant_names)
     n = len(var_names)
-    w = cotangents.reindex(var_names, fill_value=0.0).to_numpy(dtype=float)
-    w_out = cotangents.loc[outputs].to_numpy(dtype=float)
-    x_out, p_out = vjp.fn(t, x, p, c, np.zeros(n), w_out)
-    w = w + x_out
-
     j = jac(t, x)
     left_null = _left_null_space(j)
     a = np.vstack([j, left_null])
-    mu = np.linalg.lstsq(a.T, w, rcond=None)[0]
-    mu_j, mu_n = mu[:n], mu[n:]
-    _, p_bar = vjp.fn(t, x, p, c, mu_j, np.zeros(len(outputs)))
-    theta_bar = p_out - p_bar
-    gradient = chain.T @ theta_bar + s0.T @ (left_null.T @ mu_n)
+    simulated = _values(model, variables).iloc[-1].loc[columns]
 
-    simulated = _values(model, variables).iloc[-1].loc[list(cotangents.index)]
-    return Result(
-        AdjointSensitivities(
-            simulated=simulated,
-            gradient=pd.Series(gradient, index=wrt, dtype=float),
-            method="adjoint",
-            adjoint=pd.DataFrame(mu_j[None, :], index=[t], columns=var_names),
+    def backward(cotangents: pd.DataFrame | pd.Series) -> Result[AdjointSensitivities]:
+        w_series = cast(pd.Series, cotangents)
+        w = w_series.reindex(var_names, fill_value=0.0).to_numpy(dtype=float)
+        w_out = w_series.loc[outputs].to_numpy(dtype=float)
+        x_out, p_out = vjp.fn(t, x, p, c, np.zeros(n), w_out)
+        w = w + x_out
+        mu = np.linalg.lstsq(a.T, w, rcond=None)[0]
+        mu_j, mu_n = mu[:n], mu[n:]
+        _, p_bar = vjp.fn(t, x, p, c, mu_j, np.zeros(len(outputs)))
+        theta_bar = p_out - p_bar
+        gradient = chain.T @ theta_bar + s0.T @ (left_null.T @ mu_n)
+        return Result(
+            AdjointSensitivities(
+                simulated=simulated,
+                gradient=pd.Series(gradient, index=wrt, dtype=float),
+                method="adjoint",
+                adjoint=pd.DataFrame(mu_j[None, :], index=[t], columns=var_names),
+            )
         )
+
+    return Result(
+        Pullback(simulated=simulated, wrt=wrt, method="adjoint", _backward=backward)
     )

@@ -68,10 +68,19 @@ __all__ = [
 ]
 
 type RateFn = Callable[..., float]
-# How runners compute derivatives of their results, see `mxlpy.runners`
 # How a term combines with the quantity it targets, see `Mechanism`
 type MechanismLike = Literal["additive", "relative"] | Callable[[Any, Any], Any]
-type DerivativeMethod = Literal["auto", "forward", "adjoint", "finite_difference"]
+# How runners compute derivatives of their results, see `mxlpy.runners` and
+# `mxlpy.adjoint_sensitivities`: `adjoint` is the discrete adjoint where
+# possible (`Native`), else the continuous one
+type DerivativeMethod = Literal[
+    "auto",
+    "forward",
+    "adjoint",
+    "discrete_adjoint",
+    "continuous_adjoint",
+    "finite_difference",
+]
 type Array = NDArray[np.floating[Any]]
 type ArrayLike = NDArray[np.floating[Any]] | pd.Index | list[float]
 type Rhs = Callable[
