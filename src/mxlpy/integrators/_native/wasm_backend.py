@@ -342,7 +342,9 @@ class _Compiled:
         nmax: int,
         method: str,
         reuse_jacobian: bool,
+        jacobian: int = 0,
     ) -> tuple[int, np.ndarray]:
+        """Solve; `jacobian` is a compiled Jacobian's table index, 0 for finite differences."""
         rt, n, n_out = self._rt, len(y0), len(t_out)
         py, pp, pt = (
             self._write(np.asarray(y0, dtype=float)),
@@ -351,7 +353,8 @@ class _Compiled:
         )
         po = rt.malloc(n * n_out)
         rt.solver["mxn_set_model"](rt.store, self._index)
-        head, tail = (rt.store, n, py, pp, rtol, atol, nmax), (n_out, pt, po)
+        head = (rt.store, n, py, pp, jacobian, rtol, atol, nmax)
+        tail = (n_out, pt, po)
         try:
             if method == "LSODA":
                 idid = rt.solver["mxn_lsoda"](*head, *tail)
