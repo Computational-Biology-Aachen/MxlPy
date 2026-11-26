@@ -219,18 +219,14 @@ def _solver() -> ct.CDLL:
     lib.mxn_eval_rows.argtypes = [
         ct.c_void_p, ct.c_int, ct.c_int, ct.c_int, _DP, _DP, _DP, _DP,
     ]  # fmt: skip
+    # (n, y, pars, jacobian, rtol, atol, nmax, [reuse_jacobian | adams], n_out, t_out, y_out)
+    head = [ct.c_int, _DP, _DP, ct.c_void_p, ct.c_double, ct.c_double, ct.c_int]
     lib.mxn_radau.restype = ct.c_int
-    lib.mxn_radau.argtypes = [
-        ct.c_int, _DP, _DP, ct.c_double, ct.c_double, ct.c_int, ct.c_int, ct.c_int, _DP, _DP,
-    ]  # fmt: skip
+    lib.mxn_radau.argtypes = [*head, ct.c_int, ct.c_int, _DP, _DP]
     lib.mxn_lsoda.restype = ct.c_int
-    lib.mxn_lsoda.argtypes = [
-        ct.c_int, _DP, _DP, ct.c_double, ct.c_double, ct.c_int, ct.c_int, _DP, _DP,
-    ]  # fmt: skip
+    lib.mxn_lsoda.argtypes = [*head, ct.c_int, _DP, _DP]
     lib.mxn_cvode.restype = ct.c_int
-    lib.mxn_cvode.argtypes = [
-        ct.c_int, _DP, _DP, ct.c_double, ct.c_double, ct.c_int, ct.c_int, ct.c_int, _DP, _DP,
-    ]  # fmt: skip
+    lib.mxn_cvode.argtypes = [*head, ct.c_int, ct.c_int, _DP, _DP]
     return lib
 
 
@@ -304,13 +300,16 @@ class _Compiled:
         nmax: int,
         method: str,
         reuse_jacobian: bool,
+        jacobian: int = 0,
     ) -> tuple[int, np.ndarray]:
+        """Solve; `jacobian` is a compiled Jacobian's address, 0 for finite differences."""
         y = np.array(y0, dtype=float)
         out = np.empty((len(t_out), len(y)))
         head = (
             len(y),
             y.ctypes.data_as(_DP),
             pars.ctypes.data_as(_DP),
+            jacobian or None,
             rtol,
             atol,
             nmax,

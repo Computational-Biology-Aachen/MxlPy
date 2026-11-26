@@ -274,6 +274,13 @@ class ExprEmitter(ABC):
             return out
         if isinstance(cond, sympy.Not):
             return self.negate(self._cond(cond.args[0]))
+        if isinstance(cond, sympy.ITE):
+            # Boolean if-then-else (e.g. from differentiating Piecewise):
+            # (c and a) or (not c and b)
+            c, a, b = (self._cond(x) for x in cond.args)
+            return self.logic(
+                "or", self.logic("and", c, a), self.logic("and", self.negate(c), b)
+            )
         if type(cond) not in _CMP:
             msg = f"Native can't compile the condition {cond}"
             raise NativeLoweringError(msg)

@@ -58,6 +58,8 @@ METHODS: tuple[str, ...] = get_args(Method)
 _LOGGER = logging.getLogger(__name__)
 _CACHE_SIZE = 32
 _CHECK_RTOL = 1e-8
+# Central differences of the compiled model agree with an exact Jacobian to ~1e-8
+_JAC_CHECK_RTOL = 1e-5
 _CHECK_STATES = 3
 # The solver keeps global state, so only one solve can run at a time in a process.
 _LOCK = threading.RLock()
@@ -79,7 +81,11 @@ class _Compiled(Protocol):
         nmax: int,
         method: str,
         reuse_jacobian: bool,
+        jacobian: int = 0,
     ) -> tuple[int, Array]: ...
+
+    @property
+    def address(self) -> int: ...
 
     def eval_rows(self, t: Array, y: Array, pars: Array, n_out: int) -> Array: ...
 
@@ -242,6 +248,86 @@ def _compile(model: Any, backend: str, t: float, y0: Array) -> _Entry:
         return entry
 
 
+def _check_jacobian(
+    jac: _Compiled,
+    rhs: _Compiled,
+    model: Any,
+    names: list[str],
+    *,
+    t: float,
+    y0: Array,
+) -> None:
+    """Compare a compiled Jacobian with central differences of the compiled model."""
+    pars = _parameters(model, names)
+    n = len(y0)
+    rng = np.random.default_rng(1)
+    scale = np.where(y0 > 0, y0, 1.0)
+    checked = 0
+    for _ in range(_CHECK_STATES):
+        y = scale * rng.uniform(0.5, 1.5, n)
+        got = jac.eval_rows(np.array([t]), y[None, :], pars, n * n)[0].reshape(n, n).T
+        expected = np.empty((n, n))
+        for j in range(n):
+            h = 1e-6 * max(abs(y[j]), 1e-3)
+            up, down = y.copy(), y.copy()
+            up[j] += h
+            down[j] -= h
+            expected[:, j] = (rhs.rhs(t, up, pars) - rhs.rhs(t, down, pars)) / (2 * h)
+        # Entries the differences can't check (e.g. at a singularity of the
+        # model) are skipped, the others must agree
+        finite = np.isfinite(expected)
+        if not finite.any():
+            continue
+        checked += 1
+        expected, got = expected[finite], got[finite]
+        atol = _JAC_CHECK_RTOL * np.abs(expected).max() + 1e-12
+        if not np.allclose(got, expected, rtol=_JAC_CHECK_RTOL, atol=atol):
+            msg = "Compiled Jacobian disagrees with the model"
+            raise NativeLoweringError(msg)
+    if n and not checked:
+        msg = "Compiled Jacobian can't be checked, the model isn't finite"
+        raise NativeLoweringError(msg)
+
+
+def _compile_jacobian(
+    model: Any, backend: str, t: float, y0: Array, rhs: _Entry
+) -> _Entry | None:
+    """The model's compiled Jacobian.
+
+    None if it can't be compiled, then the solvers use finite differences.
+    """
+    from mxlpy.integrators._native import differentiate  # noqa: PLC0415
+
+    key = ("jac", backend, fingerprint(model))
+    if key in _CACHE:
+        _CACHE.move_to_end(key)
+        return _CACHE[key]
+    shared = None if (c := content_key(model)) is None else ("jac", backend, c)
+
+    def check(entry: _Entry) -> None:
+        _check_jacobian(
+            entry.compiled, rhs.compiled, model, entry.par_names, t=t, y0=y0
+        )
+
+    entry: _Entry | None = None
+    try:
+        if (hit := _shared_hit(shared, check)) is not False:
+            entry = hit  # type: ignore[assignment]
+        else:
+            low = differentiate.jacobian(lower(model))
+            compiled = _backend_module(backend).compile_model(low)
+            _check_jacobian(compiled, rhs.compiled, model, low.par_names, t=t, y0=y0)
+            entry = _Entry(backend, compiled.blob, low.par_names, _compiled=compiled)
+            if shared is not None:
+                _store(_SHARED, shared, entry)
+    except (NativeLoweringError, ArithmeticError, ValueError) as e:
+        _LOGGER.debug("Native uses finite-difference Jacobians: %s", e)
+        if shared is not None:
+            _store(_SHARED, shared, None)
+    _store(_CACHE, key, entry)
+    return entry
+
+
 def _check_outputs(
     compiled: _Compiled,
     model: Any,
@@ -347,7 +433,7 @@ class Native(AbstractIntegrator):
     y0
         Initial conditions.
     jacobian
-        Ignored, the solver builds its own numerical Jacobian.
+        Ignored, see `jacobian_method`.
     atol
         Absolute tolerance for the solver.
     rtol
@@ -361,11 +447,22 @@ class Native(AbstractIntegrator):
         and BDF methods as stiffness changes (SciPy's own C code), or SUNDIALS' CVODE
         with BDF (`CVODE_BDF`, stiff) or Adams-Moulton (`CVODE_Adams`, non-stiff)
         methods, the solver Assimulo's `CVode` runs too.
+    jacobian_method
+        `finite_difference` lets the solver build the Jacobian from differences of the
+        model, `analytic` compiles it (generated symbolically, checked against finite
+        differences, falling back to them if it can't be compiled). Measured on
+        mxl-models with Radau, `analytic` costs 3-25x more compile time and solves
+        about as fast (median 1.1x slower), so it isn't the default.
     reuse_jacobian
         Radau only. Reuse Jacobians for longer. Faster on larger stiff models, but less accurate
         on some small ones, and too rough for fits that use finite differences.
     nmax
         Maximal number of solver steps.
+    max_tape_bytes
+        Memory bound of the solve a discrete adjoint records (see
+        `mxlpy.adjoint_sensitivities`), 1 GiB by default. Beyond it,
+        `discrete_adjoint` raises `TapeTooLarge`, `adjoint` and `auto` use the
+        continuous adjoint.
 
     """
 
@@ -379,8 +476,10 @@ class Native(AbstractIntegrator):
     t0: float = 0.0
     backend: Literal["auto", "llvm", "wasm"] = "auto"
     method: Method = "Radau"
+    jacobian_method: Literal["analytic", "finite_difference"] = "finite_difference"
     reuse_jacobian: bool = False
     nmax: int = 2_000_000
+    max_tape_bytes: float = 2**30
     _y0_orig: tuple[float, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
@@ -389,6 +488,12 @@ class Native(AbstractIntegrator):
         if self.method not in METHODS:
             msg = (
                 f"Native supports the methods {', '.join(METHODS)}, not {self.method!r}"
+            )
+            raise ValueError(msg)
+        if self.jacobian_method not in ("analytic", "finite_difference"):
+            msg = (
+                "Native's jacobian_method must be 'analytic' or 'finite_difference', "
+                f"not {self.jacobian_method!r}"
             )
             raise ValueError(msg)
         if self.reuse_jacobian and self.method != "Radau":
@@ -420,6 +525,11 @@ class Native(AbstractIntegrator):
             return t_out, np.tile(y0, (len(t_out), 1))
         with _LOCK:
             entry = _compile(self.rhs, self.backend, self.t0, y0)
+            jac = (
+                _compile_jacobian(self.rhs, self.backend, self.t0, y0, entry)
+                if self.jacobian_method == "analytic"
+                else None
+            )
             idid, values = entry.compiled.solve(
                 y0,
                 _parameters(self.rhs, entry.par_names),
@@ -429,6 +539,7 @@ class Native(AbstractIntegrator):
                 nmax=self.nmax,
                 method=self.method,
                 reuse_jacobian=self.reuse_jacobian,
+                jacobian=0 if jac is None else jac.compiled.address,
             )
         return None if idid <= 0 else (t_out, values)
 

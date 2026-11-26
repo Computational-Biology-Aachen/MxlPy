@@ -17,7 +17,7 @@ import sympy
 from mxlpy.integrators._native.lower import Lowered
 from mxlpy.symbolic.jacobian import piecewise_extrema as _piecewise
 
-__all__ = ["adjoint", "augmented", "gradients"]
+__all__ = ["adjoint", "augmented", "gradients", "jacobian"]
 
 
 type _Seed = dict[sympy.Symbol, Any]
@@ -93,6 +93,23 @@ def gradients(low: Lowered, theta: list[int]) -> Lowered:
         par_names=low.par_names,
         assignments=assignments,
         dydt=[g for row in d for g in row],
+    )
+
+
+def jacobian(low: Lowered) -> Lowered:
+    """The Jacobian df/dy as n x n outputs, column-major (output `i + j n` is df_i/dy_j).
+
+    The layout the solvers' analytic-Jacobian hooks and mxl-solvers' discrete adjoint
+    read (RADAU5's DFY, LSODA's PD, SUNDIALS' dense matrices).
+    """
+    n = low.n
+    seeds: list[_Seed] = [{sympy.Symbol(f"y{j}"): sympy.Integer(1)} for j in range(n)]
+    assignments, d = _differentiate(low, seeds, low.dydt)
+    return Lowered(
+        n=n,
+        par_names=low.par_names,
+        assignments=assignments,
+        dydt=[d[i][j] for j in range(n) for i in range(n)],
     )
 
 
