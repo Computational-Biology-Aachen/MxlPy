@@ -40,7 +40,8 @@ _DP = ct.POINTER(ct.c_double)
 _TARGET_STATE, _TARGET_DERIVED = 0, 1
 _TIME_COURSE = 0
 _CHECK_RTOL = 1e-5
-# mxn_adjoint_vjp's codes for problems it can't run (rather than failed solves)
+# mxn_adjoint_vjp's codes for problems it can't run; it returns failed solves as
+# -1000 plus the solver's code, so they can't be mistaken for these
 _SETUP_ERRORS = {
     -1: "out of memory",
     -3: "inconsistent experiments",
@@ -139,28 +140,60 @@ def supports(integrator: IntegratorType) -> bool:
     return True
 
 
-def _check_adjoint(adjoint: Any, plain: Any, low: Lowered, theta: list[int]) -> None:
-    """Compare the compiled adjoint function with central differences of the model."""
+def _check_adjoint(
+    adjoint: Any,
+    plain: Any,
+    low: Lowered,
+    theta: list[int],
+    *,
+    pars: Array,
+    y0: Array,
+) -> None:
+    """Compare the compiled adjoint function with central differences of the model.
+
+    At the model's parameters, where its values are finite (random parameters
+    can make real models NaN everywhere). At y0 every entry the differences
+    can evaluate must agree. At random states around y0 non-finite adjoint
+    entries are skipped, as symbolic derivatives can overflow where the model
+    is finite.
+    """
+    from mxlpy.integrators.int_native import (  # noqa: PLC0415
+        check_states,
+        check_step,
+        checked_entries,
+    )
+
     rng = np.random.default_rng(0)
     n = low.n
-    pars = rng.uniform(0.5, 1.5, max(len(low.par_names), 1))
-    y = rng.uniform(0.5, 1.5, n)
     lam = rng.uniform(-1, 1, n)
-    dlam, dtheta = adjoint.adjoint(0.0, y, lam, pars, len(theta))
+    for i, y in enumerate(check_states(y0, 2, seed=0)):
+        dlam, dtheta = adjoint.adjoint(0.0, y, lam, pars, len(theta))
 
-    def directional(dy: Array, dp: Array) -> float:
-        h = 1e-6 * max(1.0, float(np.abs(y @ dy) + np.abs(pars @ dp)))
-        up = plain.rhs(0.0, y + h * dy, pars + h * dp)
-        down = plain.rhs(0.0, y - h * dy, pars - h * dp)
-        return -float(lam @ (up - down)) / (2 * h)
+        def partial(j: int, y: Array = y) -> float:
+            """-lam^T df/dz_j by central differences, z = (y, pars)."""
+            z = np.concatenate([y, pars])
+            h = check_step(float(z[j]))
+            dz = np.zeros_like(z)
+            dz[j] = h
+            up, down = z + dz, z - dz
+            df = plain.rhs(0.0, up[:n], up[n:]) - plain.rhs(0.0, down[:n], down[n:])
+            return -float(lam @ df) / (2 * h)
 
-    expected = [directional(np.eye(n)[i], np.zeros_like(pars)) for i in range(n)]
-    expected += [directional(np.zeros(n), np.eye(len(pars))[k]) for k in theta]
-    got = np.concatenate([dlam, dtheta[: len(theta)]])
-    scale = _CHECK_RTOL * max(1.0, float(np.abs(expected).max(initial=0.0)))
-    if not np.allclose(got, expected, rtol=_CHECK_RTOL, atol=scale):
-        msg = "the compiled adjoint disagrees with the model"
-        raise NativeUnsupported(msg)
+        expected = np.array(
+            [partial(j) for j in range(n)] + [partial(n + k) for k in theta]
+        )
+        got = np.concatenate([dlam, dtheta[: len(theta)]])
+        mask = checked_entries(got, expected, strict=i == 0)
+        if not mask.any():
+            if i == 0:
+                msg = "the compiled adjoint can't be checked, the model isn't finite at y0"
+                raise NativeUnsupported(msg)
+            continue
+        expected, got = expected[mask], got[mask]
+        scale = _CHECK_RTOL * max(1.0, float(np.abs(expected).max()))
+        if not np.allclose(got, expected, rtol=_CHECK_RTOL, atol=scale):
+            msg = "the compiled adjoint disagrees with the model"
+            raise NativeUnsupported(msg)
 
 
 def _compile(
@@ -199,7 +232,10 @@ def _compile(
     except Exception as e:
         msg = f"the adjoint can't be compiled ({e})"
         raise NativeUnsupported(msg) from e
-    _check_adjoint(adjoint, plain, low, theta)
+    values = all_parameter_values(model)
+    pars = np.array([values[k] for k in low.par_names] or [0.0], dtype=float)
+    y0 = np.array(list(model.get_initial_conditions().values()), dtype=float)
+    _check_adjoint(adjoint, plain, low, theta, pars=pars, y0=y0)
     compiled = _Compiled(
         low=low,
         theta=theta,
@@ -214,16 +250,9 @@ def _compile(
         pointers=[plain.address, adjoint.address, 0, 0],
     )
     if derived:
-        rng = np.random.default_rng(2)
         try:
             derived_fn, gradient_fn = _compile_derived(
-                model,
-                derived,
-                theta,
-                n=low.n,
-                pars=rng.uniform(0.5, 1.5, max(len(low.par_names), 1)),
-                y0=rng.uniform(0.5, 1.5, low.n),
-                backend=backend,
+                model, derived, theta, n=low.n, pars=pars, y0=y0, backend=backend
             )
         except _Unsupported as e:
             raise NativeUnsupported(str(e)) from e

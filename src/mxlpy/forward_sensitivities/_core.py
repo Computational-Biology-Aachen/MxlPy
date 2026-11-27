@@ -192,7 +192,8 @@ def _check_names(model: _Model, wrt: list[str]) -> tuple[list[str], list[str]]:
     _check_not_computed(model, wrt)
     variables = set(model.get_variable_names())
     parameters = set(_free_parameters(model))
-    if unknown := [k for k in wrt if k not in variables | parameters]:
+    known = variables | parameters
+    if unknown := [k for k in wrt if k not in known]:
         msg = f"Unknown parameters / variables {unknown}"
         raise ValueError(msg)
     if len(set(wrt)) != len(wrt):
@@ -346,7 +347,7 @@ def _chain_factors(
     then those set by initial assignments), d (compiled) / d (requested) and
     d x0 / d (requested).
     """
-    pars, vars_ = _check_names(model, wrt)
+    pars, _ = _check_names(model, wrt)
     var_names = model.get_variable_names()
     derived = _assigned_parameters(model)
     compiled_wrt = pars + derived
@@ -365,11 +366,14 @@ def _chain_factors(
             dtype=float,
         )
 
+    # Dicts, not list.index: with hundreds of parameters the lookups were O(P^2)
+    var_index = {k: i for i, k in enumerate(var_names)}
+    par_index = {k: i for i, k in enumerate(compiled_wrt)}
     for j, name in enumerate(wrt):
-        if name in vars_:
-            s0[var_names.index(name), j] = 1.0
+        if name in var_index:
+            s0[var_index[name], j] = 1.0
             continue
-        chain[compiled_wrt.index(name), j] = 1.0
+        chain[par_index[name], j] = 1.0
         if sources is None or name in sources:
             d = _parameter_fd(model, name, displacement, read)
             chain[len(pars) :, j] = d[: len(derived)]

@@ -140,38 +140,46 @@ def _check_gradients(
 ) -> None:
     """Compare the compiled derived-target gradients with central differences.
 
-    Uses `eval_rows` with explicit output sizes: `rhs` sizes its output like
-    the state, but these functions have other numbers of outputs.
+    At y0 every entry the differences can evaluate must agree, at a random
+    state around it the finite ones (see `checked_entries`). Uses `eval_rows`
+    with explicit output sizes: `rhs` sizes its output like the state, but
+    these functions have other numbers of outputs.
     """
-    rng = np.random.default_rng(1)
-    y = np.where(y0 != 0, y0, 1.0) * rng.uniform(0.5, 1.5, n)
+    from mxlpy.integrators.int_native import (  # noqa: PLC0415
+        check_states,
+        check_step,
+        checked_entries,
+    )
+
     m = len(theta)
     t = np.zeros(1)
 
     def derived(state: Array, parameters: Array) -> Array:
         return derived_fn.eval_rows(t, state[None, :], parameters, n_derived)[0]
 
-    grads = gradient_fn.eval_rows(t, y[None, :], pars, n_derived * (n + m))[0]
-    for col in range(n + m):
-        dy, dp = np.zeros(n), np.zeros_like(pars)
-        if col < n:
-            h = 1e-6 * max(1.0, abs(y[col]))
-            dy[col] = h
-        else:
-            k = theta[col - n]
-            h = 1e-6 * max(1.0, abs(pars[k]))
-            dp[k] = h
-        fd = (derived(y + dy, pars + dp) - derived(y - dy, pars - dp)) / (2 * h)
-        # Per derived target: its derivatives along all n + m directions
-        got = grads[col :: n + m]
-        if not np.allclose(
-            got,
-            fd,
-            rtol=_CHECK_RTOL,
-            atol=_CHECK_RTOL * max(1.0, float(np.abs(fd).max())),
-        ):
-            msg = "compiled derived-target gradients disagree with the model"
-            raise _Unsupported(msg)
+    for i, y in enumerate(check_states(np.asarray(y0, dtype=float), 1, seed=1)):
+        grads = gradient_fn.eval_rows(t, y[None, :], pars, n_derived * (n + m))[0]
+        for col in range(n + m):
+            dy, dp = np.zeros(n), np.zeros_like(pars)
+            if col < n:
+                h = check_step(float(y[col]))
+                dy[col] = h
+            else:
+                k = theta[col - n]
+                h = check_step(float(pars[k]))
+                dp[k] = h
+            fd = (derived(y + dy, pars + dp) - derived(y - dy, pars - dp)) / (2 * h)
+            # Per derived target: its derivatives along all n + m directions
+            got = grads[col :: n + m]
+            mask = checked_entries(got, fd, strict=i == 0)
+            if mask.any() and not np.allclose(
+                got[mask],
+                fd[mask],
+                rtol=_CHECK_RTOL,
+                atol=_CHECK_RTOL * max(1.0, float(np.abs(fd[mask]).max())),
+            ):
+                msg = "compiled derived-target gradients disagree with the model"
+                raise _Unsupported(msg)
 
 
 def _compile_derived(

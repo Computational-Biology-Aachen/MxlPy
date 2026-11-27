@@ -40,6 +40,8 @@ from mxlpy.types import ArrayLike, IntegrationFailure, NoSteadyState, Result
 if TYPE_CHECKING:
     from collections.abc import Callable, Hashable
 
+    from numpy.typing import NDArray
+
     from mxlpy.types import Array, Rhs
 
 __all__ = ["Native", "NativeLoweringError", "args_time_course"]
@@ -248,6 +250,38 @@ def _compile(model: Any, backend: str, t: float, y0: Array) -> _Entry:
         return entry
 
 
+def check_states(y0: Array, n_random: int, seed: int) -> list[Array]:
+    """States for the compiled-derivative checks: y0, then random states around it.
+
+    y0 comes first, as the solvers start there. The random states (scaled
+    U(0.5, 1.5)) exercise entries that vanish at y0, e.g. where states are 0.
+    """
+    rng = np.random.default_rng(seed)
+    scale = np.where(y0 > 0, y0, 1.0)
+    return [y0, *(scale * rng.uniform(0.5, 1.5, len(y0)) for _ in range(n_random))]
+
+
+def check_step(value: float) -> float:
+    """Central-difference step for a derivative check, relative to the value.
+
+    Parameters can be tiny (pfennig2024's cf_cytoplasm is 4.6e-6), where an
+    absolute step of 1e-6 would make the check itself inaccurate.
+    """
+    return 1e-6 * (abs(value) or 1.0)
+
+
+def checked_entries(got: Array, expected: Array, *, strict: bool) -> NDArray[np.bool_]:
+    """Mask of the entries a derivative check compares.
+
+    Entries the central differences can't evaluate are skipped. With
+    `strict=False`, so are non-finite compiled entries: a symbolic derivative
+    can overflow where the model is finite (d/dx 1 / (1 + exp(x)) is inf / inf
+    once exp(x) overflows), which a state off the trajectory may reach.
+    """
+    mask = np.isfinite(expected)
+    return mask if strict else mask & np.isfinite(got)
+
+
 def _check_jacobian(
     jac: _Compiled,
     rhs: _Compiled,
@@ -257,14 +291,16 @@ def _check_jacobian(
     t: float,
     y0: Array,
 ) -> None:
-    """Compare a compiled Jacobian with central differences of the compiled model."""
+    """Compare a compiled Jacobian with central differences of the compiled model.
+
+    Its finite entries must agree, at y0 and at random states. Non-finite
+    entries are allowed: the solvers replace columns holding them by finite
+    differences (mxl-solvers' finite_jacobian).
+    """
     pars = _parameters(model, names)
     n = len(y0)
-    rng = np.random.default_rng(1)
-    scale = np.where(y0 > 0, y0, 1.0)
     checked = 0
-    for _ in range(_CHECK_STATES):
-        y = scale * rng.uniform(0.5, 1.5, n)
+    for y in check_states(np.asarray(y0, dtype=float), _CHECK_STATES, seed=1):
         got = jac.eval_rows(np.array([t]), y[None, :], pars, n * n)[0].reshape(n, n).T
         expected = np.empty((n, n))
         for j in range(n):
@@ -273,13 +309,11 @@ def _check_jacobian(
             up[j] += h
             down[j] -= h
             expected[:, j] = (rhs.rhs(t, up, pars) - rhs.rhs(t, down, pars)) / (2 * h)
-        # Entries the differences can't check (e.g. at a singularity of the
-        # model) are skipped, the others must agree
-        finite = np.isfinite(expected)
-        if not finite.any():
+        mask = checked_entries(got, expected, strict=False)
+        if not mask.any():
             continue
         checked += 1
-        expected, got = expected[finite], got[finite]
+        expected, got = expected[mask], got[mask]
         atol = _JAC_CHECK_RTOL * np.abs(expected).max() + 1e-12
         if not np.allclose(got, expected, rtol=_JAC_CHECK_RTOL, atol=atol):
             msg = "Compiled Jacobian disagrees with the model"

@@ -17,7 +17,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mxlpy import Simulator, adjoint_sensitivities
+from mxlpy import (
+    KineticModelBuilder,
+    OdeModelBuilder,
+    Simulator,
+    adjoint_sensitivities,
+)
 from mxlpy.adjoint_sensitivities import _discrete
 from mxlpy.fit._gradient import GradientResidual
 from mxlpy.fit.abstract import _Settings
@@ -269,3 +274,86 @@ def test_compiled_jacobian_matches_the_model() -> None:
     rhs = native._compile(model, "llvm", 0.0, y0)
     entry = native._compile_jacobian(model, "llvm", 0.0, y0, rhs)
     assert entry is not None
+
+
+def _switch(x: float, threshold: float, width: float) -> float:
+    return 1 / (1 + np.exp((x - threshold) / width))
+
+
+def _decay(x: float, k: float) -> float:
+    return k * x
+
+
+def _overflowing() -> Any:
+    """A steep logistic switch: its symbolic derivative is inf / inf (NaN) once exp overflows.
+
+    The model itself stays finite there; x starts in the overflow region
+    (x0 = 2, exp((2 - 1) / 5e-4) = inf) and decays through the switch.
+    """
+    return (
+        KineticModelBuilder()
+        .add_parameters({"threshold": 1.0, "width": 5e-4, "k": 0.5})
+        .add_variables({"x": 2.0})
+        .add_reaction(
+            "influx", _switch, args=["x", "threshold", "width"], stoichiometry={"x": 1}
+        )
+        .add_reaction("decay", _decay, args=["x", "k"], stoichiometry={"x": -1})
+    )
+
+
+@pytest.mark.filterwarnings("ignore:overflow encountered in exp:RuntimeWarning")
+@pytest.mark.parametrize("method", METHODS)
+def test_analytic_jacobian_with_non_finite_entries(method: str) -> None:
+    """Columns the compiled Jacobian can't evaluate are differenced by the solvers.
+
+    The Jacobian is NaN at y0, so without that every solver fails.
+    """
+    model = _overflowing()
+    native = pytest.importorskip("mxlpy.integrators.int_native")
+    y0 = np.array([2.0])
+    rhs = native._compile(model, "llvm", 0.0, y0)
+    entry = native._compile_jacobian(model, "llvm", 0.0, y0, rhs)
+    assert entry is not None
+    times = np.linspace(0, 4, 21)
+    results = {}
+    for jac in ("analytic", "finite_difference"):
+        integrator = _native(method=method, jacobian_method=jac, rtol=1e-9, atol=1e-11)
+        sim = (
+            Simulator(model, integrator=integrator)
+            .simulate_time_course(times)
+            .get_result()
+            .unwrap_or_err()
+        )
+        results[jac] = sim.get_variables()["x"].to_numpy()
+    np.testing.assert_allclose(
+        results["analytic"], results["finite_difference"], rtol=1e-6, atol=1e-9
+    )
+
+
+def _offset_sqrt(x: float, c: float, k: float) -> float:
+    return np.sqrt(c - 1) - k * x
+
+
+def test_self_check_uses_the_model_parameters() -> None:
+    """The adjoint self-check runs at the model's parameters.
+
+    At random parameters U(0.5, 1.5), sqrt(c - 1) is NaN for c < 1, which
+    used to reject correct adjoints of real models.
+    """
+    model = (
+        OdeModelBuilder()
+        .add_parameters({"c": 5.0, "k": 0.7})
+        .add_diff_eq("x", 1.0, _offset_sqrt, args=["x", "c", "k"])
+    )
+    assert not isinstance(
+        _discrete._compile(model, ["c", "k"], ["x"], "llvm"), Exception
+    )
+    w = _cotangents(["x"], T)
+    integrator = _native(rtol=1e-10, atol=1e-12)
+    adj = adjoint_sensitivities.time_course(
+        model, w, ["c", "k"], method="discrete_adjoint", integrator=integrator
+    ).unwrap_or_err()
+    fd = adjoint_sensitivities.time_course(
+        model, w, ["c", "k"], method="finite_difference", integrator=integrator
+    ).unwrap_or_err()
+    assert _relative_error(adj.gradient, fd.gradient) < 1e-5
