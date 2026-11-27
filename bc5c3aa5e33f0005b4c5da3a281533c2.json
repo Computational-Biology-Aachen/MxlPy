@@ -1,0 +1,1 @@
+[{"output_type": "execute_result", "metadata": {}, "data": {"text/plain": "Result(value=JointFit(\n  best_pars={\n    'k2': np.float64(2.000000270289325), 'k_out': np.float64(0.9999999526471511)\n  },\n  loss=np.float64(7.927486083354713e-07)\n))"}, "execution_count": 24}]

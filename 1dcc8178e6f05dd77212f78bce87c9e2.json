@@ -1,0 +1,1 @@
+[{"output_type": "execute_result", "metadata": {}, "data": {"text/plain": "StepResult('fit', passed, 4.1 s)\n  - Best objective 34.78 (\u03c7\u00b2 = 69.55, dof 75, p = 0.656)\n  - 100% of 5 finished starts converged to the best (\u0394\u03c7\u00b2 < 1), 0 failed\n  proposal: {'local': {}, 'next': 'identifiability'}"}, "execution_count": 8}]
