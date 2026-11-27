@@ -1534,7 +1534,7 @@ dependencies = [
     { name = "nbformat" },
     { name = "packaging" },
     { name = "prometheus-client" },
-    { name = "pywinpty", marker = "os_name == 'nt' and sys_platform != 'linux'" },
+    { name = "pywinpty", marker = "os_name == 'nt'" },
     { name = "pyzmq" },
     { name = "send2trash" },
     { name = "terminado" },
@@ -1552,7 +1552,7 @@ name = "jupyter-server-terminals"
 version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pywinpty", marker = "os_name == 'nt' and sys_platform != 'linux'" },
+    { name = "pywinpty", marker = "os_name == 'nt'" },
     { name = "terminado" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f4/a7/bcd0a9b0cbba88986fe944aaaf91bfda603e5a50bda8ed15123f381a3b2f/jupyter_server_terminals-0.5.4.tar.gz", hash = "sha256:bbda128ed41d0be9020349f9f1f2a4ab9952a73ed5f5ac9f1419794761fb87f5", size = 31770, upload-time = "2026-01-14T16:53:20.213Z" }
@@ -2479,8 +2479,8 @@ lab = [
     { name = "uvicorn" },
 ]
 native = [
-    { name = "mxlpy-native", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32') or (platform_machine == 'ARM64' and sys_platform == 'win32')" },
-    { name = "wasmtime", marker = "(platform_machine != 'AMD64' and platform_machine != 'ARM64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64') or (platform_machine == 'AMD64' and sys_platform == 'darwin') or (platform_machine == 'ARM64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine == 'AMD64' and sys_platform == 'linux') or (platform_machine == 'ARM64' and sys_platform == 'linux') or (platform_machine == 'arm64' and sys_platform == 'linux') or (platform_machine == 'aarch64' and sys_platform == 'win32') or (platform_machine == 'arm64' and sys_platform == 'win32') or (platform_machine == 'x86_64' and sys_platform == 'win32') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')" },
+    { name = "mxlpy-native", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' or (platform_machine == 'aarch64' or platform_machine == 'x86_64') and sys_platform == 'linux' or (platform_machine == 'AMD64' or platform_machine == 'ARM64') and sys_platform == 'win32'" },
+    { name = "wasmtime", marker = "platform_machine != 'AMD64' and platform_machine != 'ARM64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' or (platform_machine == 'AMD64' or platform_machine == 'ARM64') and (sys_platform == 'darwin' or sys_platform == 'linux') or (platform_machine == 'aarch64' or platform_machine == 'x86_64') and (sys_platform == 'darwin' or sys_platform == 'win32') or platform_machine == 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32') or sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32'" },
 ]
 native-wasm = [
     { name = "wasmtime" },
@@ -2489,7 +2489,7 @@ sr = [
     { name = "pysr" },
 ]
 sundials = [
-    { name = "sundials4py", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32') or (platform_machine == 'x86' and sys_platform == 'win32') or sys_platform == 'darwin'" },
+    { name = "sundials4py", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' or (platform_machine == 'AMD64' or platform_machine == 'x86') and sys_platform == 'win32' or sys_platform == 'darwin'" },
 ]
 tensorflow = [
     { name = "tensorflow" },
@@ -2532,7 +2532,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.9.2" },
     { name = "mike", specifier = ">=2.1.3" },
     { name = "more-itertools", specifier = ">=10.5.0" },
-    { name = "mxlpy-native", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'native') or (platform_machine == 'ARM64' and sys_platform == 'win32' and extra == 'native')", specifier = ">=0.6.0" },
+    { name = "mxlpy-native", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'native' or (platform_machine == 'aarch64' or platform_machine == 'x86_64') and sys_platform == 'linux' and extra == 'native' or (platform_machine == 'AMD64' or platform_machine == 'ARM64') and sys_platform == 'win32' and extra == 'native'", specifier = ">=0.7.0" },
     { name = "networkx", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=2.1.2" },
     { name = "optax", marker = "extra == 'jax'", specifier = ">=0.2.5" },
@@ -2547,7 +2547,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.14.1" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "starlette", marker = "extra == 'lab'", specifier = ">=0.46" },
-    { name = "sundials4py", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'sundials') or (platform_machine == 'AMD64' and sys_platform == 'win32' and extra == 'sundials') or (platform_machine == 'x86' and sys_platform == 'win32' and extra == 'sundials') or (sys_platform == 'darwin' and extra == 'sundials')", specifier = ">=7.9.0" },
+    { name = "sundials4py", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'sundials' or (platform_machine == 'AMD64' or platform_machine == 'x86') and sys_platform == 'win32' and extra == 'sundials' or sys_platform == 'darwin' and extra == 'sundials'", specifier = ">=7.9.0" },
     { name = "symbtools", specifier = ">=0.4.0" },
     { name = "sympy", specifier = ">=1.13.1" },
     { name = "sympy2jax", marker = "extra == 'jax'", specifier = ">=0.0.7" },
@@ -2560,7 +2560,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4.12.2" },
     { name = "uvicorn", marker = "extra == 'lab'", specifier = ">=0.34" },
     { name = "wadler-lindig", specifier = ">=0.1.7" },
-    { name = "wasmtime", marker = "(platform_machine != 'AMD64' and platform_machine != 'ARM64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and extra == 'native') or (platform_machine == 'AMD64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'ARM64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'aarch64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'x86_64' and sys_platform == 'darwin' and extra == 'native') or (platform_machine == 'AMD64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'ARM64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'arm64' and sys_platform == 'linux' and extra == 'native') or (platform_machine == 'aarch64' and sys_platform == 'win32' and extra == 'native') or (platform_machine == 'arm64' and sys_platform == 'win32' and extra == 'native') or (platform_machine == 'x86_64' and sys_platform == 'win32' and extra == 'native') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'native')", specifier = ">=30" },
+    { name = "wasmtime", marker = "platform_machine != 'AMD64' and platform_machine != 'ARM64' and platform_machine != 'aarch64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and extra == 'native' or (platform_machine == 'AMD64' or platform_machine == 'ARM64') and ((sys_platform == 'darwin' and extra == 'native') or (sys_platform == 'linux' and extra == 'native')) or (platform_machine == 'aarch64' or platform_machine == 'x86_64') and ((sys_platform == 'darwin' and extra == 'native') or (sys_platform == 'win32' and extra == 'native')) or platform_machine == 'arm64' and ((sys_platform == 'linux' and extra == 'native') or (sys_platform == 'win32' and extra == 'native')) or sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'native'", specifier = ">=30" },
     { name = "wasmtime", marker = "extra == 'native-wasm'", specifier = ">=30" },
 ]
 provides-extras = ["jax", "keras", "lab", "native", "native-wasm", "sr", "sundials", "tensorflow", "torch"]
@@ -2588,18 +2588,18 @@ dev = [
 
 [[package]]
 name = "mxlpy-native"
-version = "0.6.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llvmlite" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/15/fd/fa00a91c533bc8bd8e7c817122b12f15cbcd882b7450e25cb33f13fd683e/mxlpy_native-0.6.0.tar.gz", hash = "sha256:04c507b3bca97399cde3f57fbe750dedeefc7e255eceb7c945633fb9c7ec8001", size = 310349, upload-time = "2026-11-23T18:13:19.771Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/07/5692a815b0bba289661471db96c038e71b128bbd67406381d58fd77cc2c8/mxlpy_native-0.7.0.tar.gz", hash = "sha256:37e4ca5e275fc18d098d8be3e580485fab3ee9673ac02e99c3ec275757a04075", size = 331015, upload-time = "2026-11-27T10:04:17.954Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/49/32/cac93816fbd2d0d3e1307f3613dd3a1743bd0d8167d7e2c13ec350e79726/mxlpy_native-0.6.0-cp312-abi3-macosx_12_0_arm64.whl", hash = "sha256:2bd070ecf936babc2f7012769034fb19023eb674e32e63f12d770793bbba4542", size = 231916, upload-time = "2026-11-23T18:13:12.977Z" },
-    { url = "https://files.pythonhosted.org/packages/f1/9f/35b7fc10252373fb73ae7a6b1f0e27ec5732c1822689a401061b0abfb122/mxlpy_native-0.6.0-cp312-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:4a2550254b1e2a1bc2d79405d9c996b3e24f9d59a3c18902775563144a68d7d8", size = 594980, upload-time = "2026-11-23T18:13:14.996Z" },
-    { url = "https://files.pythonhosted.org/packages/43/c8/944caed890e0d39231eafd2305b22503cdeb62672c56b23c4113a57a23f6/mxlpy_native-0.6.0-cp312-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c5253b1b390090966fda378f8df67de2c475263b4d7b5165f85a38782ce4defe", size = 610870, upload-time = "2026-11-23T18:13:16.386Z" },
-    { url = "https://files.pythonhosted.org/packages/3f/95/a53e3f7383481295e968bcff7e57f00fc98bb7498400be9515bdbc1487ba/mxlpy_native-0.6.0-cp312-abi3-win_amd64.whl", hash = "sha256:aacfbea582b8be40677f9f859612e4e0f2a965532bb1b54ef1869e22458e8c68", size = 143491, upload-time = "2026-11-23T18:13:17.494Z" },
-    { url = "https://files.pythonhosted.org/packages/e4/3b/2fce245fc4876882df6f9fd637a020a7e3743c5dba8ce218c50c593b7243/mxlpy_native-0.6.0-cp312-abi3-win_arm64.whl", hash = "sha256:675440df3a2f37d6cfad7f6147376968a73a16cfa7f0e518699d7b0d1cca9eab", size = 117398, upload-time = "2026-11-23T18:13:18.757Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/8b/163a3adc94352586a70be4c44ad37b0ffca97934eed43cd0f47644699a05/mxlpy_native-0.7.0-cp312-abi3-macosx_12_0_arm64.whl", hash = "sha256:8250c5fc1b0e8d9d5376f5fd5af284abbdbff8326a0100ec0dae5deb2bc28959", size = 254137, upload-time = "2026-11-27T10:04:12.021Z" },
+    { url = "https://files.pythonhosted.org/packages/86/c6/ac12e9c0341a066fb1747c002f93f1b7b9f1f7cdb5a04b1bf50508ba124c/mxlpy_native-0.7.0-cp312-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f16bde0b01f43f2800628cc4ffac6a71b88434a7c3e20138041a0e8b9db19c83", size = 666614, upload-time = "2026-11-27T10:04:13.246Z" },
+    { url = "https://files.pythonhosted.org/packages/03/21/49948b5f4d0d23bc597473c1f9ccb0fcb0e925f04c19be1a02e14f9ea101/mxlpy_native-0.7.0-cp312-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1afb0d31f419ca12c7aca011b2e833e755accc6127c39c4a6b524c356f8e51a7", size = 683396, upload-time = "2026-11-27T10:04:14.579Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/e9/190eaabaeabc3680ee82ea7b8f64d5466962d2901ca25f18066a7dab49a8/mxlpy_native-0.7.0-cp312-abi3-win_amd64.whl", hash = "sha256:5dbfc0b98514e4301eb60c4b429ce67a76d30c8874494adba00e3e240495a7ed", size = 169234, upload-time = "2026-11-27T10:04:15.872Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/1f/0685d978259c1e4be49c305586ac8a6681a09ad198cb7df7d9ac585c6d48/mxlpy_native-0.7.0-cp312-abi3-win_arm64.whl", hash = "sha256:e0f4d1a471b9ed70955861b6dd1fa6d5c2dfc710819f1be87133e953df58af04", size = 137452, upload-time = "2026-11-27T10:04:16.951Z" },
 ]
 
 [[package]]
@@ -4286,7 +4286,7 @@ version = "0.18.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ptyprocess", marker = "os_name != 'nt'" },
-    { name = "pywinpty", marker = "os_name == 'nt' and sys_platform != 'linux'" },
+    { name = "pywinpty", marker = "os_name == 'nt'" },
     { name = "tornado" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8a/11/965c6fd8e5cc254f1fe142d547387da17a8ebfd75a3455f637c663fb38a0/terminado-0.18.1.tar.gz", hash = "sha256:de09f2c4b85de4765f7714688fff57d3e75bad1f909b589fde880460c753fd2e", size = 32701, upload-time = "2024-03-12T14:34:39.026Z" }
@@ -4574,7 +4574,7 @@ version = "0.35.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
-    { name = "cffi", marker = "implementation_name != 'pypy' and os_name == 'nt' and sys_platform != 'linux'" },
+    { name = "cffi", marker = "implementation_name != 'pypy' and os_name == 'nt'" },
     { name = "idna" },
     { name = "outcome" },
     { name = "sniffio" },
