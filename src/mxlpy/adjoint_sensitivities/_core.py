@@ -941,6 +941,10 @@ def _sensitivity_pullback(
 
 
 def _check_columns(model: _Model, columns: list[str]) -> None:
+    variables = set(model.get_variable_names())
+    if all(c in variables for c in columns):
+        # The output names cost an evaluation of the model
+        return
     available = model.get_variable_names() + _output_names(model)
     if unknown := [c for c in columns if c not in available]:
         msg = f"Unknown columns {unknown}, choose from {available}"
