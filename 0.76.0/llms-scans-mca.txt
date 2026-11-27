@@ -1,0 +1,138 @@
+# MxlPy — Parameter scans & Metabolic Control Analysis
+
+[← back to index](llms.txt)
+
+## Parameter scans (`mxlpy.scan`)
+
+Sweep one or more parameters and collect steady-state, time-course or protocol results. The parameter set is a `pandas.DataFrame` (one row per combination, columns = parameter names) passed as `to_scan=`. Build multi-dimensional grids with `cartesian_product`. Scans run **in parallel by default** and return a result object with `.variables`, `.fluxes`, `.combined`, unpackable as `(variables, fluxes)`.
+
+```python
+import numpy as np, pandas as pd
+from mxlpy import scan, cartesian_product, plot
+
+# Single parameter
+res = scan.steady_state(model, to_scan=pd.DataFrame({"k1": np.linspace(1, 3, 11)}))
+concs, fluxes = res                 # unpack
+res.variables; res.fluxes; res.combined
+
+# Multiple parameters → MultiIndex result
+res = scan.steady_state(model, to_scan=cartesian_product({"k1": [1, 2], "k2": [3, 4]}))
+```
+
+All scans also accept an `OdeModelBuilder`; the results then have no `.fluxes` and don't unpack. `scan.steady_state` additionally accepts a `SteadyStateModelBuilder`, which is evaluated per row (no `y0`; serial by default, as process-pool overhead outweighs the cheap evaluations) and returns a `SteadyStateScan` of `Evaluation`s (`.combined`, `.get_args(include_parameters=...)`, no `.variables`); rows whose evaluation raises an arithmetic or domain error (`ValueError`) are `NaN`. Configure the simulation with `runner=` (see [simulation](llms-simulation.txt#runners)); routines never mutate the model you pass in.
+
+```python
+res = scan.steady_state(ss_model, to_scan=pd.DataFrame({"S": np.geomspace(0.1, 100, 21)}))
+res.combined                        # derived values by scanned value
+```
+
+### Time course and protocol scans
+
+These produce a *distribution* of trajectories; the result carries an `n × time` MultiIndex. `.to_scan` maps the integer index `n` back to its parameter combination; `get_agg_per_time("mean"|"std"|...)` aggregates across runs at each time point.
+
+```python
+tss = scan.time_course(
+    model,
+    to_scan=pd.DataFrame({"k1": np.linspace(1, 2, 11)}),
+    time_points=np.linspace(0, 1, 11),
+)
+tss.variables; tss.fluxes
+tss.to_scan                         # parameter combinations per index n
+tss.get_agg_per_time("std")
+
+res = scan.protocol_time_course(
+    model,
+    to_scan=pd.DataFrame({"k2": np.linspace(1, 2, 11)}),
+    time_points=np.linspace(0, 6, 21),
+    protocol=make_protocol([(1, {"k1": 1}), (2, {"k1": 2}), (3, {"k1": 1})]),
+)
+res.protocol                        # the protocol used
+```
+
+### Visualising scans
+
+```python
+# Distribution of time courses: mean ± std band
+plot.lines_mean_std_from_2d_idx(tss.variables, ax=ax)
+
+# Steady-state sweep over two parameters: heatmap for one variable, or all at once
+plot.heatmap_from_2d_idx(res.variables, variable="x")
+plot.heatmaps_from_2d_idx(res.variables)
+```
+
+`scan.steady_state` accepts `cache=` for on-disk caching of long runs (see [advanced](llms-advanced.txt)).
+
+---
+
+## Metabolic Control Analysis (`mxlpy.mca`)
+
+MCA quantifies how sensitive steady-state concentrations and fluxes are to small changes in parameters or variable concentrations. Results are **normalised** by default (`normalized=False` for raw). Elasticities at a single state use central finite differences with the relative step `displacement` (default `1e-4`; absolute for values at 0). Response coefficients come from the runner: `KineticRunner`/`OdeRunner` compute all of them from one steady state with forward sensitivities (implicit function theorem, exact); `runner=KineticRunner(derivatives="finite_difference", displacement=1e-3)`, `SteadyStateModelBuilder` (`EvaluationRunner(displacement=1e-4)`) and models that can't be differentiated symbolically use parallel central finite differences of two steady states per parameter.
+
+### Elasticities (any state, not just steady state)
+
+`to_scan` selects which variables/parameters to perturb (default: all); `variables=` sets the concentrations to evaluate at (default: initial conditions). Both return a `pd.DataFrame` of reactions × perturbed quantity.
+
+```python
+from mxlpy import mca, plot
+
+elas = mca.variable_elasticities(model, to_scan=["GLC", "F6P"], variables={"GLC": 0.3, "F6P": 0.5})
+elas = mca.parameter_elasticities(model, to_scan=["k1", "k2"], variables={"GLC": 0.3})
+plot.heatmap(elas)
+```
+
+`to_scan=None` (parameter elasticities and response coefficients) scans every parameter except those set by an `InitialAssignment`: perturbing them would replace the assignment by a constant. Scanning one explicitly (or a derived parameter; also in the `mc` variants) raises a `ValueError` naming the parameters it is computed from; scan those instead, their effect through the assignment is included.
+
+### Response coefficients (at steady state)
+
+Sensitivity of steady-state outputs to a parameter. Runs in parallel by default. Returns a `ResponseCoefficients` object: `.combined` (outputs × parameters), `.variables` (concentration RCs), `.fluxes` (flux RCs), unpackable as `(crcs, frcs)`. Also works for `OdeModelBuilder` (no `.fluxes`) and `SteadyStateModelBuilder` (only `.combined`, the normalised derivatives of the derived values). Elasticities are flux-based and therefore `Model`-only.
+
+```python
+crcs, frcs = mca.response_coefficients(model, to_scan=["k1", "k2", "k3"])
+# or: rc = mca.response_coefficients(...); rc.variables; rc.fluxes
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+plot.heatmap(crcs, ax=ax1)
+plot.heatmap(frcs, ax=ax2)
+```
+
+### Time-dependent MCA (along a trajectory)
+
+`time_points=` turns response coefficients and elasticities into time-dependent ones along the trajectory from the initial conditions (`variables=`). Rows are indexed by `(time, output)`; normalised values are NaN/inf where an output is 0 (e.g. variables starting at 0).
+
+```python
+rc = mca.response_coefficients(model, to_scan=["k1", "k2"], time_points=np.linspace(0, 10, 101))
+rc.combined                  # (time, output) x parameters
+rc.variables.loc[2.0]        # all variable responses at t = 2
+plot.lines(rc.for_parameter("k1"))   # time x outputs
+
+elas = mca.variable_elasticities(model, time_points=np.linspace(0, 10, 101))   # (time, reaction) x variables
+elas = mca.parameter_elasticities(model, time_points=..., runner=KineticRunner())
+elas.xs("v1", level=1)       # time x variables of one reaction
+```
+
+- Response coefficients: one integration of the forward sensitivity equations for all parameters; parallel central finite differences of two time courses per parameter for runners with `derivatives="finite_difference"` or models that can't be differentiated. `KineticModelBuilder` and `OdeModelBuilder` only.
+- Elasticities: one simulation, then exact derivatives of the rates at every state from the compiled model, through initial assignments of other parameters by the chain rule (finite differences with `displacement` as fallback). `time=` (single state) and `time_points=` are mutually exclusive; `runner=` only applies with `time_points` (simulation, and `derivatives="finite_difference"` forces finite differences with the elasticity's own `displacement`). Duplicate time points are rejected.
+
+### Steady-state stability
+
+Classify a steady state from the eigenvalues of the Jacobian. `steady_state_stability(model, y0)` returns a `SteadyStateStability` with `eigenvalues`, `spectral_abscissa` (largest real part; negative ⟺ stable), `is_stable`, `has_oscillatory` (any nonzero imaginary part), and `classification` (`"stable node"`, `"stable spiral"`, `"unstable node"`, `"unstable spiral"`, `"saddle point"`, `"centre"`, `"non-hyperbolic"`).
+
+```python
+from mxlpy import Simulator
+from mxlpy.mca import steady_state_stability
+
+ss = Simulator(model).simulate_to_steady_state().get_result().unwrap_or_err().get_new_y0()
+stab = steady_state_stability(model, ss)
+stab.classification; stab.is_stable; stab.spectral_abscissa
+```
+
+### Supply–demand rate characteristics
+
+`rate_characteristics(model, "F6P")` clamps a variable across a log-spaced range around its steady state, recomputes the steady state of the rest at each point, and collects the fluxes that **produce** (supply) and **consume** (demand) it. The intersection of total supply and demand is the operating point. Exposes `supply_fluxes`/`demand_fluxes`, `total_supply`/`total_demand`, `steady_state_conc`, and helpers `plot_supply_demand()` and `plot()` (three-panel summary).
+
+```python
+rc = mca.rate_characteristics(model, "F6P")
+rc.plot()
+```
+
+For Monte-Carlo–distributed MCA (robustness of coefficients over a parameter distribution), see [fitting](llms-fitting.txt) (`mc.variable_elasticities`, `mc.response_coefficients`, …).

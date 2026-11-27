@@ -1,0 +1,2712 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://cpbl.rwth-aachen.de/MxlPy/0.76.0/augmented-ode.html">
+      
+      
+        <link rel="prev" href="mxl-ude.html">
+      
+      
+        <link rel="next" href="mxl-surrogates.html">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Augmented ODEs (terms, hidden states) - mxlpy docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="stylesheets/extra.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#augmented-odes-terms-and-hidden-states" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="index.html" title="mxlpy docs" class="md-header__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mxlpy docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Augmented ODEs (terms, hidden states)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="index.html" title="mxlpy docs" class="md-nav__button md-logo" aria-label="mxlpy docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mxlpy docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Computational-Biology-Aachen/MxlPy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ODE features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="basics.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="composition.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model composition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="scans.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scans
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mca.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sensitivity.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sensitivity analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="forward-sensitivities.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parameter sensitivities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="adjoint-sensitivities.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adjoint gradients
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="time-dependent-inputs.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Time-dependent inputs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fuzzy_fitting.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzy fitting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="bayesian-inference.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bayesian inference (MCMC)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="monte-carlo.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monte Carlo methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="label-models.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Label models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="comparisons.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparing models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parameterise.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model parameterisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="stability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stability analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parameter_identifiability.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Identifiability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="prediction-uncertainty.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prediction uncertainty
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="model-selection.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model selection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="condition-specific-parameters.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Condition-specific parameters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="fitting-lab.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fitting lab
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="symbolic.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Symbolic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="integrators.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrator configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="compartmentalisation.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compartmentalisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mechanistic learning
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Mechanistic learning
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-ude.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UDEs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Augmented ODEs (terms, hidden states)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="augmented-ode.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Augmented ODEs (terms, hidden states)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#a-model-that-misses-a-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A model that misses a delay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hidden-states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hidden states
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#training" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Training
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#saving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Saving
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-surrogates.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Surrogates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="mxl-npe.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Neural Posterior Estimation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="carousel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reaction carousel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="metaprogramming.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metaprogramming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="serialization.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Serialization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="examples.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="report.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reporting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Other model builders
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Other model builders
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="ode-model-builder.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ODE models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="steady-state-model-builder.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Steady-state models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tips
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tips
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tips.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    General
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="parallel.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Parallel execution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="citing.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How to cite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#a-model-that-misses-a-delay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A model that misses a delay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hidden-states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hidden states
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#training" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Training
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#saving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Saving
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<script>
+(function (global, factory) {
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global = global || self, global.ClipboardCopyElement = factory());
+  }(this, function () { 'use strict';
+
+    function createNode(text) {
+      const node = document.createElement('pre');
+      node.style.width = '1px';
+      node.style.height = '1px';
+      node.style.position = 'fixed';
+      node.style.top = '5px';
+      node.textContent = text;
+      return node;
+    }
+
+    function copyNode(node) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(node.textContent);
+      }
+
+      const selection = getSelection();
+
+      if (selection == null) {
+        return Promise.reject(new Error());
+      }
+
+      selection.removeAllRanges();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      selection.addRange(range);
+      document.execCommand('copy');
+      selection.removeAllRanges();
+      return Promise.resolve();
+    }
+    function copyText(text) {
+      if ('clipboard' in navigator) {
+        // eslint-disable-next-line flowtype/no-flow-fix-me-comments
+        // $FlowFixMe Clipboard is not defined in Flow yet.
+        return navigator.clipboard.writeText(text);
+      }
+
+      const body = document.body;
+
+      if (!body) {
+        return Promise.reject(new Error());
+      }
+
+      const node = createNode(text);
+      body.appendChild(node);
+      copyNode(node);
+      body.removeChild(node);
+      return Promise.resolve();
+    }
+
+    function copy(button) {
+      const id = button.getAttribute('for');
+      const text = button.getAttribute('value');
+
+      function trigger() {
+        button.dispatchEvent(new CustomEvent('clipboard-copy', {
+          bubbles: true
+        }));
+      }
+
+      if (text) {
+        copyText(text).then(trigger);
+      } else if (id) {
+        const root = 'getRootNode' in Element.prototype ? button.getRootNode() : button.ownerDocument;
+        if (!(root instanceof Document || 'ShadowRoot' in window && root instanceof ShadowRoot)) return;
+        const node = root.getElementById(id);
+        if (node) copyTarget(node).then(trigger);
+      }
+    }
+
+    function copyTarget(content) {
+      if (content instanceof HTMLInputElement || content instanceof HTMLTextAreaElement) {
+        return copyText(content.value);
+      } else if (content instanceof HTMLAnchorElement && content.hasAttribute('href')) {
+        return copyText(content.href);
+      } else {
+        return copyNode(content);
+      }
+    }
+
+    function clicked(event) {
+      const button = event.currentTarget;
+
+      if (button instanceof HTMLElement) {
+        copy(button);
+      }
+    }
+
+    function keydown(event) {
+      if (event.key === ' ' || event.key === 'Enter') {
+        const button = event.currentTarget;
+
+        if (button instanceof HTMLElement) {
+          event.preventDefault();
+          copy(button);
+        }
+      }
+    }
+
+    function focused(event) {
+      event.currentTarget.addEventListener('keydown', keydown);
+    }
+
+    function blurred(event) {
+      event.currentTarget.removeEventListener('keydown', keydown);
+    }
+
+    class ClipboardCopyElement extends HTMLElement {
+      constructor() {
+        super();
+        this.addEventListener('click', clicked);
+        this.addEventListener('focus', focused);
+        this.addEventListener('blur', blurred);
+      }
+
+      connectedCallback() {
+        if (!this.hasAttribute('tabindex')) {
+          this.setAttribute('tabindex', '0');
+        }
+
+        if (!this.hasAttribute('role')) {
+          this.setAttribute('role', 'button');
+        }
+      }
+
+      get value() {
+        return this.getAttribute('value') || '';
+      }
+
+      set value(text) {
+        this.setAttribute('value', text);
+      }
+
+    }
+
+    if (!window.customElements.get('clipboard-copy')) {
+      window.ClipboardCopyElement = ClipboardCopyElement;
+      window.customElements.define('clipboard-copy', ClipboardCopyElement);
+    }
+
+    return ClipboardCopyElement;
+
+  }));
+</script>
+<script>
+      document.addEventListener('clipboard-copy', function(event) {
+        const notice = event.target.querySelector('.notice')
+        notice.hidden = false
+        setTimeout(function() {
+          notice.hidden = true
+        }, 1000)
+      })
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
+<style type="text/css">
+    pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }
+.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }
+.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */
+.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */
+.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */
+.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */
+.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */
+.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */
+.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */
+.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */
+.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */
+.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */
+.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */
+.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */
+.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */
+.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */
+.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */
+.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */
+.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */
+.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */
+.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */
+.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */
+.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */
+.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */
+.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */
+.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */
+.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */
+.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */
+.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */
+.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */
+.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */
+.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */
+.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */
+.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */
+.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */
+.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */
+.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */
+.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */
+.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */
+.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */
+.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */
+.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */
+.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */
+  </style>
+<link rel="stylesheet" href="assets/jupyter-b81bd4b389ab.css">
+<style type="text/css">
+.jupyter-wrapper{--jp-shadow-base-lightness: 0;--jp-shadow-umbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .2 );--jp-shadow-penumbra-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .14 );--jp-shadow-ambient-color: rgba( var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), var(--jp-shadow-base-lightness), .12 );--jp-elevation-z0: none;--jp-elevation-z1: 0px 2px 1px -1px var(--jp-shadow-umbra-color), 0px 1px 1px 0px var(--jp-shadow-penumbra-color), 0px 1px 3px 0px var(--jp-shadow-ambient-color);--jp-elevation-z2: 0px 3px 1px -2px var(--jp-shadow-umbra-color), 0px 2px 2px 0px var(--jp-shadow-penumbra-color), 0px 1px 5px 0px var(--jp-shadow-ambient-color);--jp-elevation-z4: 0px 2px 4px -1px var(--jp-shadow-umbra-color), 0px 4px 5px 0px var(--jp-shadow-penumbra-color), 0px 1px 10px 0px var(--jp-shadow-ambient-color);--jp-elevation-z6: 0px 3px 5px -1px var(--jp-shadow-umbra-color), 0px 6px 10px 0px var(--jp-shadow-penumbra-color), 0px 1px 18px 0px var(--jp-shadow-ambient-color);--jp-elevation-z8: 0px 5px 5px -3px var(--jp-shadow-umbra-color), 0px 8px 10px 1px var(--jp-shadow-penumbra-color), 0px 3px 14px 2px var(--jp-shadow-ambient-color);--jp-elevation-z12: 0px 7px 8px -4px var(--jp-shadow-umbra-color), 0px 12px 17px 2px var(--jp-shadow-penumbra-color), 0px 5px 22px 4px var(--jp-shadow-ambient-color);--jp-elevation-z16: 0px 8px 10px -5px var(--jp-shadow-umbra-color), 0px 16px 24px 2px var(--jp-shadow-penumbra-color), 0px 6px 30px 5px var(--jp-shadow-ambient-color);--jp-elevation-z20: 0px 10px 13px -6px var(--jp-shadow-umbra-color), 0px 20px 31px 3px var(--jp-shadow-penumbra-color), 0px 8px 38px 7px var(--jp-shadow-ambient-color);--jp-elevation-z24: 0px 11px 15px -7px var(--jp-shadow-umbra-color), 0px 24px 38px 3px var(--jp-shadow-penumbra-color), 0px 9px 46px 8px var(--jp-shadow-ambient-color);--jp-border-width: 1px;--jp-border-color0: var(--md-grey-400);--jp-border-color1: var(--md-grey-400);--jp-border-color2: var(--md-grey-300);--jp-border-color3: var(--md-grey-200);--jp-inverse-border-color: var(--md-grey-600);--jp-border-radius: 2px;--jp-ui-font-scale-factor: 1.2;--jp-ui-font-size0: .83333em;--jp-ui-font-size1: 13px;--jp-ui-font-size2: 1.2em;--jp-ui-font-size3: 1.44em;--jp-ui-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-ui-font-color0: rgba(0, 0, 0, 1);--jp-ui-font-color1: rgba(0, 0, 0, .87);--jp-ui-font-color2: rgba(0, 0, 0, .54);--jp-ui-font-color3: rgba(0, 0, 0, .38);--jp-ui-inverse-font-color0: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color1: rgba(255, 255, 255, 1);--jp-ui-inverse-font-color2: rgba(255, 255, 255, .7);--jp-ui-inverse-font-color3: rgba(255, 255, 255, .5);--jp-content-line-height: 1.6;--jp-content-font-scale-factor: 1.2;--jp-content-font-size0: .83333em;--jp-content-font-size1: 14px;--jp-content-font-size2: 1.2em;--jp-content-font-size3: 1.44em;--jp-content-font-size4: 1.728em;--jp-content-font-size5: 2.0736em;--jp-content-presentation-font-size1: 17px;--jp-content-heading-line-height: 1;--jp-content-heading-margin-top: 1.2em;--jp-content-heading-margin-bottom: .8em;--jp-content-heading-font-weight: 500;--jp-content-font-color0: rgba(0, 0, 0, 1);--jp-content-font-color1: rgba(0, 0, 0, .87);--jp-content-font-color2: rgba(0, 0, 0, .54);--jp-content-font-color3: rgba(0, 0, 0, .38);--jp-content-link-color: var(--md-blue-700);--jp-content-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";--jp-code-font-size: 13px;--jp-code-line-height: 1.3077;--jp-code-padding: 5px;--jp-code-font-family-default: Menlo, Consolas, "DejaVu Sans Mono", monospace;--jp-code-font-family: var(--jp-code-font-family-default);--jp-code-presentation-font-size: 16px;--jp-code-cursor-width0: 1.4px;--jp-code-cursor-width1: 2px;--jp-code-cursor-width2: 4px;--jp-layout-color0: white;--jp-layout-color1: white;--jp-layout-color2: var(--md-grey-200);--jp-layout-color3: var(--md-grey-400);--jp-layout-color4: var(--md-grey-600);--jp-inverse-layout-color0: #111111;--jp-inverse-layout-color1: var(--md-grey-900);--jp-inverse-layout-color2: var(--md-grey-800);--jp-inverse-layout-color3: var(--md-grey-700);--jp-inverse-layout-color4: var(--md-grey-600);--jp-brand-color0: var(--md-blue-900);--jp-brand-color1: var(--md-blue-700);--jp-brand-color2: var(--md-blue-300);--jp-brand-color3: var(--md-blue-100);--jp-brand-color4: var(--md-blue-50);--jp-accent-color0: var(--md-green-900);--jp-accent-color1: var(--md-green-700);--jp-accent-color2: var(--md-green-300);--jp-accent-color3: var(--md-green-100);--jp-warn-color0: var(--md-orange-900);--jp-warn-color1: var(--md-orange-700);--jp-warn-color2: var(--md-orange-300);--jp-warn-color3: var(--md-orange-100);--jp-error-color0: var(--md-red-900);--jp-error-color1: var(--md-red-700);--jp-error-color2: var(--md-red-300);--jp-error-color3: var(--md-red-100);--jp-success-color0: var(--md-green-900);--jp-success-color1: var(--md-green-700);--jp-success-color2: var(--md-green-300);--jp-success-color3: var(--md-green-100);--jp-info-color0: var(--md-cyan-900);--jp-info-color1: var(--md-cyan-700);--jp-info-color2: var(--md-cyan-300);--jp-info-color3: var(--md-cyan-100);--jp-cell-padding: 5px;--jp-cell-collapser-width: 8px;--jp-cell-collapser-min-height: 20px;--jp-cell-collapser-not-active-hover-opacity: .6;--jp-cell-editor-background: var(--md-grey-100);--jp-cell-editor-border-color: var(--md-grey-300);--jp-cell-editor-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-cell-editor-active-background: var(--jp-layout-color0);--jp-cell-editor-active-border-color: var(--jp-brand-color1);--jp-cell-prompt-width: 64px;--jp-cell-prompt-font-family: var(--jp-code-font-family-default);--jp-cell-prompt-letter-spacing: 0px;--jp-cell-prompt-opacity: 1;--jp-cell-prompt-not-active-opacity: .5;--jp-cell-prompt-not-active-font-color: var(--md-grey-700);--jp-cell-inprompt-font-color: #307fc1;--jp-cell-outprompt-font-color: #bf5b3d;--jp-notebook-padding: 10px;--jp-notebook-select-background: var(--jp-layout-color1);--jp-notebook-multiselected-color: var(--md-blue-50);--jp-notebook-scroll-padding: calc( 100% - var(--jp-code-font-size) * var(--jp-code-line-height) - var(--jp-code-padding) - var(--jp-cell-padding) - 1px );--jp-rendermime-error-background: #fdd;--jp-rendermime-table-row-background: var(--md-grey-100);--jp-rendermime-table-row-hover-background: var(--md-light-blue-50);--jp-dialog-background: rgba(0, 0, 0, .25);--jp-console-padding: 10px;--jp-toolbar-border-color: var(--jp-border-color1);--jp-toolbar-micro-height: 8px;--jp-toolbar-background: var(--jp-layout-color1);--jp-toolbar-box-shadow: 0px 0px 2px 0px rgba(0, 0, 0, .24);--jp-toolbar-header-margin: 4px 4px 0px 4px;--jp-toolbar-active-background: var(--md-grey-300);--jp-statusbar-height: 24px;--jp-input-box-shadow: inset 0 0 2px var(--md-blue-300);--jp-input-active-background: var(--jp-layout-color1);--jp-input-hover-background: var(--jp-layout-color1);--jp-input-background: var(--md-grey-100);--jp-input-border-color: var(--jp-inverse-border-color);--jp-input-active-border-color: var(--jp-brand-color1);--jp-input-active-box-shadow-color: rgba(19, 124, 189, .3);--jp-editor-selected-background: #d9d9d9;--jp-editor-selected-focused-background: #d7d4f0;--jp-editor-cursor-color: var(--jp-ui-font-color0);--jp-mirror-editor-keyword-color: #008000;--jp-mirror-editor-atom-color: #88f;--jp-mirror-editor-number-color: #080;--jp-mirror-editor-def-color: #00f;--jp-mirror-editor-variable-color: var(--md-grey-900);--jp-mirror-editor-variable-2-color: #05a;--jp-mirror-editor-variable-3-color: #085;--jp-mirror-editor-punctuation-color: #05a;--jp-mirror-editor-property-color: #05a;--jp-mirror-editor-operator-color: #aa22ff;--jp-mirror-editor-comment-color: #408080;--jp-mirror-editor-string-color: #ba2121;--jp-mirror-editor-string-2-color: #708;--jp-mirror-editor-meta-color: #aa22ff;--jp-mirror-editor-qualifier-color: #555;--jp-mirror-editor-builtin-color: #008000;--jp-mirror-editor-bracket-color: #997;--jp-mirror-editor-tag-color: #170;--jp-mirror-editor-attribute-color: #00c;--jp-mirror-editor-header-color: blue;--jp-mirror-editor-quote-color: #090;--jp-mirror-editor-link-color: #00c;--jp-mirror-editor-error-color: #f00;--jp-mirror-editor-hr-color: #999;--jp-collaborator-color1: #ffad8e;--jp-collaborator-color2: #dac83d;--jp-collaborator-color3: #72dd76;--jp-collaborator-color4: #00e4d0;--jp-collaborator-color5: #45d4ff;--jp-collaborator-color6: #e2b1ff;--jp-collaborator-color7: #ff9de6;--jp-vega-background: white;--jp-sidebar-min-width: 250px;--jp-search-toggle-off-opacity: .5;--jp-search-toggle-hover-opacity: .8;--jp-search-toggle-on-opacity: 1;--jp-search-selected-match-background-color: rgb(245, 200, 0);--jp-search-selected-match-color: black;--jp-search-unselected-match-background-color: var( --jp-inverse-layout-color0 );--jp-search-unselected-match-color: var(--jp-ui-inverse-font-color0);--jp-icon-contrast-color0: var(--md-purple-600);--jp-icon-contrast-color1: var(--md-green-600);--jp-icon-contrast-color2: var(--md-pink-600);--jp-icon-contrast-color3: var(--md-blue-600);--jp-jupyter-icon-color: #f37626;--jp-notebook-icon-color: #f37626;--jp-json-icon-color: var(--md-orange-700);--jp-console-icon-background-color: var(--md-blue-700);--jp-console-icon-color: white;--jp-terminal-icon-background-color: var(--md-grey-800);--jp-terminal-icon-color: var(--md-grey-200);--jp-text-editor-icon-color: var(--md-grey-700);--jp-inspector-icon-color: var(--md-grey-700);--jp-switch-color: var(--md-grey-400);--jp-switch-true-position-color: var(--md-orange-900)}
+</style>
+<div class="jupyter-wrapper">
+<div class="jp-Notebook" data-jp-theme-light="true" data-jp-theme-name="JupyterLab Light">
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=d0d3c7af">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h1 id="augmented-odes-terms-and-hidden-states">Augmented ODEs: terms and hidden states<a class="anchor-link" href="#augmented-odes-terms-and-hidden-states">¶</a></h1><p>When a mechanistic model can't fit the data and the residuals are structured, the question is <em>what is missing, and where</em>. MxlPy answers it inside the regular toolchain, without translating the model to JAX:</p>
+<ul>
+<li>a <strong>term</strong> rewrites a variable's derivative or a reaction's rate through an explicit <code>mechanism</code>;</li>
+<li>a <strong>hidden-state block</strong> adds latent states <code>h</code> driven by a small neural network, <code>dh/dt = nn_h(x, h)</code>, and corrects each target with <code>W h</code>. The hidden states give the model <em>memory</em>: delays, unmodelled slow processes, history dependence.</li>
+</ul>
+<p>Both are lowered to symbolic equations, so every integrator (including <code>Native</code>), fits, forward and adjoint sensitivities, code generation and <code>.mxl.json</code> files work with them. The contributions of the terms show <strong>which</strong> variables or reactions miss dynamics, and <strong>when</strong>.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs" id="cell-id=cc227550">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [1]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-1">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">mxlpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">Simulator</span><span class="p">,</span> <span class="n">fit</span><span class="p">,</span> <span class="n">fns</span><span class="p">,</span> <span class="n">plot</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-1">import numpy as np
+import pandas as pd
+
+from mxlpy import Model, Simulator, fit, fns, plot
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=b59b89a4">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="a-model-that-misses-a-delay">A model that misses a delay<a class="anchor-link" href="#a-model-that-misses-a-delay">¶</a></h2><p>The data come from <code>S → X → P</code>; our mechanistic model only knows <code>S → P</code>.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=c5c1d623">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [2]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-2">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">truth</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">Model</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">add_parameters</span><span class="p">({</span><span class="s2">"k"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"kx"</span><span class="p">:</span> <span class="mf">0.7</span><span class="p">})</span>
+        <span class="o">.</span><span class="n">add_variables</span><span class="p">({</span><span class="s2">"S"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"X"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span> <span class="s2">"P"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">})</span>
+        <span class="o">.</span><span class="n">add_reaction</span><span class="p">(</span><span class="s2">"v1"</span><span class="p">,</span> <span class="n">fns</span><span class="o">.</span><span class="n">mass_action_1s</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"S"</span><span class="p">,</span> <span class="s2">"k"</span><span class="p">],</span> <span class="n">stoichiometry</span><span class="o">=</span><span class="p">{</span><span class="s2">"S"</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="s2">"X"</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
+        <span class="o">.</span><span class="n">add_reaction</span><span class="p">(</span><span class="s2">"v2"</span><span class="p">,</span> <span class="n">fns</span><span class="o">.</span><span class="n">mass_action_1s</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"X"</span><span class="p">,</span> <span class="s2">"kx"</span><span class="p">],</span> <span class="n">stoichiometry</span><span class="o">=</span><span class="p">{</span><span class="s2">"X"</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="s2">"P"</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">mechanistic</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">Model</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">add_parameters</span><span class="p">({</span><span class="s2">"k"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">})</span>
+        <span class="o">.</span><span class="n">add_variables</span><span class="p">({</span><span class="s2">"S"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="s2">"P"</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">})</span>
+        <span class="o">.</span><span class="n">add_reaction</span><span class="p">(</span><span class="s2">"v1"</span><span class="p">,</span> <span class="n">fns</span><span class="o">.</span><span class="n">mass_action_1s</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"S"</span><span class="p">,</span> <span class="s2">"k"</span><span class="p">],</span> <span class="n">stoichiometry</span><span class="o">=</span><span class="p">{</span><span class="s2">"S"</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="s2">"P"</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
+    <span class="p">)</span>
+
+
+<span class="n">time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">17</span><span class="p">)</span>
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">res</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">truth</span><span class="p">())</span><span class="o">.</span><span class="n">simulate_time_course</span><span class="p">(</span><span class="n">time</span><span class="p">)</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="p">[</span><span class="s2">"S"</span><span class="p">,</span> <span class="s2">"P"</span><span class="p">]]</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">data</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+<span class="n">mech_fit</span> <span class="o">=</span> <span class="n">fit</span><span class="o">.</span><span class="n">time_course</span><span class="p">(</span>
+    <span class="n">mechanistic</span><span class="p">(),</span>
+    <span class="n">p0</span><span class="o">=</span><span class="p">{</span><span class="s2">"k"</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">},</span>
+    <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span>
+    <span class="n">minimizer</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">LocalScipyMinimizer</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">"L-BFGS-B"</span><span class="p">),</span>
+    <span class="n">loss_fn</span><span class="o">=</span><span class="n">fit</span><span class="o">.</span><span class="n">GaussianNll</span><span class="p">(</span><span class="n">sigma</span><span class="o">=</span><span class="mf">0.01</span><span class="p">),</span>
+<span class="p">)</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+<span class="n">mech_fit</span><span class="o">.</span><span class="n">best_pars</span><span class="p">,</span> <span class="n">mech_fit</span><span class="o">.</span><span class="n">loss</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-2">def truth() -&gt; Model:
+    return (
+        Model()
+        .add_parameters({"k": 1.0, "kx": 0.7})
+        .add_variables({"S": 1.0, "X": 0.0, "P": 0.0})
+        .add_reaction("v1", fns.mass_action_1s, args=["S", "k"], stoichiometry={"S": -1, "X": 1})
+        .add_reaction("v2", fns.mass_action_1s, args=["X", "kx"], stoichiometry={"X": -1, "P": 1})
+    )
+
+
+def mechanistic() -&gt; Model:
+    return (
+        Model()
+        .add_parameters({"k": 1.0})
+        .add_variables({"S": 1.0, "P": 0.0})
+        .add_reaction("v1", fns.mass_action_1s, args=["S", "k"], stoichiometry={"S": -1, "P": 1})
+    )
+
+
+time = np.linspace(0, 8, 17)
+rng = np.random.default_rng(0)
+res = Simulator(truth()).simulate_time_course(time).get_result().unwrap_or_err()
+data = res.variables.loc[:, ["S", "P"]]
+data = data + rng.normal(0, 0.01, size=data.shape)
+
+mech_fit = fit.time_course(
+    mechanistic(),
+    p0={"k": 1.0},
+    data=data,
+    minimizer=fit.LocalScipyMinimizer(method="L-BFGS-B"),
+    loss_fn=fit.GaussianNll(sigma=0.01),
+).unwrap_or_err()
+mech_fit.best_pars, mech_fit.loss</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[2]:</div>
+<div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
+<pre>({'k': np.float64(0.5791553223627337)}, 2164.8792207288334)</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=35d19b7f">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="terms">Terms<a class="anchor-link" href="#terms">¶</a></h2><p><code>add_term(name, fn, args, target=..., mechanism=...)</code> works on variables and (kinetic models) reactions. The mechanism is required: <code>"additive"</code> (<code>base + term</code>), <code>"relative"</code> (<code>base · (1 + term)</code>) or any callable <code>(base, term) -&gt; value</code>. A reaction term rewrites the rate <em>before</em> the stoichiometry fans it out, so it corrects every variable the reaction touches. Each term's contribution <code>Δ = mechanism(base, term) − base</code> is a named output, and <code>dx/dt = base + ΣΔ</code>. Terms never enter the stoichiometric matrix.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=01d3c35f">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [3]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-3">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">m</span> <span class="o">=</span> <span class="n">mechanistic</span><span class="p">()</span><span class="o">.</span><span class="n">add_parameter</span><span class="p">(</span><span class="s2">"f"</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)</span>
+<span class="n">m</span><span class="o">.</span><span class="n">add_term</span><span class="p">(</span><span class="s2">"slow_down"</span><span class="p">,</span> <span class="n">fns</span><span class="o">.</span><span class="n">constant</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">"f"</span><span class="p">],</span> <span class="n">target</span><span class="o">=</span><span class="s2">"v1"</span><span class="p">,</span> <span class="n">mechanism</span><span class="o">=</span><span class="k">lambda</span> <span class="n">base</span><span class="p">,</span> <span class="n">term</span><span class="p">:</span> <span class="n">base</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">term</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">get_fluxes</span><span class="p">(),</span> <span class="n">m</span><span class="o">.</span><span class="n">get_fluxes</span><span class="p">(</span><span class="n">corrected</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">m</span><span class="o">.</span><span class="n">get_term_contributions</span><span class="p">(),</span> <span class="n">sep</span><span class="o">=</span><span class="s2">"</span><span class="se">\n\n</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-3">m = mechanistic().add_parameter("f", 0.2)
+m.add_term("slow_down", fns.constant, args=["f"], target="v1", mechanism=lambda base, term: base * (1 - term))
+print(m.get_fluxes(), m.get_fluxes(corrected=True), m.get_term_contributions(), sep="\n\n")</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>v1    1.0
+dtype: float64
+
+v1    0.8
+dtype: float64
+
+slow_down   -0.2
+dtype: float64
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=ee01f2b0">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="hidden-states">Hidden states<a class="anchor-link" href="#hidden-states">¶</a></h2><p>One hidden state with a small network, correcting the derivative of <code>P</code> relatively: <code>S</code> decays as modelled, only the appearance of <code>P</code> is delayed. (A correction of the reaction <code>v1</code> would change <code>S</code> and <code>P</code> alike and couldn't fit.) The weights are not parameters: <code>get_weight_names()</code> lists them and <code>get_addressable_names()</code> lists parameters and weights, the names fits, sensitivities and the simulator accept.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=fba21922">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [4]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-4">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">mechanistic</span><span class="p">()</span><span class="o">.</span><span class="n">add_hidden_states</span><span class="p">(</span>
+    <span class="s2">"aug"</span><span class="p">,</span> <span class="n">n_hidden</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">layers</span><span class="o">=</span><span class="p">(</span><span class="mi">4</span><span class="p">,),</span> <span class="n">targets</span><span class="o">=</span><span class="p">[</span><span class="s2">"P"</span><span class="p">],</span> <span class="n">mechanism</span><span class="o">=</span><span class="s2">"relative"</span>
+<span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">get_variable_names</span><span class="p">(),</span> <span class="n">model</span><span class="o">.</span><span class="n">get_parameter_names</span><span class="p">(),</span> <span class="nb">len</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">get_weight_names</span><span class="p">())</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-4">model = mechanistic().add_hidden_states(
+    "aug", n_hidden=1, layers=(4,), targets=["P"], mechanism="relative"
+)
+model.get_variable_names(), model.get_parameter_names(), len(model.get_weight_names())</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[4]:</div>
+<div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
+<pre>(['S', 'P', 'aug_h0'], ['k'], 22)</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=9ef9c260">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="training">Training<a class="anchor-link" href="#training">¶</a></h2><p><code>fit.augmented_time_course</code> starts at the mechanistic optimum: it scales the block's inputs and outputs along the mechanistic trajectory, fits the weights alone with Normal(0, 0.1) priors and a smooth penalty on the correction (so the mechanism keeps explaining what it can), then refines weights and the mechanistic parameters jointly.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=4896df34">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [5]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-5">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">res</span> <span class="o">=</span> <span class="n">fit</span><span class="o">.</span><span class="n">augmented_time_course</span><span class="p">(</span>
+    <span class="n">model</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">p0</span><span class="o">=</span><span class="n">mech_fit</span><span class="o">.</span><span class="n">best_pars</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">0.01</span>
+<span class="p">)</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"loss: mechanistic </span><span class="si">{</span><span class="n">mech_fit</span><span class="o">.</span><span class="n">loss</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, augmented </span><span class="si">{</span><span class="n">res</span><span class="o">.</span><span class="n">loss</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-5">res = fit.augmented_time_course(
+    model, data=data, p0=mech_fit.best_pars, sigma=0.01
+).unwrap_or_err()
+print(f"loss: mechanistic {mech_fit.loss:.1f}, augmented {res.loss:.1f}")</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedText jp-OutputArea-output" data-mime-type="text/plain" tabindex="0">
+<pre>loss: mechanistic 2164.9, augmented 135.9
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=b794cb5c">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [6]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-6">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">sim</span> <span class="o">=</span> <span class="n">Simulator</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">simulate_time_course</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">101</span><span class="p">))</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span><span class="o">.</span><span class="n">unwrap_or_err</span><span class="p">()</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">lines</span><span class="p">(</span><span class="n">sim</span><span class="o">.</span><span class="n">variables</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="p">[</span><span class="s2">"S"</span><span class="p">,</span> <span class="s2">"P"</span><span class="p">]])</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="s2">"P"</span><span class="p">],</span> <span class="s2">"o"</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"C1"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">data</span><span class="p">[</span><span class="s2">"S"</span><span class="p">],</span> <span class="s2">"o"</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"C0"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xlabel</span><span class="o">=</span><span class="s2">"time"</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"concentration"</span><span class="p">)</span>
+<span class="n">plot</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-6">sim = Simulator(res.model).simulate_time_course(np.linspace(0, 8, 101)).get_result().unwrap_or_err()
+fig, ax = plot.lines(sim.variables.loc[:, ["S", "P"]])
+ax.plot(data.index, data["P"], "o", color="C1")
+ax.plot(data.index, data["S"], "o", color="C0")
+ax.set(xlabel="time", ylabel="concentration")
+plot.show()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedImage jp-OutputArea-output" tabindex="0">
+<img alt="No description has been provided for this image" class="" src="data:image/webp;base64,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"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=9a60a1c1">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>The correction shows where and when the mechanism falls short: the production of <code>P</code> is slowed down early (the missing intermediate <code>X</code> is still filling up) and sped up later.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=b713a80e">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [7]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-7">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="n">fig</span><span class="p">,</span> <span class="n">axs</span> <span class="o">=</span> <span class="n">plot</span><span class="o">.</span><span class="n">correction</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
+<span class="n">plot</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-7">fig, axs = plot.correction(res)
+plot.show()</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child">
+<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
+<div class="jp-RenderedImage jp-OutputArea-output" tabindex="0">
+<img alt="No description has been provided for this image" class="" src="data:image/webp;base64,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"/>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=d51bbf9f">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="saving">Saving<a class="anchor-link" href="#saving">¶</a></h2><p>Terms and blocks are saved to <code>.mxl.json</code> (spec_version 0.5), with the weights in a sidecar file. Blocks authored in mxlweb (<code>nn_blocks</code>, any mechanism) load the same way.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell">
+<div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=a7dbb434">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [8]:</div><div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="CodeMirror cm-s-jupyter">
+<div class="zeroclipboard-container">
+<clipboard-copy ,="" aria-label="Copy to Clipboard" for="cell-8">
+<div>
+<span class="notice" hidden="">Copied!</span>
+<svg aria-hidden="true" class="clipboard-copy-icon" data-view-component="true" height="20" version="1.1" viewbox="0 0 16 16" width="20">
+<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+<path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+</clipboard-copy>
+</div>
+<div class="highlight-ipynb hl-python"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">mxlpy</span>
+
+<span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">tmp</span><span class="p">:</span>
+    <span class="n">mxlpy</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">Path</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"augmented.mxl.json"</span><span class="p">)</span>
+    <span class="n">loaded</span> <span class="o">=</span> <span class="n">mxlpy</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"augmented.mxl.json"</span><span class="p">)</span>
+<span class="n">loaded</span><span class="o">.</span><span class="n">get_raw_hidden_states</span><span class="p">()[</span><span class="s2">"aug"</span><span class="p">]</span><span class="o">.</span><span class="n">n_hidden</span>
+</pre></div>
+<div class="clipboard-copy-txt" id="cell-8">import tempfile
+from pathlib import Path
+
+import mxlpy
+
+with tempfile.TemporaryDirectory() as tmp:
+    mxlpy.save(res.model, Path(tmp) / "augmented.mxl.json")
+    loaded = mxlpy.load(Path(tmp) / "augmented.mxl.json")
+loaded.get_raw_hidden_states()["aug"].n_hidden</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell-outputWrapper">
+<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
+</div>
+<div class="jp-OutputArea jp-Cell-outputArea">
+<div class="jp-OutputArea-child jp-OutputArea-executeResult">
+<div class="jp-OutputPrompt jp-OutputArea-prompt">Out[8]:</div>
+<div class="jp-RenderedText jp-OutputArea-output jp-OutputArea-executeResult" data-mime-type="text/plain" tabindex="0">
+<pre>1</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=6c3d7e56">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="notes">Notes<a class="anchor-link" href="#notes">¶</a></h2><ul>
+<li>With the readout <code>W = 0</code> the derivatives of the mechanistic variables are exactly those of the mechanistic model. Simulations agree to the solver's tolerance, as the hidden states take part in its step-size control.</li>
+<li><code>model.remove_hidden_states("aug")</code> restores the mechanistic model, e.g. to try <code>n_hidden = 1, 2, …</code>.</li>
+<li>Gradients w.r.t. many weights are cheapest with adjoints (<code>mxlpy.adjoint_sensitivities</code>), chosen automatically for large problems.</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+</div> <!-- jp-Notebook -->
+</div> <!-- jupyter-wrapper -->
+
+        <style>
+        ['pre { line-height: 125%; }\ntd.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\nspan.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }\ntd.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\nspan.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }\n.highlight-ipynb .hll { background-color: var(--jp-cell-editor-active-background) }\n.highlight-ipynb { background: var(--jp-cell-editor-background); color: var(--jp-mirror-editor-variable-color) }\n.highlight-ipynb .c { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment */\n.highlight-ipynb .err { color: var(--jp-mirror-editor-error-color) } /* Error */\n.highlight-ipynb .k { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword */\n.highlight-ipynb .o { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator */\n.highlight-ipynb .p { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation */\n.highlight-ipynb .ch { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Hashbang */\n.highlight-ipynb .cm { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Multiline */\n.highlight-ipynb .cp { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Preproc */\n.highlight-ipynb .cpf { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.PreprocFile */\n.highlight-ipynb .c1 { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Single */\n.highlight-ipynb .cs { color: var(--jp-mirror-editor-comment-color); font-style: italic } /* Comment.Special */\n.highlight-ipynb .kc { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Constant */\n.highlight-ipynb .kd { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Declaration */\n.highlight-ipynb .kn { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Namespace */\n.highlight-ipynb .kp { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Pseudo */\n.highlight-ipynb .kr { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Reserved */\n.highlight-ipynb .kt { color: var(--jp-mirror-editor-keyword-color); font-weight: bold } /* Keyword.Type */\n.highlight-ipynb .m { color: var(--jp-mirror-editor-number-color) } /* Literal.Number */\n.highlight-ipynb .s { color: var(--jp-mirror-editor-string-color) } /* Literal.String */\n.highlight-ipynb .ow { color: var(--jp-mirror-editor-operator-color); font-weight: bold } /* Operator.Word */\n.highlight-ipynb .pm { color: var(--jp-mirror-editor-punctuation-color) } /* Punctuation.Marker */\n.highlight-ipynb .w { color: var(--jp-mirror-editor-variable-color) } /* Text.Whitespace */\n.highlight-ipynb .mb { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Bin */\n.highlight-ipynb .mf { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Float */\n.highlight-ipynb .mh { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Hex */\n.highlight-ipynb .mi { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer */\n.highlight-ipynb .mo { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Oct */\n.highlight-ipynb .sa { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Affix */\n.highlight-ipynb .sb { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Backtick */\n.highlight-ipynb .sc { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Char */\n.highlight-ipynb .dl { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Delimiter */\n.highlight-ipynb .sd { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Doc */\n.highlight-ipynb .s2 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Double */\n.highlight-ipynb .se { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Escape */\n.highlight-ipynb .sh { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Heredoc */\n.highlight-ipynb .si { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Interpol */\n.highlight-ipynb .sx { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Other */\n.highlight-ipynb .sr { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Regex */\n.highlight-ipynb .s1 { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Single */\n.highlight-ipynb .ss { color: var(--jp-mirror-editor-string-color) } /* Literal.String.Symbol */\n.highlight-ipynb .il { color: var(--jp-mirror-editor-number-color) } /* Literal.Number.Integer.Long */']
+        </style>
+        
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["content.code.copy", "content.code.annotate", "search.suggest", "search.highlight", "search.share", "navigation.instant", "navigation.instant.prefetch"], "search": "assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "stable", "provider": "mike"}}</script>
+    
+    
+      <script src="assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  <script data-mkdocs-jupyter-mathjax="{&quot;url&quot;: &quot;https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS_CHTML-full,Safe&quot;, &quot;version&quot;: 4}">
+/* Shared by full pages and Material's instant navigation. */
+(() => {
+  const config = JSON.parse(document.currentScript.dataset.mkdocsJupyterMathjax);
+  if (window.mkdocsJupyterMathJax) return;
+
+  let loading;
+  let queue = Promise.resolve();
+  let previous = [];
+
+  const ready = async () => {
+    if (!loading) {
+      loading = (async () => {
+        let math = window.MathJax;
+        if (!math?.typesetPromise) {
+          const url = new URL(config.url, document.baseURI).href;
+          const existing = Array.from(document.scripts).find(script =>
+            script.src && (script.src === url || script.id === 'MathJax-script' ||
+              (/mathjax/i.test(script.src) &&
+               /\/(?:MathJax|latest|(?:tex|mml)(?:-mml)?-(?:chtml|svg))\.js(?:[?#]|$)/i.test(script.src))));
+          if (existing) {
+            if (!math?.startup?.promise) {
+              await new Promise((resolve, reject) => {
+                existing.addEventListener('load', resolve, { once: true });
+                existing.addEventListener('error', reject, { once: true });
+              });
+            }
+          } else {
+            // Keep site macros, delimiters and startup hooks when supplied.
+            const options = math || {};
+            window.MathJax = {
+              ...options,
+              loader: {
+                ...options.loader,
+                load: Array.from(new Set(['ui/safe', ...(options.loader?.load || [])]))
+              },
+              startup: { typeset: false, ...options.startup },
+              tex: {
+                tags: 'ams',
+                useLabelIds: true,
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true,
+                ...options.tex
+              }
+            };
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = config.url;
+              script.id = 'MathJax-script';
+              script.async = true;
+              script.onload = resolve;
+              script.onerror = reject;
+              document.head.appendChild(script);
+            });
+          }
+        }
+        math = window.MathJax;
+        await math.startup.promise;
+        return math;
+      })();
+    }
+    const math = await loading;
+    // A site owner can extend the v3 queue again on each navigation.
+    await math.startup.promise;
+    return math;
+  };
+
+  const unrendered = node => {
+    if (node.matches('mjx-container')) return [];
+    if (!node.querySelector('mjx-container')) return [node];
+    // In v3, scanning generated assistive MathML again produces nested output.
+    return Array.from(node.children).flatMap(unrendered);
+  };
+
+  const refresh = () => {
+    // A separate chain also serializes v3, without changing v4's startup promise.
+    queue = queue.then(async () => {
+      const notebooks = Array.from(document.querySelectorAll('.jupyter-wrapper'));
+      if (!notebooks.length && !previous.length) return;
+      if (notebooks.length === previous.length &&
+          notebooks.every((node, index) => node === previous[index])) return;
+      const math = await ready();
+      if (previous.length) {
+        math.typesetClear(previous);
+        math.texReset();
+      }
+      previous = notebooks.filter(node => node.isConnected);
+      const pending = previous.flatMap(unrendered);
+      if (pending.length) await math.typesetPromise(pending);
+    }).catch(error => console.error('mkdocs-jupyter: MathJax rendering failed', error));
+    return queue;
+  };
+
+  window.mkdocsJupyterMathJax = { refresh };
+  const start = () => {
+    if (typeof document$ !== 'undefined') document$.subscribe(refresh);
+    else refresh();
+  };
+  // Theme bundles and user-provided MathJax scripts can follow notebook content.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else start();
+})();
+
+</script>
+</body>
+</html>
