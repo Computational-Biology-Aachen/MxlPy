@@ -27,6 +27,8 @@ print(res.summary())
 
 ## Numerical (practical) identifiability (`mxlpy.identify`)
 
+All `identify` functions take `data` as one data set or several (`fit.Data`: `{name: DataFrame | fit.Condition}`, fitted jointly, see [fitting](llms-fitting.txt)); `loss_fn` may be omitted if every `fit.Condition` has a `sigma`; `callback=` reports refits (`fit.FitEvent`). With several data sets a `Prediction` only uses its own `parameters`/`y0`/`protocol`/`local` (with one, it defaults to that data set's condition); `Prediction(local={"k1": "k1_mut"})` predicts in a condition with condition-specific estimates, including their uncertainty.
+
 `profile_likelihood` gives likelihood-ratio confidence intervals and classifies identifiability. For each parameter it steps away from the optimum in both directions, fixing the parameter and refitting all others (warm-started), with steps adapting to the profile; a side stops when the objective has increased by the threshold, at the end of the profiled range or after `max_steps` fits; without bounds the range is a factor 1000 either way for log10 steps, else ±1000·max(|value|, 1). Both sides of all parameters run in parallel.
 
 ```python
@@ -274,7 +276,7 @@ Model().add_parameters({"k": Parameter(1.0, unit=units.per_second)}).add_variabl
 
 ## Parallel execution & caching (`mxlpy.parallel`)
 
-Scans, Monte Carlo and group/ensemble fits run in parallel by default (via `pebble` process pools + `dill`). The underlying `parallelise` is generic and reusable for any work, taking a function and an iterable of `(key, value)` pairs (the key maps results back to inputs and drives caching).
+Scans, Monte Carlo and group/ensemble fits run in parallel by default (via `loky` process pools). The underlying `parallelise` is generic and reusable for any work, taking a function and an iterable of `(key, value)` pairs (the key maps results back to inputs and drives caching).
 
 ```python
 from mxlpy.parallel import parallelise, Cache
@@ -285,7 +287,7 @@ def square(x: float) -> float:
 parallelise(square, [("a", 2), ("b", 3), ("c", 4)])
 ```
 
-`Cache` persists results to disk so a repeated run loads instead of recomputing. It is a dataclass with `tmp_dir` (default `.cache`) and overridable `name_fn` / `load_fn` / `save_fn` (default pickle). Give each analysis its own folder to avoid collisions; pass `cache=` to `parallelise` and to scan functions.
+`Cache` persists results to disk so a repeated run loads instead of recomputing. It is a dataclass with `tmp_dir` (default `.cache`) and overridable `name_fn` / `load_fn` / `save_fn` (default pickle). `Cache(content_hash=True, salt=model)` adds a hash of the salt and the input to every file name, so changed inputs or a changed model are recomputed instead of loaded; `parallel.content_hash(*objs)` hashes by value (models via their `.mxl.json` form, dict order independent). Give each analysis its own folder to avoid collisions; pass `cache=` to `parallelise` and to scan functions.
 
 ```python
 from pathlib import Path

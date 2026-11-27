@@ -52,8 +52,10 @@ group_fit = fit.group_steady_state(
     model, data=ss_series, minimizer=fit.LocalScipyMinimizer(tol=1e-6),
     p0=sample({"k1": Uniform(1.0, 2.0), "k2": Uniform(1.0, 2.0)}, n=50),  # or a hand-built DataFrame
 )
-group_fit.get_losses()              # pd.Series of every start's loss
-best_model = group_fit.get_best_fit().model
+group_fit.get_losses()              # pd.Series of every successful start's loss, by start (row label of p0)
+group_fit.fits                      # {start: Fit} (a dict by start, was a list)
+group_fit.failures                  # {start: reason} of failed / timed-out starts, group_fit.n_failed
+best_model = group_fit.get_best_fit().model   # ValueError if every start failed
 
 # Ensemble: list of models, shared p0
 ensemble_fit = fit.ensemble_steady_state([model_a, model_b], data=ss_series, p0={"k1": 1.0},
@@ -91,13 +93,13 @@ fit.joint_mixed(
 res = fit.time_course(
     model, p0={"k1": 1.0, "k2": 0.5}, data=data,
     minimizer=fit.LeastSquaresMinimizer(),  # scipy least_squares, method="trf"|"dogbox"|"lm"
-    runner=KineticRunner(derivatives="auto"),  # default; or "forward" | "adjoint" | "finite_difference"
+    runner=KineticRunner(derivatives="auto"),  # default; or "forward" | "adjoint" | "discrete_adjoint" | "continuous_adjoint" | "finite_difference"
     transform="log",                        # or {"k1": "log"}; default linear
 ).unwrap_or_err()
 ```
 
 - With the built-in residual functions, fits give minimizers the residual vector, its Jacobian, the exact loss gradient and a Gauss-Newton Hessian, computed lazily when a minimizer asks for them. The runner computes them (`KineticRunner`/`OdeRunner(derivatives=..., displacement=1e-3)`, see `forward_sensitivities`): `"auto"` solves the forward sensitivity ODEs (implicit function theorem at steady state) and falls back to finite differences for surrogates/unparsable functions, events and Native/Diffrax. Protocols, `postprocess_fn`, `SteadyStateModelBuilder` and custom runners without `*_sensitivities` methods use finite differences of the runner's results. Works for single, group, ensemble and carousel fits, and joint/mixed fits: their gradient and Gauss-Newton Hessian sum the parts' (each w.r.t. its own model's parameters); their residual vector stacks the parts' scaled by sqrt(squares_factor), so least squares needs sum-of-squares losses (`mean_squared`, `GaussianNll`; `TypeError` for `rmse`). Gradients of joint fits are evaluated serially, losses in parallel if requested. `LeastSquaresMinimizer(backend="native")` falls back to scipy for joint fits.
-- Loss gradients (L-BFGS-B etc.) come from adjoints (`mxlpy.adjoint_sensitivities`, one forward + one backward solve for any number of parameters) with `derivatives="adjoint"`, and with `"auto"` for time courses with variables x parameters >= 1000 or a `Native` integrator that runs the compiled adjoint (Radau/LSODA). Residual Jacobians / Gauss-Newton Hessians (least squares) still use forward sensitivities; a Jacobian already computed for the point is reused for the gradient. Cotangents include standard scaling, replicates and `GaussianNll` weights. Protocol fits get loss gradients from adjoints (from 3 parameters with `auto`, or `"adjoint"`), residual Jacobians by finite differences; `postprocess_fn` uses finite differences.
+- Loss gradients (L-BFGS-B etc.) come from adjoints (`mxlpy.adjoint_sensitivities`, one forward + one backward pass for any number of parameters) with `derivatives="adjoint"` (discrete with `Native`, else continuous), `"discrete_adjoint"`, `"continuous_adjoint"`, and with `"auto"` for time courses with variables x parameters >= 1000 or a `Native` integrator (discrete adjoint, all methods). Then the loss is evaluated on the runner's pullback (`*_pullback`), i.e. the same simulation the gradient differentiates: one forward solve per loss + gradient, and with discrete adjoints the gradient is exactly the loss's (joint fits sum such parts' losses). Residual Jacobians / Gauss-Newton Hessians (least squares) still use forward sensitivities; a Jacobian already computed for the point is reused for the gradient. Cotangents include standard scaling, replicates and `GaussianNll` weights. Protocol fits get loss gradients from adjoints (from 3 parameters with `auto`, or `"adjoint"`), residual Jacobians by finite differences; `postprocess_fn` uses finite differences.
 - `fit.loss_gradient(model, data, {"k1": 1.0}, runner=..., loss_fn=..., prior=..., penalty=..., protocol=None, y0=None)` -> Series: the objective gradient a minimizer sees (untransformed values).
 - Gradient methods of `LocalScipyMinimizer` (L-BFGS-B, BFGS, TNC, SLSQP, trust-*, ...) and `FixedNMinimizer` get `jac=`. Hessian methods (`trust-constr`, `trust-exact`, `trust-ncg`, `trust-krylov`, `dogleg`, `Newton-CG`) also get the Gauss-Newton Hessian (`rmse` / `mean_squared`; other losses: BFGS updates with `trust-constr`, `ValueError` for methods needing a Hessian). These minimize the loss itself; `trust-exact` ignores bounds.
 - `fit.LeastSquaresMinimizer` minimizes the sum of squared residuals; `"lm"` ignores bounds. `LeastSquaresMinimizer(method="lm", backend="native")` runs the whole Levenberg-Marquardt fit compiled (model, forward sensitivities, derived targets with gradients, cminpack `lmder` in mxlpy-native; needs `mxlpy[native]`'s llvm backend), several times faster; it integrates with the method/tolerances of the runner's `Native` integrator (Radau or LSODA) or Native's defaults; ignores bounds (use `transform="log"`); falls back to the scipy backend with a one-time warning for `postprocess_fn`, fitted initial values, initial values depending on fitted parameters, events, array/data models, non-lowerable models or the wasm backend. Custom `residual_fn`s give no residual vectors (`TypeError` from least squares).
@@ -129,6 +131,53 @@ res.loss, res.penalty, res.objective   # data loss, prior term, loss + penalty
 - Sparsity: `fit.L1Penalty(names, weight, *, scales, matrix, l1_ratio, smoothing=1e-3)` (smoothed lasso / adaptive / elastic net / fused via `matrix` rows) and `fit.GroupL1Penalty({group: names}, weight)` (smoothed group lasso), with residuals + Jacobians; used by `select.condition_specific` (see [advanced](llms-advanced.txt)).
 - Custom penalties: objects with `names` and `__call__(values) -> float` (`fit.Penalty`), optionally `residuals(values)` (Σr²/2 == value) and `jacobian(values)` for least squares / Newton methods; pass via `penalty=` (one or a sequence).
 - `Fit.loss`/`JointFit.loss` exclude the penalty; `GroupFit.get_best_fit()` / `EnsembleFit.get_best_fit()` use `objective`, `GroupFit.get_objectives()` lists them.
+
+### Progress callbacks (`callback=`, `fit.FitEvent`, `fit.JsonlCallback`)
+
+Every fit (single, `group_*`, `joint_*`, `joint_mixed`, `augmented_*`) and the `identify.*` / `select.run` / `select.compare` analyses take `callback=`, called with a frozen `fit.FitEvent` after every objective evaluation (`kind="evaluation"`) and once at the end (`"finished"` / `"failed"`). Fields: `start` (row label of `p0` as str for group fits, `"{candidate}/{start}"` in select, `"refit-<pid>-<n>"` in identify, the stage in augmented fits; None for a single fit), `n_evaluations`, `value` (objective; residual vectors of least squares are converted, NaN for non-sum-of-squares losses), `best`, `improved`, `parameters` (only on improvements and at the end, untransformed), `duration`, `message`, `time`. With `callback=None` the residual isn't wrapped (no overhead).
+
+```python
+events = []
+fit.time_course(model, p0=p0, data=data, minimizer=fit.LeastSquaresMinimizer(), callback=events.append)
+# parallel workers get a pickled copy: use a sink whose effects leave the process
+fit.group_time_course(model, p0=starts, data=data, minimizer=..., callback=fit.JsonlCallback("events.jsonl", interval=1.0, fields={"run": "a"}))
+```
+
+`fit.JsonlCallback(path, interval=1.0, kinds=..., fields={})` appends one JSON object per event (single O_APPEND write, safe across processes); plain evaluations at most every `interval` s per start, improvements and ends always. An in-memory sink like `events.append` only works with `parallel=False`.
+
+### Several data sets (`fit.Condition`)
+
+`fit.Condition(data, *, y0=None, protocol=None, parameters=None, local=None, sigma=None)` is a data set plus its condition. `fit.Data` = Series | DataFrame | Condition | `{name: Series | DataFrame | Condition}`.
+
+- `sigma` (scalar / per observable / per point): the condition's loss is `GaussianNll(sigma)`, overriding `loss_fn` (which then may be omitted).
+- `parameters`: fixed values in this condition (not fitted there); a parameter set by every condition can't be estimated (`ValueError`).
+- `local={"k1": "k1_mut"}`: in this condition model parameter `k1` takes the estimated value `k1_mut` (put `k1_mut` in `p0` / the fitted values like a parameter); condition-specific estimates.
+- `y0`: initial values of the condition; fitted initial values still override them. Function-level `y0` / `protocol` apply to conditions without their own.
+- Accepted by `identify.*` (all data sets fitted jointly; Fisher information stacks rows with a `condition` index level), `select.run` / `select.compare` and `fit.augmented_time_course` (no `local`, `p0` can't contain names set by a condition). Joint fits with losses that aren't sums of squares use `LocalScipyMinimizer` by default (`LeastSquaresMinimizer` raises).
+- Fits compare data with derived values as well as variables, fluxes and terms (columns named after derived values).
+
+## Fitting lab (`mxlpy.lab`)
+
+Guided, checkpointed pipeline: one model, one or several time-course data sets. `lab.FittingLab(model, data, run_dir, *, parameters=None, max_parameters=None, time_budget=None ("2h", "30min", seconds), observables=None ({col: lab.Observable(target, scale=False, offset=False)} or {col: target}), sigma=None ({data set: sigma}), bounds=None, variants=None ({name: fn(model) -> model}), runner=None, **settings)`; settings are `lab.LabConfig` fields (`n_starts=10`, `n_samples=20`, `spread=10`, `collinearity=0.1`, `rank_rtol=1e-3`, `significance=0.05`, `converged=0.5`, `max_hidden=3`, `hidden_layers=(4,)`, `structure_search=True`, `delay_stages=2`, `spline_knots=6`, `n_pull_fits=5`, `profile="all"|"flagged"`, `prediction_times=20`, `mcmc=False`, `seed=0`, `parallel=True`, `max_workers`).
+
+Steps (each returns a `lab.StepResult`: `passed`, `summary` (JSON-able), `proposal`, `messages`, `artifacts`, `duration`, `skipped`):
+
+| Method | Step key | Proposal |
+|---|---|---|
+| `step0_setup()` | `setup` | `sigma` per data set (replicates, else cubic pseudo-residuals of neighbouring points, else 1% RMS; estimates of the same column are pooled over data sets), `integrator` (Native Radau/LSODA by stiffness if installed) |
+| `step1_select_parameters()` | `parameters` | `parameters`: ranked by RMS noise-weighted log-sensitivity over `n_samples`, greedily dropping collinear (sine to chosen span < `collinearity`); count = min(selected, sensitivity rank, time budget, `max_parameters`); runtime table per count |
+| `step2_fit()` | `fit` | `next` ("identifiability"/"diagnose"), `local` (condition-specific structure from `select.condition_specific` if the joint fit fails but each data set fits alone). Pass = χ² GOF + runs/Ljung-Box whiteness (Bonferroni) |
+| `step3_diagnose()` | `diagnose` | `model`: hidden states n=1..`max_hidden` (`fit.augmented_time_course`) until residuals white, correction per target; then `select.compare` of `variants` + generic edits of flagged variables (`degradation[v]`, `input[v]` spline, `delay[v]` linear chain), proposes a variant beating "original" by ΔAICc > 2. Skipped if the fit passed |
+| `step4_identifiability()` | `identifiability` | `fix`, `refit`: FIM → pulling test (recursive) → profile CIs; fixes the less sensitive parameters of non-identifiable groups (`identify.related_parameters`) |
+| `step5_uncertainty()` | `uncertainty` | – (prediction bands per data set × observable, condition-specific estimates via `identify.Prediction(local=...)`; final `estimates`/`fixed`; MCMC if `mcmc=True`, single plain data set) |
+
+Gates: calling a step runs earlier steps as needed and accepts their proposals (decision source `implicit`); `run.decide(step, **values)` overrides (keys of the proposal, e.g. `run.decide("parameters", parameters=["k1"])`); `run.run(auto=False)` stops at the first undecided gate, `run(auto=True)` accepts all (`auto`). Results are cached with an input hash (model + data + config + upstream decisions); changing a decision outdates later steps (`run.is_current(step)`). `lab.FittingLab.resume(run_dir)`, `run[step]`, `run.report()` (self-contained `report.html` + `report.json`), `run.on_event(fn)` (`lab.LabEvent`: step, kind started/progress/finished/cached, best_loss, n_evaluations, elapsed, eta (low, high) s).
+
+Run directory: `config.json`, `inputs.pkl` (dill), `decisions.json` (`{step: {"values", "source", "basis"}}`; accepted proposals only hold for the result they were made on (`basis` = its input hash), user decisions until changed), `events.jsonl` (fit events with `step` + lab events with `source: "lab"`), `runtime.json`, `steps/<step>/result.json|pkl`. Steps are addressed by key, number (0-5) or method name in `decide`, `run[...]`, `is_current`. The time budget counts the computing time of the steps (not pauses). Offsets are fitted linearly without default bounds. Diagnostics (also usable without the lab): `fit.estimate_sigma(df)` (replicates, else cubic pseudo-residuals of neighbouring points), `fit.check_residuals({name: residual_df}, significance)` → `ResidualCheck` (`table`, `flagged`, `passed`), `fit.chi2_test(nll, n_data, n_parameters)` → `GoodnessOfFit`; `fit.diagnostics.runs_test`, `ljung_box`.
+
+Gate options: every `StepResult.options` maps proposal keys to a `lab.Option(kind, choices, description)` (`kind` = `"subset"` (list of `choices`, e.g. step 1 `parameters`, step 4 `fix`), `"choice"` (step 0 `integrator`, step 2 `next` ∈ identifiability|diagnose, step 3 `model`), `"flag"` (step 4 `refit`), `"mapping"` (step 0 `sigma`, step 2 `local`)); `decide` raises ValueError/TypeError for values outside them. `run.reopen(step)` drops a decision. Pause/waiting: `run.pause()` / `run.unpause()` / `run.paused` (`control.json`, any process): `run()` stops before its next step (a running step finishes). `run.run(auto=False, wait=True, stop=threading.Event())` waits at open gates and pauses until decided (from the web UI or another process) instead of returning, and runs to the end; `stop` ends it before the next step. Only one process/thread runs steps at a time (`run.lock`, `lab.RunLockedError`); other processes can still `decide`/`pause`. `run()` without `wait` warns and returns when paused. Lab events in `events.jsonl` (`source: "lab"`): `step_started` (with `expected` [low, typical, high] s), `step_finished`, `step_skipped`, `step_failed` (message), `decision`, `gate_open`, `paused`, `unpaused`, `run_finished`.
+
+Web UI (`pip install "mxlpy[lab]"`, Starlette + uvicorn; prebuilt SvelteKit frontend shipped in the package, sources in `web/lab`): `mxlpy lab serve RUN_DIR [--host 127.0.0.1] [--port 8765] [--no-token] [--no-browser] [--watch] [--auto]`, `mxlpy lab status RUN_DIR`, `mxlpy lab report RUN_DIR`; from Python `server = run.serve(host=, port=, token=True, open_browser=True, watch=False, auto=False)` → `LabServer` (`.url` with token, `.wait()`, `.stop()`; non-blocking, works in notebooks). Unless `watch` (CLI `--watch`), the server runs the steps in a thread (`run(wait=True)`), and again after the end or an error once a decision changes (e.g. a reopened gate). Localhost by default, token in the URL (then a SameSite cookie) or `Authorization: Bearer`, Host/Origin checked; remote use via `ssh -L 8765:localhost:8765`. API under `/api`: `GET overview`, `GET steps/{step}` (result, options, decision, `charts` + `tables`), `POST steps/{step}/decision` `{"values": {...}}`, `DELETE steps/{step}/decision`, `GET progress/{step}` (loss traces + waterfalls per fit group), `GET live/{step}` (data with the best fit so far), `POST pause|unpause|run`, `GET report`, `GET events` (SSE). The chart/table JSON comes from `mxlpy.lab.views` (`overview(lab)`, `step_view(lab, step)`, `Progress`, `live_fit(current, parameters)`).
 
 ## Bayesian posterior sampling (`fit.mcmc_*`)
 
